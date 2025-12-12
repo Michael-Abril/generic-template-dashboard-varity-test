@@ -92,6 +92,9 @@ export default function MarketplaceContent() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Marketplace tab state: "available" shows working integrations, "coming-soon" shows roadmap
+  const [marketplaceTab, setMarketplaceTab] = useState<'available' | 'coming-soon'>('available');
+
   // Tier selection modal state
   const [selectedProduct, setSelectedProduct] = useState<ProductDetail | null>(null);
   const [selectedTier, setSelectedTier] = useState<PricingPlan | null>(null);
@@ -156,8 +159,14 @@ export default function MarketplaceContent() {
     }
   };
 
-  // Filter, search, and sort products
-  const filteredProducts = products
+  // Separate products into available (working OAuth) and coming soon
+  const availableProducts = products.filter(p => isOAuthSupported(p.logo) && !p.coming_soon);
+  const comingSoonProducts = products.filter(p => !isOAuthSupported(p.logo) || p.coming_soon);
+
+  // Filter, search, and sort products based on selected tab
+  const baseProducts = marketplaceTab === 'available' ? availableProducts : comingSoonProducts;
+
+  const filteredProducts = baseProducts
     .filter(p => selectedCategory === 'all' || p.category === selectedCategory)
     .filter(p => {
       if (!searchQuery) return true;
@@ -367,6 +376,46 @@ export default function MarketplaceContent() {
           {/* Marketplace Content */}
           {!loading && !error && (
             <>
+              {/* Available / Coming Soon Tabs */}
+              <div className="mb-6 border-b border-gray-200">
+                <nav className="flex gap-8" aria-label="Tabs">
+                  <button
+                    onClick={() => setMarketplaceTab('available')}
+                    className={`pb-4 px-1 border-b-2 font-medium text-sm transition-colors ${
+                      marketplaceTab === 'available'
+                        ? 'border-blue-600 text-blue-600'
+                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                    }`}
+                  >
+                    Available
+                    <span className={`ml-2 py-0.5 px-2 rounded-full text-xs ${
+                      marketplaceTab === 'available'
+                        ? 'bg-blue-100 text-blue-600'
+                        : 'bg-gray-100 text-gray-600'
+                    }`}>
+                      {availableProducts.length}
+                    </span>
+                  </button>
+                  <button
+                    onClick={() => setMarketplaceTab('coming-soon')}
+                    className={`pb-4 px-1 border-b-2 font-medium text-sm transition-colors ${
+                      marketplaceTab === 'coming-soon'
+                        ? 'border-blue-600 text-blue-600'
+                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                    }`}
+                  >
+                    Coming Soon
+                    <span className={`ml-2 py-0.5 px-2 rounded-full text-xs ${
+                      marketplaceTab === 'coming-soon'
+                        ? 'bg-blue-100 text-blue-600'
+                        : 'bg-gray-100 text-gray-600'
+                    }`}>
+                      {comingSoonProducts.length}
+                    </span>
+                  </button>
+                </nav>
+              </div>
+
               {/* Search and Sort Bar */}
               <div className="mb-6 flex flex-col sm:flex-row gap-4">
                 <div className="flex-1 relative">
@@ -428,18 +477,22 @@ export default function MarketplaceContent() {
                 ))}
               </div>
 
-              {/* Stats Bar */}
+              {/* Stats Bar - Context aware based on tab */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
                 <div className="bg-white border border-gray-200 rounded-lg p-4">
-                  <p className="text-sm text-gray-600">Total Integrations</p>
-                  <p className="text-2xl font-bold text-gray-900">{products.length}</p>
+                  <p className="text-sm text-gray-600">
+                    {marketplaceTab === 'available' ? 'Available Integrations' : 'Coming Soon'}
+                  </p>
+                  <p className={`text-2xl font-bold ${marketplaceTab === 'available' ? 'text-green-600' : 'text-amber-600'}`}>
+                    {marketplaceTab === 'available' ? availableProducts.length : comingSoonProducts.length}
+                  </p>
                 </div>
                 <div className="bg-white border border-gray-200 rounded-lg p-4">
                   <p className="text-sm text-gray-600">Showing Results</p>
                   <p className="text-2xl font-bold text-blue-600">{filteredProducts.length}</p>
                 </div>
                 <div className="bg-white border border-gray-200 rounded-lg p-4">
-                  <p className="text-sm text-gray-600">Your Installations</p>
+                  <p className="text-sm text-gray-600">Your Connected</p>
                   <p className="text-2xl font-bold text-green-600">{userLicenses.length}</p>
                 </div>
               </div>
@@ -471,18 +524,22 @@ export default function MarketplaceContent() {
               {/* Products Grid */}
               {filteredProducts.length > 0 && (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 mb-8">
-                  {filteredProducts.map(product => (
+                  {filteredProducts.map(product => {
+                    // In "coming-soon" tab, all products are grayed out and not clickable
+                    const isComingSoon = marketplaceTab === 'coming-soon' || product.coming_soon;
+
+                    return (
                     <div
                       key={product.id}
                       className={`bg-white rounded-xl border border-gray-200 p-6 transition-shadow relative ${
-                        product.coming_soon
+                        isComingSoon
                           ? 'opacity-60 cursor-not-allowed'
                           : 'hover:shadow-lg cursor-pointer'
                       }`}
-                      onClick={() => !product.coming_soon && handleSelectProduct(product)}
+                      onClick={() => !isComingSoon && handleSelectProduct(product)}
                     >
-                      {/* Coming Soon Badge */}
-                      {product.coming_soon && (
+                      {/* Coming Soon Badge - always show on coming-soon tab */}
+                      {isComingSoon && (
                         <div className="absolute top-3 right-3 bg-amber-100 text-amber-800 text-xs font-semibold px-2 py-1 rounded-full">
                           Coming Soon
                         </div>
@@ -493,18 +550,18 @@ export default function MarketplaceContent() {
                         <div className="flex items-center gap-3">
                           <IntegrationLogo integration={product.logo} size="md" />
                           <div>
-                            <h3 className={`font-bold ${product.coming_soon ? 'text-gray-500' : 'text-gray-900'}`}>{product.name}</h3>
+                            <h3 className={`font-bold ${isComingSoon ? 'text-gray-500' : 'text-gray-900'}`}>{product.name}</h3>
                             <p className="text-xs text-gray-500">{product.developer}</p>
                           </div>
                         </div>
                       </div>
 
-                      <p className={`text-sm mb-4 line-clamp-2 ${product.coming_soon ? 'text-gray-400' : 'text-gray-600'}`}>
+                      <p className={`text-sm mb-4 line-clamp-2 ${isComingSoon ? 'text-gray-400' : 'text-gray-600'}`}>
                         {product.short_description}
                       </p>
 
                       <div className="border-t border-gray-200 pt-4 mt-4">
-                        {product.coming_soon ? (
+                        {isComingSoon ? (
                           <p className="text-sm text-gray-400 italic">Available soon</p>
                         ) : product.starting_price ? (
                           <div>
@@ -515,11 +572,12 @@ export default function MarketplaceContent() {
                             </p>
                           </div>
                         ) : (
-                          <p className="text-sm text-gray-600">Usage-based pricing</p>
+                          <p className="text-sm text-gray-600">Free to connect</p>
                         )}
                       </div>
                     </div>
-                  ))}
+                  );
+                  })}
                 </div>
               )}
             </>
