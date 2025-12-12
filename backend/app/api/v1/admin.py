@@ -64,6 +64,7 @@ PRODUCTS = [
         "slug": "quickbooks",
         "developer": "Intuit",
         "category": "accounting",
+        "logo": "quickbooks",
         "logo_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/d/da/Intuit_QuickBooks_logo.svg/1200px-Intuit_QuickBooks_logo.svg.png",
         "description": "Industry-leading accounting software for small businesses. Track expenses, create invoices, and manage your finances.",
         "short_description": "Accounting & invoicing for small business",
@@ -76,6 +77,7 @@ PRODUCTS = [
         "slug": "xero",
         "developer": "Xero Limited",
         "category": "accounting",
+        "logo": "xero",
         "logo_url": "https://upload.wikimedia.org/wikipedia/en/thumb/0/01/Xero_software_logo.svg/1200px-Xero_software_logo.svg.png",
         "description": "Beautiful accounting software for small businesses. Connect your bank, track projects, and collaborate with your team.",
         "short_description": "Cloud accounting for modern businesses",
@@ -88,6 +90,7 @@ PRODUCTS = [
         "slug": "freshbooks",
         "developer": "FreshBooks",
         "category": "accounting",
+        "logo": "freshbooks",
         "logo_url": "https://upload.wikimedia.org/wikipedia/commons/4/4f/FreshBooks_logo.png",
         "description": "Invoicing and accounting software built for small business owners. Simple, intuitive, and powerful.",
         "short_description": "Invoicing made easy",
@@ -101,6 +104,7 @@ PRODUCTS = [
         "slug": "google",
         "developer": "Google",
         "category": "productivity",
+        "logo": "google",
         "logo_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/4/4e/Google_2015_logo.svg/1200px-Google_2015_logo.svg.png",
         "description": "Complete productivity suite including Gmail, Drive, Docs, Sheets, and more. Collaborate in real-time with your team.",
         "short_description": "Email, docs, and productivity suite",
@@ -113,6 +117,7 @@ PRODUCTS = [
         "slug": "microsoft",
         "developer": "Microsoft",
         "category": "productivity",
+        "logo": "microsoft",
         "logo_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/4/44/Microsoft_logo.svg/1200px-Microsoft_logo.svg.png",
         "description": "Office apps and cloud services for business. Word, Excel, PowerPoint, Outlook, Teams, and more.",
         "short_description": "Office apps and business tools",
@@ -126,6 +131,7 @@ PRODUCTS = [
         "slug": "slack",
         "developer": "Salesforce",
         "category": "communication",
+        "logo": "slack",
         "logo_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d5/Slack_icon_2019.svg/1200px-Slack_icon_2019.svg.png",
         "description": "Business messaging platform for teams. Channels, direct messages, integrations, and powerful search.",
         "short_description": "Team messaging and collaboration",
@@ -138,6 +144,7 @@ PRODUCTS = [
         "slug": "zoom",
         "developer": "Zoom Video Communications",
         "category": "communication",
+        "logo": "zoom",
         "logo_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/1/11/Zoom_Logo_2022.svg/1200px-Zoom_Logo_2022.svg.png",
         "description": "Video conferencing and online meeting platform. HD video, screen sharing, and recording.",
         "short_description": "Video meetings and webinars",
@@ -151,6 +158,7 @@ PRODUCTS = [
         "slug": "hubspot",
         "developer": "HubSpot",
         "category": "crm",
+        "logo": "hubspot",
         "logo_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/3/3f/HubSpot_Logo.svg/1200px-HubSpot_Logo.svg.png",
         "description": "Complete CRM platform with marketing, sales, and service tools. Free to start, scales as you grow.",
         "short_description": "CRM, marketing & sales platform",
@@ -163,6 +171,7 @@ PRODUCTS = [
         "slug": "salesforce",
         "developer": "Salesforce",
         "category": "crm",
+        "logo": "salesforce",
         "logo_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/f/f9/Salesforce.com_logo.svg/1200px-Salesforce.com_logo.svg.png",
         "description": "World's #1 CRM platform. Sales, service, marketing, and analytics in one integrated platform.",
         "short_description": "Enterprise CRM platform",
@@ -176,6 +185,7 @@ PRODUCTS = [
         "slug": "shopify",
         "developer": "Shopify",
         "category": "e-commerce",
+        "logo": "shopify",
         "logo_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/0/0e/Shopify_logo_2018.svg/1200px-Shopify_logo_2018.svg.png",
         "description": "E-commerce platform for online stores. Sell products, process payments, and manage inventory.",
         "short_description": "E-commerce and online store platform",
@@ -189,6 +199,7 @@ PRODUCTS = [
         "slug": "stripe",
         "developer": "Stripe",
         "category": "payments",
+        "logo": "stripe",
         "logo_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/b/ba/Stripe_Logo%2C_revised_2016.svg/1200px-Stripe_Logo%2C_revised_2016.svg.png",
         "description": "Payment processing infrastructure. Accept payments, send payouts, and manage finances online.",
         "short_description": "Payment processing infrastructure",
@@ -201,6 +212,7 @@ PRODUCTS = [
         "slug": "square",
         "developer": "Square (Block)",
         "category": "pos",
+        "logo": "square",
         "logo_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/3/30/Square%2C_Inc._-_Square_logo.svg/1200px-Square%2C_Inc._-_Square_logo.svg.png",
         "description": "Point of sale, payments, and business tools. Accept payments anywhere with Square hardware.",
         "short_description": "POS and payment processing",
@@ -213,6 +225,7 @@ PRODUCTS = [
         "slug": "paypal",
         "developer": "PayPal",
         "category": "payments",
+        "logo": "paypal",
         "logo_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/b/b5/PayPal.svg/1200px-PayPal.svg.png",
         "description": "Online payment system supporting online money transfers. Accept payments from around the world.",
         "short_description": "Online payments and money transfers",
@@ -226,6 +239,7 @@ PRODUCTS = [
         "slug": "zendesk",
         "developer": "Zendesk",
         "category": "customer-support",
+        "logo": "zendesk",
         "logo_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c8/Zendesk_logo.svg/1200px-Zendesk_logo.svg.png",
         "description": "Customer service software and support ticketing system. Help desk, chat, and knowledge base.",
         "short_description": "Customer service and help desk",
@@ -238,6 +252,7 @@ PRODUCTS = [
         "slug": "intercom",
         "developer": "Intercom",
         "category": "customer-support",
+        "logo": "intercom",
         "logo_url": "https://upload.wikimedia.org/wikipedia/en/6/69/Intercom_logo.svg",
         "description": "Customer messaging platform. Live chat, bots, and product tours for customer engagement.",
         "short_description": "Customer messaging platform",
@@ -251,6 +266,7 @@ PRODUCTS = [
         "slug": "mailchimp",
         "developer": "Intuit",
         "category": "marketing",
+        "logo": "mailchimp",
         "logo_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/4/45/Mailchimp_Logo_2018.svg/1200px-Mailchimp_Logo_2018.svg.png",
         "description": "Email marketing and automation platform. Build campaigns, manage audiences, and track results.",
         "short_description": "Email marketing and automation",
@@ -264,6 +280,7 @@ PRODUCTS = [
         "slug": "asana",
         "developer": "Asana",
         "category": "project-management",
+        "logo": "asana",
         "logo_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/3/3b/Asana_logo.svg/1200px-Asana_logo.svg.png",
         "description": "Work management platform for teams. Organize projects, track tasks, and hit deadlines.",
         "short_description": "Project and task management",
@@ -276,6 +293,7 @@ PRODUCTS = [
         "slug": "trello",
         "developer": "Atlassian",
         "category": "project-management",
+        "logo": "trello",
         "logo_url": "https://upload.wikimedia.org/wikipedia/en/thumb/8/8c/Trello_logo.svg/1200px-Trello_logo.svg.png",
         "description": "Visual project management with boards, lists, and cards. Simple and flexible for any workflow.",
         "short_description": "Visual project boards",
@@ -288,6 +306,7 @@ PRODUCTS = [
         "slug": "monday",
         "developer": "Monday.com",
         "category": "project-management",
+        "logo": "monday",
         "logo_url": "https://upload.wikimedia.org/wikipedia/commons/c/c6/Monday_logo.svg",
         "description": "Work operating system for teams. Manage projects, workflows, and team collaboration.",
         "short_description": "Work OS for team productivity",
@@ -301,6 +320,7 @@ PRODUCTS = [
         "slug": "docusign",
         "developer": "DocuSign",
         "category": "documents",
+        "logo": "docusign",
         "logo_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/c/cb/DocuSign_Logo.png/1200px-DocuSign_Logo.png",
         "description": "Electronic signature and agreement cloud. Sign, send, and manage documents securely.",
         "short_description": "Electronic signatures and agreements",
@@ -314,6 +334,7 @@ PRODUCTS = [
         "slug": "dropbox",
         "developer": "Dropbox",
         "category": "storage",
+        "logo": "dropbox",
         "logo_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/7/78/Dropbox_Icon.svg/1200px-Dropbox_Icon.svg.png",
         "description": "Cloud file storage and sharing. Store files, sync across devices, and collaborate with teams.",
         "short_description": "Cloud storage and file sharing",
@@ -327,6 +348,7 @@ PRODUCTS = [
         "slug": "gusto",
         "developer": "Gusto",
         "category": "payroll-hr",
+        "logo": "gusto",
         "logo_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/3/3d/Gusto_Logo.svg/1200px-Gusto_Logo.svg.png",
         "description": "Payroll, benefits, and HR for modern businesses. Easy setup, automatic tax filing, and compliance.",
         "short_description": "Payroll and HR platform",
@@ -340,6 +362,7 @@ PRODUCTS = [
         "slug": "calendly",
         "developer": "Calendly",
         "category": "scheduling",
+        "logo": "calendly",
         "logo_url": "https://upload.wikimedia.org/wikipedia/commons/1/1e/Calendly-Logo-Square.png",
         "description": "Scheduling automation platform. Share availability, book meetings, and eliminate scheduling conflicts.",
         "short_description": "Meeting scheduling automation",
@@ -353,6 +376,7 @@ PRODUCTS = [
         "slug": "canva",
         "developer": "Canva",
         "category": "design",
+        "logo": "canva",
         "logo_url": "https://upload.wikimedia.org/wikipedia/en/thumb/b/bb/Canva_Logo.svg/1200px-Canva_Logo.svg.png",
         "description": "Graphic design platform for creating presentations, social media graphics, and marketing materials.",
         "short_description": "Graphic design made easy",
@@ -365,24 +389,37 @@ PRODUCTS = [
 
 @router.post("/seed-marketplace")
 async def seed_marketplace(
+    force: bool = False,
     admin_verified: bool = Depends(verify_admin),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Seed the marketplace with categories and products.
     This endpoint requires the X-Admin-Key header.
+
+    Args:
+        force: If True, delete existing data and reseed
     """
     try:
         # Check if already seeded
         result = await db.execute(select(func.count(Product.id)))
         product_count = result.scalar()
 
-        if product_count > 0:
+        if product_count > 0 and not force:
             return {
                 "success": True,
-                "message": f"Marketplace already has {product_count} products. Skipping seed.",
+                "message": f"Marketplace already has {product_count} products. Use ?force=true to reseed.",
                 "products": product_count
             }
+
+        # If force, clear existing data
+        if force and product_count > 0:
+            logger.info("Force flag set - clearing existing marketplace data...")
+            from sqlalchemy import delete
+            await db.execute(delete(Product))
+            await db.execute(delete(Category))
+            await db.commit()
+            logger.info("Existing data cleared")
 
         # Seed categories first
         logger.info("Seeding categories...")
