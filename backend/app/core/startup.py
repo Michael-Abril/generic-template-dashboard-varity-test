@@ -104,32 +104,24 @@ async def init_redis() -> bool:
     Returns:
         bool: True if Redis is available, False otherwise
     """
-    from app.core.database import REDIS_URL
+    from app.core.database import REDIS_URL, get_redis
 
-    # Check if Redis URL is configured (not localhost fallback)
-    if not REDIS_URL or REDIS_URL == "redis://localhost:6379":
-        # Only log info if we're likely in production without Redis
-        env = os.getenv("ENVIRONMENT", "development")
-        if env == "production":
-            logger.info("ℹ️  Redis not configured - app will work without caching")
-        else:
-            logger.info("ℹ️  Using local Redis (or no Redis if unavailable)")
+    # Check if Redis URL is configured
+    if not REDIS_URL:
+        logger.info("ℹ️  Redis not configured - app will work without caching")
+        return False
 
     try:
-        from app.core.database import get_redis
-
         redis = await get_redis()
-        await redis.ping()
+        if redis is None:
+            logger.info("ℹ️  Redis disabled - app will work without caching")
+            return False
 
+        await redis.ping()
         logger.info("✅ Redis connection established")
         return True
     except Exception as e:
-        # Use INFO level, not WARNING - Redis is truly optional
-        env = os.getenv("ENVIRONMENT", "development")
-        if env == "production":
-            logger.info(f"ℹ️  Redis not available - app continues without caching")
-        else:
-            logger.warning(f"⚠️  Redis not available: {e}")
+        logger.info(f"ℹ️  Redis not available - app continues without caching")
         return False
 
 

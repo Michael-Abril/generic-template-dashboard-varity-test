@@ -23,12 +23,17 @@ def get_database_url() -> str:
 DATABASE_URL = get_database_url()
 
 # Redis URL - Check multiple possible variable names that Railway might use
-REDIS_URL = (
+# For Railway without Redis plugin, this will be None and Redis features will be disabled
+_redis_url = (
     os.getenv("REDIS_URL") or
     os.getenv("REDIS_PRIVATE_URL") or
     os.getenv("REDIS_PUBLIC_URL") or
     os.getenv("REDISCLOUD_URL") or
-    "redis://localhost:6379"  # Local fallback only
+    ""
+)
+# Only use localhost fallback in development, not production
+REDIS_URL = _redis_url if _redis_url else (
+    "redis://localhost:6379" if os.getenv("ENVIRONMENT", "development") != "production" else ""
 )
 
 # SQLAlchemy setup with connection pooling
@@ -59,12 +64,22 @@ Base = declarative_base()
 
 # Redis client
 redis_client = None
+redis_disabled = False
 
 async def get_redis():
-    """Get Redis client"""
-    global redis_client
+    """Get Redis client - returns None if Redis is not configured"""
+    global redis_client, redis_disabled
+
+    # Skip if Redis is disabled or not configured
+    if redis_disabled or not REDIS_URL:
+        return None
+
     if redis_client is None:
-        redis_client = await aioredis.from_url(REDIS_URL, encoding="utf-8", decode_responses=True)
+        try:
+            redis_client = await aioredis.from_url(REDIS_URL, encoding="utf-8", decode_responses=True)
+        except Exception:
+            redis_disabled = True
+            return None
     return redis_client
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
