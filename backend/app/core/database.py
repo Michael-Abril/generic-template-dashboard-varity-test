@@ -22,8 +22,14 @@ def get_database_url() -> str:
 
 DATABASE_URL = get_database_url()
 
-# Redis URL
-REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
+# Redis URL - Check multiple possible variable names that Railway might use
+REDIS_URL = (
+    os.getenv("REDIS_URL") or
+    os.getenv("REDIS_PRIVATE_URL") or
+    os.getenv("REDIS_PUBLIC_URL") or
+    os.getenv("REDISCLOUD_URL") or
+    "redis://localhost:6379"  # Local fallback only
+)
 
 # SQLAlchemy setup with connection pooling
 # Enhanced configuration for production stability
