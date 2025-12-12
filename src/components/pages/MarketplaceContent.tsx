@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Layout } from '@/components/Layout';
 import { IntegrationLogo } from '@/components/IntegrationLogo';
+import { AlertTriangle, XCircle, Search } from 'lucide-react';
 import { CONTRACTS, USDC_ABI, TOOL_MARKETPLACE_ABI, parseUSDC } from '@/lib/contracts';
 import * as marketplaceService from '@/services/marketplaceService';
 import type { ProductSummary, ProductDetail, PricingPlan } from '@/services/marketplaceService';
@@ -147,7 +148,37 @@ export default function MarketplaceContent() {
       setSelectedProduct(productDetail);
 
       // Select first tier by default (or popular tier)
-      const defaultTier = productDetail.pricing_plans.find(p => p.is_popular) || productDetail.pricing_plans[0];
+      // If no pricing plans exist, create a free tier for installation
+      let defaultTier: PricingPlan | null = null;
+
+      if (productDetail.pricing_plans && productDetail.pricing_plans.length > 0) {
+        defaultTier = productDetail.pricing_plans.find(p => p.is_popular) || productDetail.pricing_plans[0];
+      } else {
+        // Create a "Free Installation" tier for products without pricing plans
+        defaultTier = {
+          id: 0,
+          tier: 'free',
+          name: 'Free Installation',
+          monthly_price: 0,
+          annual_price: 0,
+          annual_discount_percent: null,
+          is_per_user: false,
+          minimum_users: null,
+          maximum_users: null,
+          is_free: true,
+          is_popular: true,
+          is_recommended: true,
+          setup_fee: null,
+          onboarding_fee: null,
+          features: [
+            { feature_text: 'Connect your account', category: null, is_included: true, is_highlight: true },
+            { feature_text: 'Sync business data', category: null, is_included: true, is_highlight: false },
+            { feature_text: 'AI-powered insights', category: null, is_included: true, is_highlight: false }
+          ],
+          limits: []
+        };
+      }
+
       setSelectedTier(defaultTier);
 
       // Reset quantity
@@ -241,7 +272,7 @@ export default function MarketplaceContent() {
               Integration Marketplace
             </h1>
             <p className="text-gray-600">
-              Connect your business tools with authentic pricing and full tier selection
+              Connect your existing business tools and aggregate all your data in one unified dashboard
             </p>
           </div>
 
@@ -249,7 +280,7 @@ export default function MarketplaceContent() {
           {(!authenticated || !address) && ready && (
             <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6">
               <div className="flex items-start gap-3">
-                <span className="text-amber-600 text-xl">⚠️</span>
+                <AlertTriangle className="w-6 h-6 text-amber-600 flex-shrink-0" />
                 <div>
                   <p className="text-amber-900 font-semibold text-sm">
                     {!authenticated ? 'Authentication Required' : 'Wallet Connection Required'}
@@ -268,7 +299,7 @@ export default function MarketplaceContent() {
           {error && (
             <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
               <div className="flex items-start gap-3">
-                <span className="text-red-600 text-xl">❌</span>
+                <XCircle className="w-6 h-6 text-red-600 flex-shrink-0" />
                 <div>
                   <p className="text-red-900 font-semibold text-sm">Error Loading Marketplace</p>
                   <p className="text-red-800 text-sm mt-1">{error}</p>
@@ -376,7 +407,9 @@ export default function MarketplaceContent() {
               {/* No Results Message */}
               {filteredProducts.length === 0 && (
                 <div className="bg-white rounded-xl border-2 border-dashed border-gray-300 p-12 text-center mb-8">
-                  <div className="text-6xl mb-4">🔍</div>
+                  <div className="flex justify-center mb-4">
+                    <Search className="w-16 h-16 text-gray-400" />
+                  </div>
                   <h3 className="text-xl font-bold text-gray-900 mb-2">No Integrations Found</h3>
                   <p className="text-gray-600 mb-4">
                     {searchQuery
@@ -454,15 +487,15 @@ export default function MarketplaceContent() {
         </div>
       </div>
 
-      {/* Tier Selection Modal */}
+      {/* Integration Connection Modal */}
       {showTierModal && selectedProduct && selectedTier && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
             <div className="sticky top-0 bg-white border-b border-gray-200 p-6 flex items-start justify-between">
               <div className="flex items-center gap-4">
                 <IntegrationLogo integration={selectedProduct.logo} size="lg" />
                 <div>
-                  <h2 className="text-2xl font-bold text-gray-900">{selectedProduct.name}</h2>
+                  <h2 className="text-2xl font-bold text-gray-900">Connect {selectedProduct.name}</h2>
                   <p className="text-gray-600">{selectedProduct.developer}</p>
                 </div>
               </div>
@@ -479,6 +512,31 @@ export default function MarketplaceContent() {
             <div className="p-6">
               <p className="text-gray-700 mb-6">{selectedProduct.description}</p>
 
+              {/* What data will be synced */}
+              <div className="bg-blue-50 border border-blue-100 rounded-lg p-4 mb-6">
+                <h3 className="font-semibold text-blue-900 mb-2">What will be connected:</h3>
+                <ul className="space-y-2 text-sm text-blue-800">
+                  <li className="flex items-center gap-2">
+                    <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                    Connect your existing {selectedProduct.name} account
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                    Sync your business data securely
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                    AI Assistant can query your {selectedProduct.name} data
+                  </li>
+                </ul>
+              </div>
+
               <div className="flex gap-3">
                 <button
                   onClick={() => setShowTierModal(false)}
@@ -487,11 +545,14 @@ export default function MarketplaceContent() {
                   Cancel
                 </button>
                 <button
-                  onClick={handlePurchase}
-                  disabled={purchasing === selectedProduct.id}
-                  className="flex-1 py-3 px-4 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-all disabled:opacity-50"
+                  onClick={() => {
+                    // Navigate to integrations page to start OAuth flow
+                    setShowTierModal(false);
+                    window.location.href = `/integrations?connect=${selectedProduct.logo}`;
+                  }}
+                  className="flex-1 py-3 px-4 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-all"
                 >
-                  {purchasing === selectedProduct.id ? 'Processing...' : 'Install Now'}
+                  Connect Account
                 </button>
               </div>
             </div>
