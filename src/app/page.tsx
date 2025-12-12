@@ -103,7 +103,7 @@ export default function HomePage() {
                 </button>
                 
                 <Link
-                  href="https://www.varity.so/dashboard"
+                  href="https://www.varity.so/platform"
                   className="inline-flex items-center justify-center gap-2 h-14 px-10 rounded-lg text-lg font-medium border border-border bg-transparent text-foreground hover:bg-background-quaternary hover:border-brand-500 transition-all duration-200"
                 >
                   Learn More
