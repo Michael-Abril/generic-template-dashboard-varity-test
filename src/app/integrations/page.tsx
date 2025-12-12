@@ -1,265 +1,215 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, Suspense } from 'react';
 import { usePrivy } from '@privy-io/react-auth';
 import { useWalletSync } from '@/app/providers';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Layout } from '@/components/Layout';
 import { IntegrationLogo } from '@/components/IntegrationLogo';
-import { CONTRACTS, TOOL_MARKETPLACE_ABI, TOOL_LICENSE_NFT_ABI } from '@/lib/contracts';
 import { logger } from '@/lib/logger';
-import { Shield, Package, AlertTriangle } from 'lucide-react';
+import { Shield, Check, ExternalLink, RefreshCw, Plus } from 'lucide-react';
 
 /**
  * Integration Management Page
  *
- * Shows all integrations owned by the logged-in business
- * - License verification
- * - Encryption status
- * - Secure storage tracking
+ * Shows ALL available integrations and their connection status
+ * - Connect existing accounts via OAuth
+ * - View connected integrations and their data
  * - Manual sync controls
- * - Security audit trail
+ * - Handles ?connect=provider param to auto-start OAuth
  */
 
-// Integration metadata (matches marketplace)
-const INTEGRATION_METADATA: Record<number, {
+// All available integrations (keyed by logo name for easy lookup)
+const ALL_INTEGRATIONS: Record<string, {
   name: string;
   logo: string;
   category: string;
   developer: string;
   dataTypes: string[];
+  oauthKey: string;
+  comingSoon?: boolean;
 }> = {
-  1: {
+  quickbooks: {
     name: 'QuickBooks',
     logo: 'quickbooks',
     category: 'Accounting',
     developer: 'Intuit',
     dataTypes: ['Invoices', 'Expenses', 'Customers', 'Vendors', 'Payments'],
+    oauthKey: 'quickbooks',
   },
-  2: {
+  salesforce: {
     name: 'Salesforce',
     logo: 'salesforce',
     category: 'CRM',
     developer: 'Salesforce',
     dataTypes: ['Leads', 'Contacts', 'Opportunities', 'Accounts', 'Activities'],
+    oauthKey: 'salesforce',
   },
-  3: {
+  shopify: {
     name: 'Shopify',
     logo: 'shopify',
     category: 'E-commerce',
     developer: 'Shopify',
     dataTypes: ['Products', 'Orders', 'Customers', 'Inventory', 'Sales Data'],
+    oauthKey: 'shopify',
   },
-  4: {
+  slack: {
     name: 'Slack',
     logo: 'slack',
     category: 'Communication',
     developer: 'Slack',
     dataTypes: ['Messages', 'Files', 'Channels', 'Team Activity'],
+    oauthKey: 'slack',
   },
-  5: {
+  monday: {
     name: 'Monday.com',
     logo: 'monday',
     category: 'Project Management',
     developer: 'Monday.com',
     dataTypes: ['Projects', 'Tasks', 'Timelines', 'Resources', 'Updates'],
+    oauthKey: 'monday',
+    comingSoon: true,
   },
-  6: {
+  stripe: {
     name: 'Stripe',
     logo: 'stripe',
     category: 'Payments',
     developer: 'Stripe',
     dataTypes: ['Transactions', 'Subscriptions', 'Customers', 'Invoices', 'Payouts'],
+    oauthKey: 'stripe',
+    comingSoon: true,
   },
-  7: {
+  hubspot: {
     name: 'HubSpot',
     logo: 'hubspot',
     category: 'Marketing',
     developer: 'HubSpot',
     dataTypes: ['Contacts', 'Campaigns', 'Email Performance', 'Lead Scores'],
+    oauthKey: 'hubspot',
   },
-  8: {
+  zendesk: {
     name: 'Zendesk',
     logo: 'zendesk',
     category: 'Customer Support',
     developer: 'Zendesk',
     dataTypes: ['Tickets', 'Customer Conversations', 'Support Metrics', 'KB Articles'],
+    oauthKey: 'zendesk',
   },
-  9: {
+  google: {
     name: 'Google Workspace',
     logo: 'google',
     category: 'Productivity',
     developer: 'Google',
     dataTypes: ['Emails', 'Contacts', 'Calendar Events', 'Files', 'Documents'],
+    oauthKey: 'google',
   },
-  10: {
+  microsoft: {
     name: 'Microsoft 365',
     logo: 'microsoft',
     category: 'Productivity',
     developer: 'Microsoft',
     dataTypes: ['Emails', 'Calendar Events', 'Excel Files', 'Word Documents', 'OneDrive Files'],
+    oauthKey: 'microsoft',
+  },
+  xero: {
+    name: 'Xero',
+    logo: 'xero',
+    category: 'Accounting',
+    developer: 'Xero',
+    dataTypes: ['Invoices', 'Bank Transactions', 'Contacts', 'Payments'],
+    oauthKey: 'xero',
+  },
+  freshbooks: {
+    name: 'FreshBooks',
+    logo: 'freshbooks',
+    category: 'Accounting',
+    developer: 'FreshBooks',
+    dataTypes: ['Invoices', 'Expenses', 'Time Tracking', 'Clients'],
+    oauthKey: 'freshbooks',
+  },
+  mailchimp: {
+    name: 'Mailchimp',
+    logo: 'mailchimp',
+    category: 'Marketing',
+    developer: 'Intuit',
+    dataTypes: ['Campaigns', 'Subscribers', 'Email Analytics', 'Automations'],
+    oauthKey: 'mailchimp',
+  },
+  docusign: {
+    name: 'DocuSign',
+    logo: 'docusign',
+    category: 'Documents',
+    developer: 'DocuSign',
+    dataTypes: ['Agreements', 'Signatures', 'Templates', 'Envelopes'],
+    oauthKey: 'docusign',
+  },
+  zoom: {
+    name: 'Zoom',
+    logo: 'zoom',
+    category: 'Communication',
+    developer: 'Zoom',
+    dataTypes: ['Meetings', 'Recordings', 'Participants', 'Webinars'],
+    oauthKey: 'zoom',
+  },
+  dropbox: {
+    name: 'Dropbox',
+    logo: 'dropbox',
+    category: 'Storage',
+    developer: 'Dropbox',
+    dataTypes: ['Files', 'Folders', 'Shared Links', 'Team Activity'],
+    oauthKey: 'dropbox',
   },
 };
 
-type IntegrationStatus = 'connected' | 'syncing' | 'error' | 'pending_oauth';
+type IntegrationStatus = 'connected' | 'syncing' | 'not_connected';
 
-interface OwnedIntegration {
-  id: number;
-  tokenId: number;
-  name: string;
+interface IntegrationItem {
   logo: string;
+  name: string;
   category: string;
   developer: string;
   dataTypes: string[];
+  oauthKey: string;
   status: IntegrationStatus;
   lastSync?: Date;
   encryptionCID?: string;
   oauthConnected: boolean;
+  comingSoon?: boolean;
 }
 
-export default function IntegrationsPage() {
-  const { authenticated } = usePrivy();
+// Inner component that uses useSearchParams
+function IntegrationsContent() {
+  const { authenticated, ready } = usePrivy();
   const { address } = useWalletSync();
   const router = useRouter();
+  const searchParams = useSearchParams();
 
-  const [ownedIntegrations, setOwnedIntegrations] = useState<OwnedIntegration[]>([]);
+  const [integrations, setIntegrations] = useState<IntegrationItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [syncing, setSyncing] = useState<number | null>(null);
+  const [syncing, setSyncing] = useState<string | null>(null);
+  const [connecting, setConnecting] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [autoConnectTriggered, setAutoConnectTriggered] = useState(false);
 
-  // Marketplace integration verification (database-driven)
-  const [licenses, setLicenses] = useState<number[]>([]);
-  const [licensesLoading, setLicensesLoading] = useState(false);
-  const [nftVerificationEnabled, setNftVerificationEnabled] = useState(false);
-
-  // Load purchased integrations from backend (and optionally flag NFT verification)
-  useEffect(() => {
-    const loadPurchases = async () => {
-      if (!address || !authenticated) {
-        setLicenses([]);
-        return;
-      }
-
-      try {
-        setLicensesLoading(true);
-        const backendUrl = process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
-        const res = await fetch(
-          `${backendUrl}/api/v1/marketplace/my-integrations?wallet_address=${address}`
-        );
-        if (!res.ok) {
-          setLicenses([]);
-          return;
-        }
-        const data = await res.json() as Array<{ product_id: number; is_purchased: boolean }>;
-        const productIds = data
-          .filter((item) => item.is_purchased)
-          .map((item) => item.product_id);
-        setLicenses(productIds);
-
-        const blockchainEnabled = process.env.NEXT_PUBLIC_BLOCKCHAIN_VERIFICATION_ENABLED === 'true';
-        setNftVerificationEnabled(blockchainEnabled);
-      } catch (error) {
-        logger.error('Failed to load marketplace integrations for wallet:', error);
-        setLicenses([]);
-      } finally {
-        setLicensesLoading(false);
-      }
-    };
-
-    loadPurchases();
-  }, [address, authenticated]);
-
-  // Redirect if not authenticated
-  useEffect(() => {
-    if (!authenticated) {
-      router.push('/');
-    }
-  }, [authenticated, router]);
-
-  // Fetch integration details when licenses change
-  useEffect(() => {
-    const fetchIntegrationDetails = async () => {
-      if (!licenses || !address) {
-        setLoading(false);
-        return;
-      }
-
-      try {
-        const integrationPromises = licenses.map(async (licenseId: unknown, index: number) => {
-          const integrationId = Number(licenseId);
-          const metadata = INTEGRATION_METADATA[integrationId];
-
-          if (!metadata) {
-            return null;
-          }
-
-          // Check OAuth connection status
-          const backendUrl = process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
-          let oauthConnected = false;
-          let encryptionCID = undefined;
-          let lastSync = undefined;
-
-          try {
-            const integrationKey = metadata.name.toLowerCase().replace(/\s+/g, '').replace('.com', '').replace('workspace', '').replace('365', '');
-            const response = await fetch(
-              `${backendUrl}/api/v1/oauth/status/${integrationKey}?wallet_address=${address}`
-            );
-
-            if (response.ok) {
-              const data = await response.json();
-              oauthConnected = data.connected || false;
-              encryptionCID = data.credential_cid;
-              lastSync = data.stored_at ? new Date(data.stored_at) : undefined;
-            }
-          } catch (error) {
-            console.error(`Failed to check OAuth status for ${metadata.name}:`, error);
-          }
-
-          // Determine status
-          let status: IntegrationStatus = 'pending_oauth';
-          if (oauthConnected) {
-            status = lastSync ? 'connected' : 'syncing';
-          }
-
-          return {
-            id: integrationId,
-            tokenId: index,
-            name: metadata.name,
-            logo: metadata.logo,
-            category: metadata.category,
-            developer: metadata.developer,
-            dataTypes: metadata.dataTypes,
-            status,
-            lastSync,
-            encryptionCID,
-            oauthConnected,
-          } as OwnedIntegration;
-        });
-
-        const integrations = (await Promise.all(integrationPromises)).filter(Boolean) as OwnedIntegration[];
-        setOwnedIntegrations(integrations);
-      } catch (error) {
-        console.error('Failed to fetch integration details:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchIntegrationDetails();
-  }, [licenses, address]);
-
-  const handleConnectOAuth = async (integration: OwnedIntegration) => {
-    const integrationKey = integration.name.toLowerCase().replace(/\s+/g, '').replace('.com', '').replace('workspace', '').replace('365', '');
-
+  // OAuth connection handler
+  const handleConnectOAuth = useCallback(async (integration: IntegrationItem | typeof ALL_INTEGRATIONS[string]) => {
     if (!address) {
       alert('Please connect your wallet first');
       return;
     }
 
+    if (integration.comingSoon) {
+      alert(`${integration.name} integration is coming soon!`);
+      return;
+    }
+
+    setConnecting(integration.oauthKey);
+
     try {
-      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
+      const backendUrl = process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
       const response = await fetch(
-        `${backendUrl}/api/v1/oauth/start/${integrationKey}`,
+        `${backendUrl}/api/v1/oauth/start/${integration.oauthKey}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -272,30 +222,161 @@ export default function IntegrationsPage() {
       );
 
       if (!response.ok) {
-        throw new Error('Failed to initiate OAuth');
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || 'Failed to initiate OAuth');
       }
 
       const data = await response.json();
 
       if (data.authorization_url) {
-        // Redirect to OAuth provider
-        window.location.href = data.authorization_url;
-      }
-    } catch (error) {
-      console.error('OAuth connection error:', error);
-      alert(`Failed to connect ${integration.name}. Please try again.`);
-    }
-  };
+        // Open OAuth provider in new tab for professional experience
+        const oauthWindow = window.open(data.authorization_url, '_blank', 'noopener,noreferrer');
 
-  const handleManualSync = async (integration: OwnedIntegration) => {
-    setSyncing(integration.id);
+        // Set up listener for when OAuth completes
+        const handleOAuthComplete = (event: MessageEvent) => {
+          // Verify the message is from our OAuth callback
+          if (event.data?.type === 'oauth-complete' && event.data?.provider === integration.oauthKey) {
+            window.removeEventListener('message', handleOAuthComplete);
+            setConnecting(null);
+
+            if (event.data.success) {
+              setSuccessMessage(`${integration.name} connected successfully! Your data will now sync.`);
+              // Reload integrations to show updated status
+              setTimeout(() => window.location.reload(), 1500);
+            } else {
+              alert(`Failed to connect ${integration.name}: ${event.data.error || 'Unknown error'}`);
+            }
+          }
+        };
+
+        window.addEventListener('message', handleOAuthComplete);
+
+        // Timeout after 5 minutes if OAuth window doesn't complete
+        setTimeout(() => {
+          window.removeEventListener('message', handleOAuthComplete);
+          if (connecting === integration.oauthKey) {
+            setConnecting(null);
+          }
+        }, 300000);
+      } else {
+        throw new Error('No authorization URL received');
+      }
+    } catch (error: any) {
+      console.error('OAuth connection error:', error);
+      alert(`Failed to connect ${integration.name}: ${error.message}`);
+      setConnecting(null);
+    }
+  }, [address, connecting]);
+
+  // Handle ?connect=provider param - auto-start OAuth
+  useEffect(() => {
+    const connectProvider = searchParams.get('connect');
+    const success = searchParams.get('success');
+
+    if (success === 'true') {
+      setSuccessMessage('Integration connected successfully! Your data will now sync.');
+      // Clear the success param from URL
+      router.replace('/integrations', { scroll: false });
+      setTimeout(() => setSuccessMessage(null), 5000);
+    }
+
+    if (connectProvider && address && authenticated && !connecting && !autoConnectTriggered) {
+      const integration = ALL_INTEGRATIONS[connectProvider.toLowerCase()];
+      if (integration && !integration.comingSoon) {
+        setAutoConnectTriggered(true);
+        // Auto-start OAuth for this provider
+        handleConnectOAuth(integration);
+        // Clear the connect param from URL to prevent re-triggering
+        router.replace('/integrations', { scroll: false });
+      }
+    }
+  }, [searchParams, address, authenticated, connecting, autoConnectTriggered, handleConnectOAuth, router]);
+
+  // Redirect if not authenticated
+  useEffect(() => {
+    if (ready && !authenticated) {
+      router.push('/');
+    }
+  }, [authenticated, ready, router]);
+
+  // Load ALL integrations and check their connection status
+  useEffect(() => {
+    const loadIntegrations = async () => {
+      if (!address || !authenticated) {
+        setLoading(false);
+        return;
+      }
+
+      try {
+        const backendUrl = process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
+
+        // Check OAuth status for each integration
+        const integrationItems: IntegrationItem[] = await Promise.all(
+          Object.values(ALL_INTEGRATIONS).map(async (integration) => {
+            let oauthConnected = false;
+            let encryptionCID = undefined;
+            let lastSync = undefined;
+            let status: IntegrationStatus = 'not_connected';
+
+            if (!integration.comingSoon) {
+              try {
+                const response = await fetch(
+                  `${backendUrl}/api/v1/oauth/status/${integration.oauthKey}?wallet_address=${address}`
+                );
+
+                if (response.ok) {
+                  const data = await response.json();
+                  oauthConnected = data.connected || false;
+                  encryptionCID = data.credential_cid;
+                  lastSync = data.stored_at ? new Date(data.stored_at) : undefined;
+
+                  if (oauthConnected) {
+                    status = lastSync ? 'connected' : 'syncing';
+                  }
+                }
+              } catch (error) {
+                console.error(`Failed to check OAuth status for ${integration.name}:`, error);
+              }
+            }
+
+            return {
+              ...integration,
+              status,
+              lastSync,
+              encryptionCID,
+              oauthConnected,
+            };
+          })
+        );
+
+        // Sort: connected first, then by category, then by name
+        integrationItems.sort((a, b) => {
+          if (a.oauthConnected && !b.oauthConnected) return -1;
+          if (!a.oauthConnected && b.oauthConnected) return 1;
+          if (a.comingSoon && !b.comingSoon) return 1;
+          if (!a.comingSoon && b.comingSoon) return -1;
+          return a.name.localeCompare(b.name);
+        });
+
+        setIntegrations(integrationItems);
+      } catch (error) {
+        console.error('Failed to load integrations:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadIntegrations();
+  }, [address, authenticated]);
+
+  const handleManualSync = async (integration: IntegrationItem) => {
+    setSyncing(integration.oauthKey);
 
     try {
-      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
-      const integrationKey = integration.name.toLowerCase().replace(/\s+/g, '').replace('.com', '').replace('workspace', '').replace('365', '');
+      const backendUrl = process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 
       const response = await fetch(
-        `${backendUrl}/api/v1/sync/${integrationKey}/trigger`,
+        `${backendUrl}/api/v1/sync/${integration.oauthKey}/trigger`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -308,7 +389,6 @@ export default function IntegrationsPage() {
 
       if (response.ok) {
         alert(`Sync started for ${integration.name}. This may take a few minutes.`);
-        // Refresh integration status after a delay
         setTimeout(() => window.location.reload(), 2000);
       } else {
         throw new Error('Sync failed');
@@ -321,9 +401,12 @@ export default function IntegrationsPage() {
     }
   };
 
-  if (!authenticated) {
+  if (!authenticated || !ready) {
     return null;
   }
+
+  const connectedCount = integrations.filter(i => i.oauthConnected).length;
+  const availableCount = integrations.filter(i => !i.comingSoon && !i.oauthConnected).length;
 
   return (
     <Layout>
@@ -335,7 +418,7 @@ export default function IntegrationsPage() {
             <div className="flex items-center gap-2 text-sm text-gray-500 mb-4">
               <Link href="/dashboard" className="hover:text-gray-700">Dashboard</Link>
               <span>/</span>
-              <span className="text-gray-900 font-medium">My Integrations</span>
+              <span className="text-gray-900 font-medium">Integrations</span>
             </div>
             <div className="flex items-center justify-between">
               <div>
@@ -343,15 +426,42 @@ export default function IntegrationsPage() {
                   My Integrations
                 </h1>
                 <p className="text-gray-600">
-                  Manage your connected business tools and data sync
+                  Connect your business tools to aggregate data and unlock AI-powered insights
                 </p>
               </div>
               <Link
                 href="/marketplace"
-                className="bg-blue-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-blue-700 transition-all"
+                className="bg-blue-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-blue-700 transition-all flex items-center gap-2"
               >
-                + Add Integration
+                <Plus className="w-5 h-5" />
+                Browse Marketplace
               </Link>
+            </div>
+          </div>
+
+          {/* Success Message */}
+          {successMessage && (
+            <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6">
+              <div className="flex items-center gap-3">
+                <Check className="w-6 h-6 text-green-600" />
+                <p className="text-green-900 font-medium">{successMessage}</p>
+              </div>
+            </div>
+          )}
+
+          {/* Stats */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+            <div className="bg-white rounded-lg border border-gray-200 p-4">
+              <p className="text-sm text-gray-600 mb-1">Connected</p>
+              <p className="text-2xl font-bold text-green-600">{connectedCount}</p>
+            </div>
+            <div className="bg-white rounded-lg border border-gray-200 p-4">
+              <p className="text-sm text-gray-600 mb-1">Available to Connect</p>
+              <p className="text-2xl font-bold text-blue-600">{availableCount}</p>
+            </div>
+            <div className="bg-white rounded-lg border border-gray-200 p-4">
+              <p className="text-sm text-gray-600 mb-1">Total Integrations</p>
+              <p className="text-2xl font-bold text-gray-900">{integrations.length}</p>
             </div>
           </div>
 
@@ -359,203 +469,167 @@ export default function IntegrationsPage() {
           <div className="bg-gradient-to-r from-purple-50 to-blue-50 border-2 border-purple-200 rounded-xl p-6 mb-8">
             <h3 className="font-bold text-gray-900 mb-3 flex items-center gap-2">
               <Shield className="w-6 h-6 text-purple-600" />
-              <span>Maximum Security & Privacy</span>
+              <span>Enterprise-Grade Security</span>
             </h3>
-            <div className="grid md:grid-cols-4 gap-4">
-              <div className="bg-white rounded-lg p-4">
-                <p className="text-sm font-semibold text-purple-900 mb-1">End-to-End Encryption</p>
-                <p className="text-xs text-gray-600">Bank-level security for all data</p>
-              </div>
-              <div className="bg-white rounded-lg p-4">
-                <p className="text-sm font-semibold text-purple-900 mb-1">Secure Cloud Storage</p>
-                <p className="text-xs text-gray-600">Distributed encrypted storage</p>
-              </div>
-              <div className="bg-white rounded-lg p-4">
-                <p className="text-sm font-semibold text-purple-900 mb-1">Private & Secure</p>
-                <p className="text-xs text-gray-600">Only you can access your data</p>
-              </div>
-              <div className="bg-white rounded-lg p-4">
-                <p className="text-sm font-semibold text-purple-900 mb-1">NFT License Verification</p>
-                <p className="text-xs text-gray-600">
-                  {nftVerificationEnabled ? (
-                    <span className="text-green-600">✓ On-chain verification active</span>
-                  ) : (
-                    <span className="text-gray-600">Database verification</span>
-                  )}
-                </p>
-              </div>
-            </div>
+            <p className="text-sm text-gray-600">
+              All OAuth credentials are encrypted with your wallet and stored securely.
+              Your data is synced to your personal dashboard and can be queried by the AI Assistant.
+            </p>
           </div>
 
           {/* Loading State */}
-          {(loading || licensesLoading) && (
+          {loading && (
             <div className="text-center py-12">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-              <p className="text-gray-600">Loading your integrations...</p>
+              <p className="text-gray-600">Loading integrations...</p>
             </div>
           )}
 
-          {/* No Integrations */}
-          {!loading && !licensesLoading && ownedIntegrations.length === 0 && (
-            <div className="bg-white rounded-xl shadow-lg p-12 text-center">
-              <div className="flex justify-center mb-4">
-                <Package className="w-16 h-16 text-gray-400" />
-              </div>
-              <h2 className="text-2xl font-bold text-gray-900 mb-2">
-                No Integrations Yet
+          {/* Connected Integrations */}
+          {!loading && connectedCount > 0 && (
+            <div className="mb-8">
+              <h2 className="text-xl font-bold text-gray-900 mb-4 flex items-center gap-2">
+                <Check className="w-5 h-5 text-green-600" />
+                Connected ({connectedCount})
               </h2>
-              <p className="text-gray-600 mb-6">
-                Connect your business tools to unlock AI-powered insights
-              </p>
-              <Link
-                href="/marketplace"
-                className="inline-block bg-blue-600 text-white px-8 py-3 rounded-lg font-semibold hover:bg-blue-700 transition-all"
-              >
-                Browse Marketplace
-              </Link>
-            </div>
-          )}
-
-          {/* Integrations Grid */}
-          {!loading && !licensesLoading && ownedIntegrations.length > 0 && (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {ownedIntegrations.map((integration) => {
-                return (
-                <div
-                  key={integration.tokenId}
-                  className="bg-white rounded-xl shadow-lg border-2 border-gray-200 overflow-hidden hover:shadow-xl transition-all"
-                >
-                  {/* Integration Header */}
-                  <div className="p-6 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-purple-50">
-                    <div className="flex items-start justify-between">
-                      <div className="flex items-start gap-4">
-                        <IntegrationLogo integration={integration.logo} size="lg" />
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {integrations.filter(i => i.oauthConnected).map((integration) => (
+                  <div
+                    key={integration.oauthKey}
+                    className="bg-white rounded-xl border-2 border-green-200 p-6 hover:shadow-lg transition-all"
+                  >
+                    <div className="flex items-start justify-between mb-4">
+                      <div className="flex items-center gap-3">
+                        <IntegrationLogo integration={integration.logo} size="md" />
                         <div>
-                          <div className="flex items-center gap-2">
-                            <h3 className="text-xl font-bold text-gray-900">{integration.name}</h3>
-                          </div>
-                          <p className="text-sm text-gray-600">by {integration.developer}</p>
-                          <span className="inline-block mt-2 text-xs px-3 py-1 rounded-full bg-blue-100 text-blue-700 font-medium">
-                            {integration.category}
-                          </span>
+                          <h3 className="font-bold text-gray-900">{integration.name}</h3>
+                          <p className="text-xs text-gray-500">{integration.category}</p>
                         </div>
                       </div>
-                      <StatusBadge status={integration.status} />
+                      <span className="bg-green-100 text-green-700 text-xs px-2 py-1 rounded-full font-semibold">
+                        Connected
+                      </span>
                     </div>
-                  </div>
 
-                  {/* Integration Body */}
-                  <div className="p-6">
-                    {/* OAuth Status */}
-                    {!integration.oauthConnected && (
-                      <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">
-                        <p className="text-sm font-semibold text-yellow-900 mb-2">
-                          <AlertTriangle className="w-4 h-4 inline mr-1" /> OAuth Connection Required
-                        </p>
-                        <p className="text-xs text-yellow-800 mb-3">
-                          Connect your {integration.name} account to start syncing data
-                        </p>
-                        <button
-                          onClick={() => handleConnectOAuth(integration)}
-                          className="w-full bg-yellow-600 text-white py-2 px-4 rounded-lg text-sm font-semibold hover:bg-yellow-700 transition-all"
-                        >
-                          Connect {integration.name}
-                        </button>
-                      </div>
-                    )}
-
-                    {/* Data Types */}
                     <div className="mb-4">
-                      <h4 className="font-semibold text-gray-900 mb-2 text-sm">Data Synced:</h4>
-                      <div className="flex flex-wrap gap-2">
-                        {integration.dataTypes.map((type) => (
-                          <span
-                            key={type}
-                            className="text-xs px-2 py-1 bg-gray-100 text-gray-700 rounded-full"
-                          >
+                      <p className="text-xs text-gray-500 mb-2">Syncing:</p>
+                      <div className="flex flex-wrap gap-1">
+                        {integration.dataTypes.slice(0, 3).map((type) => (
+                          <span key={type} className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded">
                             {type}
                           </span>
                         ))}
-                      </div>
-                    </div>
-
-                    {/* Security Info */}
-                    {integration.oauthConnected && (
-                      <div className="bg-purple-50 border border-purple-200 rounded-lg p-4 mb-4">
-                        <h4 className="font-semibold text-purple-900 mb-2 text-sm flex items-center gap-2">
-                          <span>🔐</span> Encryption Status
-                        </h4>
-                        <div className="space-y-2 text-xs">
-                          <div className="flex justify-between">
-                            <span className="text-purple-800">Enterprise Encryption:</span>
-                            <span className="text-green-600 font-semibold">✓ Active</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-purple-800">Secure Storage:</span>
-                            <span className="text-green-600 font-semibold">✓ Encrypted</span>
-                          </div>
-                          {integration.encryptionCID && (
-                            <div className="mt-2 pt-2 border-t border-purple-200">
-                              <p className="text-purple-800 mb-1">Storage ID:</p>
-                              <p className="font-mono text-[10px] text-purple-900 bg-white px-2 py-1 rounded break-all">
-                                {integration.encryptionCID}
-                              </p>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Last Sync */}
-                    {integration.lastSync && (
-                      <div className="flex items-center justify-between text-sm mb-4">
-                        <span className="text-gray-600">Last synced:</span>
-                        <span className="text-gray-900 font-medium">
-                          {integration.lastSync.toLocaleString()}
-                        </span>
-                      </div>
-                    )}
-
-                    {/* Actions */}
-                    {integration.oauthConnected && (
-                      <button
-                        onClick={() => handleManualSync(integration)}
-                        disabled={syncing === integration.id}
-                        className={`w-full py-3 rounded-lg font-semibold transition-all text-sm ${
-                          syncing === integration.id
-                            ? 'bg-gray-100 text-gray-400 cursor-wait'
-                            : 'bg-blue-600 text-white hover:bg-blue-700 hover:shadow-md'
-                        }`}
-                      >
-                        {syncing === integration.id ? (
-                          <span className="flex items-center justify-center gap-2">
-                            <div className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin"></div>
-                            Syncing...
-                          </span>
-                        ) : (
-                          '🔄 Manual Sync'
+                        {integration.dataTypes.length > 3 && (
+                          <span className="text-xs text-gray-400">+{integration.dataTypes.length - 3} more</span>
                         )}
-                      </button>
-                    )}
-                  </div>
-
-                  {/* License Details */}
-                  <div className="px-6 py-3 bg-gray-50 border-t border-gray-200">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-gray-600">License ID:</span>
-                      <span className="font-mono text-gray-900 font-semibold">#{integration.tokenId}</span>
+                      </div>
                     </div>
+
+                    {integration.lastSync && (
+                      <p className="text-xs text-gray-500 mb-4">
+                        Last synced: {integration.lastSync.toLocaleString()}
+                      </p>
+                    )}
+
+                    <button
+                      onClick={() => handleManualSync(integration)}
+                      disabled={syncing === integration.oauthKey}
+                      className="w-full py-2 px-4 bg-gray-100 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-200 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                    >
+                      <RefreshCw className={`w-4 h-4 ${syncing === integration.oauthKey ? 'animate-spin' : ''}`} />
+                      {syncing === integration.oauthKey ? 'Syncing...' : 'Sync Now'}
+                    </button>
                   </div>
-                </div>
-                );
-              })}
+                ))}
+              </div>
             </div>
           )}
 
-          {/* Account Info */}
+          {/* Available Integrations */}
+          {!loading && (
+            <div>
+              <h2 className="text-xl font-bold text-gray-900 mb-4 flex items-center gap-2">
+                <Plus className="w-5 h-5 text-blue-600" />
+                Available Integrations ({availableCount})
+              </h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {integrations.filter(i => !i.oauthConnected && !i.comingSoon).map((integration) => (
+                  <div
+                    key={integration.oauthKey}
+                    className="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-lg hover:border-blue-200 transition-all"
+                  >
+                    <div className="flex items-start justify-between mb-4">
+                      <div className="flex items-center gap-3">
+                        <IntegrationLogo integration={integration.logo} size="md" />
+                        <div>
+                          <h3 className="font-bold text-gray-900">{integration.name}</h3>
+                          <p className="text-xs text-gray-500">{integration.category}</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <p className="text-sm text-gray-600 mb-4">
+                      Connect your {integration.name} account to sync {integration.dataTypes.slice(0, 2).join(', ').toLowerCase()}
+                      {integration.dataTypes.length > 2 ? ` and ${integration.dataTypes.length - 2} more` : ''}.
+                    </p>
+
+                    <button
+                      onClick={() => handleConnectOAuth(integration)}
+                      disabled={connecting === integration.oauthKey}
+                      className="w-full py-2 px-4 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                    >
+                      {connecting === integration.oauthKey ? (
+                        <>
+                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                          Connecting...
+                        </>
+                      ) : (
+                        <>
+                          <ExternalLink className="w-4 h-4" />
+                          Connect Account
+                        </>
+                      )}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Coming Soon Integrations */}
+          {!loading && integrations.filter(i => i.comingSoon).length > 0 && (
+            <div className="mt-8">
+              <h2 className="text-xl font-bold text-gray-900 mb-4 text-gray-400">
+                Coming Soon
+              </h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {integrations.filter(i => i.comingSoon).map((integration) => (
+                  <div
+                    key={integration.oauthKey}
+                    className="bg-gray-50 rounded-xl border border-gray-200 p-6 opacity-60"
+                  >
+                    <div className="flex items-start justify-between mb-4">
+                      <div className="flex items-center gap-3">
+                        <IntegrationLogo integration={integration.logo} size="md" />
+                        <div>
+                          <h3 className="font-bold text-gray-500">{integration.name}</h3>
+                          <p className="text-xs text-gray-400">{integration.category}</p>
+                        </div>
+                      </div>
+                      <span className="bg-amber-100 text-amber-700 text-xs px-2 py-1 rounded-full font-semibold">
+                        Coming Soon
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Wallet Info */}
           {address && (
             <div className="mt-8 bg-white rounded-lg border border-gray-200 p-4">
-              <p className="text-xs text-gray-600 mb-1">Your Account ID:</p>
+              <p className="text-xs text-gray-600 mb-1">Connected Wallet:</p>
               <p className="font-mono text-sm text-gray-900 break-all">{address}</p>
             </div>
           )}
@@ -566,25 +640,22 @@ export default function IntegrationsPage() {
   );
 }
 
-// Status Badge Component
-function StatusBadge({ status }: { status: IntegrationStatus }) {
-  const styles = {
-    connected: 'bg-green-100 text-green-700 border-green-200',
-    syncing: 'bg-blue-100 text-blue-700 border-blue-200',
-    error: 'bg-red-100 text-red-700 border-red-200',
-    pending_oauth: 'bg-yellow-100 text-yellow-700 border-yellow-200',
-  };
-
-  const labels = {
-    connected: '✓ Connected',
-    syncing: '⟳ Syncing',
-    error: '✗ Error',
-    pending_oauth: '⚠ Setup Required',
-  };
-
+// Main export with Suspense wrapper for useSearchParams
+export default function IntegrationsPage() {
   return (
-    <span className={`text-xs px-3 py-1 rounded-full font-semibold border-2 ${styles[status]}`}>
-      {labels[status]}
-    </span>
+    <Suspense fallback={
+      <Layout>
+        <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50 py-12">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="text-center py-12">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+              <p className="text-gray-600">Loading...</p>
+            </div>
+          </div>
+        </div>
+      </Layout>
+    }>
+      <IntegrationsContent />
+    </Suspense>
   );
 }

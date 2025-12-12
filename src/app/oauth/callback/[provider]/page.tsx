@@ -47,35 +47,55 @@ function OAuthCallbackContent({ params }: OAuthCallbackPageProps) {
 
   useEffect(() => {
     const handleOAuthCallback = async () => {
+      // Helper function to notify opener of errors
+      const notifyOpenerOfError = (errorMsg: string) => {
+        if (window.opener && !window.opener.closed) {
+          window.opener.postMessage({
+            type: 'oauth-complete',
+            provider: params.provider,
+            success: false,
+            error: errorMsg,
+          }, window.location.origin);
+        }
+      };
+
       // Check for errors from OAuth provider
       if (error) {
+        const errorMsg = errorDescription || 'The authorization was denied or failed.';
         setStatus('error');
         setMessage(`OAuth Error: ${error}`);
-        setDetails(errorDescription || 'The authorization was denied or failed.');
+        setDetails(errorMsg);
+        notifyOpenerOfError(errorMsg);
         return;
       }
 
       // Verify wallet is connected (required for encryption)
       if (!isConnected || !walletAddress) {
+        const errorMsg = 'Please connect your wallet to securely store OAuth tokens. Your tokens are encrypted with your wallet address.';
         setStatus('error');
         setMessage('Wallet Not Connected');
-        setDetails('Please connect your wallet to securely store OAuth tokens. Your tokens are encrypted with your wallet address.');
+        setDetails(errorMsg);
+        notifyOpenerOfError(errorMsg);
         return;
       }
 
       // Verify we have an authorization code
       if (!code) {
+        const errorMsg = 'No authorization code received from the OAuth provider.';
         setStatus('error');
         setMessage('Missing Authorization Code');
-        setDetails('No authorization code received from the OAuth provider.');
+        setDetails(errorMsg);
+        notifyOpenerOfError(errorMsg);
         return;
       }
 
       // Verify state for CSRF protection
       if (!state) {
+        const errorMsg = 'OAuth state parameter missing. This might be a security issue.';
         setStatus('error');
         setMessage('Security Validation Failed');
-        setDetails('OAuth state parameter missing. This might be a security issue.');
+        setDetails(errorMsg);
+        notifyOpenerOfError(errorMsg);
         return;
       }
 
@@ -115,17 +135,44 @@ function OAuthCallbackContent({ params }: OAuthCallbackPageProps) {
           await triggerInitialSync(params.provider, walletAddress);
         }
 
-        // Redirect to integrations page after 3 seconds
-        setTimeout(() => {
-          setIsRedirecting(true);
-          router.push('/integrations');
-        }, 3000);
+        // Check if this page was opened in a new tab from integrations page
+        if (window.opener && !window.opener.closed) {
+          // Send success message to parent window
+          window.opener.postMessage({
+            type: 'oauth-complete',
+            provider: params.provider,
+            success: true,
+          }, window.location.origin);
+
+          // Close this tab after showing success briefly
+          setDetails(`${params.provider} connected! This window will close automatically.`);
+          setTimeout(() => {
+            window.close();
+          }, 2000);
+        } else {
+          // Direct navigation - redirect to integrations page after 3 seconds
+          setTimeout(() => {
+            setIsRedirecting(true);
+            router.push('/integrations?success=true');
+          }, 3000);
+        }
 
       } catch (error) {
         console.error('OAuth callback error:', error);
+        const errorMessage = error instanceof Error ? error.message : 'Failed to complete OAuth connection';
         setStatus('error');
         setMessage('Connection Failed');
-        setDetails(error instanceof Error ? error.message : 'Failed to complete OAuth connection');
+        setDetails(errorMessage);
+
+        // Notify parent window of error if opened in new tab
+        if (window.opener && !window.opener.closed) {
+          window.opener.postMessage({
+            type: 'oauth-complete',
+            provider: params.provider,
+            success: false,
+            error: errorMessage,
+          }, window.location.origin);
+        }
       }
     };
 
