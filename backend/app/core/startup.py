@@ -104,6 +104,17 @@ async def init_redis() -> bool:
     Returns:
         bool: True if Redis is available, False otherwise
     """
+    from app.core.database import REDIS_URL
+
+    # Check if Redis URL is configured (not localhost fallback)
+    if not REDIS_URL or REDIS_URL == "redis://localhost:6379":
+        # Only log info if we're likely in production without Redis
+        env = os.getenv("ENVIRONMENT", "development")
+        if env == "production":
+            logger.info("ℹ️  Redis not configured - app will work without caching")
+        else:
+            logger.info("ℹ️  Using local Redis (or no Redis if unavailable)")
+
     try:
         from app.core.database import get_redis
 
@@ -113,8 +124,12 @@ async def init_redis() -> bool:
         logger.info("✅ Redis connection established")
         return True
     except Exception as e:
-        logger.warning(f"⚠️  Redis not available: {e}")
-        logger.warning("App will continue without Redis (some features may be slower)")
+        # Use INFO level, not WARNING - Redis is truly optional
+        env = os.getenv("ENVIRONMENT", "development")
+        if env == "production":
+            logger.info(f"ℹ️  Redis not available - app continues without caching")
+        else:
+            logger.warning(f"⚠️  Redis not available: {e}")
         return False
 
 
@@ -122,18 +137,20 @@ async def check_external_services() -> Dict[str, bool]:
     """
     Verify external services are accessible:
     1. Pinata (Filecoin/IPFS)
-    2. Ollama (LLM)
+    2. Ollama (LLM) - OPTIONAL for Railway deployment
     3. Arbitrum Sepolia RPC
 
     Returns:
         dict: Service name -> availability status
     """
+    from app.core.config import settings
+
     services = {}
 
-    # Check Pinata (JWT or API key/secret)
-    pinata_jwt = os.getenv("PINATA_JWT")
-    pinata_api_key = os.getenv("PINATA_API_KEY")
-    pinata_secret = os.getenv("PINATA_SECRET_KEY")
+    # Check Pinata (JWT or API key/secret) - Use settings object for consistency
+    pinata_jwt = getattr(settings, 'pinata_jwt', None)
+    pinata_api_key = getattr(settings, 'pinata_api_key', None)
+    pinata_secret = getattr(settings, 'pinata_secret_key', None)
 
     has_pinata_creds = pinata_jwt or (pinata_api_key and pinata_secret)
 
@@ -158,7 +175,10 @@ async def check_external_services() -> Dict[str, bool]:
                 if services["pinata"]:
                     logger.info("✅ Pinata (Filecoin/IPFS) is available")
                 else:
+                    # Log more details for debugging
                     logger.warning(f"⚠️  Pinata authentication failed: HTTP {response.status_code}")
+                    logger.warning(f"    API Key: {pinata_api_key[:8] if pinata_api_key else 'None'}...")
+                    logger.warning(f"    JWT present: {bool(pinata_jwt)}")
         except Exception as e:
             logger.warning(f"⚠️  Pinata check failed: {e}")
             services["pinata"] = False
@@ -166,25 +186,30 @@ async def check_external_services() -> Dict[str, bool]:
         services["pinata"] = False
         logger.info("ℹ️  Pinata not configured - using mock storage for beta deployment")
 
-    # Check Ollama
-    try:
-        import httpx
-        from app.core.config import settings
+    # Check Ollama - OPTIONAL for Railway (Railway doesn't have Ollama)
+    ollama_url = getattr(settings, 'ollama_url', 'http://localhost:11434')
 
-        # Use settings.ollama_url (from OLLAMA_URL env var)
-        ollama_url = settings.ollama_url.rstrip('/')
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            response = await client.get(f"{ollama_url}/api/tags")
-            services["ollama"] = response.status_code == 200
-
-            if services["ollama"]:
-                logger.info(f"✅ Ollama (LLM) is available at {ollama_url}")
-            else:
-                logger.warning(f"⚠️  Ollama not responding: HTTP {response.status_code}")
-    except Exception as e:
-        logger.warning(f"⚠️  Ollama check failed: {e}")
-        logger.warning("AI chatbot features will not work without Ollama")
+    # Skip Ollama check if URL is empty or explicitly disabled
+    if not ollama_url or ollama_url.lower() in ['none', 'disabled', '']:
         services["ollama"] = False
+        logger.info("ℹ️  Ollama disabled - AI chatbot features will use fallback responses")
+    else:
+        try:
+            import httpx
+
+            ollama_url = ollama_url.rstrip('/')
+            async with httpx.AsyncClient(timeout=3.0) as client:
+                response = await client.get(f"{ollama_url}/api/tags")
+                services["ollama"] = response.status_code == 200
+
+                if services["ollama"]:
+                    logger.info(f"✅ Ollama (LLM) is available at {ollama_url}")
+                else:
+                    logger.info(f"ℹ️  Ollama not responding at {ollama_url} - AI features will use fallback")
+        except Exception as e:
+            # Ollama is optional - don't warn loudly for Railway deployments
+            services["ollama"] = False
+            logger.info(f"ℹ️  Ollama not available ({ollama_url}) - AI features will use fallback responses")
 
     # Check Varity L3 RPC
     try:
