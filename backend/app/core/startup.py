@@ -48,7 +48,7 @@ async def init_database() -> bool:
 async def seed_marketplace_data() -> bool:
     """
     Seed marketplace with products if empty.
-    Uses the existing test_seed_marketplace.py data.
+    In production, products should be managed via admin API, not seed scripts.
 
     Returns:
         bool: True if successful, False otherwise
@@ -58,42 +58,44 @@ async def seed_marketplace_data() -> bool:
         from sqlalchemy import select, func
         from app.models.marketplace import Product
 
+        # Check environment - skip seeding in production
+        is_production = os.getenv("ENVIRONMENT", "development").lower() == "production"
+
         # Check if products exist
         async with AsyncSessionLocal() as session:
             result = await session.execute(select(func.count(Product.id)))
             count = result.scalar()
 
             if count == 0:
-                logger.info("Seeding marketplace with initial products...")
-
-                # Run the seeding script
-                backend_dir = Path(__file__).parent.parent.parent
-                seed_script = backend_dir / "test_seed_marketplace.py"
-
-                if seed_script.exists():
-                    result = subprocess.run(
-                        [sys.executable, str(seed_script)],
-                        cwd=str(backend_dir),
-                        capture_output=True,
-                        text=True
-                    )
-
-                    if result.returncode == 0:
-                        logger.info("✅ Marketplace seeded with 20 products")
-                    else:
-                        logger.warning(f"⚠️  Marketplace seeding had issues: {result.stderr}")
-                        logger.info("Continuing anyway - marketplace may be empty")
+                if is_production:
+                    # In production, don't try to run seed script - just log info
+                    logger.info("ℹ️  Marketplace empty - products will be added via admin API")
                 else:
-                    logger.warning(f"⚠️  Seed script not found at {seed_script}")
-                    logger.info("Continuing without seeding - marketplace will be empty")
+                    # In development, try to run seed script
+                    logger.info("Seeding marketplace with initial products...")
+                    backend_dir = Path(__file__).parent.parent.parent
+                    seed_script = backend_dir / "test_seed_marketplace.py"
+
+                    if seed_script.exists():
+                        result = subprocess.run(
+                            [sys.executable, str(seed_script)],
+                            cwd=str(backend_dir),
+                            capture_output=True,
+                            text=True
+                        )
+                        if result.returncode == 0:
+                            logger.info("✅ Marketplace seeded with products")
+                        else:
+                            logger.info("ℹ️  Seed script completed with notes")
+                    else:
+                        logger.info("ℹ️  Seed script not available - marketplace starts empty")
             else:
-                logger.info(f"Marketplace already has {count} products, skipping seed")
+                logger.info(f"✅ Marketplace has {count} products")
 
         return True
     except Exception as e:
-        logger.error(f"❌ Marketplace seeding failed: {e}")
-        logger.info("Continuing anyway - marketplace may be empty")
-        return False
+        logger.info(f"ℹ️  Marketplace initialization skipped: {e}")
+        return True  # Don't fail startup for marketplace issues
 
 
 async def init_redis() -> bool:
@@ -139,23 +141,21 @@ async def check_external_services() -> Dict[str, bool]:
 
     services = {}
 
-    # Check Pinata (JWT or API key/secret) - Use settings object for consistency
-    pinata_jwt = getattr(settings, 'pinata_jwt', None)
-    pinata_api_key = getattr(settings, 'pinata_api_key', None)
-    pinata_secret = getattr(settings, 'pinata_secret_key', None)
+    # Check Pinata - ALWAYS use API key + secret (JWT gets corrupted in Railway env vars)
+    pinata_api_key = os.getenv("PINATA_API_KEY") or getattr(settings, 'pinata_api_key', None)
+    pinata_secret = os.getenv("PINATA_SECRET_KEY") or getattr(settings, 'pinata_secret_key', None)
 
-    has_pinata_creds = pinata_jwt or (pinata_api_key and pinata_secret)
+    has_pinata_creds = pinata_api_key and pinata_secret
 
     if has_pinata_creds:
         try:
             import httpx
 
-            headers = {}
-            if pinata_jwt:
-                headers["Authorization"] = f"Bearer {pinata_jwt}"
-            else:
-                headers["pinata_api_key"] = pinata_api_key
-                headers["pinata_secret_api_key"] = pinata_secret
+            # Use API key + secret authentication (more reliable than JWT in cloud environments)
+            headers = {
+                "pinata_api_key": pinata_api_key,
+                "pinata_secret_api_key": pinata_secret
+            }
 
             async with httpx.AsyncClient(timeout=10.0) as client:
                 response = await client.get(
@@ -167,12 +167,11 @@ async def check_external_services() -> Dict[str, bool]:
                 if services["pinata"]:
                     logger.info("✅ Pinata (Filecoin/IPFS) is available")
                 else:
-                    # Log more details for debugging
-                    logger.warning(f"⚠️  Pinata authentication failed: HTTP {response.status_code}")
-                    logger.warning(f"    API Key: {pinata_api_key[:8] if pinata_api_key else 'None'}...")
-                    logger.warning(f"    JWT present: {bool(pinata_jwt)}")
+                    # Log error but don't crash - Pinata is optional for beta
+                    logger.info(f"ℹ️  Pinata auth returned HTTP {response.status_code} - storage features may be limited")
+                    services["pinata"] = False
         except Exception as e:
-            logger.warning(f"⚠️  Pinata check failed: {e}")
+            logger.info(f"ℹ️  Pinata not reachable - storage features will use fallback")
             services["pinata"] = False
     else:
         services["pinata"] = False

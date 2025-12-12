@@ -8,12 +8,17 @@ from pydantic import Field, ConfigDict
 from pydantic_settings import BaseSettings
 
 
+# CRITICAL: In production (Railway), do NOT read from .env file
+# Railway/Nixpacks copies .env into container, which can override Railway env vars
+_is_production = os.getenv("ENVIRONMENT", "development").lower() == "production"
+
+
 class Settings(BaseSettings):
     """Application settings with environment variable support"""
 
     model_config = ConfigDict(
         extra='ignore',
-        env_file='.env',
+        env_file=None if _is_production else '.env',  # Only use .env in development
         case_sensitive=False,
         validate_default=True
     )
