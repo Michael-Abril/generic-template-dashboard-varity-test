@@ -5,7 +5,7 @@
 
 import { logger } from '@/lib/logger';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 
 /**
  * Fetch with timeout and retry logic

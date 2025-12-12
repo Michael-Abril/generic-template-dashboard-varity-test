@@ -71,7 +71,7 @@ export class ApiClient {
   private onError?: (error: Error) => void;
 
   constructor(config: ApiClientConfig = {}) {
-    this.baseUrl = config.baseUrl || process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
+    this.baseUrl = config.baseUrl || process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
     this.timeout = config.timeout || 30000;
     this.retryConfig = config.retryConfig || { maxAttempts: 3, initialDelay: 1000 };
     this.defaultCacheTTL = config.defaultCacheTTL || 5 * 60 * 1000; // 5 minutes

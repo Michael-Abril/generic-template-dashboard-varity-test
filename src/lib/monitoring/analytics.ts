@@ -52,7 +52,7 @@ export interface ConversionEvent {
   currency?: string;
 }
 
-type AnalyticsProvider = 'vercel' | 'google' | 'plausible' | 'none';
+type AnalyticsProvider = 'vercel' | 'google' | 'plausible' | 'umami' | 'none';
 
 /**
  * Get configured analytics provider
@@ -92,6 +92,9 @@ export function initAnalytics(): void {
       break;
     case 'plausible':
       initPlausibleAnalytics();
+      break;
+    case 'umami':
+      initUmamiAnalytics();
       break;
   }
 }
@@ -163,6 +166,38 @@ function initPlausibleAnalytics(): void {
 }
 
 /**
+ * Initialize Umami Analytics (Privacy-focused, GDPR compliant)
+ *
+ * Setup Instructions:
+ * 1. Create account at https://cloud.umami.is or self-host
+ * 2. Add your website and get the website ID
+ * 3. Add to .env.local:
+ *    NEXT_PUBLIC_ANALYTICS_PROVIDER=umami
+ *    NEXT_PUBLIC_UMAMI_WEBSITE_ID=your-website-id
+ *    NEXT_PUBLIC_UMAMI_URL=https://cloud.umami.is/script.js
+ */
+function initUmamiAnalytics(): void {
+  const websiteId = process.env.NEXT_PUBLIC_UMAMI_WEBSITE_ID;
+  const umamiUrl = process.env.NEXT_PUBLIC_UMAMI_URL || 'https://cloud.umami.is/script.js';
+
+  if (!websiteId) {
+    console.warn('[Analytics] Umami enabled but NEXT_PUBLIC_UMAMI_WEBSITE_ID not set');
+    return;
+  }
+
+  // Add Umami script to page
+  if (typeof window !== 'undefined') {
+    const script = document.createElement('script');
+    script.defer = true;
+    script.setAttribute('data-website-id', websiteId);
+    script.src = umamiUrl;
+    document.head.appendChild(script);
+
+    console.log('[Analytics] Umami Analytics initialized:', websiteId);
+  }
+}
+
+/**
  * Track page view
  * Call this on route changes
  */
@@ -190,6 +225,16 @@ export function trackPageView(event: PageViewEvent): void {
       if (typeof window !== 'undefined' && (window as any).plausible) {
         (window as any).plausible('pageview', {
           u: event.path,
+        });
+      }
+      break;
+
+    case 'umami':
+      if (typeof window !== 'undefined' && (window as any).umami) {
+        (window as any).umami.track('pageview', {
+          url: event.path,
+          title: event.title,
+          referrer: event.referrer,
         });
       }
       break;
@@ -230,6 +275,12 @@ export function trackEvent(event: AnalyticsEvent): void {
         (window as any).plausible(event.name, {
           props: event.properties,
         });
+      }
+      break;
+
+    case 'umami':
+      if (typeof window !== 'undefined' && (window as any).umami) {
+        (window as any).umami.track(event.name, event.properties);
       }
       break;
   }

@@ -9,7 +9,7 @@ import { usePrivy, useWallets } from '@privy-io/react-auth';
 import { useActiveAccount } from 'thirdweb/react';
 import axios from 'axios';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8002';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 
 interface WalletSession {
   sessionToken: string;

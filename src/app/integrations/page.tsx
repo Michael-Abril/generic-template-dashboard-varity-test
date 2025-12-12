@@ -141,7 +141,7 @@ export default function IntegrationsPage() {
 
       try {
         setLicensesLoading(true);
-        const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
+        const backendUrl = process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
         const res = await fetch(
           `${backendUrl}/api/v1/marketplace/my-integrations?wallet_address=${address}`
         );
@@ -193,7 +193,7 @@ export default function IntegrationsPage() {
           }
 
           // Check OAuth connection status
-          const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
+          const backendUrl = process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
           let oauthConnected = false;
           let encryptionCID = undefined;
           let lastSync = undefined;

@@ -78,7 +78,7 @@ export default function OnboardingPage() {
     setStep('oauth');
 
     try {
-      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
+      const backendUrl = process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
       const oauthStartUrl = `${backendUrl}/api/v1/oauth/start/${integrationSlug}`;
 
 

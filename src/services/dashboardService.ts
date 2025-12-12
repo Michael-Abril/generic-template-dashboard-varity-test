@@ -4,7 +4,7 @@ import { logger } from '@/lib/logger';
  * Handles all API calls to the dashboard backend
  */
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 
 // KPI Interfaces
 export interface KPIData {

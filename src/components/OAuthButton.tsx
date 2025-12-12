@@ -75,7 +75,7 @@ export function OAuthButton({
 
       // Get OAuth authorization URL from backend
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/v1/oauth/start/${provider}`,
+        `${process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000'}/api/v1/oauth/start/${provider}`,
         {
           method: 'POST',
           headers: {
@@ -137,7 +137,7 @@ export function OAuthButton({
   const checkConnectionStatus = async () => {
     try {
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/v1/oauth/status/${provider}?wallet_address=${walletAddress}`
+        `${process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000'}/api/v1/oauth/status/${provider}?wallet_address=${walletAddress}`
       );
 
       if (response.ok) {
@@ -169,7 +169,7 @@ export function OAuthButton({
       setIsLoading(true);
 
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/v1/oauth/disconnect/${provider}?wallet_address=${walletAddress}`,
+        `${process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000'}/api/v1/oauth/disconnect/${provider}?wallet_address=${walletAddress}`,
         {
           method: 'DELETE',
           headers: {

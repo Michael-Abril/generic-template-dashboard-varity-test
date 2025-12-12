@@ -22,7 +22,7 @@ export function Layout({ children }: LayoutProps) {
         return;
       }
       try {
-        const apiBase = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
+        const apiBase = process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
         const res = await fetch(
           `${apiBase}/api/v1/marketplace/my-integrations?wallet_address=${address}`
         );
