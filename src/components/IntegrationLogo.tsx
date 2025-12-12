@@ -83,6 +83,10 @@ export function IntegrationLogo({ integration, size = 'md', className = '' }: Lo
   const logoFile = LOGO_FILES[normalizedName];
   const brandColor = BRAND_COLORS[normalizedName] || 'bg-gray-100';
 
+  // Logos that should NOT be inverted (they're already multi-colored or on white bg)
+  const noInvertLogos = ['google', 'google-workspace', 'microsoft', 'microsoft-365', 'mailchimp', 'docusign'];
+  const shouldInvert = !noInvertLogos.includes(normalizedName);
+
   // If we have a real logo file, use it with img tag (better SVG support)
   if (logoFile) {
     return (
@@ -94,6 +98,7 @@ export function IntegrationLogo({ integration, size = 'md', className = '' }: Lo
           width={sizeConfig.imgSize}
           height={sizeConfig.imgSize}
           className="object-contain"
+          style={shouldInvert ? { filter: 'brightness(0) invert(1)' } : undefined}
         />
       </div>
     );
