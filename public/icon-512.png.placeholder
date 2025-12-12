@@ -1,0 +1,4 @@
+# Placeholder for 512x512 icon
+# In production, generate actual PNG from SVG or provide custom icon
+# Command to generate from SVG (requires ImageMagick):
+# convert -background none -resize 512x512 icon.svg icon-512.png
