@@ -27,6 +27,7 @@ const LOGO_FILES: Record<string, string> = {
   'shopify': 'shopify.svg',
   'slack': 'slack.svg',
   'monday': 'monday.svg',
+  'monday.com': 'monday.svg',
   'stripe': 'stripe.svg',
   'hubspot': 'hubspot.svg',
   'zendesk': 'zendesk.svg',
@@ -44,6 +45,11 @@ const LOGO_FILES: Record<string, string> = {
   'trello': 'trello.svg',
   'intercom': 'intercom.svg',
   'twilio': 'twilio.svg',
+  'calendly': 'calendly.svg',
+  'canva': 'canva.svg',
+  'gusto': 'gusto.svg',
+  'paypal': 'paypal.svg',
+  'square': 'square.svg',
 };
 
 // Brand colors for backgrounds
@@ -70,7 +76,8 @@ const BRAND_COLORS: Record<string, string> = {
   'trello': 'bg-[#0079BF]',
   'intercom': 'bg-[#1F8DED]',
   'twilio': 'bg-[#F22F46]',
-  'square': 'bg-black',
+  'monday.com': 'bg-[#FF3D57]',
+  'square': 'bg-white border border-gray-200',
   'paypal': 'bg-[#003087]',
   'gusto': 'bg-[#F45D48]',
   'calendly': 'bg-[#006BFF]',
@@ -84,7 +91,7 @@ export function IntegrationLogo({ integration, size = 'md', className = '' }: Lo
   const brandColor = BRAND_COLORS[normalizedName] || 'bg-gray-100';
 
   // Logos that should NOT be inverted (they're already multi-colored or on white bg)
-  const noInvertLogos = ['google', 'google-workspace', 'microsoft', 'microsoft-365', 'mailchimp', 'docusign'];
+  const noInvertLogos = ['google', 'google-workspace', 'microsoft', 'microsoft-365', 'mailchimp', 'docusign', 'square'];
   const shouldInvert = !noInvertLogos.includes(normalizedName);
 
   // If we have a real logo file, use it with img tag (better SVG support)
