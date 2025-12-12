@@ -3,6 +3,13 @@ AI Chatbot API Endpoints - RAG-Powered Business Intelligence
 
 This module provides AI-powered chat capabilities with RAG context
 from the user's integrated tools (QuickBooks, Salesforce, etc.)
+
+Features:
+- General LLM mode (works without any integrations)
+- RAG-enhanced mode (uses business data when integrations are connected)
+- Document analysis capabilities
+- Deep research mode for complex queries
+- Multi-provider support (Together.ai, Ollama)
 """
 from fastapi import APIRouter, HTTPException, Query, Depends  # type: ignore[import]
 from pydantic import BaseModel  # type: ignore[import]
@@ -10,12 +17,14 @@ from typing import List, Optional, Dict, Any
 import logging
 from datetime import datetime
 import json
+import os
 
 from sqlalchemy.ext.asyncio import AsyncSession  # type: ignore[import]
 from sqlalchemy import select, and_  # type: ignore[import]
 from sqlalchemy.orm import selectinload  # type: ignore[import]
 
 from app.core.database import get_db
+from app.core.config import settings
 from app.models.purchase import Purchase
 from app.models.marketplace import Product
 
@@ -23,6 +32,7 @@ from app.services.ai_query_service import ai_query_service
 from app.services.filecoin_service import FilecoinService, FilecoinMultiTenantService
 from app.services.encryption_service import EncryptionService
 from app.services.ollama_service import OllamaBusinessService
+from app.services.together_service import TogetherBusinessService, TogetherService
 from app.services.rag_service import BusinessRAGService
 
 logger = logging.getLogger(__name__)
@@ -34,7 +44,22 @@ filecoin_service = FilecoinService()
 filecoin_mt_service = FilecoinMultiTenantService()
 encryption_service = EncryptionService()
 ollama_business_service = OllamaBusinessService()
+together_business_service = TogetherBusinessService()
+together_service = TogetherService()
 rag_service = BusinessRAGService()
+
+
+def get_llm_provider() -> str:
+    """Get the configured LLM provider (together or ollama)"""
+    return getattr(settings, 'llm_provider', 'together')
+
+
+def get_business_ai_service():
+    """Get the appropriate business AI service based on configuration"""
+    provider = get_llm_provider()
+    if provider == "together" and os.getenv("TOGETHER_API_KEY"):
+        return together_business_service
+    return ollama_business_service
 
 
 # Pydantic models
@@ -44,6 +69,7 @@ class ChatRequest(BaseModel):
     wallet_address: str
     conversation_id: Optional[str] = None
     use_rag: bool = True
+    mode: str = "auto"  # "auto", "general", "rag", "research"
 
 
 class ChatResponse(BaseModel):
@@ -52,6 +78,7 @@ class ChatResponse(BaseModel):
     conversation_id: str
     sources: List[Dict[str, Any]] = []
     metadata: Dict[str, Any]
+    mode: str = "auto"
 
 
 class QueryRequest(BaseModel):
@@ -60,6 +87,60 @@ class QueryRequest(BaseModel):
     wallet_address: str
     tools: List[str]  # e.g., ['quickbooks', 'salesforce']
     filters: Optional[Dict[str, Any]] = None
+
+
+class GeneralChatRequest(BaseModel):
+    """General LLM chat request (works without integrations)"""
+    message: str
+    wallet_address: str
+    conversation_id: Optional[str] = None
+    temperature: float = 0.7
+    max_tokens: int = 2048
+
+
+class GeneralChatResponse(BaseModel):
+    """General LLM chat response"""
+    response: str
+    conversation_id: str
+    mode: str = "general"
+    provider: str
+    model: str
+    metadata: Dict[str, Any]
+
+
+class DocumentAnalysisRequest(BaseModel):
+    """Document analysis request"""
+    document_content: str
+    wallet_address: str
+    analysis_type: str = "summary"  # summary, key_points, sentiment, extraction, action_items
+
+
+class DocumentAnalysisResponse(BaseModel):
+    """Document analysis response"""
+    analysis: str
+    analysis_type: str
+    document_length: int
+    timestamp: str
+    metadata: Dict[str, Any]
+
+
+class ResearchQueryRequest(BaseModel):
+    """Deep research query request"""
+    query: str
+    wallet_address: str
+    integration: Optional[str] = None
+    data_type: Optional[str] = None
+    depth: str = "comprehensive"  # "quick", "standard", "comprehensive"
+
+
+class ResearchQueryResponse(BaseModel):
+    """Deep research query response"""
+    analysis: str
+    sources: List[str]
+    context_used: bool
+    mode: str = "research"
+    depth: str
+    metadata: Dict[str, Any]
 
 
 @router.post("/chat", response_model=ChatResponse)
@@ -515,12 +596,16 @@ async def ai_health_check():
     Check health of AI infrastructure
 
     Returns status of:
-    - Ollama LLM service
+    - Together.ai / Ollama LLM service (based on configuration)
     - Qdrant vector database
     - Overall AI system health
     """
     try:
-        health = await ollama_business_service.health_check()
+        ai_service = get_business_ai_service()
+        health = await ai_service.health_check()
+
+        # Add provider info
+        health["configured_provider"] = get_llm_provider()
 
         return {
             "success": True,
@@ -533,21 +618,280 @@ async def ai_health_check():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# ==================== General LLM Chat (Works Without Integrations) ====================
+
+@router.post("/chat/general", response_model=GeneralChatResponse)
+async def general_chat(request: GeneralChatRequest):
+    """
+    General LLM chat that works WITHOUT any software integrations
+
+    This endpoint provides a general-purpose AI assistant that can help with:
+    - Business questions and advice
+    - Writing and editing documents
+    - Analysis and problem-solving
+    - Research and information synthesis
+    - Planning and strategy discussions
+
+    No data from integrations is used - this is pure LLM capability.
+
+    Args:
+        request: Chat request with message
+
+    Returns:
+        AI-generated response
+    """
+    try:
+        logger.info(
+            f"General chat request from {request.wallet_address}: "
+            f"'{request.message[:100]}...'"
+        )
+
+        provider = get_llm_provider()
+
+        if provider == "together" and os.getenv("TOGETHER_API_KEY"):
+            # Use Together.ai
+            response = await together_service.query(
+                prompt=request.message,
+                temperature=request.temperature,
+                max_tokens=request.max_tokens
+            )
+            model_used = os.getenv("TOGETHER_MODEL", "meta-llama/Llama-3.3-70B-Instruct-Turbo")
+        else:
+            # Fallback to Ollama
+            from app.services.ollama_service import OllamaService
+            ollama_service = OllamaService()
+            response = await ollama_service.query(
+                prompt=request.message
+            )
+            model_used = os.getenv("OLLAMA_MODEL", "mistral")
+            provider = "ollama"
+
+        return GeneralChatResponse(
+            response=response,
+            conversation_id=request.conversation_id or f"general-{datetime.now().timestamp()}",
+            mode="general",
+            provider=provider,
+            model=model_used,
+            metadata={
+                "wallet_address": request.wallet_address,
+                "temperature": request.temperature,
+                "max_tokens": request.max_tokens,
+                "timestamp": datetime.now().isoformat()
+            }
+        )
+
+    except Exception as e:
+        logger.error(f"General chat failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ==================== Document Analysis ====================
+
+@router.post("/analyze/document", response_model=DocumentAnalysisResponse)
+async def analyze_document(request: DocumentAnalysisRequest):
+    """
+    Analyze a document with AI
+
+    This endpoint provides document analysis capabilities similar to Gemini:
+    - summary: Executive summary of the document
+    - key_points: Extract key points in bullet format
+    - sentiment: Analyze sentiment and tone
+    - extraction: Extract data points, numbers, dates, names
+    - action_items: Identify action items and next steps
+
+    Args:
+        request: Document analysis request
+
+    Returns:
+        Analysis results
+    """
+    try:
+        logger.info(
+            f"Document analysis request from {request.wallet_address}: "
+            f"type={request.analysis_type}, length={len(request.document_content)}"
+        )
+
+        provider = get_llm_provider()
+
+        if provider == "together" and os.getenv("TOGETHER_API_KEY"):
+            # Use Together.ai document analysis
+            result = await together_business_service.analyze_document(
+                business_wallet=request.wallet_address,
+                document_content=request.document_content,
+                analysis_type=request.analysis_type
+            )
+        else:
+            # Fallback to Ollama-based analysis
+            analysis_prompts = {
+                "summary": "Provide a concise executive summary of this document.",
+                "key_points": "Extract and list the key points from this document.",
+                "sentiment": "Analyze the sentiment and tone of this document.",
+                "extraction": "Extract all important data points from this document.",
+                "action_items": "Identify any action items mentioned in this document."
+            }
+
+            from app.services.ollama_service import OllamaService
+            ollama_service = OllamaService()
+
+            prompt = f"{analysis_prompts.get(request.analysis_type, analysis_prompts['summary'])}\n\nDocument:\n{request.document_content}"
+            response = await ollama_service.query(prompt=prompt)
+
+            result = {
+                "analysis": response,
+                "analysis_type": request.analysis_type,
+                "document_length": len(request.document_content),
+                "timestamp": datetime.now().isoformat()
+            }
+
+        return DocumentAnalysisResponse(
+            analysis=result["analysis"],
+            analysis_type=result["analysis_type"],
+            document_length=result["document_length"],
+            timestamp=result["timestamp"],
+            metadata={
+                "wallet_address": request.wallet_address,
+                "provider": provider,
+                "model": os.getenv("TOGETHER_MODEL", "meta-llama/Llama-3.3-70B-Instruct-Turbo") if provider == "together" else os.getenv("OLLAMA_MODEL", "mistral")
+            }
+        )
+
+    except Exception as e:
+        logger.error(f"Document analysis failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ==================== Deep Research Mode ====================
+
+@router.post("/research", response_model=ResearchQueryResponse)
+async def deep_research(request: ResearchQueryRequest):
+    """
+    Deep research mode for complex business intelligence queries
+
+    This endpoint provides comprehensive analysis similar to Gemini's Deep Research:
+    - Analyzes business data thoroughly
+    - Identifies patterns, trends, and anomalies
+    - Synthesizes information from multiple sources
+    - Provides actionable recommendations
+    - Executive-level analysis for decision-making
+
+    If integrations are connected, uses business-specific data.
+    If no integrations, provides general research and analysis.
+
+    Args:
+        request: Research query request
+
+    Returns:
+        Comprehensive research analysis
+    """
+    try:
+        logger.info(
+            f"Deep research request from {request.wallet_address}: "
+            f"'{request.query[:100]}...' depth={request.depth}"
+        )
+
+        ai_service = get_business_ai_service()
+
+        # Map depth to context items
+        depth_mapping = {
+            "quick": 3,
+            "standard": 5,
+            "comprehensive": 10
+        }
+        max_context = depth_mapping.get(request.depth, 5)
+
+        # Query with research mode
+        result = await ai_service.query_business_ai(
+            business_wallet=request.wallet_address,
+            user_query=request.query,
+            integration=request.integration,
+            data_type=request.data_type,
+            max_context_items=max_context,
+            mode="research"
+        )
+
+        return ResearchQueryResponse(
+            analysis=result["answer"],
+            sources=result.get("sources", []),
+            context_used=result.get("context_used", False),
+            mode="research",
+            depth=request.depth,
+            metadata={
+                "wallet_address": request.wallet_address,
+                "integration": request.integration,
+                "data_type": request.data_type,
+                "provider": get_llm_provider(),
+                "timestamp": datetime.now().isoformat()
+            }
+        )
+
+    except Exception as e:
+        logger.error(f"Deep research failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/models")
 async def get_available_models():
     """
     Get available AI models
 
     Returns list of available models for AI chat and query.
-    Currently uses Ollama models deployed on Akash Network.
+    Uses Together.ai models (Llama 3.3 70B) or Ollama based on configuration.
     """
     try:
-        # Get models from Ollama service
-        models_info = await ollama_business_service.get_available_models()
+        provider = get_llm_provider()
 
-        return {
-            "success": True,
-            "models": models_info.get("models", [
+        if provider == "together" and os.getenv("TOGETHER_API_KEY"):
+            # Get models from Together.ai service
+            models_info = await together_business_service.get_available_models()
+            default_model = os.getenv("TOGETHER_MODEL", "meta-llama/Llama-3.3-70B-Instruct-Turbo")
+        else:
+            # Get models from Ollama service
+            models_info = await ollama_business_service.get_available_models()
+            default_model = os.getenv("OLLAMA_MODEL", "mistral")
+
+        # Build response with available models
+        models = models_info.get("models", [])
+
+        # Add Together.ai flagship models if using Together
+        if provider == "together" and not models:
+            models = [
+                {
+                    "id": "meta-llama/Llama-3.3-70B-Instruct-Turbo",
+                    "name": "Llama 3.3 70B Instruct Turbo",
+                    "description": "Meta's most capable open-source model - fast and intelligent",
+                    "provider": "together",
+                    "context_window": 131072,
+                    "default": True
+                },
+                {
+                    "id": "meta-llama/Llama-3.1-8B-Instruct-Turbo",
+                    "name": "Llama 3.1 8B Instruct Turbo",
+                    "description": "Fast, efficient model for quick tasks",
+                    "provider": "together",
+                    "context_window": 131072,
+                    "default": False
+                },
+                {
+                    "id": "mistralai/Mixtral-8x7B-Instruct-v0.1",
+                    "name": "Mixtral 8x7B Instruct",
+                    "description": "High-quality mixture-of-experts model",
+                    "provider": "together",
+                    "context_window": 32768,
+                    "default": False
+                },
+                {
+                    "id": "Qwen/Qwen2.5-72B-Instruct-Turbo",
+                    "name": "Qwen 2.5 72B Instruct Turbo",
+                    "description": "Alibaba's powerful multilingual model",
+                    "provider": "together",
+                    "context_window": 32768,
+                    "default": False
+                }
+            ]
+
+        # Add fallback if no models found
+        if not models:
+            models = [
                 {
                     "id": "tinyllama",
                     "name": "TinyLlama",
@@ -556,9 +900,22 @@ async def get_available_models():
                     "context_window": 2048,
                     "default": True
                 }
-            ]),
-            "default_model": "tinyllama",
-            "timestamp": datetime.now().isoformat()
+            ]
+            default_model = "tinyllama"
+
+        return {
+            "success": True,
+            "provider": provider,
+            "models": models,
+            "default_model": default_model,
+            "timestamp": datetime.now().isoformat(),
+            "capabilities": {
+                "general_chat": True,
+                "document_analysis": True,
+                "deep_research": True,
+                "rag_enabled": True,
+                "streaming": True
+            }
         }
 
     except Exception as e:
@@ -566,6 +923,7 @@ async def get_available_models():
         # Return fallback response instead of error
         return {
             "success": True,
+            "provider": "ollama",
             "models": [
                 {
                     "id": "tinyllama",
@@ -578,8 +936,72 @@ async def get_available_models():
             ],
             "default_model": "tinyllama",
             "timestamp": datetime.now().isoformat(),
+            "capabilities": {
+                "general_chat": True,
+                "document_analysis": True,
+                "deep_research": True,
+                "rag_enabled": True,
+                "streaming": True
+            },
             "note": "Using fallback model list"
         }
+
+
+@router.get("/capabilities")
+async def get_ai_capabilities():
+    """
+    Get AI assistant capabilities
+
+    Returns information about what the AI assistant can do,
+    including which features work without integrations.
+    """
+    provider = get_llm_provider()
+    has_together_key = bool(os.getenv("TOGETHER_API_KEY"))
+
+    return {
+        "success": True,
+        "provider": provider if has_together_key or provider == "ollama" else "none",
+        "capabilities": {
+            "general_chat": {
+                "enabled": True,
+                "requires_integrations": False,
+                "description": "Chat with AI about any topic - works without any integrations",
+                "endpoint": "/api/v1/ai/chat/general"
+            },
+            "document_analysis": {
+                "enabled": True,
+                "requires_integrations": False,
+                "description": "Analyze documents for summaries, key points, sentiment, and more",
+                "endpoint": "/api/v1/ai/analyze/document",
+                "analysis_types": ["summary", "key_points", "sentiment", "extraction", "action_items"]
+            },
+            "deep_research": {
+                "enabled": True,
+                "requires_integrations": False,
+                "description": "Comprehensive research and analysis - uses business data when available",
+                "endpoint": "/api/v1/ai/research",
+                "depth_options": ["quick", "standard", "comprehensive"]
+            },
+            "rag_chat": {
+                "enabled": True,
+                "requires_integrations": True,
+                "description": "AI chat with context from your connected business tools",
+                "endpoint": "/api/v1/ai/chat"
+            },
+            "business_query": {
+                "enabled": True,
+                "requires_integrations": True,
+                "description": "Query your business data across all connected integrations",
+                "endpoint": "/api/v1/ai/query/multitenant"
+            }
+        },
+        "model_info": {
+            "provider": "Together.ai" if provider == "together" and has_together_key else "Ollama (self-hosted)",
+            "model": os.getenv("TOGETHER_MODEL", "meta-llama/Llama-3.3-70B-Instruct-Turbo") if provider == "together" else os.getenv("OLLAMA_MODEL", "mistral"),
+            "privacy": "Open-source models - your data is never used for training"
+        },
+        "timestamp": datetime.now().isoformat()
+    }
 
 
 # ==================== Helper Functions ====================

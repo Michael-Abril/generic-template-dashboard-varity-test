@@ -65,7 +65,8 @@ ALLOWED_ORIGINS = [
     os.getenv("FRONTEND_URL", "https://varity.app"),  # Production frontend
     os.getenv("DASHBOARD_URL", "https://dashboard.varity.app"),  # Production dashboard
     "https://generic-template-dashboard.vercel.app",  # Vercel deployment
-    "https://app.varity.so",  # Custom domain
+    "https://app.varity.so",  # Dashboard custom domain
+    "https://varity.so",  # Marketing website (for signup stats API)
 ]
 
 app.add_middleware(

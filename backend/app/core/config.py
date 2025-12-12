@@ -111,9 +111,18 @@ class Settings(BaseSettings):
     qdrant_url: str = Field("http://localhost:6333", env="QDRANT_URL")
     qdrant_api_key: Optional[str] = Field(None, env="QDRANT_API_KEY")
 
-    # Ollama LLM Configuration
+    # Ollama LLM Configuration (local/self-hosted)
     ollama_url: str = Field("http://localhost:11434", env="OLLAMA_URL")
     ollama_model: str = Field("mistral", env="OLLAMA_MODEL")
+
+    # Together.ai LLM Configuration (cloud API for open-source models)
+    # Privacy-focused: Open-source models, no data retention
+    together_api_key: Optional[str] = Field(None, env="TOGETHER_API_KEY")
+    together_model: str = Field("meta-llama/Llama-3.3-70B-Instruct-Turbo", env="TOGETHER_MODEL")
+    together_api_url: str = Field("https://api.together.xyz/v1", env="TOGETHER_API_URL")
+
+    # LLM Provider Selection: "together" (cloud) or "ollama" (local)
+    llm_provider: str = Field("together", env="LLM_PROVIDER")
 
     # Logging Configuration
     log_level: str = "INFO"
