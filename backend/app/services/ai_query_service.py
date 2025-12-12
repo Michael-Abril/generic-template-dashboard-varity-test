@@ -432,24 +432,26 @@ class AIQueryService:
         Returns:
             System prompt string
         """
-        base_prompt = """You are an AI-powered ISO Dashboard assistant with expertise in:
-- Payment processing analytics
-- Merchant portfolio management
-- Transaction analysis
-- Residual income tracking
-- Sales representative performance
-- Compliance monitoring
+        base_prompt = """You are an AI-powered Business Dashboard assistant. You help businesses analyze and understand their data from connected software integrations.
 
-You provide intelligent, data-driven insights for Independent Sales Organizations (ISOs).
-Use ISO industry terminology and provide specific, actionable recommendations.
-Be concise, accurate, and professional."""
+Your capabilities include:
+- Analyzing data from QuickBooks, Google Workspace, Salesforce, Slack, and other integrations
+- Providing insights on financial metrics, invoices, and transactions
+- Summarizing customer data, contacts, and CRM information
+- Analyzing productivity metrics and team collaboration data
+- Answering questions based on the business's actual data stored in their dashboard
 
-        # Add RAG context if available
+IMPORTANT: You have access to this specific business's data that has been synced from their connected software integrations (stored in Filecoin/IPFS). Use this data to provide accurate, personalized answers.
+
+Be concise, accurate, and professional. Provide specific, actionable insights based on the business's actual data."""
+
+        # Add RAG context if available (business data from Filecoin/IPFS)
         if rag_context and rag_context.get("documents"):
-            base_prompt += "\n\nRELEVANT KNOWLEDGE BASE CONTEXT:\n"
-            for i, doc in enumerate(rag_context["documents"][:3], 1):
-                content = doc.get("content", "")[:500]  # Limit context size
-                base_prompt += f"\n{i}. {content}\n"
+            base_prompt += "\n\nYOUR BUSINESS DATA (from connected integrations):\n"
+            for i, doc in enumerate(rag_context["documents"][:5], 1):
+                content = doc.get("content", "")[:800]  # Increased context size
+                source = doc.get("source", "integration")
+                base_prompt += f"\n{i}. [{source}]: {content}\n"
 
         # Add additional context if available
         if additional_context:
@@ -483,7 +485,7 @@ Be concise, accurate, and professional."""
 
     def _get_fallback_response(self, query: str) -> str:
         """
-        Provide fallback response when Ollama is unavailable.
+        Provide fallback response when LLM is unavailable.
 
         Args:
             query: User's query
@@ -493,16 +495,18 @@ Be concise, accurate, and professional."""
         """
         query_lower = query.lower()
 
-        if "merchant" in query_lower:
-            return "I can help analyze merchant performance, transaction patterns, and residual trends. However, Ollama LLM is currently unavailable. Please check that Ollama is running on port 11434."
-        elif "forecast" in query_lower or "predict" in query_lower:
-            return "I can generate revenue forecasts based on historical data. Currently, the AI service is unavailable. Please ensure Ollama is running."
-        elif "rep" in query_lower and ("performance" in query_lower or "leaderboard" in query_lower):
-            return "I can provide sales rep performance insights and rankings. The AI service is temporarily unavailable."
-        elif "compliance" in query_lower or "alert" in query_lower:
-            return "I monitor compliance issues and unusual transaction patterns. AI analysis is currently offline."
+        if "invoice" in query_lower or "payment" in query_lower or "quickbooks" in query_lower:
+            return "I can help analyze your invoices, payments, and financial data from QuickBooks and other accounting integrations. The AI service is temporarily unavailable - please try again shortly."
+        elif "customer" in query_lower or "contact" in query_lower or "crm" in query_lower or "salesforce" in query_lower:
+            return "I can help you understand your customer data, contacts, and CRM information. The AI service is temporarily unavailable - please try again shortly."
+        elif "email" in query_lower or "calendar" in query_lower or "google" in query_lower or "microsoft" in query_lower:
+            return "I can help analyze your email patterns, calendar events, and productivity data. The AI service is temporarily unavailable - please try again shortly."
+        elif "slack" in query_lower or "message" in query_lower or "team" in query_lower:
+            return "I can help summarize team communications and collaboration patterns from Slack. The AI service is temporarily unavailable - please try again shortly."
+        elif "forecast" in query_lower or "predict" in query_lower or "trend" in query_lower:
+            return "I can generate forecasts and identify trends based on your business data. The AI service is temporarily unavailable - please try again shortly."
         else:
-            return "I'm your ISO Dashboard AI assistant. I can help with merchant analytics, revenue forecasting, rep performance, and compliance monitoring. Currently, Ollama LLM is unavailable - please ensure it's running on localhost:11434."
+            return "I'm your Business Dashboard AI assistant. I can help you analyze data from your connected software integrations (QuickBooks, Google Workspace, Salesforce, Slack, and more). The AI service is temporarily unavailable - please try again shortly."
 
     async def health_check(self) -> Dict[str, Any]:
         """
