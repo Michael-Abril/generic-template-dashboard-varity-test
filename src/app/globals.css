@@ -76,6 +76,20 @@ html {
   animation: shimmer 2s infinite linear;
 }
 
+/* Progress bar shimmer animation */
+@keyframes shimmer-progress {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.animate-shimmer {
+  animation: shimmer-progress 2s infinite linear;
+}
+
 /* Smooth transitions for interactive elements */
 button,
 a,

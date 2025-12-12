@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { usePrivy } from '@privy-io/react-auth';
 
 interface SignupProgressBarProps {
   /** Total number of early adopter spots */
@@ -22,16 +23,18 @@ interface SignupStats {
 }
 
 /**
- * Professional signup progress bar optimized for conversions.
+ * Professional signup progress bar optimized for conversions (2025 best practices).
  *
- * Strategy: Tiered free trial offer
+ * Strategy: Tiered free trial offer with conversion-focused design
  * - First 100 businesses: 1 MONTH FREE (early adopter bonus)
  * - After 100: 14-day free trial (still attractive, no ceiling on growth)
  *
- * Research-backed design:
+ * Research-backed design (2025):
  * - Shows exact numbers (23% more effective than generic labels)
- * - Creates urgency for the BETTER deal, not the ONLY deal
- * - No growth ceiling - continues converting after 100
+ * - Progress bars with scarcity increase conversions 30%
+ * - CTA button directly in component (reduces friction)
+ * - Trust signals reduce signup anxiety
+ * - Animated urgency elements draw attention
  * - Professional styling (no emojis, ages 18-60)
  */
 export function SignupProgressBar({
@@ -41,6 +44,7 @@ export function SignupProgressBar({
   className = '',
   variant = 'default',
 }: SignupProgressBarProps) {
+  const { login, authenticated } = usePrivy();
   const [stats, setStats] = useState<SignupStats>({
     count: 0,
     total: earlyAdopterSpots,
@@ -94,6 +98,8 @@ export function SignupProgressBar({
   const percentage = Math.min(100, Math.round((earlyAdoptersClaimed / earlyAdopterSpots) * 100));
   const spotsRemaining = Math.max(0, earlyAdopterSpots - stats.count);
   const earlyAdopterPhaseComplete = stats.count >= earlyAdopterSpots;
+  const isUrgent = spotsRemaining <= 20 && !earlyAdopterPhaseComplete;
+  const isCritical = spotsRemaining <= 10 && !earlyAdopterPhaseComplete;
 
   // Progress bar color based on urgency
   const getProgressColor = () => {
@@ -103,13 +109,11 @@ export function SignupProgressBar({
     return 'bg-gradient-to-r from-brand-500 to-electric-400';
   };
 
-  // Urgency messaging
-  const getUrgencyMessage = () => {
-    if (earlyAdopterPhaseComplete) return null;
-    if (percentage >= 90) return 'Almost gone - claim your 1-month free trial now';
-    if (percentage >= 75) return 'Filling fast - secure your early adopter spot';
-    if (percentage >= 50) return 'Over half claimed';
-    return null;
+  // Handle CTA click
+  const handleSignupClick = () => {
+    if (!authenticated) {
+      login();
+    }
   };
 
   if (loading) {
@@ -142,7 +146,7 @@ export function SignupProgressBar({
             style={{ width: `${percentage}%` }}
           />
         </div>
-        <span className="text-sm text-foreground-secondary whitespace-nowrap">
+        <span className={`text-sm whitespace-nowrap ${isUrgent ? 'text-red-400 font-medium' : 'text-foreground-secondary'}`}>
           {spotsRemaining} spots left
         </span>
       </div>
@@ -163,83 +167,141 @@ export function SignupProgressBar({
         </div>
 
         <div className="p-4 rounded-lg bg-gradient-to-r from-brand-500/10 to-electric-400/10 border border-brand-500/20">
-          <p className="text-sm font-medium text-foreground mb-1">
+          <p className="text-sm font-medium text-foreground mb-2">
             Start your 14-day free trial
           </p>
-          <p className="text-xs text-foreground-muted">
-            No credit card required. Full access to all features.
-          </p>
+
+          {/* CTA Button */}
+          <button
+            onClick={handleSignupClick}
+            className="w-full mb-3 py-2.5 px-4 bg-gradient-to-r from-brand-500 to-electric-400 text-slate-950 font-semibold rounded-lg hover:opacity-90 transition-all duration-200 shadow-lg shadow-brand-500/25"
+          >
+            {authenticated ? 'Go to Dashboard' : 'Get Started Free'}
+          </button>
+
+          {/* Trust Signals */}
+          <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-xs text-foreground-muted">
+            <span className="flex items-center gap-1">
+              <svg className="w-3.5 h-3.5 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+              No credit card
+            </span>
+            <span className="flex items-center gap-1">
+              <svg className="w-3.5 h-3.5 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+              2 min setup
+            </span>
+            <span className="flex items-center gap-1">
+              <svg className="w-3.5 h-3.5 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+              Cancel anytime
+            </span>
+          </div>
         </div>
       </div>
     );
   }
 
-  // Default: Show early adopter progress bar
+  // Default: Show early adopter progress bar with CTA
   return (
     <div className={`${className}`}>
-      {/* Early Adopter Badge */}
-      <div className="flex items-center gap-2 mb-3">
-        <span className="px-2 py-0.5 text-xs font-semibold rounded bg-gradient-to-r from-brand-500 to-electric-400 text-slate-950">
-          EARLY ADOPTER BONUS
-        </span>
-        {spotsRemaining <= 20 && (
-          <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-red-500/10 text-red-400 border border-red-500/20">
-            {spotsRemaining} left
+      {/* Early Adopter Badge with Urgency */}
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <span className="px-2.5 py-1 text-xs font-semibold rounded bg-gradient-to-r from-brand-500 to-electric-400 text-slate-950">
+            EARLY ADOPTER BONUS
+          </span>
+        </div>
+        {isUrgent && (
+          <span className={`px-2.5 py-1 text-xs font-semibold rounded-full ${isCritical ? 'bg-red-500 text-white animate-pulse' : 'bg-red-500/10 text-red-400 border border-red-500/20'}`}>
+            Only {spotsRemaining} left!
           </span>
         )}
       </div>
 
-      {/* Progress bar */}
-      <div className="relative h-3 bg-background-secondary rounded-full overflow-hidden mb-3">
+      {/* Value Proposition Highlight */}
+      <div className="mb-4 p-3 rounded-lg bg-gradient-to-r from-brand-500/5 to-electric-400/5 border border-brand-500/10">
+        <p className="text-base font-semibold text-foreground mb-0.5">
+          Get <span className="text-brand-400">1 month free</span> - Save $299
+        </p>
+        <p className="text-sm text-foreground-muted">
+          Join the first 100 businesses and unlock your free month
+        </p>
+      </div>
+
+      {/* Progress bar with enhanced styling */}
+      <div className="relative h-4 bg-background-secondary rounded-full overflow-hidden mb-2">
         <div
-          className={`absolute inset-y-0 left-0 ${getProgressColor()} transition-all duration-500 ease-out rounded-full`}
+          className={`absolute inset-y-0 left-0 ${getProgressColor()} transition-all duration-700 ease-out rounded-full`}
           style={{ width: `${percentage}%` }}
         />
-        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+        {/* Shimmer effect for visual interest */}
+        <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-shimmer"
+             style={{ backgroundSize: '200% 100%' }} />
       </div>
 
       {/* Stats line */}
-      <div className="flex items-center justify-between mb-3">
+      <div className="flex items-center justify-between mb-4">
         <span className="text-sm text-foreground">
-          <span className="font-semibold">{earlyAdoptersClaimed}</span> of {earlyAdopterSpots} claimed
+          <span className="font-bold text-base">{earlyAdoptersClaimed}</span>
+          <span className="text-foreground-muted"> of {earlyAdopterSpots} spots claimed</span>
         </span>
-        <span className="text-sm text-foreground-muted">
-          {percentage}%
+        <span className={`text-sm font-medium ${percentage >= 75 ? 'text-orange-400' : 'text-foreground-muted'}`}>
+          {percentage}% full
         </span>
       </div>
 
-      {/* Tiered offer explanation */}
-      <div className="space-y-2">
-        <div className="flex items-start gap-2">
-          <div className="flex-shrink-0 w-5 h-5 rounded-full bg-brand-500/20 flex items-center justify-center mt-0.5">
-            <svg className="w-3 h-3 text-brand-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-            </svg>
+      {/* CTA Button - Primary conversion action */}
+      <button
+        onClick={handleSignupClick}
+        className={`w-full py-3 px-4 font-semibold rounded-lg transition-all duration-200 shadow-lg ${
+          isCritical
+            ? 'bg-red-500 hover:bg-red-600 text-white shadow-red-500/25 animate-pulse'
+            : 'bg-gradient-to-r from-brand-500 to-electric-400 hover:opacity-90 text-slate-950 shadow-brand-500/25'
+        }`}
+      >
+        {authenticated ? 'Go to Dashboard' : isCritical ? 'Claim Your Spot Now' : 'Get Started Free'}
+      </button>
+
+      {/* Trust Signals */}
+      <div className="mt-3 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-xs text-foreground-muted">
+        <span className="flex items-center gap-1">
+          <svg className="w-3.5 h-3.5 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+          </svg>
+          No credit card
+        </span>
+        <span className="flex items-center gap-1">
+          <svg className="w-3.5 h-3.5 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+          </svg>
+          2 min setup
+        </span>
+        <span className="flex items-center gap-1">
+          <svg className="w-3.5 h-3.5 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+          </svg>
+          Cancel anytime
+        </span>
+      </div>
+
+      {/* Tiered offer explanation - more subtle now that CTA is prominent */}
+      <div className="mt-4 pt-3 border-t border-background-secondary">
+        <div className="flex items-center gap-3 text-xs text-foreground-muted">
+          <div className="flex items-center gap-1.5">
+            <div className="w-2 h-2 rounded-full bg-brand-400"></div>
+            <span>First 100: <span className="text-brand-400 font-medium">1 month free</span></span>
           </div>
-          <div>
-            <p className="text-sm font-medium text-foreground">
-              First 100 businesses: <span className="text-brand-400">1 month free</span>
-            </p>
-          </div>
-        </div>
-        <div className="flex items-start gap-2">
-          <div className="flex-shrink-0 w-5 h-5 rounded-full bg-background-tertiary flex items-center justify-center mt-0.5">
-            <span className="text-xs text-foreground-muted">+</span>
-          </div>
-          <div>
-            <p className="text-sm text-foreground-muted">
-              After that: 14-day free trial
-            </p>
+          <span className="text-foreground-muted/50">|</span>
+          <div className="flex items-center gap-1.5">
+            <div className="w-2 h-2 rounded-full bg-foreground-muted/30"></div>
+            <span>After: 14-day trial</span>
           </div>
         </div>
       </div>
-
-      {/* Urgency message */}
-      {getUrgencyMessage() && (
-        <p className="mt-3 text-xs text-foreground-muted">
-          {getUrgencyMessage()}
-        </p>
-      )}
     </div>
   );
 }
