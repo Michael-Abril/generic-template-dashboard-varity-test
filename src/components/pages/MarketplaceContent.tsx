@@ -25,6 +25,52 @@ import { ethers } from 'ethers';
  * - Smart contract integration for purchases
  */
 
+// Mapping from product logo names to OAuth provider names in the backend
+// Some products have different logo names than their OAuth config names
+const LOGO_TO_OAUTH_PROVIDER: Record<string, string> = {
+  'quickbooks': 'quickbooks',
+  'stripe': 'stripe',
+  'google-workspace': 'google_workspace',
+  'google': 'google_workspace',
+  'salesforce': 'salesforce',
+  'shopify': 'shopify',
+  'hubspot': 'hubspot',
+  'slack': 'slack',
+  'zendesk': 'zendesk',
+  'monday': 'monday',
+  'microsoft-365': 'microsoft',
+  'microsoft': 'microsoft',
+  'xero': 'xero',
+};
+
+// Products with WORKING OAuth integrations (credentials configured and tested)
+// Only includes providers that actually work right now - others show "Coming Soon"
+const OAUTH_SUPPORTED_PROVIDERS = new Set([
+  'quickbooks',      // Working
+  'google_workspace', // Working
+  'salesforce',      // Working
+  'hubspot',         // Working
+  'slack',           // Working
+  'microsoft',       // Working (Microsoft 365)
+  // NOT included (need credentials or additional config):
+  // - stripe (requires Connect business verification)
+  // - shopify (needs credentials)
+  // - zendesk (requires subdomain)
+  // - monday (needs credentials)
+  // - xero (needs credentials)
+]);
+
+// Helper function to check if OAuth is supported for a product
+const isOAuthSupported = (logo: string): boolean => {
+  const oauthProvider = LOGO_TO_OAUTH_PROVIDER[logo];
+  return oauthProvider ? OAUTH_SUPPORTED_PROVIDERS.has(oauthProvider) : false;
+};
+
+// Get the OAuth provider name from the product logo
+const getOAuthProvider = (logo: string): string => {
+  return LOGO_TO_OAUTH_PROVIDER[logo] || logo;
+};
+
 export default function MarketplaceContent() {
   const { authenticated, ready } = usePrivy();
   const { wallets } = useWallets();
@@ -506,108 +552,141 @@ export default function MarketplaceContent() {
             <div className="p-6">
               <p className="text-gray-700 mb-6">{selectedProduct.description}</p>
 
-              {/* What data will be synced */}
-              <div className="bg-blue-50 border border-blue-100 rounded-lg p-4 mb-6">
-                <h3 className="font-semibold text-blue-900 mb-2">What will be connected:</h3>
-                <ul className="space-y-2 text-sm text-blue-800">
-                  <li className="flex items-center gap-2">
-                    <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                    </svg>
-                    Connect your existing {selectedProduct.name} account
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                    </svg>
-                    Sync your business data securely
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                    </svg>
-                    AI Assistant can query your {selectedProduct.name} data
-                  </li>
-                </ul>
-              </div>
+              {/* What data will be synced - only show if OAuth supported */}
+              {isOAuthSupported(selectedProduct.logo) ? (
+                <div className="bg-blue-50 border border-blue-100 rounded-lg p-4 mb-6">
+                  <h3 className="font-semibold text-blue-900 mb-2">What will be connected:</h3>
+                  <ul className="space-y-2 text-sm text-blue-800">
+                    <li className="flex items-center gap-2">
+                      <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                      Connect your existing {selectedProduct.name} account
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                      Sync your business data securely
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                      AI Assistant can query your {selectedProduct.name} data
+                    </li>
+                  </ul>
+                </div>
+              ) : (
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-6">
+                  <h3 className="font-semibold text-gray-700 mb-2">About {selectedProduct.name}:</h3>
+                  <p className="text-sm text-gray-600">
+                    {selectedProduct.description || `${selectedProduct.name} integration is on our roadmap. Once available, you'll be able to connect your account and sync your data securely.`}
+                  </p>
+                </div>
+              )}
 
-              <div className="flex gap-3">
-                <button
-                  onClick={() => setShowTierModal(false)}
-                  className="flex-1 py-3 px-4 border border-gray-300 rounded-lg text-gray-700 font-medium hover:bg-gray-50 transition-all"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={async () => {
-                    if (!authenticated || !address) {
-                      alert('Please connect your wallet first to securely store OAuth credentials');
-                      return;
-                    }
-
-                    const provider = selectedProduct.logo;
-                    setShowTierModal(false);
-
-                    try {
-                      // Get OAuth authorization URL from backend
-                      const apiBase = process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
-                      const response = await fetch(`${apiBase}/api/v1/oauth/start/${provider}`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                          wallet_address: address,
-                          redirect_uri: `${window.location.origin}/oauth/callback/${provider}`
-                        })
-                      });
-
-                      const data = await response.json();
-
-                      if (!response.ok) {
-                        throw new Error(data.detail || data.message || 'Failed to start OAuth');
+              {/* Show different buttons based on OAuth support */}
+              {isOAuthSupported(selectedProduct.logo) ? (
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setShowTierModal(false)}
+                    className="flex-1 py-3 px-4 border border-gray-300 rounded-lg text-gray-700 font-medium hover:bg-gray-50 transition-all"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={async () => {
+                      if (!authenticated || !address) {
+                        alert('Please connect your wallet first to securely store OAuth credentials');
+                        return;
                       }
 
-                      if (data.authorization_url) {
-                        // Set up listener for OAuth completion message from popup
-                        const handleOAuthMessage = (event: MessageEvent) => {
-                          if (event.origin !== window.location.origin) return;
-                          if (event.data?.type === 'oauth-complete' && event.data?.provider === provider) {
-                            window.removeEventListener('message', handleOAuthMessage);
-                            if (event.data.success) {
-                              // Redirect to integrations page to see connected integration
-                              router.push('/integrations?success=true');
-                            } else {
-                              alert(`OAuth failed: ${event.data.error || 'Unknown error'}`);
-                            }
-                          }
-                        };
+                      // Use the mapped OAuth provider name
+                      const provider = getOAuthProvider(selectedProduct.logo);
+                      setShowTierModal(false);
 
-                        window.addEventListener('message', handleOAuthMessage);
+                      try {
+                        // Get OAuth authorization URL from backend
+                        const apiBase = process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
+                        const response = await fetch(`${apiBase}/api/v1/oauth/start/${provider}`, {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({
+                            wallet_address: address,
+                            redirect_uri: `${window.location.origin}/oauth/callback/${provider}`
+                          })
+                        });
 
-                        // Open OAuth in new tab
-                        const popup = window.open(
-                          data.authorization_url,
-                          `oauth-${provider}`,
-                          'width=600,height=700,scrollbars=yes,resizable=yes'
-                        );
+                        const data = await response.json();
 
-                        // Fallback: if popup blocked, redirect in same window
-                        if (!popup || popup.closed) {
-                          window.removeEventListener('message', handleOAuthMessage);
-                          window.location.href = data.authorization_url;
+                        if (!response.ok) {
+                          throw new Error(data.detail || data.message || 'Failed to start OAuth');
                         }
-                      } else {
-                        throw new Error('No authorization URL received');
+
+                        if (data.authorization_url) {
+                          // Set up listener for OAuth completion message from popup
+                          const handleOAuthMessage = (event: MessageEvent) => {
+                            if (event.origin !== window.location.origin) return;
+                            if (event.data?.type === 'oauth-complete' && event.data?.provider === provider) {
+                              window.removeEventListener('message', handleOAuthMessage);
+                              if (event.data.success) {
+                                // Redirect to integrations page to see connected integration
+                                router.push('/integrations?success=true');
+                              } else {
+                                alert(`OAuth failed: ${event.data.error || 'Unknown error'}`);
+                              }
+                            }
+                          };
+
+                          window.addEventListener('message', handleOAuthMessage);
+
+                          // Open OAuth in new tab
+                          const popup = window.open(
+                            data.authorization_url,
+                            `oauth-${provider}`,
+                            'width=600,height=700,scrollbars=yes,resizable=yes'
+                          );
+
+                          // Fallback: if popup blocked, redirect in same window
+                          if (!popup || popup.closed) {
+                            window.removeEventListener('message', handleOAuthMessage);
+                            window.location.href = data.authorization_url;
+                          }
+                        } else {
+                          throw new Error('No authorization URL received');
+                        }
+                      } catch (error: any) {
+                        console.error('OAuth start error:', error);
+                        alert(`Failed to start OAuth: ${error.message}`);
                       }
-                    } catch (error: any) {
-                      console.error('OAuth start error:', error);
-                      alert(`Failed to start OAuth: ${error.message}`);
-                    }
-                  }}
-                  className="flex-1 py-3 px-4 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-all"
-                >
-                  Connect Account
-                </button>
-              </div>
+                    }}
+                    className="flex-1 py-3 px-4 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-all"
+                  >
+                    Connect Account
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+                    <div className="flex items-start gap-3">
+                      <AlertTriangle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                      <div>
+                        <p className="text-amber-900 font-medium text-sm">Integration Coming Soon</p>
+                        <p className="text-amber-700 text-sm mt-1">
+                          OAuth integration for {selectedProduct.name} is currently being developed. Check back soon!
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setShowTierModal(false)}
+                    className="w-full py-3 px-4 border border-gray-300 rounded-lg text-gray-700 font-medium hover:bg-gray-50 transition-all"
+                  >
+                    Close
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>

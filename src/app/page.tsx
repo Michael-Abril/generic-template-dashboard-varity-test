@@ -1,12 +1,12 @@
 'use client';
 
 import { usePrivy } from '@privy-io/react-auth';
-import { ArrowRight, Check, Sparkles, Brain } from 'lucide-react';
+import { Check, Sparkles, Brain } from 'lucide-react';
 import { SignupProgressBar } from '@/components/SignupProgressBar';
 import Link from 'next/link';
 
 export default function HomePage() {
-  const { login, ready, authenticated } = usePrivy();
+  const { authenticated } = usePrivy();
 
   // If already authenticated, redirect to dashboard
   if (authenticated) {
@@ -51,19 +51,19 @@ export default function HomePage() {
                 <span className="text-sm font-medium text-brand-400">Beta Access Now Open</span>
               </div>
 
-              {/* Headline */}
+              {/* Headline - Value-focused (2025 best practice) */}
               <h1 className="text-display-lg md:text-display-xl font-bold tracking-tight text-foreground">
-                Be a Beta Tester for
+                Your Company&apos;s Own
                 <br />
                 <span className="bg-gradient-to-r from-brand-500 to-electric-400 bg-clip-text text-transparent">
-                  AI Dashboards
+                  AI Dashboard
                 </span>
               </h1>
 
-              {/* Subheadline */}
+              {/* Subheadline - Benefit-focused */}
               <p className="mt-6 text-body-lg md:text-body-xl text-foreground-secondary max-w-lg">
-                Join our exclusive beta program. Help shape the future of business intelligence 
-                on Web3. Limited spots available on testnet.
+                Connect your business tools. Ask questions in plain English.
+                Get AI-powered insights in seconds. Private and secure on Web3.
               </p>
 
               {/* Benefits - Beta Focus */}
@@ -83,44 +83,27 @@ export default function HomePage() {
                 ))}
               </div>
 
-              {/* CTAs */}
-              <div className="mt-10 flex flex-col sm:flex-row items-start gap-4">
-                <button
-                  onClick={login}
-                  disabled={!ready}
-                  className={`
-                    inline-flex items-center justify-center gap-2 
-                    h-14 px-10 rounded-lg text-lg font-semibold
-                    transition-all duration-200 ease-out
-                    ${!ready 
-                      ? 'bg-background-secondary text-foreground-disabled cursor-not-allowed' 
-                      : 'bg-gradient-to-r from-brand-500 to-electric-400 text-slate-950 hover:from-brand-400 hover:to-electric-300 hover:shadow-glow-lg'
-                    }
-                  `}
-                >
-                  {!ready ? 'Loading...' : 'Join Beta Program'}
-                  <ArrowRight className="h-5 w-5" />
-                </button>
-                
-                <Link
-                  href="https://www.varity.so/platform"
-                  className="inline-flex items-center justify-center gap-2 h-14 px-10 rounded-lg text-lg font-medium border border-border bg-transparent text-foreground hover:bg-background-quaternary hover:border-brand-500 transition-all duration-200"
-                >
-                  Learn More
-                </Link>
-              </div>
-
-              {/* Signup Progress Bar */}
-              <div className="mt-8 p-5 rounded-xl bg-background-secondary/50 border border-border">
+              {/* Single CTA Section - Progress Bar with embedded CTA (2025 best practice: single focused CTA) */}
+              <div className="mt-10 p-5 rounded-xl bg-background-secondary/50 border border-border">
                 <SignupProgressBar
                   earlyAdopterSpots={100}
                   apiEndpoint="/api/v1/stats/signups"
                   pollingInterval={30000}
                 />
               </div>
-              <p className="mt-3 text-sm text-foreground-muted text-center sm:text-left">
-                No credit card required • Takes 2 minutes to set up
-              </p>
+
+              {/* Secondary action - scroll to FAQ (keeps users on page) */}
+              <div className="mt-4 flex items-center justify-center sm:justify-start">
+                <a
+                  href="#faq"
+                  className="inline-flex items-center gap-2 text-sm text-foreground-muted hover:text-foreground-secondary transition-colors"
+                >
+                  <span>Have questions?</span>
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </a>
+              </div>
             </div>
 
             {/* Right: Dashboard Preview - Same Style as Marketing Site */}
@@ -199,7 +182,7 @@ export default function HomePage() {
       </section>
 
       {/* Simple FAQ Section - Conversion Focused */}
-      <section className="py-16 lg:py-24 border-t border-border">
+      <section id="faq" className="py-16 lg:py-24 border-t border-border scroll-mt-8">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-12">
             <h2 className="text-display-md font-bold text-foreground">Quick Questions</h2>
