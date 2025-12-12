@@ -142,19 +142,73 @@ function PrivyReadyGate({ children }: { children: React.ReactNode }) {
 }
 
 /**
+ * Register a new beta signup when user authenticates
+ */
+async function registerBetaSignup(email: string, walletAddress: string | null) {
+  try {
+    const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8002';
+    const response = await fetch(`${backendUrl}/api/v1/stats/signups/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email,
+        wallet_address: walletAddress,
+        source: 'dashboard'
+      })
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      if (data.is_new) {
+        logger.info(`New beta signup registered: ${email} (#${data.signup_number})`);
+      }
+      return data;
+    }
+  } catch (err) {
+    logger.error('Failed to register beta signup:', err);
+  }
+  return null;
+}
+
+/**
  * WalletSyncProvider - Synchronizes Privy embedded wallet with Thirdweb
  * This ensures that when a user signs in with Google/email, their embedded wallet
  * is immediately available to all components using Thirdweb hooks.
+ *
+ * Also registers new beta signups and captures email for outreach.
  */
 function WalletSyncProvider({ children }: { children: React.ReactNode }) {
   const { authenticated, user } = usePrivy();
   const { wallets, ready: walletsReady } = useWallets();
+  const [hasRegistered, setHasRegistered] = useState(false);
 
   const [syncState, setSyncState] = useState({
     address: null as string | null,
     isLoading: true,
     isSynced: false,
   });
+
+  // Register beta signup when user authenticates
+  useEffect(() => {
+    const registerUser = async () => {
+      if (authenticated && user?.email?.address && !hasRegistered) {
+        const primaryWallet = wallets[0];
+        await registerBetaSignup(user.email.address, primaryWallet?.address || null);
+        setHasRegistered(true);
+      }
+    };
+
+    if (authenticated && user?.email?.address) {
+      registerUser();
+    }
+  }, [authenticated, user, wallets, hasRegistered]);
+
+  // Reset registration flag when user logs out
+  useEffect(() => {
+    if (!authenticated) {
+      setHasRegistered(false);
+    }
+  }, [authenticated]);
 
   useEffect(() => {
     // Get the primary wallet (first embedded wallet or connected wallet)

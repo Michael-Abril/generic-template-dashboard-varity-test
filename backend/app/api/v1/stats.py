@@ -3,16 +3,27 @@ Stats API - Public statistics endpoints for the Varity dashboard.
 
 This module provides endpoints for:
 - Signup progress tracking (beta program spots)
+- Beta tester email collection (stored in Filecoin/Pinata)
 - Platform statistics
 
 These endpoints are PUBLIC (no authentication required) to allow
 display on marketing pages and landing pages.
+
+STORAGE: All signups are stored in Filecoin/IPFS via Pinata for:
+- Dynamic access from anywhere (laptop, phone, etc.)
+- Persistent decentralized storage
+- Varity admin access via Pinata dashboard
 """
 
 from fastapi import APIRouter
+from pydantic import BaseModel, EmailStr
+from typing import Optional, List
 from datetime import datetime
 import logging
-import os
+import json
+import httpx
+
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -21,44 +32,231 @@ router = APIRouter()
 # Beta program configuration
 BETA_TOTAL_SPOTS = 100
 
-# Counter file path for persistence (works even without Redis/DB)
-COUNTER_FILE = os.path.join(os.path.dirname(__file__), ".signup_counter")
+# Varity internal namespace for signup tracking
+VARITY_SIGNUPS_NAMESPACE = "varity-internal-beta-signups"
 
 
-def get_signup_count() -> int:
+# Pydantic models
+class BetaSignupRequest(BaseModel):
+    email: EmailStr
+    wallet_address: Optional[str] = None
+    source: Optional[str] = "dashboard"  # Where they signed up from
+
+
+class BetaSignup(BaseModel):
+    email: str
+    wallet_address: Optional[str] = None
+    signed_up_at: str
+    source: str
+    is_early_adopter: bool  # True if within first 100
+
+
+def _get_pinata_headers() -> dict:
+    """Build authentication headers for Pinata API"""
+    headers = {"Content-Type": "application/json"}
+    if settings.pinata_jwt:
+        headers["Authorization"] = f"Bearer {settings.pinata_jwt}"
+    else:
+        headers["pinata_api_key"] = settings.pinata_api_key
+        headers["pinata_secret_api_key"] = settings.pinata_secret_key
+    return headers
+
+
+async def load_signups_from_pinata() -> List[dict]:
     """
-    Get the current signup count.
-    Uses a simple file-based counter for persistence.
-    This can be upgraded to Redis/DB later for scaling.
+    Load all signups from Pinata/Filecoin.
+    Queries all pins with varity-internal-beta-signups namespace.
     """
     try:
-        if os.path.exists(COUNTER_FILE):
-            with open(COUNTER_FILE, "r") as f:
-                return int(f.read().strip())
-    except (ValueError, IOError) as e:
-        logger.warning(f"Error reading signup counter: {e}")
-    return 0
+        headers = _get_pinata_headers()
+
+        # Query Pinata for all signup pins
+        filters = {
+            "status": "pinned",
+            "metadata[keyvalues][namespace]": json.dumps({
+                "value": VARITY_SIGNUPS_NAMESPACE,
+                "op": "eq"
+            })
+        }
+
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"{settings.pinata_api_url}/data/pinList",
+                params={"pageLimit": 1000, **filters},
+                headers=headers,
+                timeout=30.0
+            )
+            response.raise_for_status()
+
+            result = response.json()
+            signups = []
+
+            # Fetch each signup's data from IPFS
+            for pin in result.get("rows", []):
+                cid = pin["ipfs_pin_hash"]
+                try:
+                    data_response = await client.get(
+                        f"{settings.pinata_gateway_url}/ipfs/{cid}",
+                        timeout=10.0
+                    )
+                    if data_response.status_code == 200:
+                        signup_data = data_response.json()
+                        signups.append(signup_data)
+                except Exception as e:
+                    logger.warning(f"Failed to fetch signup {cid}: {e}")
+
+            # Sort by signup_number
+            signups.sort(key=lambda x: x.get("signup_number", 0))
+            return signups
+
+    except Exception as e:
+        logger.error(f"Error loading signups from Pinata: {e}")
+        return []
 
 
-def increment_signup_count() -> int:
+async def save_signup_to_pinata(signup: dict) -> Optional[str]:
     """
-    Increment the signup counter.
-    Returns the new count.
+    Save a single signup to Pinata/Filecoin.
+    Returns the CID if successful.
     """
     try:
-        count = get_signup_count() + 1
-        with open(COUNTER_FILE, "w") as f:
-            f.write(str(count))
-        return count
-    except IOError as e:
-        logger.error(f"Error incrementing signup counter: {e}")
+        headers = _get_pinata_headers()
+
+        pin_data = {
+            "pinataContent": signup,
+            "pinataMetadata": {
+                "name": f"{VARITY_SIGNUPS_NAMESPACE}-{signup['signup_number']:04d}",
+                "keyvalues": {
+                    "namespace": VARITY_SIGNUPS_NAMESPACE,
+                    "email": signup["email"],
+                    "signup_number": str(signup["signup_number"]),
+                    "is_early_adopter": str(signup["is_early_adopter"]).lower(),
+                    "source": signup.get("source", "dashboard"),
+                    "layer": "varity-internal"
+                }
+            }
+        }
+
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"{settings.pinata_api_url}/pinning/pinJSONToIPFS",
+                json=pin_data,
+                headers=headers,
+                timeout=30.0
+            )
+            response.raise_for_status()
+
+            result = response.json()
+            cid = result["IpfsHash"]
+            logger.info(f"Saved signup #{signup['signup_number']} to Pinata: CID={cid}")
+            return cid
+
+    except Exception as e:
+        logger.error(f"Error saving signup to Pinata: {e}")
+        return None
+
+
+async def get_signup_count() -> int:
+    """Get the current signup count from Pinata."""
+    try:
+        headers = _get_pinata_headers()
+
+        filters = {
+            "status": "pinned",
+            "metadata[keyvalues][namespace]": json.dumps({
+                "value": VARITY_SIGNUPS_NAMESPACE,
+                "op": "eq"
+            })
+        }
+
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"{settings.pinata_api_url}/data/pinList",
+                params={"pageLimit": 1, **filters},
+                headers=headers,
+                timeout=10.0
+            )
+            response.raise_for_status()
+
+            result = response.json()
+            return result.get("count", 0)
+
+    except Exception as e:
+        logger.error(f"Error getting signup count: {e}")
         return 0
+
+
+async def email_exists(email: str) -> bool:
+    """Check if an email already exists in signups (via Pinata metadata)."""
+    try:
+        headers = _get_pinata_headers()
+
+        filters = {
+            "status": "pinned",
+            "metadata[keyvalues][namespace]": json.dumps({
+                "value": VARITY_SIGNUPS_NAMESPACE,
+                "op": "eq"
+            }),
+            "metadata[keyvalues][email]": json.dumps({
+                "value": email.lower(),
+                "op": "eq"
+            })
+        }
+
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"{settings.pinata_api_url}/data/pinList",
+                params={"pageLimit": 1, **filters},
+                headers=headers,
+                timeout=10.0
+            )
+            response.raise_for_status()
+
+            result = response.json()
+            return result.get("count", 0) > 0
+
+    except Exception as e:
+        logger.error(f"Error checking email existence: {e}")
+        return False
+
+
+async def add_signup(email: str, wallet_address: Optional[str] = None, source: str = "dashboard") -> Optional[dict]:
+    """
+    Add a new signup to Pinata/Filecoin.
+    Returns the signup record, or None if email already exists.
+    """
+    # Check if email already exists
+    if await email_exists(email):
+        return None
+
+    # Get current count for signup number
+    count = await get_signup_count()
+
+    signup = {
+        "email": email.lower(),
+        "wallet_address": wallet_address,
+        "signed_up_at": datetime.utcnow().isoformat(),
+        "source": source,
+        "is_early_adopter": count < BETA_TOTAL_SPOTS,
+        "signup_number": count + 1
+    }
+
+    # Save to Pinata
+    cid = await save_signup_to_pinata(signup)
+
+    if cid:
+        signup["cid"] = cid
+        logger.info(f"New beta signup #{count + 1}: {email} (early_adopter: {signup['is_early_adopter']})")
+        return signup
+
+    return None
 
 
 @router.get("/stats/signups")
 async def get_signup_stats():
     """
     Get current signup statistics for the beta program.
+    Data is fetched DYNAMICALLY from Pinata/Filecoin.
 
     Returns:
         - count: Number of users signed up
@@ -70,7 +268,7 @@ async def get_signup_stats():
     This endpoint is PUBLIC and used by the landing page progress bar.
     """
     try:
-        count = get_signup_count()
+        count = await get_signup_count()
         total = BETA_TOTAL_SPOTS
 
         return {
@@ -93,32 +291,103 @@ async def get_signup_stats():
         }
 
 
-@router.post("/stats/signups/increment")
-async def increment_signup():
+@router.post("/stats/signups/register")
+async def register_beta_signup(request: BetaSignupRequest):
     """
-    Increment the signup counter.
-    Called when a new user completes signup.
+    Register a new beta signup with email.
+    Called when a new user completes authentication via Privy.
 
-    This endpoint should be called from the OAuth callback or user registration flow.
-    In production, this should be protected to prevent abuse.
+    DATA IS STORED IN FILECOIN/PINATA for dynamic access from anywhere.
+
+    This captures:
+    - Email address (for beta tester outreach)
+    - Wallet address (for blockchain identity)
+    - Signup source (dashboard, marketing site, etc.)
+    - Whether they're an early adopter (first 100)
+
+    Returns:
+    - success: Whether this is a new signup
+    - is_new: True if first time, False if already registered
+    - is_early_adopter: True if within first 100 signups
+    - signup_number: Their position in the signup queue
     """
     try:
-        new_count = increment_signup_count()
-        total = BETA_TOTAL_SPOTS
+        # Check if already registered
+        if await email_exists(request.email):
+            count = await get_signup_count()
+            return {
+                "success": True,
+                "is_new": False,
+                "message": "Already registered",
+                "count": count,
+                "total": BETA_TOTAL_SPOTS,
+                "lastUpdated": datetime.utcnow().isoformat(),
+                "percentage": min(100, round((count / BETA_TOTAL_SPOTS) * 100, 1)),
+                "spotsRemaining": max(0, BETA_TOTAL_SPOTS - count)
+            }
 
-        logger.info(f"Signup counter incremented to {new_count}")
+        # Add new signup (stored in Pinata/Filecoin)
+        signup = await add_signup(
+            email=request.email,
+            wallet_address=request.wallet_address,
+            source=request.source or "dashboard"
+        )
+
+        if not signup:
+            return {
+                "success": False,
+                "error": "Failed to register signup"
+            }
+
+        count = await get_signup_count()
 
         return {
             "success": True,
-            "count": new_count,
-            "total": total,
+            "is_new": True,
+            "is_early_adopter": signup["is_early_adopter"],
+            "signup_number": signup["signup_number"],
+            "cid": signup.get("cid"),  # Filecoin CID for reference
+            "message": "Welcome to the beta!" if signup["is_early_adopter"] else "Thanks for signing up!",
+            "count": count,
+            "total": BETA_TOTAL_SPOTS,
             "lastUpdated": datetime.utcnow().isoformat(),
-            "percentage": min(100, round((new_count / total) * 100, 1)) if total > 0 else 0,
-            "spotsRemaining": max(0, total - new_count)
+            "percentage": min(100, round((count / BETA_TOTAL_SPOTS) * 100, 1)),
+            "spotsRemaining": max(0, BETA_TOTAL_SPOTS - count)
         }
 
     except Exception as e:
-        logger.error(f"Error incrementing signup counter: {e}")
+        logger.error(f"Error registering beta signup: {e}")
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+
+@router.get("/stats/signups/list")
+async def list_beta_signups():
+    """
+    List all beta signups (admin endpoint).
+    In production, this should be protected with authentication.
+
+    DATA IS FETCHED FROM FILECOIN/PINATA - accessible from anywhere!
+
+    Returns list of all signups with emails for outreach.
+    """
+    try:
+        signups = await load_signups_from_pinata()
+        early_adopters = [s for s in signups if s.get("is_early_adopter", False)]
+
+        return {
+            "success": True,
+            "total_signups": len(signups),
+            "early_adopters_count": len(early_adopters),
+            "signups": signups,
+            "lastUpdated": datetime.utcnow().isoformat(),
+            "storage": "filecoin/pinata"  # Indicates where data is stored
+        }
+
+    except Exception as e:
+        logger.error(f"Error listing signups: {e}")
         return {
             "success": False,
             "error": str(e)
@@ -134,7 +403,7 @@ async def get_platform_stats():
     This endpoint is PUBLIC for marketing purposes.
     """
     try:
-        signup_count = get_signup_count()
+        signup_count = await get_signup_count()
 
         return {
             "totalUsers": signup_count,
