@@ -2,6 +2,8 @@ import './globals.css';
 import { Inter } from 'next/font/google';
 import { Providers } from './providers';
 import { PWAInitializer } from '@/components/PWAInitializer';
+import { Suspense } from 'react';
+import { Analytics } from '@/components/Analytics';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -9,6 +11,13 @@ export const metadata = {
   title: 'Varity - Company-Specific AI Dashboard',
   description: 'Generic template for company-specific AI dashboards on Varity L3',
   manifest: '/manifest.json',
+  icons: {
+    icon: [
+      { url: '/favicon.svg', type: 'image/svg+xml' },
+      { url: '/favicon.png', type: 'image/png', sizes: '120x120' },
+    ],
+    apple: '/favicon.png',
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',
@@ -43,6 +52,9 @@ export default function RootLayout({
       <body className={inter.className}>
         <Providers>{children}</Providers>
         <PWAInitializer />
+        <Suspense fallback={null}>
+          <Analytics />
+        </Suspense>
       </body>
     </html>
   );
