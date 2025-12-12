@@ -234,7 +234,7 @@ export default function DashboardContent() {
           {/* Security & Quick Actions Row */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
             {/* Security Status Widget */}
-            <div className="lg:col-span-1 bg-gradient-to-br from-purple-600 to-blue-600 rounded-xl p-6 text-white">
+            <div className="lg:col-span-1 bg-gradient-to-br from-purple-600 to-blue-600 rounded-xl p-6 text-white hover:shadow-xl hover:-translate-y-1 transition-all duration-200">
               <div className="flex items-center gap-2 mb-4">
                 <Shield className="w-6 h-6" />
                 <h2 className="text-lg font-bold">Data Security</h2>
@@ -262,7 +262,7 @@ export default function DashboardContent() {
             </div>
 
             {/* Quick Actions */}
-            <div className="lg:col-span-2 bg-white border border-gray-200 rounded-xl p-6">
+            <div className="lg:col-span-2 bg-white border border-gray-200 rounded-xl p-6 hover:shadow-lg hover:border-gray-300 transition-all duration-200">
               <h2 className="text-lg font-bold text-gray-900 mb-4">Quick Actions</h2>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <Link
@@ -298,7 +298,7 @@ export default function DashboardContent() {
           </div>
 
           {/* Revenue Trend Chart */}
-          <div className="bg-white border border-gray-200 rounded-xl p-6 mb-8">
+          <div className="bg-white border border-gray-200 rounded-xl p-6 mb-8 hover:shadow-lg hover:border-gray-300 transition-all duration-200">
             <div className="flex items-center justify-between mb-6">
               <div>
                 <h2 className="text-lg font-bold text-gray-900 mb-1">Revenue Trend</h2>
@@ -385,7 +385,7 @@ export default function DashboardContent() {
           {/* Two Column Layout */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
             {/* Recent Activity */}
-            <div className="bg-white border border-gray-200 rounded-xl p-6">
+            <div className="bg-white border border-gray-200 rounded-xl p-6 hover:shadow-lg hover:border-gray-300 transition-all duration-200">
               <h2 className="text-lg font-bold text-gray-900 mb-4">Recent Activity</h2>
 
               {isLoadingActivity ? (
@@ -455,7 +455,7 @@ export default function DashboardContent() {
             </div>
 
             {/* Top Customers */}
-            <div className="bg-white border border-gray-200 rounded-xl p-6">
+            <div className="bg-white border border-gray-200 rounded-xl p-6 hover:shadow-lg hover:border-gray-300 transition-all duration-200">
               <h2 className="text-lg font-bold text-gray-900 mb-4">Top Customers</h2>
 
               {isLoadingCustomers ? (
@@ -528,7 +528,7 @@ export default function DashboardContent() {
           </div>
 
           {/* Footer CTA */}
-          <div className="bg-gradient-to-br from-blue-600 to-purple-600 rounded-xl p-8 text-white">
+          <div className="bg-gradient-to-br from-blue-600 to-purple-600 rounded-xl p-8 text-white hover:shadow-xl hover:-translate-y-1 transition-all duration-200">
             <div className="max-w-2xl">
               <h2 className="text-2xl font-bold mb-2">
                 Unlock More Insights with Additional Integrations

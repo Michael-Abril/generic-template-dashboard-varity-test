@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { Lightbulb, AlertTriangle } from 'lucide-react';
 
 export interface Web3Error {
   code?: number | string;
@@ -60,8 +61,8 @@ export function Web3ErrorHandler({
             {/* Suggested Actions */}
             {errorInfo.suggestions.length > 0 && (
               <div className="bg-red-100 rounded-lg p-3 mb-3">
-                <p className="text-xs font-semibold text-red-900 mb-2">
-                  💡 What you can do:
+                <p className="text-xs font-semibold text-red-900 mb-2 flex items-center gap-1">
+                  <Lightbulb className="w-3 h-3" /> What you can do:
                 </p>
                 <ul className="space-y-1">
                   {errorInfo.suggestions.map((suggestion, idx) => (

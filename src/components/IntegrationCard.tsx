@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { IntegrationLogo } from './IntegrationLogo';
+import { Lock } from 'lucide-react';
 
 interface Integration {
   id: number;
@@ -219,7 +220,7 @@ export function IntegrationCard({
               {integration.storageInfo && (
                 <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
                   <h3 className="font-semibold text-purple-900 mb-2 flex items-center gap-2">
-                    <span>🔒</span> Encrypted Storage
+                    <Lock className="w-4 h-4" /> Encrypted Storage
                   </h3>
                   <p className="text-sm text-purple-800">{integration.storageInfo}</p>
                 </div>

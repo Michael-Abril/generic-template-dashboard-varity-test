@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Layout } from '@/components/Layout';
 import { User, Bell, CreditCard, Users, Lock, Database } from 'lucide-react';
+import { useToast } from '@/components/ui/Toast';
 
 /**
  * Settings Page
@@ -27,6 +28,7 @@ export default function SettingsPage() {
   const { wallets } = useWallets();
   const address = wallets[0]?.address;
   const router = useRouter();
+  const toast = useToast();
   const [activeTab, setActiveTab] = useState<SettingsTab>('account');
   const [saving, setSaving] = useState(false);
 
@@ -56,7 +58,7 @@ export default function SettingsPage() {
     // Simulate API call
     await new Promise(resolve => setTimeout(resolve, 1000));
     setSaving(false);
-    alert('Settings saved successfully!');
+    toast.success('Settings saved', 'Your changes have been saved successfully.');
   };
 
   const tabs = [

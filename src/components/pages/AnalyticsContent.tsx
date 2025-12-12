@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Layout } from '@/components/Layout';
 import { logger } from '@/lib/logger';
+import { useToast } from '@/components/ui/Toast';
 import {
   FileSpreadsheet,
   FileText,
@@ -43,6 +44,7 @@ export default function AnalyticsContent() {
   const { authenticated } = usePrivy();
   const { address } = useWalletSync();
   const router = useRouter();
+  const toast = useToast();
   const [timePeriod, setTimePeriod] = useState<TimePeriod>('mtd');
   const [customDateRange, setCustomDateRange] = useState({ start: '', end: '' });
   const [loading, setLoading] = useState(false);
@@ -151,7 +153,7 @@ export default function AnalyticsContent() {
     : [];
 
   const handleExportPDF = () => {
-    alert('Export to PDF functionality will be implemented with a PDF generation library');
+    toast.info('Coming soon', 'PDF export will be available in a future update.');
   };
 
   const handleExportCSV = () => {

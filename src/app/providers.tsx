@@ -6,6 +6,7 @@ import { ThirdwebProvider } from 'thirdweb/react';
 import { varietyTestnet5 as varietyTestnet, varietyTestnetWagmi } from '../lib/varity-chain';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { createThirdwebClient } from 'thirdweb';
+import { ToastProvider } from '../components/ui/Toast';
 
 // Global wallet context for synchronization
 export const WalletSyncContext = createContext<{
@@ -342,7 +343,9 @@ export function Providers({ children }: { children: React.ReactNode }) {
         <PrivyReadyGate>
           <ThirdwebProvider>
             <WalletSyncProvider>
-              {children}
+              <ToastProvider>
+                {children}
+              </ToastProvider>
             </WalletSyncProvider>
           </ThirdwebProvider>
         </PrivyReadyGate>

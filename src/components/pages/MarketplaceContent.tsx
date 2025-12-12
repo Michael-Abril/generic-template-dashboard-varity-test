@@ -8,6 +8,7 @@ import Link from 'next/link';
 import { Layout } from '@/components/Layout';
 import { IntegrationLogo } from '@/components/IntegrationLogo';
 import { AlertTriangle, XCircle, Search } from 'lucide-react';
+import { useToast } from '@/components/ui/Toast';
 import { MarketplaceSkeleton } from '@/components/ui/Skeleton';
 import { CONTRACTS, USDC_ABI, TOOL_MARKETPLACE_ABI, parseUSDC } from '@/lib/contracts';
 import * as marketplaceService from '@/services/marketplaceService';
@@ -76,6 +77,7 @@ export default function MarketplaceContent() {
   const { wallets } = useWallets();
   const { address: syncedAddress, isLoading: walletLoading, isSynced } = useWalletSync();
   const router = useRouter();
+  const toast = useToast();
 
   // Use synced address from wallet sync
   const address = syncedAddress || wallets[0]?.address;
@@ -244,7 +246,7 @@ export default function MarketplaceContent() {
       setShowTierModal(true);
     } catch (err: any) {
       console.error('Error loading product details:', err);
-      alert(`Failed to load ${product.name} details: ${err.message}`);
+      toast.error('Failed to load details', err.message || 'Please try again later.');
     }
   };
 
@@ -272,7 +274,7 @@ export default function MarketplaceContent() {
 
   const handlePurchase = async () => {
     if (!selectedProduct || !selectedTier || !authenticated || !address) {
-      alert('Please sign in and connect wallet first');
+      toast.warning('Authentication required', 'Please sign in and connect wallet first.');
       return;
     }
 
@@ -306,7 +308,7 @@ export default function MarketplaceContent() {
 
     } catch (error: any) {
       console.error('Purchase error:', error);
-      alert(`Purchase failed: ${error.message}`);
+      toast.error('Purchase failed', error.message || 'Please try again later.');
     } finally {
       setPurchasing(null);
       setPurchaseStatus('');
@@ -656,7 +658,7 @@ export default function MarketplaceContent() {
                   <button
                     onClick={async () => {
                       if (!authenticated || !address) {
-                        alert('Please connect your wallet first to securely store OAuth credentials');
+                        toast.warning('Wallet required', 'Please connect your wallet first to securely store OAuth credentials.');
                         return;
                       }
 
@@ -692,7 +694,7 @@ export default function MarketplaceContent() {
                                 // Redirect to integrations page to see connected integration
                                 router.push('/integrations?success=true');
                               } else {
-                                alert(`OAuth failed: ${event.data.error || 'Unknown error'}`);
+                                toast.error('OAuth failed', event.data.error || 'Unknown error occurred.');
                               }
                             }
                           };
@@ -716,7 +718,7 @@ export default function MarketplaceContent() {
                         }
                       } catch (error: any) {
                         console.error('OAuth start error:', error);
-                        alert(`Failed to start OAuth: ${error.message}`);
+                        toast.error('OAuth failed', error.message || 'Could not start authentication.');
                       }
                     }}
                     className="flex-1 py-3 px-4 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-all"

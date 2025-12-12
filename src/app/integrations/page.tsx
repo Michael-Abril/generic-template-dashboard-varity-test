@@ -8,6 +8,7 @@ import Link from 'next/link';
 import { Layout } from '@/components/Layout';
 import { IntegrationLogo } from '@/components/IntegrationLogo';
 import { Shield, Check, RefreshCw, Plus, Trash2, ExternalLink } from 'lucide-react';
+import { useToast } from '@/components/ui/Toast';
 
 /**
  * Integration Management Page
@@ -55,6 +56,7 @@ function IntegrationsContent() {
   const { address } = useWalletSync();
   const router = useRouter();
   const searchParams = useSearchParams();
+  const toast = useToast();
 
   const [integrations, setIntegrations] = useState<ConnectedIntegration[]>([]);
   const [loading, setLoading] = useState(true);
@@ -163,7 +165,7 @@ function IntegrationsContent() {
       }
     } catch (error) {
       console.error('Manual sync failed:', error);
-      alert(`Failed to sync. Please try again.`);
+      toast.error('Sync failed', 'Please try again later.');
     } finally {
       setSyncing(null);
     }
@@ -196,7 +198,7 @@ function IntegrationsContent() {
       }
     } catch (error) {
       console.error('Disconnect failed:', error);
-      alert(`Failed to disconnect ${providerName}. Please try again.`);
+      toast.error('Disconnect failed', `Could not disconnect ${providerName}. Please try again.`);
     } finally {
       setDisconnecting(null);
     }

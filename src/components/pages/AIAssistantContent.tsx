@@ -6,7 +6,8 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Layout } from '@/components/Layout';
 import { AIChat } from '@/components/AIChat';
-import { Download, Trash2, Bot, BarChart3, Users, DollarSign, TrendingUp, Mail, Target } from 'lucide-react';
+import { Download, Trash2, Bot, BarChart3, Users, DollarSign, TrendingUp, Mail, Target, Lightbulb } from 'lucide-react';
+import { useToast } from '@/components/ui/Toast';
 
 /**
  * AI Assistant Page Content
@@ -42,6 +43,7 @@ function formatTimestamp(date: Date): string {
 export default function AIAssistantContent() {
   const { authenticated } = usePrivy();
   const router = useRouter();
+  const toast = useToast();
   const [showSidebar, setShowSidebar] = useState(true);
   const [selectedConversation, setSelectedConversation] = useState<string | null>(null);
   const [conversations, setConversations] = useState<Conversation[]>([
@@ -96,10 +98,9 @@ export default function AIAssistantContent() {
   };
 
   const handleClearChat = () => {
-    if (confirm('Are you sure you want to clear this conversation? This cannot be undone.')) {
-      // Clear messages logic
-      alert('Conversation cleared');
-    }
+    // Clear messages logic
+    setConversations([]);
+    toast.success('Conversation cleared', 'Your chat history has been cleared.');
   };
 
   return (
@@ -231,7 +232,10 @@ export default function AIAssistantContent() {
                   </div>
 
                   <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-sm text-blue-900">
-                    <p className="font-semibold mb-2">💡 Tips for better results:</p>
+                    <p className="font-semibold mb-2 flex items-center gap-2">
+                      <Lightbulb className="w-4 h-4" />
+                      Tips for better results:
+                    </p>
                     <ul className="text-left space-y-1 text-blue-800">
                       <li>• Be specific about time periods (this month, last quarter, etc.)</li>
                       <li>• Ask for comparisons to see trends</li>
