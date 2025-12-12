@@ -3,20 +3,18 @@ Stats API - Public statistics endpoints for the Varity dashboard.
 
 This module provides endpoints for:
 - Signup progress tracking (beta program spots)
-- Beta tester email collection (stored in Filecoin/Pinata)
 - Platform statistics
 
-These endpoints are PUBLIC (no authentication required) to allow
-display on marketing pages and landing pages.
+NOTE: Email tracking is handled by Privy dashboard.
+This module only tracks signup COUNT for the progress bar.
 
-STORAGE: All signups are stored in Filecoin/IPFS via Pinata for:
+STORAGE: Signup count stored in Filecoin/IPFS via Pinata for:
 - Dynamic access from anywhere (laptop, phone, etc.)
 - Persistent decentralized storage
-- Varity admin access via Pinata dashboard
 """
 
 from fastapi import APIRouter
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime
 import logging
@@ -36,19 +34,10 @@ BETA_TOTAL_SPOTS = 100
 VARITY_SIGNUPS_NAMESPACE = "varity-internal-beta-signups"
 
 
-# Pydantic models
+# Pydantic models (simplified - no email validation needed, Privy handles that)
 class BetaSignupRequest(BaseModel):
-    email: EmailStr
-    wallet_address: Optional[str] = None
-    source: Optional[str] = "dashboard"  # Where they signed up from
-
-
-class BetaSignup(BaseModel):
-    email: str
-    wallet_address: Optional[str] = None
-    signed_up_at: str
-    source: str
-    is_early_adopter: bool  # True if within first 100
+    wallet_address: str  # Required - unique identifier from Privy
+    source: Optional[str] = "dashboard"
 
 
 def _get_pinata_headers() -> dict:
@@ -70,7 +59,6 @@ async def load_signups_from_pinata() -> List[dict]:
     try:
         headers = _get_pinata_headers()
 
-        # Query Pinata for all signup pins
         filters = {
             "status": "pinned",
             "metadata[keyvalues][namespace]": json.dumps({
@@ -91,7 +79,6 @@ async def load_signups_from_pinata() -> List[dict]:
             result = response.json()
             signups = []
 
-            # Fetch each signup's data from IPFS
             for pin in result.get("rows", []):
                 cid = pin["ipfs_pin_hash"]
                 try:
@@ -105,7 +92,6 @@ async def load_signups_from_pinata() -> List[dict]:
                 except Exception as e:
                     logger.warning(f"Failed to fetch signup {cid}: {e}")
 
-            # Sort by signup_number
             signups.sort(key=lambda x: x.get("signup_number", 0))
             return signups
 
@@ -128,7 +114,7 @@ async def save_signup_to_pinata(signup: dict) -> Optional[str]:
                 "name": f"{VARITY_SIGNUPS_NAMESPACE}-{signup['signup_number']:04d}",
                 "keyvalues": {
                     "namespace": VARITY_SIGNUPS_NAMESPACE,
-                    "email": signup["email"],
+                    "wallet_address": signup["wallet_address"],
                     "signup_number": str(signup["signup_number"]),
                     "is_early_adopter": str(signup["is_early_adopter"]).lower(),
                     "source": signup.get("source", "dashboard"),
@@ -186,8 +172,8 @@ async def get_signup_count() -> int:
         return 0
 
 
-async def email_exists(email: str) -> bool:
-    """Check if an email already exists in signups (via Pinata metadata)."""
+async def wallet_exists(wallet_address: str) -> bool:
+    """Check if a wallet already exists in signups (prevents duplicates)."""
     try:
         headers = _get_pinata_headers()
 
@@ -197,8 +183,8 @@ async def email_exists(email: str) -> bool:
                 "value": VARITY_SIGNUPS_NAMESPACE,
                 "op": "eq"
             }),
-            "metadata[keyvalues][email]": json.dumps({
-                "value": email.lower(),
+            "metadata[keyvalues][wallet_address]": json.dumps({
+                "value": wallet_address.lower(),
                 "op": "eq"
             })
         }
@@ -216,37 +202,36 @@ async def email_exists(email: str) -> bool:
             return result.get("count", 0) > 0
 
     except Exception as e:
-        logger.error(f"Error checking email existence: {e}")
+        logger.error(f"Error checking wallet existence: {e}")
         return False
 
 
-async def add_signup(email: str, wallet_address: Optional[str] = None, source: str = "dashboard") -> Optional[dict]:
+async def add_signup(wallet_address: str, source: str = "dashboard") -> Optional[dict]:
     """
     Add a new signup to Pinata/Filecoin.
-    Returns the signup record, or None if email already exists.
+    Returns the signup record, or None if wallet already exists.
+
+    Note: Email tracking is handled by Privy dashboard.
     """
-    # Check if email already exists
-    if await email_exists(email):
+    # Check if wallet already registered
+    if await wallet_exists(wallet_address):
         return None
 
-    # Get current count for signup number
     count = await get_signup_count()
 
     signup = {
-        "email": email.lower(),
-        "wallet_address": wallet_address,
+        "wallet_address": wallet_address.lower(),
         "signed_up_at": datetime.utcnow().isoformat(),
         "source": source,
         "is_early_adopter": count < BETA_TOTAL_SPOTS,
         "signup_number": count + 1
     }
 
-    # Save to Pinata
     cid = await save_signup_to_pinata(signup)
 
     if cid:
         signup["cid"] = cid
-        logger.info(f"New beta signup #{count + 1}: {email} (early_adopter: {signup['is_early_adopter']})")
+        logger.info(f"New beta signup #{count + 1}: {wallet_address[:10]}... (early_adopter: {signup['is_early_adopter']})")
         return signup
 
     return None
@@ -294,16 +279,11 @@ async def get_signup_stats():
 @router.post("/stats/signups/register")
 async def register_beta_signup(request: BetaSignupRequest):
     """
-    Register a new beta signup with email.
+    Register a new beta signup by wallet address.
     Called when a new user completes authentication via Privy.
 
-    DATA IS STORED IN FILECOIN/PINATA for dynamic access from anywhere.
-
-    This captures:
-    - Email address (for beta tester outreach)
-    - Wallet address (for blockchain identity)
-    - Signup source (dashboard, marketing site, etc.)
-    - Whether they're an early adopter (first 100)
+    NOTE: Email tracking is handled by Privy dashboard.
+    This only tracks wallet addresses for the progress bar count.
 
     Returns:
     - success: Whether this is a new signup
@@ -312,8 +292,8 @@ async def register_beta_signup(request: BetaSignupRequest):
     - signup_number: Their position in the signup queue
     """
     try:
-        # Check if already registered
-        if await email_exists(request.email):
+        # Check if wallet already registered
+        if await wallet_exists(request.wallet_address):
             count = await get_signup_count()
             return {
                 "success": True,
@@ -328,7 +308,6 @@ async def register_beta_signup(request: BetaSignupRequest):
 
         # Add new signup (stored in Pinata/Filecoin)
         signup = await add_signup(
-            email=request.email,
             wallet_address=request.wallet_address,
             source=request.source or "dashboard"
         )

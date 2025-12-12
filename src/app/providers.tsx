@@ -142,16 +142,17 @@ function PrivyReadyGate({ children }: { children: React.ReactNode }) {
 }
 
 /**
- * Register a new beta signup when user authenticates
+ * Register a new beta signup when user authenticates.
+ * NOTE: Email tracking is handled by Privy dashboard.
+ * This only tracks wallet addresses for the progress bar count.
  */
-async function registerBetaSignup(email: string, walletAddress: string | null) {
+async function registerBetaSignup(walletAddress: string) {
   try {
     const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8002';
     const response = await fetch(`${backendUrl}/api/v1/stats/signups/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        email,
         wallet_address: walletAddress,
         source: 'dashboard'
       })
@@ -160,7 +161,7 @@ async function registerBetaSignup(email: string, walletAddress: string | null) {
     if (response.ok) {
       const data = await response.json();
       if (data.is_new) {
-        logger.info(`New beta signup registered: ${email} (#${data.signup_number})`);
+        logger.info(`New beta signup registered: ${walletAddress.slice(0, 10)}... (#${data.signup_number})`);
       }
       return data;
     }
@@ -188,20 +189,21 @@ function WalletSyncProvider({ children }: { children: React.ReactNode }) {
     isSynced: false,
   });
 
-  // Register beta signup when user authenticates
+  // Register beta signup when user authenticates (wallet-based tracking)
+  // NOTE: Email tracking is handled by Privy dashboard
   useEffect(() => {
     const registerUser = async () => {
-      if (authenticated && user?.email?.address && !hasRegistered) {
-        const primaryWallet = wallets[0];
-        await registerBetaSignup(user.email.address, primaryWallet?.address || null);
+      const primaryWallet = wallets[0];
+      if (authenticated && primaryWallet?.address && !hasRegistered) {
+        await registerBetaSignup(primaryWallet.address);
         setHasRegistered(true);
       }
     };
 
-    if (authenticated && user?.email?.address) {
+    if (authenticated && wallets.length > 0) {
       registerUser();
     }
-  }, [authenticated, user, wallets, hasRegistered]);
+  }, [authenticated, wallets, hasRegistered]);
 
   // Reset registration flag when user logs out
   useEffect(() => {
