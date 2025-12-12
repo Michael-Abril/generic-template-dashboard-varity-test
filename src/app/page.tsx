@@ -2,6 +2,7 @@
 
 import { usePrivy } from '@privy-io/react-auth';
 import { ArrowRight, Check, Sparkles, Brain } from 'lucide-react';
+import { SignupProgressBar } from '@/components/SignupProgressBar';
 import Link from 'next/link';
 
 export default function HomePage() {
@@ -47,7 +48,7 @@ export default function HomePage() {
               {/* Beta Badge */}
               <div className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-gradient-to-r from-brand-500/10 to-electric-400/10 border border-brand-500/20 mb-6">
                 <Sparkles className="h-3.5 w-3.5 text-brand-400" />
-                <span className="text-sm font-medium text-brand-400">Beta Access - 1 Month Free</span>
+                <span className="text-sm font-medium text-brand-400">Beta Access Now Open</span>
               </div>
 
               {/* Headline */}
@@ -68,10 +69,10 @@ export default function HomePage() {
               {/* Benefits - Beta Focus */}
               <div className="mt-8 space-y-3">
                 {[
-                  "Early access to cutting-edge AI dashboard technology",
+                  "AI-powered business intelligence for your company",
+                  "Connect QuickBooks, Slack, Google Workspace and more",
+                  "Your data stays private with decentralized storage",
                   "Direct feedback channel with our development team",
-                  "Free month of usage + 50% discount after beta",
-                  "Help shape features for your industry",
                 ].map((benefit) => (
                   <div key={benefit} className="flex items-center gap-3">
                     <div className="flex-shrink-0 p-1 rounded-full bg-brand-500/20">
@@ -109,8 +110,16 @@ export default function HomePage() {
                 </Link>
               </div>
 
-              <p className="mt-4 text-sm text-foreground-muted">
-                Limited to 100 beta testers • Testnet only • No credit card required
+              {/* Signup Progress Bar */}
+              <div className="mt-8 p-5 rounded-xl bg-background-secondary/50 border border-border">
+                <SignupProgressBar
+                  earlyAdopterSpots={100}
+                  apiEndpoint="/api/v1/stats/signups"
+                  pollingInterval={30000}
+                />
+              </div>
+              <p className="mt-3 text-sm text-foreground-muted text-center sm:text-left">
+                No credit card required • Takes 2 minutes to set up
               </p>
             </div>
 
