@@ -7,10 +7,20 @@ from redis import asyncio as aioredis
 # Database URL
 # Development: SQLite with aiosqlite
 # Production: Set DATABASE_URL environment variable to PostgreSQL URL
-DATABASE_URL = os.getenv(
-    "DATABASE_URL",
-    "sqlite+aiosqlite:///./marketplace_test.db"
-)
+# RAILWAY FIX: Railway provides postgresql:// but asyncpg requires postgresql+asyncpg://
+def get_database_url() -> str:
+    """Get and transform database URL for async support"""
+    url = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./marketplace_test.db")
+
+    # Railway provides postgres:// or postgresql:// but asyncpg needs postgresql+asyncpg://
+    if url.startswith("postgres://"):
+        url = url.replace("postgres://", "postgresql+asyncpg://", 1)
+    elif url.startswith("postgresql://") and "+asyncpg" not in url:
+        url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
+
+    return url
+
+DATABASE_URL = get_database_url()
 
 # Redis URL
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
