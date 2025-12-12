@@ -1,13 +1,12 @@
 # Railway Configuration for Varity Backend
-# Deploy with: railway up
+# This file tells Railway how to build and deploy the FastAPI backend
 
 [build]
-builder = "dockerfile"
-dockerfilePath = "Dockerfile"
+builder = "nixpacks"
 
 [deploy]
 startCommand = "uvicorn app.main:app --host 0.0.0.0 --port $PORT"
 healthcheckPath = "/health"
-healthcheckTimeout = 30
-restartPolicyType = "ON_FAILURE"
+healthcheckTimeout = 300
+restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 3
