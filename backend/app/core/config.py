@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     app_name: str = "Varity Generic Template Dashboard"
     debug: bool = False
 
-    # Pinata (Filecoin/IPFS Gateway)
+    # Pinata (Filecoin/IPFS Gateway) - REQUIRED for production
     pinata_api_key: str = Field(..., env="PINATA_API_KEY")
     pinata_secret_key: str = Field(..., env="PINATA_SECRET_KEY")
     pinata_jwt: Optional[str] = Field(None, env="PINATA_JWT")

@@ -1,11 +1,15 @@
 name: Deploy to Varity L3 Testnet
 
+# DISABLED FOR BETA DEPLOYMENT
+# Using Railway + Vercel for beta testing instead of Akash/IPFS
+# Re-enable for production DePin deployment
+
 on:
-  push:
-    branches: [main, testnet]
-  pull_request:
-    branches: [main, testnet]
-  workflow_dispatch:
+  workflow_dispatch:  # Manual trigger only
+  # push:
+  #   branches: [main, testnet]
+  # pull_request:
+  #   branches: [main, testnet]
 
 env:
   NODE_VERSION: '18'

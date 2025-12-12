@@ -1,10 +1,18 @@
 name: CI - Test & Lint
 
+# DISABLED FOR BETA DEPLOYMENT
+# These workflows require GitHub Secrets that aren't configured yet.
+# Re-enable after setting up:
+# - PINATA_API_KEY, PINATA_SECRET_KEY
+# - DEPLOYER_PRIVATE_KEY
+# - PRIVY_APP_ID, THIRDWEB_CLIENT_ID
+
 on:
-  push:
-    branches: [main, develop, feature/*]
-  pull_request:
-    branches: [main, develop]
+  workflow_dispatch:  # Manual trigger only
+  # push:
+  #   branches: [main, develop, feature/*]
+  # pull_request:
+  #   branches: [main, develop]
 
 env:
   NODE_VERSION: '18'

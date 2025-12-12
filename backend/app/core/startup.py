@@ -130,16 +130,28 @@ async def check_external_services() -> Dict[str, bool]:
     """
     services = {}
 
-    # Check Pinata
+    # Check Pinata (JWT or API key/secret)
     pinata_jwt = os.getenv("PINATA_JWT")
-    if pinata_jwt:
+    pinata_api_key = os.getenv("PINATA_API_KEY")
+    pinata_secret = os.getenv("PINATA_SECRET_KEY")
+
+    has_pinata_creds = pinata_jwt or (pinata_api_key and pinata_secret)
+
+    if has_pinata_creds:
         try:
             import httpx
+
+            headers = {}
+            if pinata_jwt:
+                headers["Authorization"] = f"Bearer {pinata_jwt}"
+            else:
+                headers["pinata_api_key"] = pinata_api_key
+                headers["pinata_secret_api_key"] = pinata_secret
 
             async with httpx.AsyncClient(timeout=10.0) as client:
                 response = await client.get(
                     "https://api.pinata.cloud/data/testAuthentication",
-                    headers={"Authorization": f"Bearer {pinata_jwt}"}
+                    headers=headers
                 )
                 services["pinata"] = response.status_code == 200
 
@@ -152,7 +164,7 @@ async def check_external_services() -> Dict[str, bool]:
             services["pinata"] = False
     else:
         services["pinata"] = False
-        logger.warning("⚠️  PINATA_JWT not set - storage features will not work")
+        logger.info("ℹ️  Pinata not configured - using mock storage for beta deployment")
 
     # Check Ollama
     try:
