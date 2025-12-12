@@ -6,7 +6,6 @@ import { ThirdwebProvider } from 'thirdweb/react';
 import { varietyTestnet5 as varietyTestnet, varietyTestnetWagmi } from '../lib/varity-chain';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { createThirdwebClient } from 'thirdweb';
-import { logger } from '@/lib/logger';
 
 // Global wallet context for synchronization
 export const WalletSyncContext = createContext<{
@@ -142,75 +141,22 @@ function PrivyReadyGate({ children }: { children: React.ReactNode }) {
 }
 
 /**
- * Register a new beta signup when user authenticates.
- * NOTE: Email tracking is handled by Privy dashboard.
- * This only tracks wallet addresses for the progress bar count.
- */
-async function registerBetaSignup(walletAddress: string) {
-  try {
-    const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8002';
-    const response = await fetch(`${backendUrl}/api/v1/stats/signups/register`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        wallet_address: walletAddress,
-        source: 'dashboard'
-      })
-    });
-
-    if (response.ok) {
-      const data = await response.json();
-      if (data.is_new) {
-        logger.info(`New beta signup registered: ${walletAddress.slice(0, 10)}... (#${data.signup_number})`);
-      }
-      return data;
-    }
-  } catch (err) {
-    logger.error('Failed to register beta signup:', err);
-  }
-  return null;
-}
-
-/**
  * WalletSyncProvider - Synchronizes Privy embedded wallet with Thirdweb
  * This ensures that when a user signs in with Google/email, their embedded wallet
  * is immediately available to all components using Thirdweb hooks.
  *
- * Also registers new beta signups and captures email for outreach.
+ * NOTE: User tracking is handled entirely by Privy.
+ * The progress bar fetches user count directly from Privy Management API.
  */
 function WalletSyncProvider({ children }: { children: React.ReactNode }) {
   const { authenticated, user } = usePrivy();
   const { wallets, ready: walletsReady } = useWallets();
-  const [hasRegistered, setHasRegistered] = useState(false);
 
   const [syncState, setSyncState] = useState({
     address: null as string | null,
     isLoading: true,
     isSynced: false,
   });
-
-  // Register beta signup when user authenticates (wallet-based tracking)
-  // NOTE: Email tracking is handled by Privy dashboard
-  useEffect(() => {
-    const registerUser = async () => {
-      const primaryWallet = wallets[0];
-      if (authenticated && primaryWallet?.address && !hasRegistered) {
-        await registerBetaSignup(primaryWallet.address);
-        setHasRegistered(true);
-      }
-    };
-
-    if (authenticated && wallets.length > 0) {
-      registerUser();
-    }
-  }, [authenticated, wallets, hasRegistered]);
-
-  // Reset registration flag when user logs out
-  useEffect(() => {
-    if (!authenticated) {
-      setHasRegistered(false);
-    }
-  }, [authenticated]);
 
   useEffect(() => {
     // Get the primary wallet (first embedded wallet or connected wallet)

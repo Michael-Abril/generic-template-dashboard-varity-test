@@ -69,6 +69,10 @@ class Settings(BaseSettings):
     # Frontend URL (for OAuth redirects - MUST match QuickBooks registered redirect URI)
     frontend_url: str = Field("http://localhost:3001", env="FRONTEND_URL")
 
+    # Privy Authentication (for Management API - user count tracking)
+    privy_app_id: Optional[str] = Field(None, env="PRIVY_APP_ID")
+    privy_app_secret: Optional[str] = Field(None, env="PRIVY_APP_SECRET")
+
     # OAuth Integration Settings
     quickbooks_client_id: Optional[str] = Field(None, env="QUICKBOOKS_CLIENT_ID")
     quickbooks_client_secret: Optional[str] = Field(None, env="QUICKBOOKS_CLIENT_SECRET")
