@@ -539,10 +539,69 @@ export default function MarketplaceContent() {
                   Cancel
                 </button>
                 <button
-                  onClick={() => {
-                    // Navigate to integrations page to start OAuth flow
+                  onClick={async () => {
+                    if (!authenticated || !address) {
+                      alert('Please connect your wallet first to securely store OAuth credentials');
+                      return;
+                    }
+
+                    const provider = selectedProduct.logo;
                     setShowTierModal(false);
-                    window.location.href = `/integrations?connect=${selectedProduct.logo}`;
+
+                    try {
+                      // Get OAuth authorization URL from backend
+                      const apiBase = process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
+                      const response = await fetch(`${apiBase}/api/v1/oauth/start/${provider}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          wallet_address: address,
+                          redirect_uri: `${window.location.origin}/oauth/callback/${provider}`
+                        })
+                      });
+
+                      const data = await response.json();
+
+                      if (!response.ok) {
+                        throw new Error(data.detail || data.message || 'Failed to start OAuth');
+                      }
+
+                      if (data.authorization_url) {
+                        // Set up listener for OAuth completion message from popup
+                        const handleOAuthMessage = (event: MessageEvent) => {
+                          if (event.origin !== window.location.origin) return;
+                          if (event.data?.type === 'oauth-complete' && event.data?.provider === provider) {
+                            window.removeEventListener('message', handleOAuthMessage);
+                            if (event.data.success) {
+                              // Redirect to integrations page to see connected integration
+                              router.push('/integrations?success=true');
+                            } else {
+                              alert(`OAuth failed: ${event.data.error || 'Unknown error'}`);
+                            }
+                          }
+                        };
+
+                        window.addEventListener('message', handleOAuthMessage);
+
+                        // Open OAuth in new tab
+                        const popup = window.open(
+                          data.authorization_url,
+                          `oauth-${provider}`,
+                          'width=600,height=700,scrollbars=yes,resizable=yes'
+                        );
+
+                        // Fallback: if popup blocked, redirect in same window
+                        if (!popup || popup.closed) {
+                          window.removeEventListener('message', handleOAuthMessage);
+                          window.location.href = data.authorization_url;
+                        }
+                      } else {
+                        throw new Error('No authorization URL received');
+                      }
+                    } catch (error: any) {
+                      console.error('OAuth start error:', error);
+                      alert(`Failed to start OAuth: ${error.message}`);
+                    }
                   }}
                   className="flex-1 py-3 px-4 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-all"
                 >
