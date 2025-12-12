@@ -6,7 +6,6 @@
  */
 
 import React from 'react';
-import Image from 'next/image';
 import { BarChart3, Users, ShoppingCart, MessageSquare, ClipboardList, CreditCard, TrendingUp, Ticket, Zap, Package } from 'lucide-react';
 
 type LogoProps = {
@@ -16,9 +15,9 @@ type LogoProps = {
 };
 
 const LOGO_SIZES = {
-  sm: { container: 'w-8 h-8', pixels: 32 },
-  md: { container: 'w-12 h-12', pixels: 48 },
-  lg: { container: 'w-16 h-16', pixels: 64 },
+  sm: { container: 'w-8 h-8', imgSize: 20 },
+  md: { container: 'w-12 h-12', imgSize: 32 },
+  lg: { container: 'w-16 h-16', imgSize: 44 },
 };
 
 // Map integration names to logo filenames
@@ -47,30 +46,35 @@ const LOGO_FILES: Record<string, string> = {
   'twilio': 'twilio.svg',
 };
 
-// Brand colors for fallback backgrounds
+// Brand colors for backgrounds
 const BRAND_COLORS: Record<string, string> = {
-  'quickbooks': 'bg-green-500',
-  'salesforce': 'bg-blue-500',
-  'shopify': 'bg-green-600',
-  'slack': 'bg-purple-600',
-  'monday': 'bg-red-500',
-  'stripe': 'bg-indigo-600',
-  'hubspot': 'bg-orange-500',
-  'zendesk': 'bg-teal-600',
-  'google': 'bg-white border-2 border-gray-200',
-  'google-workspace': 'bg-white border-2 border-gray-200',
-  'microsoft': 'bg-white border-2 border-gray-200',
-  'microsoft-365': 'bg-white border-2 border-gray-200',
-  'xero': 'bg-blue-600',
-  'freshbooks': 'bg-blue-500',
-  'mailchimp': 'bg-yellow-400',
-  'docusign': 'bg-blue-700',
-  'zoom': 'bg-blue-500',
-  'dropbox': 'bg-blue-600',
-  'asana': 'bg-red-400',
-  'trello': 'bg-blue-500',
-  'intercom': 'bg-blue-600',
-  'twilio': 'bg-red-500',
+  'quickbooks': 'bg-[#2CA01C]',
+  'salesforce': 'bg-[#00A1E0]',
+  'shopify': 'bg-[#96BF48]',
+  'slack': 'bg-[#4A154B]',
+  'monday': 'bg-[#FF3D57]',
+  'stripe': 'bg-[#635BFF]',
+  'hubspot': 'bg-[#FF7A59]',
+  'zendesk': 'bg-[#03363D]',
+  'google': 'bg-white border border-gray-200',
+  'google-workspace': 'bg-white border border-gray-200',
+  'microsoft': 'bg-white border border-gray-200',
+  'microsoft-365': 'bg-white border border-gray-200',
+  'xero': 'bg-[#13B5EA]',
+  'freshbooks': 'bg-[#0075DD]',
+  'mailchimp': 'bg-[#FFE01B]',
+  'docusign': 'bg-[#FFCC22]',
+  'zoom': 'bg-[#2D8CFF]',
+  'dropbox': 'bg-[#0061FF]',
+  'asana': 'bg-[#F06A6A]',
+  'trello': 'bg-[#0079BF]',
+  'intercom': 'bg-[#1F8DED]',
+  'twilio': 'bg-[#F22F46]',
+  'square': 'bg-black',
+  'paypal': 'bg-[#003087]',
+  'gusto': 'bg-[#F45D48]',
+  'calendly': 'bg-[#006BFF]',
+  'canva': 'bg-[#00C4CC]',
 };
 
 export function IntegrationLogo({ integration, size = 'md', className = '' }: LogoProps) {
@@ -79,16 +83,17 @@ export function IntegrationLogo({ integration, size = 'md', className = '' }: Lo
   const logoFile = LOGO_FILES[normalizedName];
   const brandColor = BRAND_COLORS[normalizedName] || 'bg-gray-100';
 
-  // If we have a real logo file, use it
+  // If we have a real logo file, use it with img tag (better SVG support)
   if (logoFile) {
     return (
-      <div className={`${sizeConfig.container} ${className} ${brandColor} rounded-lg flex items-center justify-center overflow-hidden p-1.5`}>
-        <Image
+      <div className={`${sizeConfig.container} ${className} ${brandColor} rounded-lg flex items-center justify-center overflow-hidden p-2`}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
           src={`/logos/${logoFile}`}
           alt={`${integration} logo`}
-          width={sizeConfig.pixels}
-          height={sizeConfig.pixels}
-          className="object-contain w-full h-full"
+          width={sizeConfig.imgSize}
+          height={sizeConfig.imgSize}
+          className="object-contain"
         />
       </div>
     );
@@ -96,7 +101,7 @@ export function IntegrationLogo({ integration, size = 'md', className = '' }: Lo
 
   // Fallback: Show first letter with brand color
   return (
-    <div className={`${sizeConfig.container} ${className} ${brandColor || 'bg-gray-200'} rounded-lg flex items-center justify-center`}>
+    <div className={`${sizeConfig.container} ${className} ${brandColor} rounded-lg flex items-center justify-center`}>
       <span className="text-white font-bold text-sm">
         {integration.charAt(0).toUpperCase()}
       </span>
