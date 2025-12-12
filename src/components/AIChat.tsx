@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useWallets } from '@privy-io/react-auth';
 import { useWalletSync } from '../app/providers';
 import { logger } from '@/lib/logger';
+import { Bot, MessageSquare } from 'lucide-react';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 
@@ -126,8 +127,8 @@ export function AIChat() {
   if (isLoading) {
     return (
       <div className="border border-gray-200 rounded-xl p-8 bg-white text-center">
-        <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center text-3xl mx-auto mb-4 animate-pulse">
-          🤖
+        <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4 animate-pulse">
+          <Bot className="w-8 h-8 text-gray-600" />
         </div>
         <h3 className="text-lg font-semibold text-gray-900 mb-2">
           AI Assistant
@@ -143,8 +144,8 @@ export function AIChat() {
   if (!address) {
     return (
       <div className="border border-gray-200 rounded-xl p-8 bg-white text-center">
-        <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center text-3xl mx-auto mb-4">
-          🤖
+        <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+          <Bot className="w-8 h-8 text-gray-600" />
         </div>
         <h3 className="text-lg font-semibold text-gray-900 mb-2">
           AI Assistant
@@ -164,8 +165,8 @@ export function AIChat() {
       {/* Header */}
       <div className="bg-gradient-to-r from-blue-600 to-purple-600 p-4">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center text-2xl">
-            🤖
+          <div className="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center">
+            <Bot className="w-6 h-6 text-white" />
           </div>
           <div>
             <h2 className="text-white font-bold text-lg">AI Business Assistant</h2>
@@ -188,8 +189,8 @@ export function AIChat() {
       <div className="h-[500px] overflow-y-auto p-4 space-y-4 bg-gray-50">
         {messages.length === 0 && (
           <div className="text-center py-8">
-            <div className="w-20 h-20 bg-blue-50 rounded-full flex items-center justify-center text-4xl mx-auto mb-4">
-              💬
+            <div className="w-20 h-20 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-4">
+              <MessageSquare className="w-10 h-10 text-blue-500" />
             </div>
             <h3 className="text-lg font-semibold text-gray-900 mb-2">
               {installedTools.length > 0
@@ -234,8 +235,8 @@ export function AIChat() {
             >
               {msg.role === 'assistant' && (
                 <div className="flex items-center gap-2 mb-2">
-                  <div className="w-6 h-6 bg-gradient-to-r from-blue-600 to-purple-600 rounded-full flex items-center justify-center text-xs">
-                    🤖
+                  <div className="w-6 h-6 bg-gradient-to-r from-blue-600 to-purple-600 rounded-full flex items-center justify-center">
+                    <Bot className="w-3 h-3 text-white" />
                   </div>
                   <span className="text-xs font-semibold text-gray-700">AI Assistant</span>
                 </div>
@@ -267,8 +268,8 @@ export function AIChat() {
           <div className="flex justify-start">
             <div className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
               <div className="flex items-center gap-2">
-                <div className="w-6 h-6 bg-gradient-to-r from-blue-600 to-purple-600 rounded-full flex items-center justify-center text-xs">
-                  🤖
+                <div className="w-6 h-6 bg-gradient-to-r from-blue-600 to-purple-600 rounded-full flex items-center justify-center">
+                  <Bot className="w-3 h-3 text-white" />
                 </div>
                 <div className="flex space-x-2">
                   <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" />

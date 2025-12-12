@@ -4,10 +4,38 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { usePrivy } from '@privy-io/react-auth';
+import {
+  Home,
+  Link as LinkIcon,
+  Plug,
+  BarChart3,
+  MessageSquare,
+  Settings,
+  Wrench,
+  BarChart2,
+  Cloud,
+  ShoppingBag,
+  ClipboardList,
+  CreditCard,
+  TrendingUp,
+  Ticket
+} from 'lucide-react';
 
 interface SidebarProps {
   installedTools?: string[];
 }
+
+// Tool icons mapping using Lucide components
+const toolIconComponents: Record<string, React.ComponentType<{ className?: string }>> = {
+  'QuickBooks': BarChart2,
+  'Salesforce': Cloud,
+  'Shopify': ShoppingBag,
+  'Slack': MessageSquare,
+  'Monday.com': ClipboardList,
+  'Stripe': CreditCard,
+  'HubSpot': TrendingUp,
+  'Zendesk': Ticket,
+};
 
 export function Sidebar({ installedTools = [] }: SidebarProps) {
   const pathname = usePathname();
@@ -16,20 +44,8 @@ export function Sidebar({ installedTools = [] }: SidebarProps) {
 
   const isActive = (path: string) => pathname === path;
 
-  // Tool icons mapping
-  const toolIcons: Record<string, string> = {
-    'QuickBooks': '📊',
-    'Salesforce': '☁️',
-    'Shopify': '🛍️',
-    'Slack': '💬',
-    'Monday.com': '📋',
-    'Stripe': '💳',
-    'HubSpot': '📈',
-    'Zendesk': '🎫',
-  };
-
   const navigationItems = [
-    { name: 'Overview', path: '/dashboard', icon: '🏠' },
+    { name: 'Overview', path: '/dashboard', icon: Home },
   ];
 
   return (
@@ -104,23 +120,26 @@ export function Sidebar({ installedTools = [] }: SidebarProps) {
         <nav className="flex-1 overflow-y-auto py-4 px-3">
           {/* Main Navigation */}
           <div className="space-y-1">
-            {navigationItems.map((item) => (
-              <Link
-                key={item.path}
-                href={item.path}
-                onClick={() => setIsMobileOpen(false)}
-                className={`
-                  flex items-center gap-3 px-3 py-2.5 rounded-lg font-medium transition-colors
-                  ${isActive(item.path)
-                    ? 'bg-blue-50 text-blue-700'
-                    : 'text-gray-700 hover:bg-gray-100'
-                  }
-                `}
-              >
-                <span className="text-xl">{item.icon}</span>
-                <span className="text-sm">{item.name}</span>
-              </Link>
-            ))}
+            {navigationItems.map((item) => {
+              const IconComponent = item.icon;
+              return (
+                <Link
+                  key={item.path}
+                  href={item.path}
+                  onClick={() => setIsMobileOpen(false)}
+                  className={`
+                    flex items-center gap-3 px-3 py-2.5 rounded-lg font-medium transition-colors
+                    ${isActive(item.path)
+                      ? 'bg-blue-50 text-blue-700'
+                      : 'text-gray-700 hover:bg-gray-100'
+                    }
+                  `}
+                >
+                  <IconComponent className="w-5 h-5" />
+                  <span className="text-sm">{item.name}</span>
+                </Link>
+              );
+            })}
           </div>
 
           {/* Divider */}
@@ -132,20 +151,23 @@ export function Sidebar({ installedTools = [] }: SidebarProps) {
               Your Tools
             </p>
             {installedTools.length > 0 ? (
-              installedTools.map((tool) => (
-                <Link
-                  key={tool}
-                  href={`/dashboard/tools/${tool.toLowerCase().replace(/\./g, '')}`}
-                  onClick={() => setIsMobileOpen(false)}
-                  className={`
-                    flex items-center gap-3 px-3 py-2.5 rounded-lg font-medium transition-colors
-                    text-gray-700 hover:bg-gray-100
-                  `}
-                >
-                  <span className="text-xl">{toolIcons[tool] || '🔧'}</span>
-                  <span className="text-sm">{tool}</span>
-                </Link>
-              ))
+              installedTools.map((tool) => {
+                const ToolIcon = toolIconComponents[tool] || Wrench;
+                return (
+                  <Link
+                    key={tool}
+                    href={`/dashboard/tools/${tool.toLowerCase().replace(/\./g, '')}`}
+                    onClick={() => setIsMobileOpen(false)}
+                    className={`
+                      flex items-center gap-3 px-3 py-2.5 rounded-lg font-medium transition-colors
+                      text-gray-700 hover:bg-gray-100
+                    `}
+                  >
+                    <ToolIcon className="w-5 h-5" />
+                    <span className="text-sm">{tool}</span>
+                  </Link>
+                );
+              })
             ) : (
               <div className="px-3 py-2 text-xs text-gray-500">
                 No tools installed yet
@@ -169,7 +191,7 @@ export function Sidebar({ installedTools = [] }: SidebarProps) {
                 }
               `}
             >
-              <span className="text-xl">🔗</span>
+              <LinkIcon className="w-5 h-5" />
               <span className="text-sm">Integrations</span>
             </Link>
             <Link
@@ -183,7 +205,7 @@ export function Sidebar({ installedTools = [] }: SidebarProps) {
                 }
               `}
             >
-              <span className="text-xl">🔌</span>
+              <Plug className="w-5 h-5" />
               <span className="text-sm">Marketplace</span>
             </Link>
             <Link
@@ -197,7 +219,7 @@ export function Sidebar({ installedTools = [] }: SidebarProps) {
                 }
               `}
             >
-              <span className="text-xl">📊</span>
+              <BarChart3 className="w-5 h-5" />
               <span className="text-sm">Analytics</span>
             </Link>
             <Link
@@ -211,7 +233,7 @@ export function Sidebar({ installedTools = [] }: SidebarProps) {
                 }
               `}
             >
-              <span className="text-xl">💬</span>
+              <MessageSquare className="w-5 h-5" />
               <span className="text-sm">AI Assistant</span>
             </Link>
             <Link
@@ -225,7 +247,7 @@ export function Sidebar({ installedTools = [] }: SidebarProps) {
                 }
               `}
             >
-              <span className="text-xl">⚙️</span>
+              <Settings className="w-5 h-5" />
               <span className="text-sm">Settings</span>
             </Link>
           </div>

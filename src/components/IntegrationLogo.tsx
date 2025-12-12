@@ -6,6 +6,7 @@
  */
 
 import React from 'react';
+import { BarChart3, Users, ShoppingCart, MessageSquare, ClipboardList, CreditCard, TrendingUp, Ticket, Zap, Package } from 'lucide-react';
 
 type LogoProps = {
   integration: string;
@@ -119,17 +120,19 @@ export function IntegrationLogo({ integration, size = 'md', className = '' }: Lo
  * Displays icons for integration categories
  */
 export function CategoryIcon({ category }: { category: string }) {
-  const icons: Record<string, string> = {
-    'Accounting': '📊',
-    'CRM': '👥',
-    'E-commerce': '🛒',
-    'Communication': '💬',
-    'Project Management': '📋',
-    'Payments': '💳',
-    'Marketing': '📈',
-    'Customer Support': '🎫',
-    'Productivity': '⚡',
+  const iconClass = "w-5 h-5";
+
+  const icons: Record<string, JSX.Element> = {
+    'Accounting': <BarChart3 className={iconClass} />,
+    'CRM': <Users className={iconClass} />,
+    'E-commerce': <ShoppingCart className={iconClass} />,
+    'Communication': <MessageSquare className={iconClass} />,
+    'Project Management': <ClipboardList className={iconClass} />,
+    'Payments': <CreditCard className={iconClass} />,
+    'Marketing': <TrendingUp className={iconClass} />,
+    'Customer Support': <Ticket className={iconClass} />,
+    'Productivity': <Zap className={iconClass} />,
   };
 
-  return <span className="text-xl">{icons[category] || '📦'}</span>;
+  return icons[category] || <Package className={iconClass} />;
 }

@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Layout } from '@/components/Layout';
 import { AIChat } from '@/components/AIChat';
+import { Download, Trash2, Bot, BarChart3, Users, DollarSign, TrendingUp, Mail, Target } from 'lucide-react';
 
 /**
  * AI Assistant Page Content
@@ -65,12 +66,12 @@ export default function AIAssistantContent() {
   ]);
 
   const quickPrompts = [
-    '📊 Show me my revenue this month',
-    '👥 How many new customers this week?',
-    '💰 What are my top expenses?',
-    '📈 Compare sales vs last month',
-    '📧 Summarize my recent emails',
-    '🎯 Show my sales pipeline',
+    'Show me my revenue this month',
+    'How many new customers this week?',
+    'What are my top expenses?',
+    'Compare sales vs last month',
+    'Summarize my recent emails',
+    'Show my sales pipeline',
   ];
 
   // Redirect if not authenticated
@@ -129,13 +130,13 @@ export default function AIAssistantContent() {
                 onClick={handleExportChat}
                 className="text-gray-600 hover:text-gray-900 px-3 py-2 rounded-lg hover:bg-gray-100 transition-all text-sm font-medium"
               >
-                📥 Export
+                <Download className="w-4 h-4 inline mr-1" /> Export
               </button>
               <button
                 onClick={handleClearChat}
                 className="text-gray-600 hover:text-gray-900 px-3 py-2 rounded-lg hover:bg-gray-100 transition-all text-sm font-medium"
               >
-                🗑️ Clear
+                <Trash2 className="w-4 h-4 inline mr-1" /> Clear
               </button>
               <button
                 onClick={handleNewConversation}
@@ -204,7 +205,9 @@ export default function AIAssistantContent() {
             {!selectedConversation && conversations.length === 0 && (
               <div className="flex-1 flex items-center justify-center p-8">
                 <div className="max-w-2xl text-center">
-                  <div className="text-6xl mb-6">🤖</div>
+                  <div className="flex justify-center mb-6">
+                    <Bot className="w-16 h-16 text-blue-600" />
+                  </div>
                   <h1 className="text-3xl font-bold text-gray-900 mb-4">
                     AI Assistant
                   </h1>

@@ -7,6 +7,14 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Layout } from '@/components/Layout';
 import { logger } from '@/lib/logger';
+import {
+  FileSpreadsheet,
+  FileText,
+  DollarSign,
+  Users,
+  BarChart3,
+  Target
+} from 'lucide-react';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 
@@ -183,13 +191,13 @@ export default function AnalyticsContent() {
                   onClick={handleExportCSV}
                   className="text-gray-600 hover:text-gray-900 px-4 py-2 rounded-lg hover:bg-white border border-gray-200 transition-all text-sm font-medium"
                 >
-                  📊 Export CSV
+                  <FileSpreadsheet className="w-4 h-4 inline mr-1" /> Export CSV
                 </button>
                 <button
                   onClick={handleExportPDF}
                   className="text-gray-600 hover:text-gray-900 px-4 py-2 rounded-lg hover:bg-white border border-gray-200 transition-all text-sm font-medium"
                 >
-                  📄 Export PDF
+                  <FileText className="w-4 h-4 inline mr-1" /> Export PDF
                 </button>
               </div>
             </div>
@@ -278,8 +286,8 @@ export default function AnalyticsContent() {
           <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
             <div className="bg-white border border-gray-200 rounded-xl p-6">
               <div className="flex items-center gap-3 mb-3">
-                <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center text-2xl">
-                  💰
+                <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
+                  <DollarSign className="w-6 h-6 text-green-600" />
                 </div>
                 <div>
                   <p className="text-sm text-gray-600">Total Revenue</p>
@@ -297,8 +305,8 @@ export default function AnalyticsContent() {
 
             <div className="bg-white border border-gray-200 rounded-xl p-6">
               <div className="flex items-center gap-3 mb-3">
-                <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center text-2xl">
-                  👥
+                <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
+                  <Users className="w-6 h-6 text-blue-600" />
                 </div>
                 <div>
                   <p className="text-sm text-gray-600">Total Customers</p>
@@ -316,8 +324,8 @@ export default function AnalyticsContent() {
 
             <div className="bg-white border border-gray-200 rounded-xl p-6">
               <div className="flex items-center gap-3 mb-3">
-                <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center text-2xl">
-                  📊
+                <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center">
+                  <BarChart3 className="w-6 h-6 text-orange-600" />
                 </div>
                 <div>
                   <p className="text-sm text-gray-600">Avg Revenue</p>
@@ -331,8 +339,8 @@ export default function AnalyticsContent() {
 
             <div className="bg-white border border-gray-200 rounded-xl p-6">
               <div className="flex items-center gap-3 mb-3">
-                <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center text-2xl">
-                  🎯
+                <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center">
+                  <Target className="w-6 h-6 text-purple-600" />
                 </div>
                 <div>
                   <p className="text-sm text-gray-600">Conversion Rate</p>

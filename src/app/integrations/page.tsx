@@ -9,6 +9,7 @@ import { Layout } from '@/components/Layout';
 import { IntegrationLogo } from '@/components/IntegrationLogo';
 import { CONTRACTS, TOOL_MARKETPLACE_ABI, TOOL_LICENSE_NFT_ABI } from '@/lib/contracts';
 import { logger } from '@/lib/logger';
+import { Shield, Package, AlertTriangle } from 'lucide-react';
 
 /**
  * Integration Management Page
@@ -357,7 +358,7 @@ export default function IntegrationsPage() {
           {/* Security Overview */}
           <div className="bg-gradient-to-r from-purple-50 to-blue-50 border-2 border-purple-200 rounded-xl p-6 mb-8">
             <h3 className="font-bold text-gray-900 mb-3 flex items-center gap-2">
-              <span className="text-2xl">🔒</span>
+              <Shield className="w-6 h-6 text-purple-600" />
               <span>Maximum Security & Privacy</span>
             </h3>
             <div className="grid md:grid-cols-4 gap-4">
@@ -397,7 +398,9 @@ export default function IntegrationsPage() {
           {/* No Integrations */}
           {!loading && !licensesLoading && ownedIntegrations.length === 0 && (
             <div className="bg-white rounded-xl shadow-lg p-12 text-center">
-              <div className="text-6xl mb-4">📦</div>
+              <div className="flex justify-center mb-4">
+                <Package className="w-16 h-16 text-gray-400" />
+              </div>
               <h2 className="text-2xl font-bold text-gray-900 mb-2">
                 No Integrations Yet
               </h2>
@@ -447,7 +450,7 @@ export default function IntegrationsPage() {
                     {!integration.oauthConnected && (
                       <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">
                         <p className="text-sm font-semibold text-yellow-900 mb-2">
-                          ⚠️ OAuth Connection Required
+                          <AlertTriangle className="w-4 h-4 inline mr-1" /> OAuth Connection Required
                         </p>
                         <p className="text-xs text-yellow-800 mb-3">
                           Connect your {integration.name} account to start syncing data

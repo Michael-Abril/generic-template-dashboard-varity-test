@@ -8,6 +8,7 @@ import { Layout } from '@/components/Layout';
 import { IntegrationLogo } from '@/components/IntegrationLogo';
 import * as marketplaceService from '@/services/marketplaceService';
 import { logger } from '@/lib/logger';
+import { Link2, BarChart3, Shield } from 'lucide-react';
 
 /**
  * Generic Onboarding Wizard
@@ -217,7 +218,7 @@ export default function OnboardingPage() {
                   </p>
                   {mode === 'connect' && (
                     <div className="mt-3 inline-flex items-center gap-2 bg-green-100 text-green-700 px-4 py-2 rounded-lg text-sm font-medium">
-                      <span>🔗</span>
+                      <Link2 className="w-4 h-4" />
                       <span>Connecting Existing Account</span>
                     </div>
                   )}
@@ -225,7 +226,7 @@ export default function OnboardingPage() {
 
                 <div className="bg-blue-50 border border-blue-200 rounded-xl p-6 mb-6">
                   <h3 className="font-semibold text-gray-900 mb-4">
-                    📊 What will be synced:
+                    <BarChart3 className="w-5 h-5 inline mr-2 text-blue-600" /> What will be synced:
                   </h3>
                   <div className="grid grid-cols-2 gap-3">
                     {config.sync_capabilities.map((capability) => (
@@ -239,7 +240,7 @@ export default function OnboardingPage() {
 
                 <div className="bg-purple-50 border border-purple-200 rounded-xl p-6 mb-6">
                   <h4 className="font-semibold text-gray-900 mb-2 flex items-center gap-2">
-                    <span>🔒</span>
+                    <Shield className="w-5 h-5 text-purple-600" />
                     <span>Data Security & Privacy</span>
                   </h4>
                   <ul className="space-y-2 text-sm text-gray-700">
@@ -397,7 +398,11 @@ export default function OnboardingPage() {
             {/* Complete Step */}
             {step === 'complete' && (
               <div className="p-8 text-center">
-                <div className="text-6xl mb-6 animate-bounce">🎉</div>
+                <div className="flex justify-center mb-6 animate-bounce">
+                  <svg className="w-16 h-16 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
                 <h2 className="text-3xl font-bold text-gray-900 mb-4">
                   {config.product_name} Connected Successfully!
                 </h2>

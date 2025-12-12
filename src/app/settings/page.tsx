@@ -6,6 +6,7 @@ import { useWallets } from '@privy-io/react-auth';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Layout } from '@/components/Layout';
+import { User, Bell, CreditCard, Users, Lock, Database } from 'lucide-react';
 
 /**
  * Settings Page
@@ -59,12 +60,12 @@ export default function SettingsPage() {
   };
 
   const tabs = [
-    { id: 'account' as SettingsTab, label: 'Account', icon: '👤' },
-    { id: 'notifications' as SettingsTab, label: 'Notifications', icon: '🔔' },
-    { id: 'billing' as SettingsTab, label: 'Billing', icon: '💳' },
-    { id: 'team' as SettingsTab, label: 'Team', icon: '👥' },
-    { id: 'security' as SettingsTab, label: 'Security', icon: '🔒' },
-    { id: 'data' as SettingsTab, label: 'Data', icon: '📦' },
+    { id: 'account' as SettingsTab, label: 'Account', icon: User },
+    { id: 'notifications' as SettingsTab, label: 'Notifications', icon: Bell },
+    { id: 'billing' as SettingsTab, label: 'Billing', icon: CreditCard },
+    { id: 'team' as SettingsTab, label: 'Team', icon: Users },
+    { id: 'security' as SettingsTab, label: 'Security', icon: Lock },
+    { id: 'data' as SettingsTab, label: 'Data', icon: Database },
   ];
 
   return (
@@ -103,7 +104,7 @@ export default function SettingsPage() {
                           : 'text-gray-700 hover:bg-gray-50 border-l-4 border-transparent'
                       }`}
                     >
-                      <span className="text-2xl">{tab.icon}</span>
+                      <tab.icon className="w-5 h-5" />
                       <span>{tab.label}</span>
                     </button>
                   ))}
