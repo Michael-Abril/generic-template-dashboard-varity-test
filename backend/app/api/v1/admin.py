@@ -53,6 +53,8 @@ CATEGORIES = [
 
 # =====================================================================
 # PRODUCTS DATA - Core SMB Integrations
+# Matches Product model fields: name, slug, developer, category, logo_url,
+# description, short_description, coming_soon, active, has_adapter
 # =====================================================================
 
 PRODUCTS = [
@@ -60,375 +62,303 @@ PRODUCTS = [
     {
         "name": "QuickBooks",
         "slug": "quickbooks",
-        "provider": "Intuit",
-        "category_slug": "accounting",
+        "developer": "Intuit",
+        "category": "accounting",
         "logo_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/d/da/Intuit_QuickBooks_logo.svg/1200px-Intuit_QuickBooks_logo.svg.png",
         "description": "Industry-leading accounting software for small businesses. Track expenses, create invoices, and manage your finances.",
         "short_description": "Accounting & invoicing for small business",
-        "oauth_configured": True,
         "coming_soon": False,
-        "is_active": True,
-        "integration_type": "oauth",
-        "data_types": ["invoices", "expenses", "accounts", "customers", "vendors", "transactions"],
-        "sort_order": 1
+        "active": True,
+        "has_adapter": True
     },
     {
         "name": "Xero",
         "slug": "xero",
-        "provider": "Xero Limited",
-        "category_slug": "accounting",
+        "developer": "Xero Limited",
+        "category": "accounting",
         "logo_url": "https://upload.wikimedia.org/wikipedia/en/thumb/0/01/Xero_software_logo.svg/1200px-Xero_software_logo.svg.png",
         "description": "Beautiful accounting software for small businesses. Connect your bank, track projects, and collaborate with your team.",
         "short_description": "Cloud accounting for modern businesses",
-        "oauth_configured": False,
         "coming_soon": False,
-        "is_active": True,
-        "integration_type": "oauth",
-        "data_types": ["invoices", "bills", "bank_transactions", "contacts"],
-        "sort_order": 2
+        "active": True,
+        "has_adapter": False
     },
     {
         "name": "FreshBooks",
         "slug": "freshbooks",
-        "provider": "FreshBooks",
-        "category_slug": "accounting",
+        "developer": "FreshBooks",
+        "category": "accounting",
         "logo_url": "https://upload.wikimedia.org/wikipedia/commons/4/4f/FreshBooks_logo.png",
         "description": "Invoicing and accounting software built for small business owners. Simple, intuitive, and powerful.",
         "short_description": "Invoicing made easy",
-        "oauth_configured": False,
         "coming_soon": False,
-        "is_active": True,
-        "integration_type": "oauth",
-        "data_types": ["invoices", "expenses", "time_tracking", "clients"],
-        "sort_order": 3
+        "active": True,
+        "has_adapter": False
     },
     # PRODUCTIVITY
     {
         "name": "Google Workspace",
         "slug": "google",
-        "provider": "Google",
-        "category_slug": "productivity",
+        "developer": "Google",
+        "category": "productivity",
         "logo_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/4/4e/Google_2015_logo.svg/1200px-Google_2015_logo.svg.png",
         "description": "Complete productivity suite including Gmail, Drive, Docs, Sheets, and more. Collaborate in real-time with your team.",
         "short_description": "Email, docs, and productivity suite",
-        "oauth_configured": False,
         "coming_soon": False,
-        "is_active": True,
-        "integration_type": "oauth",
-        "data_types": ["emails", "documents", "spreadsheets", "calendar", "contacts"],
-        "sort_order": 1
+        "active": True,
+        "has_adapter": False
     },
     {
         "name": "Microsoft 365",
         "slug": "microsoft",
-        "provider": "Microsoft",
-        "category_slug": "productivity",
+        "developer": "Microsoft",
+        "category": "productivity",
         "logo_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/4/44/Microsoft_logo.svg/1200px-Microsoft_logo.svg.png",
         "description": "Office apps and cloud services for business. Word, Excel, PowerPoint, Outlook, Teams, and more.",
         "short_description": "Office apps and business tools",
-        "oauth_configured": False,
         "coming_soon": False,
-        "is_active": True,
-        "integration_type": "oauth",
-        "data_types": ["emails", "documents", "spreadsheets", "calendar", "files"],
-        "sort_order": 2
+        "active": True,
+        "has_adapter": False
     },
     # COMMUNICATION
     {
         "name": "Slack",
         "slug": "slack",
-        "provider": "Salesforce",
-        "category_slug": "communication",
+        "developer": "Salesforce",
+        "category": "communication",
         "logo_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d5/Slack_icon_2019.svg/1200px-Slack_icon_2019.svg.png",
         "description": "Business messaging platform for teams. Channels, direct messages, integrations, and powerful search.",
         "short_description": "Team messaging and collaboration",
-        "oauth_configured": False,
         "coming_soon": False,
-        "is_active": True,
-        "integration_type": "oauth",
-        "data_types": ["messages", "channels", "users", "files"],
-        "sort_order": 1
+        "active": True,
+        "has_adapter": False
     },
     {
         "name": "Zoom",
         "slug": "zoom",
-        "provider": "Zoom Video Communications",
-        "category_slug": "communication",
+        "developer": "Zoom Video Communications",
+        "category": "communication",
         "logo_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/1/11/Zoom_Logo_2022.svg/1200px-Zoom_Logo_2022.svg.png",
         "description": "Video conferencing and online meeting platform. HD video, screen sharing, and recording.",
         "short_description": "Video meetings and webinars",
-        "oauth_configured": False,
         "coming_soon": False,
-        "is_active": True,
-        "integration_type": "oauth",
-        "data_types": ["meetings", "recordings", "participants"],
-        "sort_order": 2
+        "active": True,
+        "has_adapter": False
     },
     # CRM
     {
         "name": "HubSpot",
         "slug": "hubspot",
-        "provider": "HubSpot",
-        "category_slug": "crm",
+        "developer": "HubSpot",
+        "category": "crm",
         "logo_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/3/3f/HubSpot_Logo.svg/1200px-HubSpot_Logo.svg.png",
         "description": "Complete CRM platform with marketing, sales, and service tools. Free to start, scales as you grow.",
         "short_description": "CRM, marketing & sales platform",
-        "oauth_configured": False,
         "coming_soon": False,
-        "is_active": True,
-        "integration_type": "oauth",
-        "data_types": ["contacts", "companies", "deals", "tickets", "emails"],
-        "sort_order": 1
+        "active": True,
+        "has_adapter": False
     },
     {
         "name": "Salesforce",
         "slug": "salesforce",
-        "provider": "Salesforce",
-        "category_slug": "crm",
+        "developer": "Salesforce",
+        "category": "crm",
         "logo_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/f/f9/Salesforce.com_logo.svg/1200px-Salesforce.com_logo.svg.png",
         "description": "World's #1 CRM platform. Sales, service, marketing, and analytics in one integrated platform.",
         "short_description": "Enterprise CRM platform",
-        "oauth_configured": False,
         "coming_soon": False,
-        "is_active": True,
-        "integration_type": "oauth",
-        "data_types": ["leads", "opportunities", "accounts", "contacts", "cases"],
-        "sort_order": 2
+        "active": True,
+        "has_adapter": False
     },
     # E-COMMERCE
     {
         "name": "Shopify",
         "slug": "shopify",
-        "provider": "Shopify",
-        "category_slug": "e-commerce",
+        "developer": "Shopify",
+        "category": "e-commerce",
         "logo_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/0/0e/Shopify_logo_2018.svg/1200px-Shopify_logo_2018.svg.png",
         "description": "E-commerce platform for online stores. Sell products, process payments, and manage inventory.",
         "short_description": "E-commerce and online store platform",
-        "oauth_configured": False,
         "coming_soon": False,
-        "is_active": True,
-        "integration_type": "oauth",
-        "data_types": ["orders", "products", "customers", "inventory"],
-        "sort_order": 1
+        "active": True,
+        "has_adapter": False
     },
     # PAYMENTS
     {
         "name": "Stripe",
         "slug": "stripe",
-        "provider": "Stripe",
-        "category_slug": "payments",
+        "developer": "Stripe",
+        "category": "payments",
         "logo_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/b/ba/Stripe_Logo%2C_revised_2016.svg/1200px-Stripe_Logo%2C_revised_2016.svg.png",
         "description": "Payment processing infrastructure. Accept payments, send payouts, and manage finances online.",
         "short_description": "Payment processing infrastructure",
-        "oauth_configured": False,
         "coming_soon": True,
-        "is_active": True,
-        "integration_type": "oauth",
-        "data_types": ["payments", "customers", "invoices", "subscriptions"],
-        "sort_order": 1
+        "active": True,
+        "has_adapter": False
     },
     {
         "name": "Square",
         "slug": "square",
-        "provider": "Square (Block)",
-        "category_slug": "pos",
+        "developer": "Square (Block)",
+        "category": "pos",
         "logo_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/3/30/Square%2C_Inc._-_Square_logo.svg/1200px-Square%2C_Inc._-_Square_logo.svg.png",
         "description": "Point of sale, payments, and business tools. Accept payments anywhere with Square hardware.",
         "short_description": "POS and payment processing",
-        "oauth_configured": False,
         "coming_soon": True,
-        "is_active": True,
-        "integration_type": "oauth",
-        "data_types": ["transactions", "customers", "inventory", "employees"],
-        "sort_order": 1
+        "active": True,
+        "has_adapter": False
     },
     {
         "name": "PayPal",
         "slug": "paypal",
-        "provider": "PayPal",
-        "category_slug": "payments",
+        "developer": "PayPal",
+        "category": "payments",
         "logo_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/b/b5/PayPal.svg/1200px-PayPal.svg.png",
         "description": "Online payment system supporting online money transfers. Accept payments from around the world.",
         "short_description": "Online payments and money transfers",
-        "oauth_configured": False,
         "coming_soon": True,
-        "is_active": True,
-        "integration_type": "oauth",
-        "data_types": ["transactions", "invoices", "subscriptions"],
-        "sort_order": 2
+        "active": True,
+        "has_adapter": False
     },
     # CUSTOMER SUPPORT
     {
         "name": "Zendesk",
         "slug": "zendesk",
-        "provider": "Zendesk",
-        "category_slug": "customer-support",
+        "developer": "Zendesk",
+        "category": "customer-support",
         "logo_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c8/Zendesk_logo.svg/1200px-Zendesk_logo.svg.png",
         "description": "Customer service software and support ticketing system. Help desk, chat, and knowledge base.",
         "short_description": "Customer service and help desk",
-        "oauth_configured": False,
         "coming_soon": False,
-        "is_active": True,
-        "integration_type": "oauth",
-        "data_types": ["tickets", "users", "organizations"],
-        "sort_order": 1
+        "active": True,
+        "has_adapter": False
     },
     {
         "name": "Intercom",
         "slug": "intercom",
-        "provider": "Intercom",
-        "category_slug": "customer-support",
+        "developer": "Intercom",
+        "category": "customer-support",
         "logo_url": "https://upload.wikimedia.org/wikipedia/en/6/69/Intercom_logo.svg",
         "description": "Customer messaging platform. Live chat, bots, and product tours for customer engagement.",
         "short_description": "Customer messaging platform",
-        "oauth_configured": False,
         "coming_soon": True,
-        "is_active": True,
-        "integration_type": "oauth",
-        "data_types": ["conversations", "users", "companies"],
-        "sort_order": 2
+        "active": True,
+        "has_adapter": False
     },
     # MARKETING
     {
         "name": "Mailchimp",
         "slug": "mailchimp",
-        "provider": "Intuit",
-        "category_slug": "marketing",
+        "developer": "Intuit",
+        "category": "marketing",
         "logo_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/4/45/Mailchimp_Logo_2018.svg/1200px-Mailchimp_Logo_2018.svg.png",
         "description": "Email marketing and automation platform. Build campaigns, manage audiences, and track results.",
         "short_description": "Email marketing and automation",
-        "oauth_configured": False,
         "coming_soon": False,
-        "is_active": True,
-        "integration_type": "oauth",
-        "data_types": ["campaigns", "audiences", "reports"],
-        "sort_order": 1
+        "active": True,
+        "has_adapter": False
     },
     # PROJECT MANAGEMENT
     {
         "name": "Asana",
         "slug": "asana",
-        "provider": "Asana",
-        "category_slug": "project-management",
+        "developer": "Asana",
+        "category": "project-management",
         "logo_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/3/3b/Asana_logo.svg/1200px-Asana_logo.svg.png",
         "description": "Work management platform for teams. Organize projects, track tasks, and hit deadlines.",
         "short_description": "Project and task management",
-        "oauth_configured": False,
         "coming_soon": True,
-        "is_active": True,
-        "integration_type": "oauth",
-        "data_types": ["tasks", "projects", "users", "teams"],
-        "sort_order": 1
+        "active": True,
+        "has_adapter": False
     },
     {
         "name": "Trello",
         "slug": "trello",
-        "provider": "Atlassian",
-        "category_slug": "project-management",
+        "developer": "Atlassian",
+        "category": "project-management",
         "logo_url": "https://upload.wikimedia.org/wikipedia/en/thumb/8/8c/Trello_logo.svg/1200px-Trello_logo.svg.png",
         "description": "Visual project management with boards, lists, and cards. Simple and flexible for any workflow.",
         "short_description": "Visual project boards",
-        "oauth_configured": False,
         "coming_soon": True,
-        "is_active": True,
-        "integration_type": "oauth",
-        "data_types": ["boards", "cards", "lists", "members"],
-        "sort_order": 2
+        "active": True,
+        "has_adapter": False
     },
     {
         "name": "Monday.com",
         "slug": "monday",
-        "provider": "Monday.com",
-        "category_slug": "project-management",
+        "developer": "Monday.com",
+        "category": "project-management",
         "logo_url": "https://upload.wikimedia.org/wikipedia/commons/c/c6/Monday_logo.svg",
         "description": "Work operating system for teams. Manage projects, workflows, and team collaboration.",
         "short_description": "Work OS for team productivity",
-        "oauth_configured": False,
         "coming_soon": True,
-        "is_active": True,
-        "integration_type": "oauth",
-        "data_types": ["boards", "items", "users", "updates"],
-        "sort_order": 3
+        "active": True,
+        "has_adapter": False
     },
     # DOCUMENTS
     {
         "name": "DocuSign",
         "slug": "docusign",
-        "provider": "DocuSign",
-        "category_slug": "documents",
+        "developer": "DocuSign",
+        "category": "documents",
         "logo_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/c/cb/DocuSign_Logo.png/1200px-DocuSign_Logo.png",
         "description": "Electronic signature and agreement cloud. Sign, send, and manage documents securely.",
         "short_description": "Electronic signatures and agreements",
-        "oauth_configured": False,
         "coming_soon": False,
-        "is_active": True,
-        "integration_type": "oauth",
-        "data_types": ["envelopes", "documents", "templates"],
-        "sort_order": 1
+        "active": True,
+        "has_adapter": False
     },
     # STORAGE
     {
         "name": "Dropbox",
         "slug": "dropbox",
-        "provider": "Dropbox",
-        "category_slug": "storage",
+        "developer": "Dropbox",
+        "category": "storage",
         "logo_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/7/78/Dropbox_Icon.svg/1200px-Dropbox_Icon.svg.png",
         "description": "Cloud file storage and sharing. Store files, sync across devices, and collaborate with teams.",
         "short_description": "Cloud storage and file sharing",
-        "oauth_configured": False,
         "coming_soon": False,
-        "is_active": True,
-        "integration_type": "oauth",
-        "data_types": ["files", "folders", "shared_links"],
-        "sort_order": 1
+        "active": True,
+        "has_adapter": False
     },
     # PAYROLL & HR
     {
         "name": "Gusto",
         "slug": "gusto",
-        "provider": "Gusto",
-        "category_slug": "payroll-hr",
+        "developer": "Gusto",
+        "category": "payroll-hr",
         "logo_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/3/3d/Gusto_Logo.svg/1200px-Gusto_Logo.svg.png",
         "description": "Payroll, benefits, and HR for modern businesses. Easy setup, automatic tax filing, and compliance.",
         "short_description": "Payroll and HR platform",
-        "oauth_configured": False,
         "coming_soon": True,
-        "is_active": True,
-        "integration_type": "oauth",
-        "data_types": ["employees", "payrolls", "benefits", "time_off"],
-        "sort_order": 1
+        "active": True,
+        "has_adapter": False
     },
     # SCHEDULING
     {
         "name": "Calendly",
         "slug": "calendly",
-        "provider": "Calendly",
-        "category_slug": "scheduling",
+        "developer": "Calendly",
+        "category": "scheduling",
         "logo_url": "https://upload.wikimedia.org/wikipedia/commons/1/1e/Calendly-Logo-Square.png",
         "description": "Scheduling automation platform. Share availability, book meetings, and eliminate scheduling conflicts.",
         "short_description": "Meeting scheduling automation",
-        "oauth_configured": False,
         "coming_soon": True,
-        "is_active": True,
-        "integration_type": "oauth",
-        "data_types": ["events", "users", "event_types"],
-        "sort_order": 1
+        "active": True,
+        "has_adapter": False
     },
     # DESIGN
     {
         "name": "Canva",
         "slug": "canva",
-        "provider": "Canva",
-        "category_slug": "design",
+        "developer": "Canva",
+        "category": "design",
         "logo_url": "https://upload.wikimedia.org/wikipedia/en/thumb/b/bb/Canva_Logo.svg/1200px-Canva_Logo.svg.png",
         "description": "Graphic design platform for creating presentations, social media graphics, and marketing materials.",
         "short_description": "Graphic design made easy",
-        "oauth_configured": False,
         "coming_soon": True,
-        "is_active": True,
-        "integration_type": "oauth",
-        "data_types": ["designs", "folders", "templates"],
-        "sort_order": 1
+        "active": True,
+        "has_adapter": False
     }
 ]
 
@@ -456,31 +386,19 @@ async def seed_marketplace(
 
         # Seed categories first
         logger.info("Seeding categories...")
-        category_map = {}
         for cat_data in CATEGORIES:
             category = Category(**cat_data)
             db.add(category)
-            category_map[cat_data["slug"]] = category
 
         await db.flush()
         logger.info(f"Created {len(CATEGORIES)} categories")
 
-        # Seed products
+        # Seed products - product data already has correct field names
         logger.info("Seeding products...")
-        for idx, prod_data in enumerate(PRODUCTS, 1):
-            # Get category by slug
-            category_slug = prod_data.pop("category_slug")
-            category = category_map.get(category_slug)
-
-            if category:
-                prod_data["category_id"] = category.id
-
-            # Handle data_types as JSON
-            if "data_types" in prod_data:
-                import json
-                prod_data["data_types"] = json.dumps(prod_data["data_types"])
-
-            product = Product(**prod_data)
+        for prod_data in PRODUCTS:
+            # Create a copy to avoid modifying the original
+            data = prod_data.copy()
+            product = Product(**data)
             db.add(product)
 
         await db.commit()
