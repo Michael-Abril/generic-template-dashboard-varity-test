@@ -35,7 +35,7 @@ export default function HomePage() {
               {/* Back to Varity Link */}
               <div className="mb-6">
                 <Link
-                  href="https://varity.so"
+                  href="https://www.varity.so"
                   className="inline-flex items-center gap-2 text-foreground-muted hover:text-foreground-secondary transition-colors text-sm"
                 >
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -103,7 +103,7 @@ export default function HomePage() {
                 </button>
                 
                 <Link
-                  href="https://varity.so/dashboard"
+                  href="https://www.varity.so/dashboard"
                   className="inline-flex items-center justify-center gap-2 h-14 px-10 rounded-lg text-lg font-medium border border-border bg-transparent text-foreground hover:bg-background-quaternary hover:border-brand-500 transition-all duration-200"
                 >
                   Learn More
@@ -257,16 +257,16 @@ export default function HomePage() {
 
           {/* Navigation Links */}
           <div className="flex flex-wrap justify-center gap-6 mb-6">
-            <Link href="https://varity.so" className="text-sm text-foreground-muted hover:text-foreground-secondary transition-colors">
+            <Link href="https://www.varity.so" className="text-sm text-foreground-muted hover:text-foreground-secondary transition-colors">
               Varity Home
             </Link>
-            <Link href="https://varity.so/dashboard" className="text-sm text-foreground-muted hover:text-foreground-secondary transition-colors">
+            <Link href="https://www.varity.so/dashboard" className="text-sm text-foreground-muted hover:text-foreground-secondary transition-colors">
               Dashboard
             </Link>
-            <Link href="https://varity.so/pricing" className="text-sm text-foreground-muted hover:text-foreground-secondary transition-colors">
+            <Link href="https://www.varity.so/pricing" className="text-sm text-foreground-muted hover:text-foreground-secondary transition-colors">
               Pricing
             </Link>
-            <Link href="https://varity.so/contact" className="text-sm text-foreground-muted hover:text-foreground-secondary transition-colors">
+            <Link href="https://www.varity.so/contact" className="text-sm text-foreground-muted hover:text-foreground-secondary transition-colors">
               Contact
             </Link>
           </div>
