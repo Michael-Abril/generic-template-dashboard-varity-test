@@ -16,7 +16,7 @@ from app.models.marketplace import Category, Product, PricingPlan, PlanFeature, 
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/admin", tags=["admin"])
+router = APIRouter(tags=["admin"])
 
 # Admin secret key - should be set in Railway environment variables
 ADMIN_SECRET = os.getenv("ADMIN_SECRET_KEY", "varity-admin-secret-2025")
