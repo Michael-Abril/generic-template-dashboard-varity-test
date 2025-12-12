@@ -225,7 +225,7 @@ export function SignupProgressBar({
       {/* Value Proposition Highlight */}
       <div className="mb-4 p-3 rounded-lg bg-gradient-to-r from-brand-500/5 to-electric-400/5 border border-brand-500/10">
         <p className="text-base font-semibold text-foreground mb-0.5">
-          Get <span className="text-brand-400">1 month free</span> - Save $299
+          Get <span className="text-brand-400">1 month free</span> - Save up to $199
         </p>
         <p className="text-sm text-foreground-muted">
           Join the first 100 businesses and unlock your free month
