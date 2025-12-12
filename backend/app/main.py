@@ -64,6 +64,8 @@ ALLOWED_ORIGINS = [
     "http://localhost:3001",  # Local development (alternative port)
     os.getenv("FRONTEND_URL", "https://varity.app"),  # Production frontend
     os.getenv("DASHBOARD_URL", "https://dashboard.varity.app"),  # Production dashboard
+    "https://generic-template-dashboard.vercel.app",  # Vercel deployment
+    "https://app.varity.so",  # Custom domain
 ]
 
 app.add_middleware(
