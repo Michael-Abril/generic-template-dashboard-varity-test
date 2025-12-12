@@ -1,14 +1,14 @@
 """
-AI Query Service with Ollama Integration, RAG Context, and ZK Privacy Layer
+AI Query Service with Multi-Provider LLM Support, RAG Context, and ZK Privacy Layer
 
 This service provides intelligent query processing by:
-1. Connecting to local Ollama (Docker port 11434) for LLM inference
+1. Connecting to Together.ai (production) or Ollama (local) for LLM inference
 2. Integrating with ISO RAG service for context retrieval
 3. Adding ZK privacy layer for query logging
 4. Recording queries to ZKRollupEngine on Arbitrum Sepolia
 
 Architecture:
-- Ollama: Local LLM inference (llama3.1:8b)
+- LLM: Together.ai Llama 3.3 70B (production) / Ollama (local development)
 - RAG: Context retrieval from ISO knowledge base
 - ZK Layer: Privacy-preserving query logging
 - Blockchain: Immutable query audit trail
@@ -40,10 +40,19 @@ class AIQueryService:
 
     def __init__(self):
         """Initialize the AI Query Service with all components"""
-        # Ollama configuration (Docker container)
+        # Together.ai configuration (production - preferred, OpenAI-compatible API)
+        self.together_api_key = os.getenv("TOGETHER_API_KEY")
+        self.together_model = os.getenv("TOGETHER_MODEL", "meta-llama/Llama-3.3-70B-Instruct-Turbo")
+        self.together_base_url = os.getenv("TOGETHER_BASE_URL", "https://api.together.xyz/v1")
+        self.together_available = bool(self.together_api_key)
+
+        # Ollama configuration (local development fallback)
         self.ollama_url = os.getenv("OLLAMA_URL", "http://generic-template-ollama:11434")
         self.ollama_generate_url = f"{self.ollama_url}/api/generate"
-        self.model = os.getenv("OLLAMA_MODEL", "mistral")
+        self.ollama_model = os.getenv("OLLAMA_MODEL", "mistral")
+
+        # Active model for display
+        self.model = self.together_model if self.together_available else self.ollama_model
 
         # ZK Rollup configuration (Arbitrum Sepolia)
         self.zk_rollup_address = "0x704CED9F7751E13A4cbF820555E161B3B18F435f"
@@ -75,7 +84,9 @@ class AIQueryService:
         self.max_cache_size = 100
 
         logger.info("AI Query Service initialized successfully")
-        logger.info(f"Ollama URL: {self.ollama_url}")
+        logger.info(f"Together.ai Available: {self.together_available} (Model: {self.together_model})")
+        logger.info(f"Ollama URL: {self.ollama_url} (Model: {self.ollama_model})")
+        logger.info(f"Active LLM Provider: {'Together.ai' if self.together_available else 'Ollama'}")
         logger.info(f"ZK Rollup: {self.zk_rollup_address}")
         logger.info(f"RAG Available: {self.rag_available}")
 
@@ -197,14 +208,14 @@ class AIQueryService:
             logger.error(f"RAG query failed: {e}")
             return None
 
-    async def _query_ollama(
+    async def _query_llm(
         self,
         query: str,
         rag_context: Optional[Dict[str, Any]],
         additional_context: Optional[Dict[str, Any]]
     ) -> str:
         """
-        Query Ollama LLM with context.
+        Query LLM with context. Uses Together.ai first, falls back to Ollama.
 
         Args:
             query: User's query
@@ -214,16 +225,105 @@ class AIQueryService:
         Returns:
             AI-generated response
         """
-        try:
-            # Build system prompt with context
-            system_prompt = self._build_system_prompt(rag_context, additional_context)
+        # Build system prompt with context
+        system_prompt = self._build_system_prompt(rag_context, additional_context)
 
+        # Try Together.ai first (production)
+        if self.together_available:
+            response = await self._query_together(query, system_prompt)
+            if response:
+                return response
+            logger.warning("Together.ai failed, falling back to Ollama")
+
+        # Try Ollama (local development)
+        response = await self._query_ollama_internal(query, system_prompt)
+        if response:
+            return response
+
+        # Fallback response
+        return self._get_fallback_response(query)
+
+    async def _query_together(
+        self,
+        query: str,
+        system_prompt: str
+    ) -> Optional[str]:
+        """
+        Query Together.ai API (OpenAI-compatible).
+
+        Args:
+            query: User's query
+            system_prompt: System prompt with context
+
+        Returns:
+            AI-generated response or None if failed
+        """
+        try:
+            if not self.together_api_key:
+                return None
+
+            payload = {
+                "model": self.together_model,
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": query}
+                ],
+                "temperature": 0.7,
+                "max_tokens": 800
+            }
+
+            headers = {
+                "Authorization": f"Bearer {self.together_api_key}",
+                "Content-Type": "application/json"
+            }
+
+            timeout = aiohttp.ClientTimeout(total=60)
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    f"{self.together_base_url}/chat/completions",
+                    json=payload,
+                    headers=headers,
+                    timeout=timeout
+                ) as response:
+                    if response.status == 200:
+                        result = await response.json()
+                        generated_text = result["choices"][0]["message"]["content"]
+                        logger.info(f"Together.ai response generated: {len(generated_text)} chars")
+                        return generated_text.strip()
+                    else:
+                        error_text = await response.text()
+                        logger.error(f"Together.ai API error {response.status}: {error_text}")
+                        return None
+
+        except aiohttp.ClientError as e:
+            logger.error(f"Together.ai connection error: {e}")
+            return None
+        except Exception as e:
+            logger.error(f"Error querying Together.ai: {e}")
+            return None
+
+    async def _query_ollama_internal(
+        self,
+        query: str,
+        system_prompt: str
+    ) -> Optional[str]:
+        """
+        Query Ollama LLM.
+
+        Args:
+            query: User's query
+            system_prompt: System prompt with context
+
+        Returns:
+            AI-generated response or None if failed
+        """
+        try:
             # Build full prompt
             full_prompt = f"{system_prompt}\n\nUSER QUERY: {query}\n\nAI RESPONSE:"
 
             # Call Ollama API
             payload = {
-                "model": self.model,
+                "model": self.ollama_model,
                 "prompt": full_prompt,
                 "stream": False,
                 "options": {
@@ -249,14 +349,24 @@ class AIQueryService:
                     else:
                         error_text = await response.text()
                         logger.error(f"Ollama API error {response.status}: {error_text}")
-                        return self._get_fallback_response(query)
+                        return None
 
         except aiohttp.ClientError as e:
             logger.error(f"Ollama connection error: {e}")
-            return self._get_fallback_response(query)
+            return None
         except Exception as e:
             logger.error(f"Error querying Ollama: {e}")
-            return self._get_fallback_response(query)
+            return None
+
+    # Keep backwards compatibility alias
+    async def _query_ollama(
+        self,
+        query: str,
+        rag_context: Optional[Dict[str, Any]],
+        additional_context: Optional[Dict[str, Any]]
+    ) -> str:
+        """Backwards compatibility wrapper - calls _query_llm"""
+        return await self._query_llm(query, rag_context, additional_context)
 
     async def _log_to_rollup(
         self,
@@ -402,6 +512,20 @@ Be concise, accurate, and professional."""
             Health status dictionary
         """
         try:
+            # Check Together.ai
+            together_healthy = self.together_available
+            if together_healthy:
+                try:
+                    async with aiohttp.ClientSession() as session:
+                        async with session.get(
+                            f"{self.together_base_url}/models",
+                            headers={"Authorization": f"Bearer {self.together_api_key}"},
+                            timeout=aiohttp.ClientTimeout(total=5)
+                        ) as response:
+                            together_healthy = response.status == 200
+                except:
+                    together_healthy = False
+
             # Check Ollama
             ollama_healthy = False
             try:
@@ -425,13 +549,27 @@ Be concise, accurate, and professional."""
                 except:
                     zk_healthy = False
 
+            # LLM is healthy if either Together.ai or Ollama is available
+            llm_healthy = together_healthy or ollama_healthy
+            active_provider = "together.ai" if together_healthy else ("ollama" if ollama_healthy else "none")
+
             return {
-                "healthy": ollama_healthy and rag_healthy,
+                "healthy": llm_healthy and rag_healthy,
                 "components": {
+                    "llm": {
+                        "status": "healthy" if llm_healthy else "unavailable",
+                        "active_provider": active_provider,
+                        "model": self.together_model if together_healthy else self.ollama_model
+                    },
+                    "together": {
+                        "status": "healthy" if together_healthy else "unavailable",
+                        "configured": self.together_available,
+                        "model": self.together_model
+                    },
                     "ollama": {
                         "status": "healthy" if ollama_healthy else "unavailable",
                         "url": self.ollama_url,
-                        "model": self.model
+                        "model": self.ollama_model
                     },
                     "rag": {
                         "status": "healthy" if rag_healthy else "unavailable",
