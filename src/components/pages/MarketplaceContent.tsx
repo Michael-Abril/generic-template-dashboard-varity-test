@@ -8,6 +8,7 @@ import Link from 'next/link';
 import { Layout } from '@/components/Layout';
 import { IntegrationLogo } from '@/components/IntegrationLogo';
 import { AlertTriangle, XCircle, Search } from 'lucide-react';
+import { MarketplaceSkeleton } from '@/components/ui/Skeleton';
 import { CONTRACTS, USDC_ABI, TOOL_MARKETPLACE_ABI, parseUSDC } from '@/lib/contracts';
 import * as marketplaceService from '@/services/marketplaceService';
 import type { ProductSummary, ProductDetail, PricingPlan } from '@/services/marketplaceService';
@@ -315,14 +316,7 @@ export default function MarketplaceContent() {
           )}
 
           {/* Loading State */}
-          {loading && (
-            <div className="flex justify-center items-center py-20">
-              <div className="text-center">
-                <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-600 mx-auto mb-4"></div>
-                <p className="text-gray-600">Loading marketplace...</p>
-              </div>
-            </div>
-          )}
+          {loading && <MarketplaceSkeleton />}
 
           {/* Marketplace Content */}
           {!loading && !error && (

@@ -9,6 +9,7 @@ import { Layout } from '@/components/Layout';
 import { IntegrationLogo } from '@/components/IntegrationLogo';
 import { logger } from '@/lib/logger';
 import { Shield, Check, ExternalLink, RefreshCw, Plus } from 'lucide-react';
+import { IntegrationsSkeleton } from '@/components/ui/Skeleton';
 
 /**
  * Integration Management Page
@@ -478,12 +479,7 @@ function IntegrationsContent() {
           </div>
 
           {/* Loading State */}
-          {loading && (
-            <div className="text-center py-12">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-              <p className="text-gray-600">Loading integrations...</p>
-            </div>
-          )}
+          {loading && <IntegrationsSkeleton />}
 
           {/* Connected Integrations */}
           {!loading && connectedCount > 0 && (
@@ -646,11 +642,8 @@ export default function IntegrationsPage() {
     <Suspense fallback={
       <Layout>
         <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50 py-12">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="text-center py-12">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-              <p className="text-gray-600">Loading...</p>
-            </div>
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            <IntegrationsSkeleton />
           </div>
         </div>
       </Layout>
