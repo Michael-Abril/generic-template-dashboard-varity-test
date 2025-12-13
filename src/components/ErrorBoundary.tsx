@@ -1,12 +1,14 @@
 'use client';
 
 import React, { Component, ErrorInfo, ReactNode } from 'react';
+import { usePathname } from 'next/navigation';
 import { AlertTriangle } from 'lucide-react';
 import { logger } from '@/lib/logger';
 
 interface Props {
   children: ReactNode;
   fallback?: ReactNode;
+  resetKey?: string;
 }
 
 interface State {
@@ -14,7 +16,7 @@ interface State {
   error: Error | null;
 }
 
-export class ErrorBoundary extends Component<Props, State> {
+class ErrorBoundaryInner extends Component<Props, State> {
   public state: State = {
     hasError: false,
     error: null,
@@ -26,6 +28,13 @@ export class ErrorBoundary extends Component<Props, State> {
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     logger.error('ErrorBoundary caught an error', { error, errorInfo });
+  }
+
+  // Reset error state when resetKey changes (e.g., on navigation)
+  public componentDidUpdate(prevProps: Props) {
+    if (this.state.hasError && prevProps.resetKey !== this.props.resetKey) {
+      this.setState({ hasError: false, error: null });
+    }
   }
 
   public render() {
@@ -46,7 +55,7 @@ export class ErrorBoundary extends Component<Props, State> {
             <p className="text-gray-600 mb-6">
               We encountered an unexpected error. Please try refreshing the page.
             </p>
-            {this.state.error && (
+            {this.state.error && process.env.NODE_ENV === 'development' && (
               <div className="bg-gray-50 rounded-lg p-4 mb-6 text-left">
                 <p className="text-xs font-mono text-gray-700 break-words">
                   {this.state.error.message}
@@ -55,16 +64,16 @@ export class ErrorBoundary extends Component<Props, State> {
             )}
             <div className="flex gap-3 justify-center">
               <button
-                onClick={() => window.location.reload()}
+                onClick={() => this.setState({ hasError: false, error: null })}
                 className="bg-blue-600 text-white px-6 py-2 rounded-lg font-semibold hover:bg-blue-700 hover:shadow-md hover:scale-[1.02] active:scale-[0.98] transition-all duration-200"
               >
-                Refresh Page
+                Try Again
               </button>
               <button
-                onClick={() => window.location.href = '/'}
+                onClick={() => window.location.href = '/dashboard'}
                 className="bg-gray-200 text-gray-700 px-6 py-2 rounded-lg font-semibold hover:bg-gray-300 hover:shadow-sm hover:scale-[1.01] active:scale-[0.99] transition-all duration-200"
               >
-                Go Home
+                Go to Dashboard
               </button>
             </div>
           </div>
@@ -74,4 +83,16 @@ export class ErrorBoundary extends Component<Props, State> {
 
     return this.props.children;
   }
+}
+
+// Wrapper component that provides pathname as resetKey
+// This ensures the ErrorBoundary resets when navigating between pages
+export function ErrorBoundary({ children, fallback }: { children: ReactNode; fallback?: ReactNode }) {
+  const pathname = usePathname();
+
+  return (
+    <ErrorBoundaryInner resetKey={pathname} fallback={fallback}>
+      {children}
+    </ErrorBoundaryInner>
+  );
 }
