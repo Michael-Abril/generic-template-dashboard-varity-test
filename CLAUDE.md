@@ -314,6 +314,160 @@ async def query_business_rag(self, business_wallet: str, query: str):
 - AI queries ONLY the requesting business's data
 - No cross-business data leakage possible
 
+---
+
+## AI ASSISTANT ARCHITECTURE (REVOLUTIONARY)
+
+### Overview: Business-Specific AI with RAG → Filecoin Integration
+
+The AI Assistant is the **central intelligence hub** of the dashboard. Each business gets AI responses based ONLY on their own data stored in Filecoin/IPFS, ensuring complete data isolation and business-specific insights.
+
+### LLM Provider Stack (Multi-Provider Fallback)
+
+| Provider | Model | Use Case | Status |
+|----------|-------|----------|--------|
+| **Together.ai** | Llama 3.3 70B Instruct Turbo | Primary (production) | ✅ Active |
+| **Ollama** | TinyLlama/Mistral | Fallback (local/dev) | ✅ Active |
+
+**Environment Variables:**
+```bash
+# Together.ai (Primary - Production)
+TOGETHER_API_KEY=your-together-api-key
+
+# Ollama (Fallback - Local)
+OLLAMA_URL=http://generic-template-ollama:11434
+OLLAMA_MODEL=tinyllama
+
+# Web Search (Optional)
+TAVILY_API_KEY=your-tavily-key      # OR
+SERPER_API_KEY=your-serper-key
+```
+
+### RAG → Filecoin Data Flow (CRITICAL)
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│              RAG → FILECOIN ARCHITECTURE                             │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                      │
+│  1. DATA INGESTION (When integration syncs data)                    │
+│  ┌────────────────────────────────────────────────────────┐        │
+│  │  QuickBooks/Slack/Google → Adapter → Encrypt → Pinata  │        │
+│  │                                           ↓             │        │
+│  │                                    Returns CID          │        │
+│  │                                    (Filecoin hash)      │        │
+│  └────────────────────────────────────────────────────────┘        │
+│                              ↓                                       │
+│  2. RAG INDEXING (Store CID + vectors in Qdrant)                    │
+│  ┌────────────────────────────────────────────────────────┐        │
+│  │  Collection: business_{wallet_address}                  │        │
+│  │  ├── Point ID: unique_id                               │        │
+│  │  ├── Vector: [0.1, 0.2, ...] (text embedding)          │        │
+│  │  └── Payload: {                                         │        │
+│  │        "cid": "QmXyz123...",     # Filecoin CID        │        │
+│  │        "data": {...},            # Original data        │        │
+│  │        "integration": "quickbooks",                     │        │
+│  │        "data_type": "invoices",                         │        │
+│  │        "business_wallet": "0x742d35cc..."              │        │
+│  │      }                                                  │        │
+│  └────────────────────────────────────────────────────────┘        │
+│                              ↓                                       │
+│  3. AI QUERY (User asks question)                                   │
+│  ┌────────────────────────────────────────────────────────┐        │
+│  │  User: "Show my overdue invoices"                       │        │
+│  │                     ↓                                   │        │
+│  │  RAG Service: query_business_rag(wallet, question)      │        │
+│  │                     ↓                                   │        │
+│  │  Qdrant: Search ONLY business_{wallet} collection       │        │
+│  │                     ↓                                   │        │
+│  │  Returns: [{cid, data, score}, ...]                     │        │
+│  │                     ↓                                   │        │
+│  │  LLM: Generate response with business-specific context  │        │
+│  └────────────────────────────────────────────────────────┘        │
+│                                                                      │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### AI Capabilities (7 Endpoints)
+
+| Capability | Endpoint | Description |
+|------------|----------|-------------|
+| **General Chat** | `POST /ai/chat` | Works without integrations - general LLM |
+| **RAG Query** | `POST /ai/query` | Business-specific RAG with Filecoin data |
+| **Document Analysis** | `POST /ai/analyze` | 5 analysis types (summary, key_points, sentiment, extraction, action_items) |
+| **Deep Research** | `POST /ai/research` | 3 depth levels (quick, standard, comprehensive) |
+| **Web Search** | `POST /ai/search` | Internet access via Tavily/Serper |
+| **Model List** | `GET /ai/models` | Available AI models |
+| **Health Check** | `GET /ai/health` | AI service status |
+
+### Document Analysis Types
+
+```python
+# POST /api/v1/ai/analyze
+{
+    "wallet_address": "0x...",
+    "document_content": "Q3 Revenue Report: Total revenue $2.4M...",
+    "analysis_type": "summary"  # Options below
+}
+
+# Analysis Types:
+# - "summary"     → Concise overview of document
+# - "key_points"  → Bullet-point highlights
+# - "sentiment"   → Positive/negative/neutral tone
+# - "extraction"  → Extract specific data (numbers, dates, names)
+# - "action_items"→ Actionable tasks from document
+```
+
+### Deep Research Mode
+
+```python
+# POST /api/v1/ai/research
+{
+    "wallet_address": "0x...",
+    "query": "What are the best strategies for reducing operational costs?",
+    "depth": "comprehensive"  # Options: quick, standard, comprehensive
+}
+
+# Depth Levels:
+# - "quick"         → Fast response, basic RAG
+# - "standard"      → RAG + additional analysis
+# - "comprehensive" → RAG + Web Search + multi-source synthesis
+```
+
+### Web Search Integration
+
+```python
+# POST /api/v1/ai/search
+{
+    "wallet_address": "0x...",
+    "query": "latest industry trends in payment processing 2025"
+}
+
+# Requires: TAVILY_API_KEY or SERPER_API_KEY in environment
+# Returns: Search results + AI synthesis
+```
+
+### Critical Backend Services
+
+| Service | File | Purpose |
+|---------|------|---------|
+| **together_service.py** | `app/services/together_service.py` | Together.ai LLM + advanced AI |
+| **ollama_service.py** | `app/services/ollama_service.py` | Ollama fallback LLM |
+| **rag_service.py** | `app/services/rag_service.py` | Qdrant vector DB + Filecoin CID storage |
+| **web_search_service.py** | `app/services/web_search_service.py` | Tavily/Serper web search |
+| **filecoin_service.py** | `app/services/filecoin_service.py` | Pinata (Filecoin/IPFS) storage |
+
+### Why This Architecture is Revolutionary
+
+1. **Business-Specific AI**: Each business gets AI trained on THEIR data only
+2. **Filecoin-Backed**: All business data permanently stored on decentralized storage
+3. **Complete Isolation**: Business A cannot access Business B's AI context
+4. **Multi-Provider**: Works with cloud LLM (Together.ai) or local (Ollama)
+5. **Web + RAG**: Combine business data with live internet search
+6. **No Vendor Lock-in**: CIDs are permanent - data survives provider changes
+
+---
+
 ### Data Flow: OAuth → Storage → AI Query
 
 ```
@@ -604,10 +758,19 @@ GET /api/v1/integrations/{provider}/data?wallet_address=0x...
 DELETE /api/v1/integrations/{provider}?wallet_address=0x...
 ```
 
-### AI Chat
+### AI Assistant (7 Endpoints)
 ```bash
-POST /api/v1/ai/chat                       # Send message to AI
+# General Chat (works without integrations)
+POST /api/v1/ai/chat                       # General AI chat with optional RAG
 GET /api/v1/ai/chat/history?wallet_address=0x...
+
+# Advanced AI Capabilities
+POST /api/v1/ai/query                      # Business-specific RAG query
+POST /api/v1/ai/analyze                    # Document analysis (5 types)
+POST /api/v1/ai/research                   # Deep research mode (3 depth levels)
+POST /api/v1/ai/search                     # Web search capability
+GET /api/v1/ai/models                      # List available AI models
+GET /api/v1/ai/health                      # AI service health check
 ```
 
 ---

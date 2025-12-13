@@ -88,7 +88,10 @@ backend/
 │   ├── services/                  # Business logic services
 │   │   ├── filecoin_service.py    # Filecoin/IPFS storage (Pinata)
 │   │   ├── lit_service.py         # Lit Protocol encryption
-│   │   └── ollama_service.py      # Ollama LLM service
+│   │   ├── ollama_service.py      # Ollama LLM service (fallback)
+│   │   ├── together_service.py    # Together.ai LLM (primary)
+│   │   ├── rag_service.py         # RAG with Qdrant + Filecoin CIDs
+│   │   └── web_search_service.py  # Tavily/Serper web search
 │   │
 │   ├── models/                    # SQLAlchemy models
 │   │   ├── user.py                # User model
@@ -162,9 +165,22 @@ filters = {
 ```bash
 DATABASE_URL=postgresql+asyncpg://generic_template:generic_template_secure_password@generic-template-postgres:5432/generic_template
 REDIS_URL=redis://generic-template-redis:6379
+QDRANT_URL=http://generic-template-qdrant:6333
+```
+
+### AI/LLM Services
+```bash
+# Together.ai (Primary - Production LLM)
+TOGETHER_API_KEY=your-together-api-key
+TOGETHER_MODEL=meta-llama/Llama-3.3-70B-Instruct-Turbo
+
+# Ollama (Fallback - Local Development)
 OLLAMA_URL=http://generic-template-ollama:11434
 OLLAMA_MODEL=tinyllama
-QDRANT_URL=http://generic-template-qdrant:6333
+
+# Web Search (Optional - for internet access)
+TAVILY_API_KEY=your-tavily-key     # Primary web search
+SERPER_API_KEY=your-serper-key     # Alternative web search
 ```
 
 ### Pinata (Filecoin/IPFS)
@@ -511,6 +527,109 @@ def _get_collection_name(self, business_wallet: str) -> str:
 - **Token Encryption**: AES-256-GCM + PBKDF2 (100K iterations)
 - **Storage Isolation**: Wallet-namespaced Pinata metadata
 - **RAG Isolation**: Separate Qdrant collections per wallet
+
+---
+
+## AI SERVICES ARCHITECTURE
+
+### Overview: RAG → Filecoin Pipeline
+
+The AI Assistant uses a multi-provider LLM stack with business-specific RAG:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    AI SERVICE STACK                              │
+├─────────────────────────────────────────────────────────────────┤
+│  together_service.py  →  Together.ai API (Llama 3.3 70B)        │
+│  ollama_service.py    →  Ollama (TinyLlama) - Fallback          │
+│  rag_service.py       →  Qdrant + Filecoin CID references       │
+│  web_search_service.py→  Tavily/Serper web search               │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Service Files and Key Functions
+
+| Service | File | Key Functions |
+|---------|------|---------------|
+| **Together.ai** | `app/services/together_service.py` | `chat()`, `analyze_document()`, `deep_research()` |
+| **Ollama** | `app/services/ollama_service.py` | `query()`, `query_business_ai()` |
+| **RAG** | `app/services/rag_service.py` | `index_business_data()`, `query_business_rag()` |
+| **Web Search** | `app/services/web_search_service.py` | `search()` |
+
+### RAG Service - Filecoin CID Storage
+
+```python
+# app/services/rag_service.py
+
+# Each business gets isolated Qdrant collection
+def _get_collection_name(self, business_wallet: str) -> str:
+    wallet_clean = business_wallet.lower().replace("0x", "")
+    return f"business_{wallet_clean}"
+
+# Index data with Filecoin CID reference
+async def index_business_data(self, business_wallet, cid, data, integration, data_type):
+    payload = {
+        "cid": cid,                    # <-- Filecoin CID from Pinata
+        "data": data,
+        "integration": integration,
+        "data_type": data_type,
+        "business_wallet": business_wallet.lower(),
+    }
+    # Store in business-specific collection
+
+# Query ONLY this business's data
+async def query_business_rag(self, business_wallet, query, limit=5):
+    collection_name = self._get_collection_name(business_wallet)
+    # Returns: [{cid, data, score}, ...]
+```
+
+### Together.ai Service - Advanced AI
+
+```python
+# app/services/together_service.py
+
+class TogetherService:
+    def __init__(self):
+        self.api_key = os.getenv("TOGETHER_API_KEY")
+        self.model = os.getenv("TOGETHER_MODEL", "meta-llama/Llama-3.3-70B-Instruct-Turbo")
+
+    async def chat(self, message, wallet_address, context=None):
+        """General chat with optional RAG context"""
+
+    async def analyze_document(self, document_content, analysis_type, wallet_address):
+        """Document analysis: summary, key_points, sentiment, extraction, action_items"""
+
+    async def deep_research(self, query, wallet_address, depth="standard"):
+        """Deep research: quick, standard, comprehensive (with web search)"""
+```
+
+### API Endpoints (app/api/v1/ai.py)
+
+```python
+# 7 AI Endpoints
+
+@router.post("/chat")           # General chat
+@router.get("/chat/history")    # Chat history
+@router.post("/query")          # RAG query (business-specific)
+@router.post("/analyze")        # Document analysis
+@router.post("/research")       # Deep research
+@router.post("/search")         # Web search
+@router.get("/models")          # List models
+@router.get("/health")          # AI health check
+```
+
+### LLM Provider Fallback Logic
+
+```python
+# Priority: Together.ai → Ollama
+
+if settings.together_api_key:
+    # Use Together.ai (Llama 3.3 70B)
+    service = TogetherService()
+else:
+    # Fallback to Ollama (TinyLlama)
+    service = OllamaService()
+```
 
 ---
 

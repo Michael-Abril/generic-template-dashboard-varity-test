@@ -55,10 +55,32 @@ The Generic AI Dashboard Template is Varity's flagship product - a company-speci
 ### Key Features
 
 - **Company-Specific AI Assistant** - 1,000 queries/month (Business plan)
+  - General chat (works without integrations)
+  - Business-specific RAG queries (powered by your integration data)
+  - Document analysis (summary, key points, sentiment, extraction, action items)
+  - Deep research mode (quick, standard, comprehensive)
+  - Web search capability (real-time internet access)
 - **25 Software Integrations** - QuickBooks, Google Workspace, Slack, Microsoft 365, etc.
 - **100% Decentralized Storage** - Filecoin/IPFS via Pinata
+- **RAG → Filecoin Architecture** - All business data stored as Filecoin CIDs, queried by AI
 - **4-Layer Security** - Wallet-based encryption, multi-tenant isolation
 - **Blockchain Settlement** - Varity L3 Arbitrum Rollup
+
+### AI-Powered Intelligence
+
+The dashboard's AI Assistant is **revolutionary** - it queries YOUR business data stored in Filecoin/IPFS:
+
+```
+Integration Data → Pinata (Filecoin) → Returns CID
+         ↓
+RAG Indexing → Qdrant (vectors + CID reference)
+         ↓
+AI Query → Retrieves YOUR data only → Generates business-specific response
+```
+
+**LLM Providers:**
+- **Together.ai** (Llama 3.3 70B) - Primary production LLM
+- **Ollama** (TinyLlama/Mistral) - Local fallback for development
 
 ---
 
