@@ -16,6 +16,23 @@ import {
   BarChart3,
   Target
 } from 'lucide-react';
+import {
+  BarChart,
+  Bar,
+  LineChart,
+  Line,
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  Cell,
+  PieChart,
+  Pie,
+  Legend,
+} from 'recharts';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 
@@ -363,24 +380,46 @@ export default function AnalyticsContent() {
             </div>
 
             {revenueTrend.length > 0 ? (
-              <div className="space-y-2">
-                {revenueTrend.map((item, index) => (
-                  <div key={index} className="flex items-center gap-4">
-                    <div className="w-12 text-sm font-medium text-gray-700">{item.label}</div>
-                    <div className="flex-1">
-                      <div className="relative h-10 bg-gray-100 rounded-lg overflow-hidden">
-                        <div
-                          className="absolute left-0 top-0 h-full bg-gradient-to-r from-blue-500 to-blue-600 transition-all duration-500 flex items-center justify-end pr-3"
-                          style={{ width: `${(item.value / maxRevenue) * 100}%` }}
-                        >
-                          <span className="text-white text-sm font-semibold">
-                            ${(item.value / 1000).toFixed(1)}K
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
+              <div className="h-80">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart
+                    data={revenueTrend}
+                    margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+                    <XAxis
+                      dataKey="label"
+                      axisLine={false}
+                      tickLine={false}
+                      tick={{ fontSize: 12, fill: '#6b7280' }}
+                    />
+                    <YAxis
+                      axisLine={false}
+                      tickLine={false}
+                      tick={{ fontSize: 12, fill: '#6b7280' }}
+                      tickFormatter={(value) => `$${(value / 1000).toFixed(0)}K`}
+                      width={70}
+                    />
+                    <Tooltip
+                      formatter={(value: number) => [`$${value.toLocaleString()}`, 'Revenue']}
+                      contentStyle={{
+                        backgroundColor: '#fff',
+                        border: '1px solid #e5e7eb',
+                        borderRadius: '8px',
+                        boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+                      }}
+                      cursor={{ fill: 'rgba(59, 130, 246, 0.1)' }}
+                    />
+                    <Bar dataKey="value" radius={[4, 4, 0, 0]} maxBarSize={50}>
+                      {revenueTrend.map((_, index, arr) => (
+                        <Cell
+                          key={`cell-${index}`}
+                          fill={index === arr.length - 1 ? '#3b82f6' : '#93c5fd'}
+                        />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
               </div>
             ) : (
               <div className="flex items-center justify-center h-32 text-gray-400">
@@ -440,25 +479,57 @@ export default function AnalyticsContent() {
                 <p className="text-sm text-gray-600">Total customers over the last 12 months</p>
               </div>
 
-              <div className="space-y-2">
-                {customerGrowth.map((item, index) => (
-                  <div key={index} className="flex items-center gap-4">
-                    <div className="w-12 text-sm font-medium text-gray-700">{item.label}</div>
-                    <div className="flex-1">
-                      <div className="relative h-8 bg-gray-100 rounded-lg overflow-hidden">
-                        <div
-                          className="absolute left-0 top-0 h-full bg-gradient-to-r from-green-400 to-green-600 transition-all duration-500 flex items-center justify-end pr-3"
-                          style={{ width: `${(item.value / maxCustomers) * 100}%` }}
-                        >
-                          <span className="text-white text-xs font-semibold">
-                            {item.value.toLocaleString()}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
+              {customerGrowth.length > 0 ? (
+                <div className="h-64">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart
+                      data={customerGrowth}
+                      margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
+                    >
+                      <defs>
+                        <linearGradient id="colorCustomers" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#22c55e" stopOpacity={0.3}/>
+                          <stop offset="95%" stopColor="#22c55e" stopOpacity={0}/>
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+                      <XAxis
+                        dataKey="label"
+                        axisLine={false}
+                        tickLine={false}
+                        tick={{ fontSize: 11, fill: '#6b7280' }}
+                      />
+                      <YAxis
+                        axisLine={false}
+                        tickLine={false}
+                        tick={{ fontSize: 11, fill: '#6b7280' }}
+                        width={50}
+                      />
+                      <Tooltip
+                        formatter={(value: number) => [value.toLocaleString(), 'Customers']}
+                        contentStyle={{
+                          backgroundColor: '#fff',
+                          border: '1px solid #e5e7eb',
+                          borderRadius: '8px',
+                          boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+                        }}
+                      />
+                      <Area
+                        type="monotone"
+                        dataKey="value"
+                        stroke="#22c55e"
+                        strokeWidth={2}
+                        fillOpacity={1}
+                        fill="url(#colorCustomers)"
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                <div className="flex items-center justify-center h-32 text-gray-400">
+                  <p className="text-sm">No customer growth data available yet</p>
+                </div>
+              )}
             </div>
           </div>
 
@@ -472,35 +543,57 @@ export default function AnalyticsContent() {
                 <p className="text-sm text-gray-600">Conversion funnel from leads to customers</p>
               </div>
 
-              <div className="space-y-3">
-                {pipelineData.map((item, index) => {
-                  const percentage = (item.value / maxPipeline) * 100;
-                  const conversionRate = index > 0 ? (item.value / pipelineData[index - 1].value) * 100 : 100;
-                  return (
-                    <div key={index}>
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-sm font-medium text-gray-900">{item.label}</span>
-                        <div className="text-right">
-                          <span className="text-sm font-semibold text-gray-900">{item.value}</span>
-                          {index > 0 && (
-                            <span className="text-xs text-gray-500 ml-2">
-                              ({conversionRate.toFixed(1)}% conv)
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                      <div className="relative">
-                        <div
-                          className="bg-gradient-to-r from-purple-400 via-purple-500 to-purple-600 rounded-lg h-12 flex items-center justify-center text-white font-semibold transition-all duration-500"
-                          style={{ width: `${percentage}%`, marginLeft: `${index * 5}%` }}
-                        >
-                          {item.value}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+              {pipelineData.length > 0 ? (
+                <div className="h-64">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart
+                      layout="vertical"
+                      data={pipelineData}
+                      margin={{ top: 10, right: 30, left: 80, bottom: 5 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f0f0f0" />
+                      <XAxis
+                        type="number"
+                        axisLine={false}
+                        tickLine={false}
+                        tick={{ fontSize: 11, fill: '#6b7280' }}
+                      />
+                      <YAxis
+                        type="category"
+                        dataKey="label"
+                        axisLine={false}
+                        tickLine={false}
+                        tick={{ fontSize: 12, fill: '#374151' }}
+                        width={80}
+                      />
+                      <Tooltip
+                        formatter={(value: number) => [value.toLocaleString(), 'Count']}
+                        contentStyle={{
+                          backgroundColor: '#fff',
+                          border: '1px solid #e5e7eb',
+                          borderRadius: '8px',
+                          boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+                        }}
+                      />
+                      <Bar dataKey="value" radius={[0, 4, 4, 0]} maxBarSize={40}>
+                        {pipelineData.map((_, index) => {
+                          const colors = ['#c084fc', '#a855f7', '#9333ea', '#7e22ce', '#6b21a8'];
+                          return (
+                            <Cell
+                              key={`cell-${index}`}
+                              fill={colors[index % colors.length]}
+                            />
+                          );
+                        })}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                <div className="flex items-center justify-center h-32 text-gray-400">
+                  <p className="text-sm">No pipeline data available yet</p>
+                </div>
+              )}
 
               {pipelineData.length > 0 && (
                 <div className="mt-6 pt-6 border-t border-gray-200">
