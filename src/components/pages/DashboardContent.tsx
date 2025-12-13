@@ -31,6 +31,16 @@ import {
   Users,
   ArrowRight
 } from 'lucide-react';
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  Cell,
+} from 'recharts';
 
 export default function DashboardContent() {
   const { authenticated, ready, login } = usePrivy();
@@ -317,50 +327,75 @@ export default function DashboardContent() {
 
             {isLoadingRevenue ? (
               // Loading state
-              <div className="flex items-end justify-between gap-2 h-48">
-                {[1, 2, 3, 4, 5, 6].map((i) => (
-                  <div key={i} className="flex-1 flex flex-col items-center gap-2">
-                    <div className="w-full flex items-end justify-center" style={{ height: '160px' }}>
-                      <div className="w-full rounded-t-lg bg-gray-200 animate-pulse" style={{ height: `${Math.random() * 70 + 30}%` }}></div>
-                    </div>
-                    <div className="h-3 bg-gray-200 rounded w-8 animate-pulse"></div>
-                  </div>
-                ))}
+              <div className="h-64 flex items-center justify-center">
+                <div className="flex items-end gap-4">
+                  {[1, 2, 3, 4, 5, 6].map((i) => (
+                    <div key={i} className="w-12 bg-gray-200 animate-pulse rounded-t-md" style={{ height: `${40 + i * 15}px` }} />
+                  ))}
+                </div>
               </div>
             ) : revenueTrendData && revenueTrendData.data.length > 0 ? (
-              // Success state - dynamic data
-              <div className="flex items-end justify-between gap-2 h-48">
-                {revenueTrendData.data.map((item, i) => {
-                  const heightPercent = (item.value / item.max) * 100;
-                  const isCurrentMonth = i === revenueTrendData.data.length - 1;
-                  return (
-                    <div key={i} className="flex-1 flex flex-col items-center gap-2">
-                      <div className="w-full flex items-end justify-center" style={{ height: '160px' }}>
-                        <div
-                          className={`w-full rounded-t-lg transition-all duration-500 ${
-                            isCurrentMonth
-                              ? 'bg-gradient-to-t from-blue-500 to-blue-600'
-                              : 'bg-gradient-to-t from-gray-300 to-gray-400'
-                          }`}
-                          style={{ height: `${heightPercent}%` }}
-                        ></div>
-                      </div>
-                      <div className="text-center">
-                        <p className="text-xs font-medium text-gray-700">{item.month}</p>
-                        <p className="text-xs text-gray-500">${(item.value / 1000).toFixed(0)}K</p>
-                      </div>
-                    </div>
-                  );
-                })}
+              // Success state - render Recharts with dynamic data
+              <div className="h-64">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart
+                    data={revenueTrendData.data}
+                    margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+                    <XAxis
+                      dataKey="month"
+                      axisLine={false}
+                      tickLine={false}
+                      tick={{ fontSize: 12, fill: '#6b7280' }}
+                    />
+                    <YAxis
+                      axisLine={false}
+                      tickLine={false}
+                      tick={{ fontSize: 12, fill: '#6b7280' }}
+                      tickFormatter={(value) => `$${(value / 1000).toFixed(0)}K`}
+                      width={60}
+                    />
+                    <Tooltip
+                      formatter={(value: number) => [`$${value.toLocaleString()}`, 'Revenue']}
+                      contentStyle={{
+                        backgroundColor: '#fff',
+                        border: '1px solid #e5e7eb',
+                        borderRadius: '8px',
+                        boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+                      }}
+                      cursor={{ fill: 'rgba(59, 130, 246, 0.1)' }}
+                    />
+                    <Bar
+                      dataKey="value"
+                      radius={[4, 4, 0, 0]}
+                      maxBarSize={60}
+                    >
+                      {revenueTrendData.data.map((_, index, arr) => (
+                        <Cell
+                          key={`cell-${index}`}
+                          fill={index === arr.length - 1 ? '#3b82f6' : '#d1d5db'}
+                        />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
               </div>
             ) : (
-              // Empty or error state without fallback data
-              <div className="flex items-center justify-center h-48 text-gray-400">
+              // Empty state - no revenue data
+              <div className="flex items-center justify-center h-64 text-gray-400">
                 <div className="text-center">
                   <BarChart3 className="w-10 h-10 mx-auto mb-2" />
                   <p className="text-sm">
                     {revenueError ? 'Unable to load revenue data' : 'No revenue data available'}
                   </p>
+                  <Link
+                    href="/marketplace"
+                    className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-700 text-sm font-medium mt-2"
+                  >
+                    Connect an integration to see data
+                    <ArrowRight className="w-3 h-3" />
+                  </Link>
                 </div>
               </div>
             )}
