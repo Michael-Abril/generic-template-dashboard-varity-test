@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { IntegrationLogo } from './IntegrationLogo';
-import { Lock } from 'lucide-react';
+import { Lock, Check } from 'lucide-react';
 
 interface Integration {
   id: number;
@@ -75,7 +75,7 @@ export function IntegrationCard({
           <ul className="space-y-1.5 mb-4">
             {integration.features.slice(0, 3).map((feature, i) => (
               <li key={i} className="text-xs text-gray-600 flex items-start gap-2">
-                <span className="text-green-500 mt-0.5">✓</span>
+                <Check className="w-3.5 h-3.5 text-green-500 mt-0.5 flex-shrink-0" />
                 <span>{feature}</span>
               </li>
             ))}
@@ -107,7 +107,7 @@ export function IntegrationCard({
           >
             {isInstalled ? (
               <span className="flex items-center justify-center gap-2">
-                <span>✓</span> Installed
+                <Check className="w-4 h-4" /> Installed
               </span>
             ) : isPurchasing ? (
               <span className="flex items-center justify-center gap-2">
@@ -139,8 +139,8 @@ export function IntegrationCard({
                   <div className="flex items-center gap-2">
                     <h2 className="text-2xl font-bold text-gray-900">{integration.name}</h2>
                     {integration.hasAdapter && (
-                      <span className="text-xs px-2 py-1 rounded-full bg-green-100 text-green-700 font-medium">
-                        ✓ Ready
+                      <span className="text-xs px-2 py-1 rounded-full bg-green-100 text-green-700 font-medium flex items-center gap-1">
+                        <Check className="w-3 h-3" /> Ready
                       </span>
                     )}
                   </div>
@@ -192,7 +192,7 @@ export function IntegrationCard({
                 <ul className="grid grid-cols-1 md:grid-cols-2 gap-2">
                   {integration.features.map((feature, i) => (
                     <li key={i} className="text-sm text-gray-700 flex items-start gap-2">
-                      <span className="text-green-500 mt-0.5 flex-shrink-0">✓</span>
+                      <Check className="w-4 h-4 text-green-500 mt-0.5 flex-shrink-0" />
                       <span>{feature}</span>
                     </li>
                   ))}
@@ -247,7 +247,7 @@ export function IntegrationCard({
                 >
                   {isInstalled ? (
                     <span className="flex items-center justify-center gap-2">
-                      <span>✓</span> Already Installed
+                      <Check className="w-4 h-4" /> Already Installed
                     </span>
                   ) : isPurchasing ? (
                     <span className="flex items-center justify-center gap-2">

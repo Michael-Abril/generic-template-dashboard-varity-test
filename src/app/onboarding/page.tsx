@@ -8,7 +8,7 @@ import { Layout } from '@/components/Layout';
 import { IntegrationLogo } from '@/components/IntegrationLogo';
 import * as marketplaceService from '@/services/marketplaceService';
 import { logger } from '@/lib/logger';
-import { Link2, BarChart3, Shield } from 'lucide-react';
+import { Link2, BarChart3, Shield, Check } from 'lucide-react';
 
 /**
  * Generic Onboarding Wizard
@@ -231,7 +231,7 @@ export default function OnboardingPage() {
                   <div className="grid grid-cols-2 gap-3">
                     {config.sync_capabilities.map((capability) => (
                       <div key={capability.sync_type} className="flex items-center gap-2 text-sm">
-                        <span className="text-green-600 font-bold">✓</span>
+                        <Check className="w-4 h-4 text-green-600 flex-shrink-0" />
                         <span className="text-gray-700">{capability.sync_type}</span>
                       </div>
                     ))}
@@ -265,9 +265,10 @@ export default function OnboardingPage() {
 
                 {mode === 'connect' && (
                   <div className="bg-green-50 border border-green-200 rounded-xl p-4 mb-6">
-                    <p className="text-sm text-green-800">
-                      <span className="font-semibold">✓ Already have {config.product_name}?</span> Great!
-                      Just connect your existing account to start syncing your data. No purchase necessary.
+                    <p className="text-sm text-green-800 flex items-start gap-2">
+                      <Check className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                      <span><span className="font-semibold">Already have {config.product_name}?</span> Great!
+                      Just connect your existing account to start syncing your data. No purchase necessary.</span>
                     </p>
                   </div>
                 )}
@@ -370,11 +371,11 @@ export default function OnboardingPage() {
                         }`}
                       >
                         {isComplete ? (
-                          <span className="text-green-600 text-xl font-bold">✓</span>
+                          <Check className="w-5 h-5 text-green-600" />
                         ) : isCurrent ? (
                           <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
                         ) : (
-                          <span className="text-gray-400 text-xl">○</span>
+                          <div className="w-5 h-5 rounded-full border-2 border-gray-300"></div>
                         )}
                         <span className={`text-sm font-semibold ${
                           isComplete ? 'text-green-700' :
@@ -420,7 +421,10 @@ export default function OnboardingPage() {
                     <p className="text-sm text-gray-600">Encrypted</p>
                   </div>
                   <div className="bg-purple-50 border border-purple-200 rounded-xl p-4">
-                    <p className="text-2xl font-bold text-purple-600">✓ Secure</p>
+                    <div className="flex items-center justify-center gap-1 text-purple-600">
+                      <Check className="w-6 h-6" />
+                      <span className="text-2xl font-bold">Secure</span>
+                    </div>
                     <p className="text-sm text-gray-600">Storage</p>
                   </div>
                 </div>
@@ -477,7 +481,7 @@ function StepIndicator({
         isComplete ? 'bg-green-600 text-white' :
         'bg-gray-300 text-white'
       }`}>
-        {isComplete ? '✓' : number}
+        {isComplete ? <Check className="w-5 h-5" /> : number}
       </div>
       <span className="font-semibold text-sm">{label}</span>
     </div>

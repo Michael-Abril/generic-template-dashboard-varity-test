@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { Wallet, Fuel, CheckCircle, ShoppingCart } from 'lucide-react';
 
 export type TransactionStep =
   | 'checking_balance'
@@ -77,25 +78,25 @@ export function TransactionStatusModal({
       id: 'checking_balance',
       label: 'Checking Balance',
       description: 'Verifying you have sufficient USDC',
-      icon: '💰'
+      icon: Wallet
     },
     {
       id: 'estimating_gas',
       label: 'Estimating Gas',
       description: 'Calculating transaction costs',
-      icon: '⛽'
+      icon: Fuel
     },
     {
       id: 'approving',
       label: 'Approving USDC',
       description: 'Allowing marketplace to spend USDC',
-      icon: '✅'
+      icon: CheckCircle
     },
     {
       id: 'confirming',
       label: 'Purchasing License',
       description: 'Minting your license NFT',
-      icon: '🛒'
+      icon: ShoppingCart
     }
   ];
 
@@ -274,7 +275,7 @@ export function TransactionStatusModal({
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                         </svg>
                       ) : (
-                        <span className="text-2xl">{step.icon}</span>
+                        <step.icon className="w-6 h-6 text-gray-400" />
                       )}
                     </div>
 

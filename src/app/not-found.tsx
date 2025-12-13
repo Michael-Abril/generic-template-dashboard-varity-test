@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { Search } from 'lucide-react';
 
 /**
  * 404 Not Found Page
@@ -11,7 +12,7 @@ export default function NotFound() {
         {/* Error Icon */}
         <div className="mb-8">
           <div className="w-24 h-24 bg-gradient-to-br from-blue-100 to-purple-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <span className="text-6xl">🔍</span>
+            <Search className="w-12 h-12 text-blue-600" />
           </div>
         </div>
 

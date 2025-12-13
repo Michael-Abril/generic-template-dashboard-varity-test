@@ -4,6 +4,7 @@ import { logger } from '@/lib/logger';
 import { useState, useEffect } from 'react';
 import { useWallets } from '@privy-io/react-auth';
 import { useWalletSync } from '../app/providers';
+import { Check, X, ShoppingCart, ArrowRightLeft, CheckCircle, FileText } from 'lucide-react';
 
 export interface Transaction {
   hash: string;
@@ -119,13 +120,13 @@ export function TransactionHistory({
       case 'success':
         return (
           <span className="inline-flex items-center gap-1 bg-green-100 text-green-800 text-xs font-semibold px-2 py-1 rounded">
-            ✓ Success
+            <Check className="w-3 h-3" /> Success
           </span>
         );
       case 'failed':
         return (
           <span className="inline-flex items-center gap-1 bg-red-100 text-red-800 text-xs font-semibold px-2 py-1 rounded">
-            ✗ Failed
+            <X className="w-3 h-3" /> Failed
           </span>
         );
     }
@@ -134,11 +135,11 @@ export function TransactionHistory({
   const getTypeIcon = (type: Transaction['type']) => {
     switch (type) {
       case 'purchase':
-        return '🛒';
+        return <ShoppingCart className="w-6 h-6 text-blue-600" />;
       case 'transfer':
-        return '💸';
+        return <ArrowRightLeft className="w-6 h-6 text-purple-600" />;
       case 'approval':
-        return '✅';
+        return <CheckCircle className="w-6 h-6 text-green-600" />;
     }
   };
 
@@ -251,7 +252,9 @@ export function TransactionHistory({
 
       {filteredTransactions.length === 0 ? (
         <div className="text-center py-8">
-          <div className="text-4xl mb-2">📜</div>
+          <div className="flex justify-center mb-2">
+            <FileText className="w-10 h-10 text-gray-400" />
+          </div>
           <p className="text-gray-600">No transactions yet</p>
           <p className="text-sm text-gray-500 mt-1">
             Your transaction history will appear here
@@ -266,7 +269,7 @@ export function TransactionHistory({
             >
               <div className="flex items-start justify-between mb-2">
                 <div className="flex items-start gap-3">
-                  <span className="text-2xl">{getTypeIcon(tx.type)}</span>
+                  <div className="flex-shrink-0">{getTypeIcon(tx.type)}</div>
                   <div>
                     <p className="font-medium text-gray-900">
                       {tx.description || tx.type.charAt(0).toUpperCase() + tx.type.slice(1)}
