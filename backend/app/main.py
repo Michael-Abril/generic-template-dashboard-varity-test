@@ -28,7 +28,7 @@ from .core.startup import startup_sequence, shutdown_sequence
 from .core.database import check_database_health
 
 # Import API routers
-from .api.v1 import marketplace_v2, marketplace_purchases, integrations, ai, oauth, sync, dashboard, admin, stats, conversations
+from .api.v1 import marketplace_v2, marketplace_purchases, integrations, ai, oauth, sync, dashboard, admin, stats, conversations, export
 from .api.v1 import settings as settings_router
 
 # Import middleware
@@ -159,6 +159,11 @@ app.include_router(
     conversations.router,
     prefix="/api/v1/conversations",
     tags=["Conversations"]
+)
+app.include_router(
+    export.router,
+    prefix="/api/v1/export",
+    tags=["Export"]
 )
 
 # Initialize services

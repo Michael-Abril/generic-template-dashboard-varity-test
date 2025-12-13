@@ -154,20 +154,22 @@ async def get_installed_integrations(
 @router.post("/{tool}/sync")
 async def sync_tool_data(
     tool: str,
-    request: SyncRequest
+    request: SyncRequest,
+    db: AsyncSession = Depends(get_db)
 ):
     """
     Trigger data sync for a tool
 
     This endpoint:
-    1. Calls the appropriate adapter (e.g., QuickBooks)
-    2. Fetches data from the external service
-    3. Encrypts data with Lit Protocol
-    4. Uploads to Filecoin/IPFS
-    5. Updates RAG index
+    1. Retrieves OAuth credentials from the database
+    2. Calls the appropriate adapter (e.g., QuickBooks, Google, Microsoft)
+    3. Fetches data from the external service
+    4. Encrypts data with Lit Protocol
+    5. Uploads to Filecoin/IPFS
+    6. Updates RAG index
 
     Args:
-        tool: Tool identifier (e.g., 'quickbooks', 'salesforce')
+        tool: Tool identifier (e.g., 'quickbooks', 'salesforce', 'google', 'microsoft', 'slack')
         request: Sync request with wallet_address
 
     Returns:
@@ -179,32 +181,125 @@ async def sync_tool_data(
             f"force={request.force}"
         )
 
+        # Normalize wallet address and provider
+        wallet_address = request.wallet_address.lower()
+        provider = tool.lower()
+
+        # Get OAuth token from database
+        token_result = await db.execute(
+            select(OAuthToken).where(
+                and_(
+                    OAuthToken.user_address == wallet_address,
+                    OAuthToken.provider == provider,
+                    OAuthToken.is_active == True  # noqa: E712
+                )
+            )
+        )
+        oauth_token = token_result.scalar_one_or_none()
+
+        if not oauth_token:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No active OAuth connection found for {tool}. Please connect the integration first."
+            )
+
+        # Check if token is expired
+        if oauth_token.expires_at and oauth_token.expires_at < datetime.utcnow():
+            # TODO: Implement token refresh logic
+            logger.warning(f"OAuth token for {tool} is expired for wallet {wallet_address}")
+            raise HTTPException(
+                status_code=401,
+                detail=f"OAuth token for {tool} has expired. Please reconnect the integration."
+            )
+
+        # Get decrypted access token
+        access_token = oauth_token.access_token
+        if not access_token:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to decrypt OAuth token for {tool}"
+            )
+
+        # Build credentials dict
+        credentials = {
+            "access_token": access_token,
+            "refresh_token": oauth_token.refresh_token,
+        }
+
+        # Add provider-specific fields
+        if oauth_token.provider_data:
+            credentials.update(oauth_token.provider_data)
+
         # Import and call appropriate adapter
-        if tool == "quickbooks":
-            from adapters.quickbooks.quickbooks_adapter import QuickBooksAdapter
-            adapter = QuickBooksAdapter()
+        result = None
+
+        if provider == "quickbooks":
+            from app.adapters.quickbooks.sync import QuickBooksSync
+            adapter = QuickBooksSync(credentials)
             result = await adapter.sync_data(request.wallet_address)
 
-            return {
-                "success": True,
-                "integration": tool,
-                "wallet_address": request.wallet_address,
-                "sync_result": result,
-                "message": f"Successfully synced {tool} data"
-            }
+        elif provider == "google":
+            from app.adapters.google.sync import GoogleSyncAdapter
+            adapter = GoogleSyncAdapter(access_token)
+            result = await adapter.sync_data(request.wallet_address)
 
-        elif tool == "salesforce":
-            # Placeholder for other integrations
-            return {
-                "success": False,
-                "error": "Salesforce integration not yet implemented"
-            }
+        elif provider == "microsoft":
+            from app.adapters.microsoft.sync import MicrosoftSyncAdapter
+            adapter = MicrosoftSyncAdapter(access_token)
+            result = await adapter.sync_data(request.wallet_address)
+
+        elif provider == "slack":
+            from app.adapters.slack.sync import SlackSync
+            adapter = SlackSync(credentials)
+            result = await adapter.sync_data(request.wallet_address)
+
+        elif provider == "hubspot":
+            from app.adapters.hubspot.sync import HubSpotSync
+            adapter = HubSpotSync(credentials)
+            result = await adapter.sync_data(request.wallet_address)
+
+        elif provider == "salesforce":
+            from app.adapters.salesforce.sync import SalesforceSync
+            adapter = SalesforceSync(credentials)
+            result = await adapter.sync_data(request.wallet_address)
+
+        elif provider == "shopify":
+            from app.adapters.shopify.sync import ShopifySync
+            adapter = ShopifySync(credentials)
+            result = await adapter.sync_data(request.wallet_address)
+
+        elif provider == "zendesk":
+            from app.adapters.zendesk.sync import ZendeskSync
+            adapter = ZendeskSync(credentials)
+            result = await adapter.sync_data(request.wallet_address)
+
+        elif provider == "stripe":
+            from app.adapters.stripe.sync import StripeSync
+            adapter = StripeSync(credentials)
+            result = await adapter.sync_data(request.wallet_address)
+
+        elif provider == "monday":
+            from app.adapters.monday.sync import MondaySync
+            adapter = MondaySync(credentials)
+            result = await adapter.sync_data(request.wallet_address)
 
         else:
             raise HTTPException(
                 status_code=404,
-                detail=f"Integration '{tool}' not found"
+                detail=f"Integration '{tool}' not found or not yet supported"
             )
+
+        # Update last_sync_at timestamp
+        oauth_token.last_sync_at = datetime.utcnow()
+        await db.commit()
+
+        return {
+            "success": True,
+            "integration": tool,
+            "wallet_address": request.wallet_address,
+            "sync_result": result,
+            "message": f"Successfully synced {tool} data"
+        }
 
     except HTTPException:
         raise

@@ -2,7 +2,7 @@
 OAuth Integration API Endpoints
 Handles OAuth flows for QuickBooks, Salesforce, Shopify, and other integrations
 """
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, HTTPException, Query, Request, Depends
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 from typing import Optional, Dict, Any
@@ -10,10 +10,16 @@ import logging
 import httpx
 import secrets
 from urllib.parse import urlencode
+from datetime import datetime, timedelta
+
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, and_
 
 from app.services.filecoin_service import FilecoinService
 from app.services.encryption_service import EncryptionService
 from app.core.config import settings
+from app.core.database import get_db
+from app.models.purchase import OAuthToken
 
 logger = logging.getLogger(__name__)
 
@@ -263,7 +269,7 @@ async def start_oauth_flow(
 
 
 @router.post("/callback")
-async def oauth_callback_post(request: Request):
+async def oauth_callback_post(request: Request, db: AsyncSession = Depends(get_db)):
     """
     Handle OAuth callback with POST request from frontend (New Next.js OAuth flow)
 
@@ -272,9 +278,10 @@ async def oauth_callback_post(request: Request):
     This endpoint:
     1. Validates state token
     2. Exchanges authorization code for access token
-    3. Encrypts token with Lit Protocol
-    4. Stores encrypted token in Filecoin
-    5. Returns JSON success response
+    3. Stores token in database (OAuthToken table) for sync endpoint to use
+    4. Encrypts token with Lit Protocol and stores in Filecoin
+    5. Triggers initial data sync automatically
+    6. Returns JSON success response
 
     Returns:
         JSON response with success status
@@ -409,6 +416,107 @@ async def oauth_callback_post(request: Request):
             f"wallet: {wallet_address}, CID: {cid}"
         )
 
+        # Store token in database for sync endpoint to use
+        try:
+            # Check if token already exists for this user/provider
+            existing_token_result = await db.execute(
+                select(OAuthToken).where(
+                    and_(
+                        OAuthToken.user_address == wallet_address.lower(),
+                        OAuthToken.provider == integration,
+                        OAuthToken.is_active == True  # noqa: E712
+                    )
+                )
+            )
+            existing_token = existing_token_result.scalar_one_or_none()
+
+            # Calculate token expiration
+            expires_at = None
+            if credentials.get("expires_in"):
+                expires_at = datetime.utcnow() + timedelta(seconds=int(credentials["expires_in"]))
+
+            if existing_token:
+                # Update existing token
+                existing_token.access_token = credentials["access_token"]
+                existing_token.refresh_token = credentials.get("refresh_token")
+                existing_token.expires_at = expires_at
+                existing_token.provider_data = {
+                    k: v for k, v in credentials.items()
+                    if k not in ["access_token", "refresh_token", "expires_in", "token_type", "wallet_address"]
+                }
+                existing_token.updated_at = datetime.utcnow()
+                logger.info(f"Updated existing OAuth token for {integration}")
+            else:
+                # Create new token
+                new_token = OAuthToken(
+                    user_address=wallet_address.lower(),
+                    provider=integration,
+                    token_type=credentials.get("token_type", "Bearer"),
+                    expires_at=expires_at,
+                    scope=config.get("scope", ""),
+                    provider_data={
+                        k: v for k, v in credentials.items()
+                        if k not in ["access_token", "refresh_token", "expires_in", "token_type", "wallet_address"]
+                    },
+                    connected_at=datetime.utcnow()
+                )
+                # Set tokens via properties to encrypt them
+                new_token.access_token = credentials["access_token"]
+                new_token.refresh_token = credentials.get("refresh_token")
+                db.add(new_token)
+                logger.info(f"Created new OAuth token for {integration}")
+
+            await db.commit()
+
+        except Exception as db_error:
+            logger.error(f"Failed to store token in database: {db_error}")
+            # Don't fail the OAuth flow if database storage fails
+            # The Filecoin storage already succeeded
+
+        # Trigger initial data sync automatically
+        sync_result = None
+        try:
+            logger.info(f"Triggering initial sync for {integration}...")
+
+            # Dynamic import based on integration
+            # Available sync adapters (only include adapters that exist)
+            sync_adapters = {
+                "quickbooks": ("app.adapters.quickbooks.sync", "QuickBooksSync"),
+                "google": ("app.adapters.google.sync", "GoogleSyncAdapter"),
+                "microsoft": ("app.adapters.microsoft.sync", "MicrosoftSyncAdapter"),
+                "slack": ("app.adapters.slack.sync", "SlackSync"),
+                "hubspot": ("app.adapters.hubspot.sync", "HubSpotSync"),
+                "salesforce": ("app.adapters.salesforce.sync", "SalesforceSync"),
+                "shopify": ("app.adapters.shopify.sync", "ShopifySync"),
+                "zendesk": ("app.adapters.zendesk.sync", "ZendeskSync"),
+                "stripe": ("app.adapters.stripe.sync", "StripeSync"),
+                "monday": ("app.adapters.monday.sync", "MondaySync"),
+            }
+
+            if integration in sync_adapters:
+                import importlib
+                module_path, class_name = sync_adapters[integration]
+                module = importlib.import_module(module_path)
+                SyncClass = getattr(module, class_name)
+
+                # Initialize sync adapter with credentials
+                if class_name in ["GoogleSyncAdapter", "MicrosoftSyncAdapter"]:
+                    # These adapters take only access_token
+                    sync = SyncClass(credentials["access_token"])
+                else:
+                    # Other adapters take full credentials dict
+                    sync = SyncClass(credentials)
+
+                # Trigger sync
+                sync_result = await sync.sync_data(wallet_address)
+                logger.info(f"Initial sync completed for {integration}: {sync_result.get('data', {}).keys() if sync_result else 'N/A'}")
+            else:
+                logger.warning(f"No sync adapter found for {integration}")
+
+        except Exception as sync_error:
+            logger.error(f"Auto-sync failed for {integration}: {sync_error}", exc_info=True)
+            # Don't fail OAuth flow if sync fails - credentials are stored
+
         # Return JSON success response (no redirect for POST)
         return {
             "success": True,
@@ -416,7 +524,8 @@ async def oauth_callback_post(request: Request):
             "integration": integration,
             "wallet_address": wallet_address,
             "cid": cid,
-            "requires_sync": True
+            "sync_triggered": sync_result is not None,
+            "sync_result": sync_result if sync_result else None
         }
 
     except HTTPException:
@@ -570,18 +679,18 @@ async def oauth_callback(
         try:
             logger.info(f"Triggering initial sync for {integration}...")
 
-            # Dynamic import based on integration
+            # Available sync adapters (only include adapters that exist)
             sync_adapters = {
                 "quickbooks": ("app.adapters.quickbooks.sync", "QuickBooksSync"),
-                "stripe": ("app.adapters.stripe.sync", "StripeSync"),
-                "salesforce": ("app.adapters.salesforce.sync", "SalesforceSync"),
-                "shopify": ("app.adapters.shopify.sync", "ShopifySync"),
-                "google": ("app.adapters.google.sync", "GoogleSync"),
-                "microsoft": ("app.adapters.microsoft.sync", "MicrosoftSync"),
+                "google": ("app.adapters.google.sync", "GoogleSyncAdapter"),
+                "microsoft": ("app.adapters.microsoft.sync", "MicrosoftSyncAdapter"),
                 "slack": ("app.adapters.slack.sync", "SlackSync"),
                 "hubspot": ("app.adapters.hubspot.sync", "HubSpotSync"),
+                "salesforce": ("app.adapters.salesforce.sync", "SalesforceSync"),
+                "shopify": ("app.adapters.shopify.sync", "ShopifySync"),
                 "zendesk": ("app.adapters.zendesk.sync", "ZendeskSync"),
-                "monday": ("app.adapters.monday.sync", "MondaySync")
+                "stripe": ("app.adapters.stripe.sync", "StripeSync"),
+                "monday": ("app.adapters.monday.sync", "MondaySync"),
             }
 
             if integration in sync_adapters:
@@ -591,7 +700,12 @@ async def oauth_callback(
                 SyncClass = getattr(module, class_name)
 
                 # Initialize sync adapter with credentials
-                sync = SyncClass(credentials)
+                if class_name in ["GoogleSyncAdapter", "MicrosoftSyncAdapter"]:
+                    # These adapters take only access_token
+                    sync = SyncClass(credentials["access_token"])
+                else:
+                    # Other adapters take full credentials dict
+                    sync = SyncClass(credentials)
 
                 # Trigger sync (this will run in background)
                 result = await sync.sync_data(wallet_address)

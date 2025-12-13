@@ -24,9 +24,6 @@ import io
 
 from ...core.database import get_db
 from ...services.export_service import export_service
-from ...services.adapter_router import adapter_router
-from ...models.marketplace import Product
-from ...models.purchase import Purchase
 
 logger = logging.getLogger(__name__)
 

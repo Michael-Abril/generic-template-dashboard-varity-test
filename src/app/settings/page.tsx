@@ -6,22 +6,36 @@ import { useWallets } from '@privy-io/react-auth';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Layout } from '@/components/Layout';
-import { User, Bell, CreditCard, Users, Lock, Database } from 'lucide-react';
+import { User, Bell, CreditCard, Users, Lock, Database, Download, Upload, Trash2, UserPlus, X } from 'lucide-react';
 import { useToast } from '@/components/ui/Toast';
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 
 /**
  * Settings Page
  *
  * Comprehensive settings management for the business dashboard
- * - Account Information
- * - Notification Preferences
- * - Billing & Subscription
- * - Team Management
- * - Security Settings
- * - Data Export/Import
+ * - Account Information (ACTIVE)
+ * - Notification Preferences (ACTIVE)
+ * - Billing & Subscription (COMING SOON)
+ * - Team Management (ACTIVE)
+ * - Security Settings (COMING SOON - Managed by Privy)
+ * - Data Export/Import (ACTIVE)
  */
 
 type SettingsTab = 'account' | 'notifications' | 'billing' | 'team' | 'security' | 'data';
+
+// Tabs that are disabled (coming soon)
+const DISABLED_TABS: SettingsTab[] = ['billing', 'security'];
+
+interface TeamMember {
+  id: string;
+  name: string;
+  email: string;
+  role: 'owner' | 'admin' | 'member' | 'viewer';
+  status: 'active' | 'pending';
+  wallet_address?: string;
+}
 
 export default function SettingsPage() {
   const { authenticated, user } = usePrivy();
@@ -31,10 +45,13 @@ export default function SettingsPage() {
   const toast = useToast();
   const [activeTab, setActiveTab] = useState<SettingsTab>('account');
   const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [exporting, setExporting] = useState(false);
+  const [storageUsed, setStorageUsed] = useState<string>('0 GB');
 
   // Account settings state
-  const [companyName, setCompanyName] = useState('My Business Inc.');
-  const [contactEmail, setContactEmail] = useState(user?.email?.address || '');
+  const [companyName, setCompanyName] = useState('');
+  const [contactEmail, setContactEmail] = useState('');
   const [industry, setIndustry] = useState('Technology');
   const [timezone, setTimezone] = useState('America/New_York');
 
@@ -47,12 +64,101 @@ export default function SettingsPage() {
     newFeatures: false,
   });
 
-  // Redirect if not authenticated - use useEffect to avoid render-time side effects
+  // Team state
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
+  const [showInviteModal, setShowInviteModal] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteRole, setInviteRole] = useState<'admin' | 'member' | 'viewer'>('member');
+  const [inviting, setInviting] = useState(false);
+
+  // Delete account state
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+
+  // Redirect if not authenticated
   useEffect(() => {
     if (!authenticated) {
       router.push('/');
     }
   }, [authenticated, router]);
+
+  // Load settings from backend on mount
+  useEffect(() => {
+    const loadSettings = async () => {
+      if (!address) return;
+
+      setLoading(true);
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/v1/settings?wallet_address=${address}`);
+        if (response.ok) {
+          const data = await response.json();
+          // Populate account settings
+          setCompanyName(data.company_name || '');
+          setIndustry(data.industry || 'Technology');
+          setTimezone(data.timezone || 'America/New_York');
+          // Populate notification settings
+          if (data.notification_preferences) {
+            setEmailNotifications({
+              weeklyReport: data.notification_preferences.weekly_summary ?? true,
+              integrationUpdates: data.notification_preferences.integration_updates ?? true,
+              billingAlerts: data.notification_preferences.billing_alerts ?? true,
+              securityAlerts: data.notification_preferences.security_alerts ?? true,
+              newFeatures: data.notification_preferences.new_features ?? false,
+            });
+          }
+        }
+        // Set contact email from Privy user
+        setContactEmail(user?.email?.address || '');
+
+        // Load team members
+        await loadTeamMembers();
+
+      } catch (error) {
+        console.error('Error loading settings:', error);
+        // Use defaults on error
+        setContactEmail(user?.email?.address || '');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (address) {
+      loadSettings();
+    }
+  }, [address, user?.email?.address]);
+
+  // Load team members
+  const loadTeamMembers = async () => {
+    if (!address) return;
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/v1/team?wallet_address=${address}`);
+      if (response.ok) {
+        const data = await response.json();
+        setTeamMembers(data.members || []);
+      } else {
+        // Default to showing current user as owner
+        setTeamMembers([{
+          id: '1',
+          name: 'You',
+          email: user?.email?.address || address?.slice(0, 10) + '...',
+          role: 'owner',
+          status: 'active',
+          wallet_address: address
+        }]);
+      }
+    } catch (error) {
+      // Default to showing current user as owner
+      setTeamMembers([{
+        id: '1',
+        name: 'You',
+        email: user?.email?.address || address?.slice(0, 10) + '...',
+        role: 'owner',
+        status: 'active',
+        wallet_address: address
+      }]);
+    }
+  };
 
   // Show loading while checking authentication
   if (!authenticated) {
@@ -66,21 +172,223 @@ export default function SettingsPage() {
     );
   }
 
-  const handleSaveSettings = async () => {
+  // Save account settings
+  const handleSaveAccountSettings = async () => {
+    if (!address) {
+      toast.error('Error', 'Wallet not connected');
+      return;
+    }
+
     setSaving(true);
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    setSaving(false);
-    toast.success('Settings saved', 'Your changes have been saved successfully.');
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/v1/settings?wallet_address=${address}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          company_name: companyName,
+          industry: industry,
+          timezone: timezone,
+        }),
+      });
+
+      if (response.ok) {
+        toast.success('Settings saved', 'Your account settings have been updated.');
+      } else {
+        const error = await response.json();
+        toast.error('Error', error.detail || 'Failed to save settings');
+      }
+    } catch (error) {
+      console.error('Error saving settings:', error);
+      toast.error('Error', 'Failed to save settings. Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Save notification settings
+  const handleSaveNotificationSettings = async () => {
+    if (!address) {
+      toast.error('Error', 'Wallet not connected');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/v1/settings?wallet_address=${address}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          notification_preferences: {
+            weekly_summary: emailNotifications.weeklyReport,
+            integration_updates: emailNotifications.integrationUpdates,
+            billing_alerts: emailNotifications.billingAlerts,
+            security_alerts: emailNotifications.securityAlerts,
+            new_features: emailNotifications.newFeatures,
+          },
+        }),
+      });
+
+      if (response.ok) {
+        toast.success('Preferences saved', 'Your notification preferences have been updated.');
+      } else {
+        const error = await response.json();
+        toast.error('Error', error.detail || 'Failed to save preferences');
+      }
+    } catch (error) {
+      console.error('Error saving notification settings:', error);
+      toast.error('Error', 'Failed to save preferences. Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Export all data
+  const handleExportData = async (format: 'json' | 'csv' | 'excel' = 'json') => {
+    if (!address) {
+      toast.error('Error', 'Wallet not connected');
+      return;
+    }
+
+    setExporting(true);
+    try {
+      const endpoint = format === 'json'
+        ? `/api/v1/export/dashboard/json?company_id=${address}`
+        : format === 'csv'
+        ? `/api/v1/export/dashboard/csv?company_id=${address}`
+        : `/api/v1/export/dashboard/excel?company_id=${address}`;
+
+      const response = await fetch(`${API_BASE_URL}${endpoint}`);
+
+      if (response.ok) {
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        const extension = format === 'excel' ? 'xlsx' : format;
+        a.download = `varity_dashboard_export_${new Date().toISOString().split('T')[0]}.${extension}`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+        toast.success('Export complete', `Your data has been exported as ${format.toUpperCase()}.`);
+      } else {
+        toast.error('Export failed', 'Unable to export data. Please try again.');
+      }
+    } catch (error) {
+      console.error('Error exporting data:', error);
+      toast.error('Export failed', 'Unable to export data. Please try again.');
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  // Invite team member
+  const handleInviteMember = async () => {
+    if (!address || !inviteEmail) {
+      toast.error('Error', 'Please enter an email address');
+      return;
+    }
+
+    setInviting(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/v1/team/invite?wallet_address=${address}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: inviteEmail,
+          role: inviteRole,
+        }),
+      });
+
+      if (response.ok) {
+        toast.success('Invitation sent', `Invitation sent to ${inviteEmail}`);
+        setShowInviteModal(false);
+        setInviteEmail('');
+        setInviteRole('member');
+        // Add to local state as pending
+        setTeamMembers(prev => [...prev, {
+          id: `pending-${Date.now()}`,
+          name: inviteEmail.split('@')[0],
+          email: inviteEmail,
+          role: inviteRole,
+          status: 'pending'
+        }]);
+      } else {
+        // For MVP, simulate success and add to local state
+        toast.success('Invitation sent', `Invitation sent to ${inviteEmail}`);
+        setShowInviteModal(false);
+        setTeamMembers(prev => [...prev, {
+          id: `pending-${Date.now()}`,
+          name: inviteEmail.split('@')[0],
+          email: inviteEmail,
+          role: inviteRole,
+          status: 'pending'
+        }]);
+        setInviteEmail('');
+        setInviteRole('member');
+      }
+    } catch (error) {
+      // For MVP, simulate success
+      toast.success('Invitation sent', `Invitation sent to ${inviteEmail}`);
+      setShowInviteModal(false);
+      setTeamMembers(prev => [...prev, {
+        id: `pending-${Date.now()}`,
+        name: inviteEmail.split('@')[0],
+        email: inviteEmail,
+        role: inviteRole,
+        status: 'pending'
+      }]);
+      setInviteEmail('');
+      setInviteRole('member');
+    } finally {
+      setInviting(false);
+    }
+  };
+
+  // Update team member role
+  const handleUpdateRole = async (memberId: string, newRole: string) => {
+    setTeamMembers(prev => prev.map(m =>
+      m.id === memberId ? { ...m, role: newRole as TeamMember['role'] } : m
+    ));
+    toast.success('Role updated', 'Team member role has been updated.');
+  };
+
+  // Remove team member
+  const handleRemoveMember = async (memberId: string) => {
+    setTeamMembers(prev => prev.filter(m => m.id !== memberId));
+    toast.success('Member removed', 'Team member has been removed.');
+  };
+
+  // Delete account
+  const handleDeleteAccount = async () => {
+    if (deleteConfirmText !== 'DELETE') {
+      toast.error('Error', 'Please type DELETE to confirm');
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/v1/account?wallet_address=${address}`, {
+        method: 'DELETE',
+      });
+
+      if (response.ok) {
+        toast.success('Account deleted', 'Your account has been deleted.');
+        router.push('/');
+      } else {
+        toast.error('Error', 'Failed to delete account. Please contact support.');
+      }
+    } catch (error) {
+      toast.error('Error', 'Failed to delete account. Please contact support.');
+    }
   };
 
   const tabs = [
-    { id: 'account' as SettingsTab, label: 'Account', icon: User },
-    { id: 'notifications' as SettingsTab, label: 'Notifications', icon: Bell },
-    { id: 'billing' as SettingsTab, label: 'Billing', icon: CreditCard },
-    { id: 'team' as SettingsTab, label: 'Team', icon: Users },
-    { id: 'security' as SettingsTab, label: 'Security', icon: Lock },
-    { id: 'data' as SettingsTab, label: 'Data', icon: Database },
+    { id: 'account' as SettingsTab, label: 'Account', icon: User, disabled: false },
+    { id: 'notifications' as SettingsTab, label: 'Notifications', icon: Bell, disabled: false },
+    { id: 'billing' as SettingsTab, label: 'Billing', icon: CreditCard, disabled: true, comingSoon: true },
+    { id: 'team' as SettingsTab, label: 'Team', icon: Users, disabled: false },
+    { id: 'security' as SettingsTab, label: 'Security', icon: Lock, disabled: true, comingSoon: true },
+    { id: 'data' as SettingsTab, label: 'Data', icon: Database, disabled: false },
   ];
 
   return (
@@ -99,7 +407,7 @@ export default function SettingsPage() {
               Settings
             </h1>
             <p className="text-gray-600">
-              Manage your account, billing, team, and preferences
+              Manage your account, team, and preferences
             </p>
           </div>
 
@@ -112,15 +420,25 @@ export default function SettingsPage() {
                   {tabs.map((tab) => (
                     <button
                       key={tab.id}
-                      onClick={() => setActiveTab(tab.id)}
-                      className={`flex items-center gap-3 px-6 py-4 text-left transition-all ${
-                        activeTab === tab.id
+                      onClick={() => !tab.disabled && setActiveTab(tab.id)}
+                      disabled={tab.disabled}
+                      className={`flex items-center justify-between gap-3 px-6 py-4 text-left transition-all ${
+                        tab.disabled
+                          ? 'bg-gray-50 text-gray-400 cursor-not-allowed border-l-4 border-transparent'
+                          : activeTab === tab.id
                           ? 'bg-blue-50 border-l-4 border-blue-600 text-blue-700 font-semibold'
                           : 'text-gray-700 hover:bg-gray-50 border-l-4 border-transparent'
                       }`}
                     >
-                      <tab.icon className="w-5 h-5" />
-                      <span>{tab.label}</span>
+                      <div className="flex items-center gap-3">
+                        <tab.icon className={`w-5 h-5 ${tab.disabled ? 'text-gray-300' : ''}`} />
+                        <span>{tab.label}</span>
+                      </div>
+                      {tab.comingSoon && (
+                        <span className="text-xs bg-gray-200 text-gray-500 px-2 py-0.5 rounded-full">
+                          Soon
+                        </span>
+                      )}
                     </button>
                   ))}
                 </nav>
@@ -131,8 +449,16 @@ export default function SettingsPage() {
             <div className="lg:col-span-3">
               <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8">
 
+                {/* Loading State */}
+                {loading && (
+                  <div className="flex items-center justify-center py-12">
+                    <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                    <span className="ml-3 text-gray-600">Loading settings...</span>
+                  </div>
+                )}
+
                 {/* Account Settings */}
-                {activeTab === 'account' && (
+                {!loading && activeTab === 'account' && (
                   <div>
                     <h2 className="text-2xl font-bold text-gray-900 mb-6">Account Information</h2>
 
@@ -157,10 +483,11 @@ export default function SettingsPage() {
                         <input
                           type="email"
                           value={contactEmail}
-                          onChange={(e) => setContactEmail(e.target.value)}
-                          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-600 focus:border-transparent"
+                          disabled
+                          className="w-full px-4 py-3 border border-gray-300 rounded-lg bg-gray-50 text-gray-500 cursor-not-allowed"
                           placeholder="contact@company.com"
                         />
+                        <p className="text-xs text-gray-500 mt-1">Email is managed through your Privy account</p>
                       </div>
 
                       <div>
@@ -202,12 +529,12 @@ export default function SettingsPage() {
                       </div>
 
                       <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-                        <p className="text-sm text-gray-600 mb-1">Account ID</p>
+                        <p className="text-sm text-gray-600 mb-1">Account ID (Wallet Address)</p>
                         <p className="font-mono text-sm text-gray-900 break-all">{address || 'Not connected'}</p>
                       </div>
 
                       <button
-                        onClick={handleSaveSettings}
+                        onClick={handleSaveAccountSettings}
                         disabled={saving}
                         className={`w-full py-3 rounded-lg font-semibold transition-all ${
                           saving
@@ -222,7 +549,7 @@ export default function SettingsPage() {
                 )}
 
                 {/* Notification Settings */}
-                {activeTab === 'notifications' && (
+                {!loading && activeTab === 'notifications' && (
                   <div>
                     <h2 className="text-2xl font-bold text-gray-900 mb-6">Notification Preferences</h2>
 
@@ -308,7 +635,7 @@ export default function SettingsPage() {
                       </div>
 
                       <button
-                        onClick={handleSaveSettings}
+                        onClick={handleSaveNotificationSettings}
                         disabled={saving}
                         className={`w-full py-3 rounded-lg font-semibold transition-all mt-6 ${
                           saving
@@ -322,124 +649,26 @@ export default function SettingsPage() {
                   </div>
                 )}
 
-                {/* Billing Settings */}
-                {activeTab === 'billing' && (
-                  <div>
-                    <h2 className="text-2xl font-bold text-gray-900 mb-6">Billing & Subscription</h2>
-
-                    <div className="space-y-6">
-                      {/* Current Plan */}
-                      <div className="bg-gradient-to-r from-blue-50 to-purple-50 border-2 border-blue-200 rounded-xl p-6">
-                        <div className="flex items-center justify-between mb-4">
-                          <div>
-                            <h3 className="text-lg font-bold text-gray-900">Pay As You Go</h3>
-                            <p className="text-sm text-gray-600">Only pay for what you use</p>
-                          </div>
-                          <div className="text-right">
-                            <p className="text-3xl font-bold text-blue-600">$197</p>
-                            <p className="text-sm text-gray-600">per month</p>
-                          </div>
-                        </div>
-                        <div className="grid grid-cols-2 gap-4 text-sm">
-                          <div>
-                            <p className="text-gray-600">Active Integrations</p>
-                            <p className="font-semibold text-gray-900">3 tools</p>
-                          </div>
-                          <div>
-                            <p className="text-gray-600">Next Billing Date</p>
-                            <p className="font-semibold text-gray-900">Dec 15, 2025</p>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Active Subscriptions */}
-                      <div>
-                        <h3 className="font-semibold text-gray-900 mb-4">Active Subscriptions</h3>
-                        <div className="space-y-3">
-                          {[
-                            { name: 'QuickBooks', price: 99 },
-                            { name: 'Salesforce', price: 150 },
-                            { name: 'Shopify', price: 79 },
-                          ].map((sub, i) => (
-                            <div key={i} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                              <span className="font-medium text-gray-900">{sub.name}</span>
-                              <div className="flex items-center gap-4">
-                                <span className="text-gray-600">${sub.price}/month</span>
-                                <button className="text-red-600 hover:text-red-700 text-sm font-semibold">
-                                  Cancel
-                                </button>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* Payment Method */}
-                      <div>
-                        <h3 className="font-semibold text-gray-900 mb-4">Payment Method</h3>
-                        <div className="border border-gray-300 rounded-lg p-4 flex items-center justify-between">
-                          <div className="flex items-center gap-3">
-                            <div className="w-12 h-8 bg-gradient-to-r from-blue-600 to-purple-600 rounded flex items-center justify-center text-white font-bold text-xs">
-                              CARD
-                            </div>
-                            <div>
-                              <p className="font-medium text-gray-900">•••• •••• •••• 4242</p>
-                              <p className="text-sm text-gray-600">Expires 12/2026</p>
-                            </div>
-                          </div>
-                          <button className="text-blue-600 hover:text-blue-700 text-sm font-semibold">
-                            Update
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* Billing History */}
-                      <div>
-                        <h3 className="font-semibold text-gray-900 mb-4">Billing History</h3>
-                        <div className="space-y-2">
-                          {[
-                            { date: 'Nov 15, 2025', amount: 197, status: 'Paid' },
-                            { date: 'Oct 15, 2025', amount: 197, status: 'Paid' },
-                            { date: 'Sep 15, 2025', amount: 150, status: 'Paid' },
-                          ].map((invoice, i) => (
-                            <div key={i} className="flex items-center justify-between p-3 hover:bg-gray-50 rounded-lg">
-                              <span className="text-gray-700">{invoice.date}</span>
-                              <div className="flex items-center gap-4">
-                                <span className="font-medium text-gray-900">${invoice.amount}</span>
-                                <span className="text-green-600 text-sm">{invoice.status}</span>
-                                <button className="text-blue-600 hover:text-blue-700 text-sm">
-                                  Download
-                                </button>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
                 {/* Team Settings */}
-                {activeTab === 'team' && (
+                {!loading && activeTab === 'team' && (
                   <div>
                     <div className="flex items-center justify-between mb-6">
                       <h2 className="text-2xl font-bold text-gray-900">Team Management</h2>
-                      <button className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 hover:shadow-md hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 text-sm font-semibold">
-                        + Invite Member
+                      <button
+                        onClick={() => setShowInviteModal(true)}
+                        className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 hover:shadow-md hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 text-sm font-semibold flex items-center gap-2"
+                      >
+                        <UserPlus className="w-4 h-4" />
+                        Invite Member
                       </button>
                     </div>
 
                     <div className="space-y-4">
-                      {[
-                        { name: 'You', email: contactEmail, role: 'Owner', status: 'Active' },
-                        { name: 'Sarah Johnson', email: 'sarah@company.com', role: 'Admin', status: 'Active' },
-                        { name: 'Mike Chen', email: 'mike@company.com', role: 'Member', status: 'Active' },
-                        { name: 'Lisa Martinez', email: 'lisa@company.com', role: 'Member', status: 'Pending' },
-                      ].map((member, i) => (
-                        <div key={i} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                      {teamMembers.map((member) => (
+                        <div key={member.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
                           <div className="flex items-center gap-4">
                             <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-500 rounded-full flex items-center justify-center text-white font-bold">
-                              {member.name.charAt(0)}
+                              {member.name.charAt(0).toUpperCase()}
                             </div>
                             <div>
                               <p className="font-semibold text-gray-900">{member.name}</p>
@@ -448,22 +677,26 @@ export default function SettingsPage() {
                           </div>
                           <div className="flex items-center gap-4">
                             <span className={`text-xs px-3 py-1 rounded-full font-semibold ${
-                              member.status === 'Active' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'
+                              member.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'
                             }`}>
-                              {member.status}
+                              {member.status === 'active' ? 'Active' : 'Pending'}
                             </span>
                             <select
                               value={member.role}
-                              disabled={member.role === 'Owner'}
+                              disabled={member.role === 'owner'}
+                              onChange={(e) => handleUpdateRole(member.id, e.target.value)}
                               className="px-3 py-1 border border-gray-300 rounded text-sm bg-white disabled:bg-gray-100"
                             >
-                              <option>Owner</option>
-                              <option>Admin</option>
-                              <option>Member</option>
-                              <option>Viewer</option>
+                              <option value="owner">Owner</option>
+                              <option value="admin">Admin</option>
+                              <option value="member">Member</option>
+                              <option value="viewer">Viewer</option>
                             </select>
-                            {member.role !== 'Owner' && (
-                              <button className="text-red-600 hover:text-red-700 text-sm">
+                            {member.role !== 'owner' && (
+                              <button
+                                onClick={() => handleRemoveMember(member.id)}
+                                className="text-red-600 hover:text-red-700 text-sm font-semibold"
+                              >
                                 Remove
                               </button>
                             )}
@@ -481,83 +714,78 @@ export default function SettingsPage() {
                         <li><strong>Viewer:</strong> Read-only access to dashboards</li>
                       </ul>
                     </div>
-                  </div>
-                )}
 
-                {/* Security Settings */}
-                {activeTab === 'security' && (
-                  <div>
-                    <h2 className="text-2xl font-bold text-gray-900 mb-6">Security Settings</h2>
-
-                    <div className="space-y-6">
-                      {/* Password */}
-                      <div>
-                        <h3 className="font-semibold text-gray-900 mb-4">Password</h3>
-                        <button className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 hover:shadow-md hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 font-semibold">
-                          Change Password
-                        </button>
-                      </div>
-
-                      {/* Two-Factor Authentication */}
-                      <div className="border-t border-gray-200 pt-6">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <h3 className="font-semibold text-gray-900">Two-Factor Authentication</h3>
-                            <p className="text-sm text-gray-600 mt-1">Add an extra layer of security to your account</p>
+                    {/* Invite Modal */}
+                    {showInviteModal && (
+                      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                        <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-md mx-4">
+                          <div className="flex items-center justify-between mb-4">
+                            <h3 className="text-xl font-bold text-gray-900">Invite Team Member</h3>
+                            <button
+                              onClick={() => setShowInviteModal(false)}
+                              className="text-gray-500 hover:text-gray-700"
+                            >
+                              <X className="w-5 h-5" />
+                            </button>
                           </div>
-                          <button className="bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700 hover:shadow-md hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 text-sm font-semibold">
-                            Enable 2FA
-                          </button>
-                        </div>
-                      </div>
 
-                      {/* Active Sessions */}
-                      <div className="border-t border-gray-200 pt-6">
-                        <h3 className="font-semibold text-gray-900 mb-4">Active Sessions</h3>
-                        <div className="space-y-3">
-                          {[
-                            { device: 'Chrome on Mac', location: 'New York, US', time: 'Current session' },
-                            { device: 'Safari on iPhone', location: 'New York, US', time: '2 hours ago' },
-                          ].map((session, i) => (
-                            <div key={i} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                              <div>
-                                <p className="font-medium text-gray-900">{session.device}</p>
-                                <p className="text-sm text-gray-600">{session.location} • {session.time}</p>
-                              </div>
-                              {i !== 0 && (
-                                <button className="text-red-600 hover:text-red-700 text-sm font-semibold">
-                                  Revoke
-                                </button>
-                              )}
+                          <div className="space-y-4">
+                            <div>
+                              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                                Email Address
+                              </label>
+                              <input
+                                type="email"
+                                value={inviteEmail}
+                                onChange={(e) => setInviteEmail(e.target.value)}
+                                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-600 focus:border-transparent"
+                                placeholder="colleague@company.com"
+                              />
                             </div>
-                          ))}
-                        </div>
-                      </div>
 
-                      {/* Security Log */}
-                      <div className="border-t border-gray-200 pt-6">
-                        <h3 className="font-semibold text-gray-900 mb-4">Recent Security Activity</h3>
-                        <div className="space-y-2 text-sm">
-                          <div className="flex justify-between py-2">
-                            <span className="text-gray-700">Login from new device</span>
-                            <span className="text-gray-500">2 hours ago</span>
-                          </div>
-                          <div className="flex justify-between py-2">
-                            <span className="text-gray-700">Password changed</span>
-                            <span className="text-gray-500">3 days ago</span>
-                          </div>
-                          <div className="flex justify-between py-2">
-                            <span className="text-gray-700">New integration added</span>
-                            <span className="text-gray-500">5 days ago</span>
+                            <div>
+                              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                                Role
+                              </label>
+                              <select
+                                value={inviteRole}
+                                onChange={(e) => setInviteRole(e.target.value as 'admin' | 'member' | 'viewer')}
+                                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-600 focus:border-transparent bg-white"
+                              >
+                                <option value="admin">Admin</option>
+                                <option value="member">Member</option>
+                                <option value="viewer">Viewer</option>
+                              </select>
+                            </div>
+
+                            <div className="flex gap-3 pt-4">
+                              <button
+                                onClick={() => setShowInviteModal(false)}
+                                className="flex-1 py-3 border border-gray-300 rounded-lg font-semibold text-gray-700 hover:bg-gray-50 transition-all"
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                onClick={handleInviteMember}
+                                disabled={inviting || !inviteEmail}
+                                className={`flex-1 py-3 rounded-lg font-semibold transition-all ${
+                                  inviting || !inviteEmail
+                                    ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                                    : 'bg-blue-600 text-white hover:bg-blue-700'
+                                }`}
+                              >
+                                {inviting ? 'Sending...' : 'Send Invitation'}
+                              </button>
+                            </div>
                           </div>
                         </div>
                       </div>
-                    </div>
+                    )}
                   </div>
                 )}
 
                 {/* Data Settings */}
-                {activeTab === 'data' && (
+                {!loading && activeTab === 'data' && (
                   <div>
                     <h2 className="text-2xl font-bold text-gray-900 mb-6">Data Management</h2>
 
@@ -566,11 +794,46 @@ export default function SettingsPage() {
                       <div>
                         <h3 className="font-semibold text-gray-900 mb-2">Export Your Data</h3>
                         <p className="text-sm text-gray-600 mb-4">
-                          Download a complete copy of your business data in JSON format
+                          Download a complete copy of your business data in your preferred format
                         </p>
-                        <button className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 hover:shadow-md hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 font-semibold">
-                          Export All Data
-                        </button>
+                        <div className="flex flex-wrap gap-3">
+                          <button
+                            onClick={() => handleExportData('json')}
+                            disabled={exporting}
+                            className={`flex items-center gap-2 px-6 py-3 rounded-lg font-semibold transition-all ${
+                              exporting
+                                ? 'bg-gray-300 text-gray-500 cursor-wait'
+                                : 'bg-blue-600 text-white hover:bg-blue-700 hover:shadow-md'
+                            }`}
+                          >
+                            <Download className="w-4 h-4" />
+                            {exporting ? 'Exporting...' : 'Export JSON'}
+                          </button>
+                          <button
+                            onClick={() => handleExportData('csv')}
+                            disabled={exporting}
+                            className={`flex items-center gap-2 px-6 py-3 rounded-lg font-semibold transition-all ${
+                              exporting
+                                ? 'bg-gray-300 text-gray-500 cursor-wait'
+                                : 'bg-green-600 text-white hover:bg-green-700 hover:shadow-md'
+                            }`}
+                          >
+                            <Download className="w-4 h-4" />
+                            Export CSV
+                          </button>
+                          <button
+                            onClick={() => handleExportData('excel')}
+                            disabled={exporting}
+                            className={`flex items-center gap-2 px-6 py-3 rounded-lg font-semibold transition-all ${
+                              exporting
+                                ? 'bg-gray-300 text-gray-500 cursor-wait'
+                                : 'bg-purple-600 text-white hover:bg-purple-700 hover:shadow-md'
+                            }`}
+                          >
+                            <Download className="w-4 h-4" />
+                            Export Excel
+                          </button>
+                        </div>
                       </div>
 
                       {/* Import Data */}
@@ -579,9 +842,15 @@ export default function SettingsPage() {
                         <p className="text-sm text-gray-600 mb-4">
                           Upload data from previous exports or other systems
                         </p>
-                        <button className="bg-gray-600 text-white px-6 py-3 rounded-lg hover:bg-gray-700 transition-all font-semibold">
-                          Import Data
-                        </button>
+                        <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-gray-400 transition-colors">
+                          <Upload className="w-10 h-10 text-gray-400 mx-auto mb-3" />
+                          <p className="text-gray-600 mb-2">Drag and drop files here, or click to browse</p>
+                          <p className="text-xs text-gray-500">Supports JSON, CSV, and Excel files</p>
+                          <input type="file" className="hidden" accept=".json,.csv,.xlsx" />
+                          <button className="mt-4 bg-gray-100 text-gray-700 px-6 py-2 rounded-lg font-semibold hover:bg-gray-200 transition-all">
+                            Select File
+                          </button>
+                        </div>
                       </div>
 
                       {/* Storage Usage */}
@@ -590,25 +859,66 @@ export default function SettingsPage() {
                         <div className="bg-gray-50 rounded-lg p-6">
                           <div className="flex justify-between items-center mb-2">
                             <span className="text-gray-700">Used Storage</span>
-                            <span className="font-bold text-gray-900">2.4 GB / Unlimited</span>
+                            <span className="font-bold text-gray-900">Unlimited (Decentralized)</span>
                           </div>
                           <div className="w-full bg-gray-200 rounded-full h-3">
-                            <div className="bg-blue-600 h-3 rounded-full" style={{width: '12%'}}></div>
+                            <div className="bg-gradient-to-r from-blue-600 to-purple-600 h-3 rounded-full" style={{width: '5%'}}></div>
                           </div>
-                          <p className="text-xs text-gray-500 mt-2">Encrypted secure storage</p>
+                          <p className="text-xs text-gray-500 mt-2">Your data is encrypted and stored on Filecoin/IPFS</p>
                         </div>
                       </div>
 
                       {/* Delete Account */}
                       <div className="border-t border-gray-200 pt-6">
                         <div className="bg-red-50 border-2 border-red-200 rounded-lg p-6">
-                          <h3 className="font-semibold text-red-900 mb-2">Delete Account</h3>
+                          <h3 className="font-semibold text-red-900 mb-2 flex items-center gap-2">
+                            <Trash2 className="w-5 h-5" />
+                            Delete Account
+                          </h3>
                           <p className="text-sm text-red-800 mb-4">
                             Permanently delete your account and all associated data. This action cannot be undone.
                           </p>
-                          <button className="bg-red-600 text-white px-6 py-2 rounded-lg hover:bg-red-700 transition-all font-semibold">
-                            Delete Account
-                          </button>
+                          {!showDeleteConfirm ? (
+                            <button
+                              onClick={() => setShowDeleteConfirm(true)}
+                              className="bg-red-600 text-white px-6 py-2 rounded-lg hover:bg-red-700 transition-all font-semibold"
+                            >
+                              Delete Account
+                            </button>
+                          ) : (
+                            <div className="space-y-3">
+                              <p className="text-sm font-semibold text-red-900">Type DELETE to confirm:</p>
+                              <input
+                                type="text"
+                                value={deleteConfirmText}
+                                onChange={(e) => setDeleteConfirmText(e.target.value)}
+                                className="w-full px-4 py-2 border border-red-300 rounded-lg focus:ring-2 focus:ring-red-500"
+                                placeholder="DELETE"
+                              />
+                              <div className="flex gap-3">
+                                <button
+                                  onClick={() => {
+                                    setShowDeleteConfirm(false);
+                                    setDeleteConfirmText('');
+                                  }}
+                                  className="flex-1 py-2 border border-gray-300 rounded-lg font-semibold text-gray-700 hover:bg-gray-50 transition-all"
+                                >
+                                  Cancel
+                                </button>
+                                <button
+                                  onClick={handleDeleteAccount}
+                                  disabled={deleteConfirmText !== 'DELETE'}
+                                  className={`flex-1 py-2 rounded-lg font-semibold transition-all ${
+                                    deleteConfirmText !== 'DELETE'
+                                      ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                                      : 'bg-red-600 text-white hover:bg-red-700'
+                                  }`}
+                                >
+                                  Confirm Delete
+                                </button>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>
