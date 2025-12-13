@@ -9,6 +9,9 @@ from typing import Optional, Dict, Any
 import logging
 import httpx
 import secrets
+import json
+import base64
+import hashlib
 from urllib.parse import urlencode
 from datetime import datetime, timedelta
 
@@ -30,7 +33,74 @@ filecoin_service = FilecoinService()
 encryption_service = EncryptionService()
 
 # OAuth state storage (in production, use Redis)
+# NOTE: This is in-memory and will be lost on restart. We also encode data in state as backup.
 oauth_states = {}
+
+# Secret key for state signing (should be in environment variables in production)
+STATE_SECRET = settings.secret_key if hasattr(settings, 'secret_key') else "varity-oauth-state-secret-key-2024"
+
+
+def encode_oauth_state(integration: str, wallet_address: str, shop_domain: str = None, subdomain: str = None) -> str:
+    """
+    Encode OAuth state data into a signed token.
+    This allows state validation even if the in-memory oauth_states dict is lost (e.g., backend restart).
+    """
+    data = {
+        "i": integration,  # integration
+        "w": wallet_address.lower(),  # wallet
+        "t": int(datetime.utcnow().timestamp()),  # timestamp
+        "r": secrets.token_urlsafe(8),  # random nonce
+    }
+    if shop_domain:
+        data["s"] = shop_domain
+    if subdomain:
+        data["d"] = subdomain
+
+    # Encode data
+    payload = base64.urlsafe_b64encode(json.dumps(data).encode()).decode()
+
+    # Create signature
+    signature = hashlib.sha256(f"{payload}{STATE_SECRET}".encode()).hexdigest()[:16]
+
+    return f"{payload}.{signature}"
+
+
+def decode_oauth_state(state: str) -> Optional[Dict[str, Any]]:
+    """
+    Decode and validate OAuth state token.
+    Returns None if invalid or expired (older than 30 minutes).
+    """
+    try:
+        parts = state.split(".")
+        if len(parts) != 2:
+            return None
+
+        payload, signature = parts
+
+        # Verify signature
+        expected_sig = hashlib.sha256(f"{payload}{STATE_SECRET}".encode()).hexdigest()[:16]
+        if signature != expected_sig:
+            logger.warning("OAuth state signature mismatch")
+            return None
+
+        # Decode payload
+        data = json.loads(base64.urlsafe_b64decode(payload.encode()).decode())
+
+        # Check expiration (30 minutes)
+        timestamp = data.get("t", 0)
+        if datetime.utcnow().timestamp() - timestamp > 1800:  # 30 minutes
+            logger.warning("OAuth state expired")
+            return None
+
+        return {
+            "integration": data.get("i"),
+            "wallet_address": data.get("w"),
+            "shop_domain": data.get("s"),
+            "subdomain": data.get("d"),
+        }
+    except Exception as e:
+        logger.error(f"Failed to decode OAuth state: {e}")
+        return None
 
 # Helper function to build redirect URI for each provider
 # OAuth redirects go to FRONTEND, not backend. Frontend then sends code to backend.
@@ -203,9 +273,15 @@ async def start_oauth_flow(
         config = OAUTH_CONFIGS[integration]
 
         # Generate state token for CSRF protection
-        state = secrets.token_urlsafe(32)
+        # State is self-contained (encoded with signature) so it survives backend restarts
+        state = encode_oauth_state(
+            integration=integration,
+            wallet_address=request.wallet_address,
+            shop_domain=request.shop_domain,
+            subdomain=request.subdomain
+        )
 
-        # Store state with wallet address
+        # Also store in memory for faster lookup (optional, state is self-validating)
         oauth_states[state] = {
             "integration": integration,
             "wallet_address": request.wallet_address,
@@ -301,14 +377,19 @@ async def oauth_callback_post(request: Request, db: AsyncSession = Depends(get_d
                 detail="Missing required fields: provider, code, state, wallet_address"
             )
 
-        # Validate state
-        if state not in oauth_states:
-            raise HTTPException(
-                status_code=400,
-                detail="Invalid or expired state token"
-            )
+        # Validate state - try memory first, then decode as fallback
+        state_data = None
+        if state in oauth_states:
+            state_data = oauth_states.pop(state)
+        else:
+            # Fallback: decode self-contained state (survives backend restart)
+            state_data = decode_oauth_state(state)
+            if not state_data:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Invalid or expired state token"
+                )
 
-        state_data = oauth_states.pop(state)
         integration = state_data["integration"]
 
         # Verify provider matches state
@@ -375,9 +456,7 @@ async def oauth_callback_post(request: Request, db: AsyncSession = Depends(get_d
             "token_type": token_response.get("token_type", "Bearer"),
             "integration": integration,
             "wallet_address": wallet_address,
-            "created_at": httpx.utils.parse_date(
-                response.headers.get("date", "")
-            ).isoformat() if "date" in response.headers else None
+            "created_at": datetime.utcnow().isoformat()
         }
 
         # Add integration-specific data
@@ -560,14 +639,19 @@ async def oauth_callback(
         Success message with redirect to frontend
     """
     try:
-        # Validate state
-        if state not in oauth_states:
-            raise HTTPException(
-                status_code=400,
-                detail="Invalid or expired state token"
-            )
+        # Validate state - try memory first, then decode as fallback
+        state_data = None
+        if state in oauth_states:
+            state_data = oauth_states.pop(state)
+        else:
+            # Fallback: decode self-contained state (survives backend restart)
+            state_data = decode_oauth_state(state)
+            if not state_data:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Invalid or expired state token"
+                )
 
-        state_data = oauth_states.pop(state)
         integration = state_data["integration"]
         wallet_address = state_data["wallet_address"]
 
@@ -634,9 +718,7 @@ async def oauth_callback(
             "token_type": token_response.get("token_type", "Bearer"),
             "integration": integration,
             "wallet_address": wallet_address,
-            "created_at": httpx.utils.parse_date(
-                response.headers.get("date", "")
-            ).isoformat() if "date" in response.headers else None
+            "created_at": datetime.utcnow().isoformat()
         }
 
         # Add integration-specific data
