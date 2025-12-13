@@ -34,6 +34,12 @@ async def init_database() -> bool:
 
         from app.core.database import engine, Base
 
+        # Import all models to register them with Base before creating tables
+        from app.models.marketplace import Product, Category, PricingPlan  # noqa: F401
+        from app.models.purchase import Purchase, Subscription  # noqa: F401
+        from app.models.user_settings import UserSettings, APIKey  # noqa: F401
+        from app.models.conversation import Conversation, Message  # noqa: F401
+
         # Create all tables
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)

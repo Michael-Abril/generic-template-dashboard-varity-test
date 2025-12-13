@@ -24,6 +24,17 @@ from app.models.purchase import (
     SubscriptionStatus,
     SyncStatus
 )
+from app.models.conversation import (
+    Conversation,
+    Message,
+    MessageRole,
+    MessageCreate,
+    MessageResponse,
+    ConversationCreate,
+    ConversationUpdate,
+    ConversationResponse,
+    ConversationWithMessages
+)
 
 __all__ = [
     "Category",
@@ -43,5 +54,14 @@ __all__ = [
     "SyncLog",
     "IntegrationConfig",
     "SubscriptionStatus",
-    "SyncStatus"
+    "SyncStatus",
+    "Conversation",
+    "Message",
+    "MessageRole",
+    "MessageCreate",
+    "MessageResponse",
+    "ConversationCreate",
+    "ConversationUpdate",
+    "ConversationResponse",
+    "ConversationWithMessages"
 ]
