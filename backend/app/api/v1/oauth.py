@@ -383,6 +383,7 @@ async def oauth_callback_post(request: Request, db: AsyncSession = Depends(get_d
         state = body.get("state")
         wallet_address = body.get("wallet_address")
         redirect_uri = body.get("redirect_uri")
+        realm_id = body.get("realm_id")  # QuickBooks company ID (from callback URL)
 
         if not all([provider, code, state, wallet_address]):
             raise HTTPException(
@@ -485,8 +486,9 @@ async def oauth_callback_post(request: Request, db: AsyncSession = Depends(get_d
         }
 
         # Add integration-specific data
-        if integration == "quickbooks":
-            credentials["realm_id"] = token_response.get("realmId")
+        if integration == "quickbooks" and realm_id:
+            # QuickBooks realmId comes from callback URL, not token response
+            credentials["realm_id"] = realm_id
         elif integration == "shopify":
             credentials["shop_domain"] = state_data.get("shop_domain")
         elif integration == "zendesk":
