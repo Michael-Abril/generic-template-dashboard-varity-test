@@ -411,7 +411,7 @@ export default function SettingsPage() {
                   <div>
                     <div className="flex items-center justify-between mb-6">
                       <h2 className="text-2xl font-bold text-gray-900">Team Management</h2>
-                      <button className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-all text-sm font-semibold">
+                      <button className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 hover:shadow-md hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 text-sm font-semibold">
                         + Invite Member
                       </button>
                     </div>
@@ -480,7 +480,7 @@ export default function SettingsPage() {
                       {/* Password */}
                       <div>
                         <h3 className="font-semibold text-gray-900 mb-4">Password</h3>
-                        <button className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-all font-semibold">
+                        <button className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 hover:shadow-md hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 font-semibold">
                           Change Password
                         </button>
                       </div>
@@ -492,7 +492,7 @@ export default function SettingsPage() {
                             <h3 className="font-semibold text-gray-900">Two-Factor Authentication</h3>
                             <p className="text-sm text-gray-600 mt-1">Add an extra layer of security to your account</p>
                           </div>
-                          <button className="bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700 transition-all text-sm font-semibold">
+                          <button className="bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700 hover:shadow-md hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 text-sm font-semibold">
                             Enable 2FA
                           </button>
                         </div>
@@ -555,7 +555,7 @@ export default function SettingsPage() {
                         <p className="text-sm text-gray-600 mb-4">
                           Download a complete copy of your business data in JSON format
                         </p>
-                        <button className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-all font-semibold">
+                        <button className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 hover:shadow-md hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 font-semibold">
                           Export All Data
                         </button>
                       </div>

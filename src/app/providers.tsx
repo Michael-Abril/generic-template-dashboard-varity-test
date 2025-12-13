@@ -86,13 +86,13 @@ function InitTimeoutScreen({ onRetry }: { onRetry: () => void }) {
         <div className="flex gap-2">
           <button
             onClick={onRetry}
-            className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-all"
+            className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 hover:shadow-md hover:scale-[1.02] active:scale-[0.98] transition-all duration-200"
           >
             Retry
           </button>
           <button
             onClick={() => {}}
-            className="flex-1 bg-gray-200 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-300 transition-all"
+            className="flex-1 bg-gray-200 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-300 hover:shadow-sm hover:scale-[1.01] active:scale-[0.99] transition-all duration-200"
           >
             Continue Waiting
           </button>
@@ -261,7 +261,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
           </ul>
           <button
             onClick={() => window.location.reload()}
-            className="w-full bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-all"
+            className="w-full bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 hover:shadow-md hover:scale-[1.02] active:scale-[0.98] transition-all duration-200"
           >
             Retry
           </button>
@@ -322,7 +322,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
           </ul>
           <button
             onClick={() => window.location.reload()}
-            className="w-full bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-all"
+            className="w-full bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 hover:shadow-md hover:scale-[1.02] active:scale-[0.98] transition-all duration-200"
           >
             Retry
           </button>

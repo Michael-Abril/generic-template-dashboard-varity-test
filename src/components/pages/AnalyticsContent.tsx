@@ -294,7 +294,7 @@ export default function AnalyticsContent() {
                     className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
                   />
                 </div>
-                <button className="mt-5 bg-blue-600 text-white px-6 py-2 rounded-lg text-sm font-semibold hover:bg-blue-700 transition-all">
+                <button className="mt-5 bg-blue-600 text-white px-6 py-2 rounded-lg text-sm font-semibold hover:bg-blue-700 hover:shadow-md hover:scale-[1.02] active:scale-[0.98] transition-all duration-200">
                   Apply
                 </button>
               </div>

@@ -231,7 +231,7 @@ function IntegrationsContent() {
               </div>
               <Link
                 href="/marketplace"
-                className="bg-blue-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-blue-700 transition-all flex items-center gap-2"
+                className="bg-blue-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-blue-700 hover:shadow-md hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 flex items-center gap-2"
               >
                 <Plus className="w-5 h-5" />
                 Add Integration
@@ -281,7 +281,7 @@ function IntegrationsContent() {
               </p>
               <Link
                 href="/marketplace"
-                className="inline-flex items-center gap-2 bg-blue-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-blue-700 transition-all"
+                className="inline-flex items-center gap-2 bg-blue-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-blue-700 hover:shadow-md hover:scale-[1.02] active:scale-[0.98] transition-all duration-200"
               >
                 <ExternalLink className="w-5 h-5" />
                 Browse Marketplace

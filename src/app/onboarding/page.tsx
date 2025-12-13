@@ -156,7 +156,7 @@ export default function OnboardingPage() {
             </p>
             <button
               onClick={() => router.push('/marketplace')}
-              className="w-full bg-blue-600 text-white py-3 px-4 rounded-lg hover:bg-blue-700 font-semibold"
+              className="w-full bg-blue-600 text-white py-3 px-4 rounded-lg hover:bg-blue-700 hover:shadow-md hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 font-semibold"
             >
               Back to Marketplace
             </button>

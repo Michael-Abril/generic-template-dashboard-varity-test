@@ -517,7 +517,7 @@ export default function MarketplaceContent() {
                       setSearchQuery('');
                       setSelectedCategory('all');
                     }}
-                    className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-all"
+                    className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 hover:shadow-md hover:scale-[1.02] active:scale-[0.98] transition-all duration-200"
                   >
                     Clear Filters
                   </button>
@@ -722,7 +722,7 @@ export default function MarketplaceContent() {
                         toast.error('OAuth failed', error.message || 'Could not start authentication.');
                       }
                     }}
-                    className="flex-1 py-3 px-4 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-all"
+                    className="flex-1 py-3 px-4 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 hover:shadow-md hover:scale-[1.02] active:scale-[0.98] transition-all duration-200"
                   >
                     Connect Account
                   </button>
@@ -765,7 +765,7 @@ export default function MarketplaceContent() {
               <div className="flex gap-3">
                 <button
                   onClick={() => setShowConfirmationModal(false)}
-                  className="flex-1 py-3 px-4 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-all"
+                  className="flex-1 py-3 px-4 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 hover:shadow-md hover:scale-[1.02] active:scale-[0.98] transition-all duration-200"
                 >
                   Close
                 </button>
