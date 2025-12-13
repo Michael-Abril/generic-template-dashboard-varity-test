@@ -277,28 +277,28 @@ export default function DashboardContent() {
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <Link
                   href="/integrations"
-                  className="flex flex-col items-center gap-2 p-4 bg-purple-50 hover:bg-purple-100 rounded-lg transition-colors"
+                  className="flex flex-col items-center gap-2 p-4 bg-purple-50 hover:bg-purple-100 hover:scale-[1.02] rounded-lg transition-all duration-200"
                 >
                   <Settings className="w-6 h-6 text-purple-600" />
                   <span className="text-sm font-medium text-purple-700">My Integrations</span>
                 </Link>
                 <Link
                   href="/marketplace"
-                  className="flex flex-col items-center gap-2 p-4 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors"
+                  className="flex flex-col items-center gap-2 p-4 bg-blue-50 hover:bg-blue-100 hover:scale-[1.02] rounded-lg transition-all duration-200"
                 >
                   <Plug className="w-6 h-6 text-blue-600" />
                   <span className="text-sm font-medium text-blue-700">Add Integration</span>
                 </Link>
                 <Link
                   href="/analytics"
-                  className="flex flex-col items-center gap-2 p-4 bg-orange-50 hover:bg-orange-100 rounded-lg transition-colors"
+                  className="flex flex-col items-center gap-2 p-4 bg-orange-50 hover:bg-orange-100 hover:scale-[1.02] rounded-lg transition-all duration-200"
                 >
                   <BarChart3 className="w-6 h-6 text-orange-600" />
                   <span className="text-sm font-medium text-orange-700">View Analytics</span>
                 </Link>
                 <Link
                   href="/ai-assistant"
-                  className="flex flex-col items-center gap-2 p-4 bg-green-50 hover:bg-green-100 rounded-lg transition-colors"
+                  className="flex flex-col items-center gap-2 p-4 bg-green-50 hover:bg-green-100 hover:scale-[1.02] rounded-lg transition-all duration-200"
                 >
                   <MessageSquare className="w-6 h-6 text-green-600" />
                   <span className="text-sm font-medium text-green-700">AI Assistant</span>
@@ -408,7 +408,7 @@ export default function DashboardContent() {
                   <p className="text-xs text-yellow-800">{revenueError}</p>
                   <button
                     onClick={fetchRevenueTrend}
-                    className="ml-auto text-xs text-yellow-700 hover:text-yellow-800 font-semibold"
+                    className="ml-auto text-xs text-yellow-700 hover:text-yellow-800 hover:underline font-semibold transition-all duration-150"
                   >
                     Retry
                   </button>
@@ -441,7 +441,7 @@ export default function DashboardContent() {
                 // Success state - dynamic data
                 <div className="space-y-4">
                   {recentActivityData.activities.map((activity, i) => (
-                    <div key={i} className="flex items-start gap-3 pb-4 border-b border-gray-100 last:border-0">
+                    <div key={i} className="flex items-start gap-3 pb-4 border-b border-gray-100 last:border-0 -mx-2 px-2 py-1 rounded-lg hover:bg-gray-50 transition-colors duration-150 cursor-pointer">
                       <div className="w-10 h-10 bg-gray-50 rounded-lg flex items-center justify-center text-xl flex-shrink-0">
                         {activity.icon}
                       </div>
@@ -513,7 +513,7 @@ export default function DashboardContent() {
                 // Success state - dynamic data
                 <div className="space-y-4">
                   {topCustomersData.customers.map((customer, i) => (
-                    <div key={i}>
+                    <div key={i} className="-mx-2 px-2 py-2 rounded-lg hover:bg-gray-50 transition-colors duration-150 cursor-pointer">
                       <div className="flex items-center justify-between mb-1">
                         <span className="text-sm font-medium text-gray-900">{customer.name}</span>
                         <span className="text-sm font-semibold text-gray-900">{customer.revenue}</span>

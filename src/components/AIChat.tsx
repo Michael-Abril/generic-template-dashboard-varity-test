@@ -71,14 +71,16 @@ export function AIChat() {
     setLoading(true);
 
     try {
-      // Call the real AI backend endpoint
-      const response = await fetch(`${API_BASE_URL}/api/v1/ai/chat`, {
+      // Call the combined AI endpoint (RAG + Web Search)
+      const response = await fetch(`${API_BASE_URL}/api/v1/ai/query/combined`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          message: input,
+          query: input,
           wallet_address: address,
-          use_rag: true
+          enable_web_search: true,
+          max_rag_results: 5,
+          max_search_results: 3
         })
       });
 
@@ -87,18 +89,25 @@ export function AIChat() {
       }
 
       const data = await response.json() as {
-        response: string;
-        sources?: Array<{ tool: string; data_type: string }>;
+        answer: string;
+        rag_sources?: string[];
+        web_sources?: Array<{ title: string; url: string }>;
+        context_used?: boolean;
+        web_search_used?: boolean;
       };
 
-      // Extract source names from the sources array
-      const sourceNames = data.sources?.map((s) =>
-        `${s.tool} - ${s.data_type}`
-      ) || [];
+      // Build source list from both RAG and web sources
+      const sourceNames: string[] = [];
+      if (data.rag_sources && data.rag_sources.length > 0) {
+        sourceNames.push(...data.rag_sources.map(s => `📊 ${s}`));
+      }
+      if (data.web_sources && data.web_sources.length > 0) {
+        sourceNames.push(...data.web_sources.map(s => `🌐 ${s.title}`));
+      }
 
       const assistantMessage: Message = {
         role: 'assistant',
-        content: data.response,
+        content: data.answer,
         sources: sourceNames,
         timestamp: new Date()
       };
