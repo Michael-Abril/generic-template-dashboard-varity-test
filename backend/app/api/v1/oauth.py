@@ -40,10 +40,11 @@ oauth_states = {}
 STATE_SECRET = settings.secret_key if hasattr(settings, 'secret_key') else "varity-oauth-state-secret-key-2024"
 
 
-def encode_oauth_state(integration: str, wallet_address: str, shop_domain: str = None, subdomain: str = None) -> str:
+def encode_oauth_state(integration: str, wallet_address: str, shop_domain: str = None, subdomain: str = None, redirect_uri: str = None) -> str:
     """
     Encode OAuth state data into a signed token.
     This allows state validation even if the in-memory oauth_states dict is lost (e.g., backend restart).
+    CRITICAL: redirect_uri is stored in state to ensure consistency between START and CALLBACK phases.
     """
     data = {
         "i": integration,  # integration
@@ -55,6 +56,8 @@ def encode_oauth_state(integration: str, wallet_address: str, shop_domain: str =
         data["s"] = shop_domain
     if subdomain:
         data["d"] = subdomain
+    if redirect_uri:
+        data["u"] = redirect_uri  # redirect_uri - CRITICAL for OAuth consistency
 
     # Encode data
     payload = base64.urlsafe_b64encode(json.dumps(data).encode()).decode()
@@ -97,6 +100,7 @@ def decode_oauth_state(state: str) -> Optional[Dict[str, Any]]:
             "wallet_address": data.get("w"),
             "shop_domain": data.get("s"),
             "subdomain": data.get("d"),
+            "redirect_uri": data.get("u"),  # CRITICAL: Use same redirect_uri as START phase
         }
     except Exception as e:
         logger.error(f"Failed to decode OAuth state: {e}")
@@ -272,13 +276,19 @@ async def start_oauth_flow(
 
         config = OAUTH_CONFIGS[integration]
 
+        # CRITICAL FIX: Get redirect_uri dynamically at request time, not module load time
+        # This ensures consistency between START and CALLBACK phases
+        redirect_uri = get_redirect_uri(integration)
+
         # Generate state token for CSRF protection
         # State is self-contained (encoded with signature) so it survives backend restarts
+        # CRITICAL: Store redirect_uri in state to ensure same URI is used in CALLBACK
         state = encode_oauth_state(
             integration=integration,
             wallet_address=request.wallet_address,
             shop_domain=request.shop_domain,
-            subdomain=request.subdomain
+            subdomain=request.subdomain,
+            redirect_uri=redirect_uri  # Store for CALLBACK phase
         )
 
         # Also store in memory for faster lookup (optional, state is self-validating)
@@ -286,7 +296,8 @@ async def start_oauth_flow(
             "integration": integration,
             "wallet_address": request.wallet_address,
             "shop_domain": request.shop_domain,
-            "subdomain": request.subdomain
+            "subdomain": request.subdomain,
+            "redirect_uri": redirect_uri
         }
 
         # Build authorization URL
@@ -311,9 +322,10 @@ async def start_oauth_flow(
             authorize_url = authorize_url.replace("{subdomain}", request.subdomain)
 
         # Build query parameters
+        # CRITICAL: Use dynamic redirect_uri, not config["redirect_uri"] from module load
         params = {
             "client_id": config["client_id"],
-            "redirect_uri": config["redirect_uri"],
+            "redirect_uri": redirect_uri,  # Use dynamic redirect_uri for consistency
             "response_type": "code",
             "state": state,
             "scope": config["scope"]
@@ -327,7 +339,8 @@ async def start_oauth_flow(
 
         logger.info(
             f"Starting OAuth flow for {integration}, "
-            f"wallet: {request.wallet_address}"
+            f"wallet: {request.wallet_address}, "
+            f"redirect_uri: {redirect_uri}"  # Log for debugging
         )
 
         return {
@@ -418,11 +431,23 @@ async def oauth_callback_post(request: Request, db: AsyncSession = Depends(get_d
                 raise HTTPException(status_code=400, detail="Missing Zendesk subdomain")
             token_url = token_url.replace("{subdomain}", subdomain)
 
+        # CRITICAL FIX: Use redirect_uri from state token, NOT from frontend request
+        # This ensures the EXACT same redirect_uri is used in both START and CALLBACK
+        # OAuth providers require redirect_uri to match EXACTLY
+        state_redirect_uri = state_data.get("redirect_uri") or config["redirect_uri"]
+
+        logger.info(
+            f"OAuth callback POST for {integration}, "
+            f"wallet: {wallet_address}, "
+            f"redirect_uri (from state): {state_redirect_uri}, "
+            f"redirect_uri (from frontend): {redirect_uri}"  # For debugging mismatch
+        )
+
         # Build token request
         token_data = {
             "grant_type": "authorization_code",
             "code": code,
-            "redirect_uri": redirect_uri or config["redirect_uri"],
+            "redirect_uri": state_redirect_uri,  # MUST match START phase redirect_uri
             "client_id": config["client_id"],
             "client_secret": config["client_secret"]
         }
@@ -486,7 +511,7 @@ async def oauth_callback_post(request: Request, db: AsyncSession = Depends(get_d
             metadata={
                 "integration": integration,
                 "credential_type": "oauth_token",
-                "has_refresh_token": bool(credentials.get("refresh_token"))
+                "has_refresh_token": "true" if credentials.get("refresh_token") else "false"
             }
         )
 
@@ -680,11 +705,20 @@ async def oauth_callback(
                 )
             token_url = token_url.replace("{subdomain}", subdomain)
 
+        # CRITICAL FIX: Use redirect_uri from state token for consistency
+        state_redirect_uri = state_data.get("redirect_uri") or config["redirect_uri"]
+
+        logger.info(
+            f"Legacy OAuth callback for {integration}, "
+            f"wallet: {wallet_address}, "
+            f"redirect_uri (from state): {state_redirect_uri}"
+        )
+
         # Build token request
         token_data = {
             "grant_type": "authorization_code",
             "code": code,
-            "redirect_uri": config["redirect_uri"],
+            "redirect_uri": state_redirect_uri,  # MUST match START phase redirect_uri
             "client_id": config["client_id"],
             "client_secret": config["client_secret"]
         }
@@ -702,7 +736,7 @@ async def oauth_callback(
             )
 
             if response.status_code != 200:
-                logger.error(f"Token exchange failed: {response.text}")
+                logger.error(f"Legacy token exchange failed for {integration}: {response.text}, redirect_uri: {state_redirect_uri}")
                 raise HTTPException(
                     status_code=400,
                     detail=f"Failed to exchange code for token: {response.text}"
@@ -748,7 +782,7 @@ async def oauth_callback(
             metadata={
                 "integration": integration,
                 "credential_type": "oauth_token",
-                "has_refresh_token": bool(credentials.get("refresh_token"))
+                "has_refresh_token": "true" if credentials.get("refresh_token") else "false"
             }
         )
 
