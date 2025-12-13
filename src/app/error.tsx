@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect } from 'react';
+import { AlertTriangle } from 'lucide-react';
 import { logger } from '@/lib/logger';
 
 /**
@@ -29,7 +30,7 @@ export default function Error({
         {/* Error Icon */}
         <div className="mb-8">
           <div className="w-24 h-24 bg-gradient-to-br from-red-100 to-orange-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <span className="text-6xl">⚠️</span>
+            <AlertTriangle className="w-12 h-12 text-red-500" />
           </div>
         </div>
 

@@ -4,6 +4,41 @@ import { usePrivy } from '@privy-io/react-auth';
 import { Check, Sparkles, Brain } from 'lucide-react';
 import { SignupProgressBar } from '@/components/SignupProgressBar';
 import Link from 'next/link';
+import Script from 'next/script';
+
+// FAQ data for both display and structured data
+const faqData = [
+  {
+    question: "How quickly can I get started?",
+    answer: "2 minutes. Connect your data sources and start asking questions immediately."
+  },
+  {
+    question: "What happens after the free trial?",
+    answer: "Choose to continue at $99-299/month or export your data. No surprises."
+  },
+  {
+    question: "Is my data secure?",
+    answer: "Yes. 5-layer encryption with decentralized storage. You own your data."
+  },
+  {
+    question: "Do I need technical skills?",
+    answer: "No. If you can use email, you can use our dashboard."
+  }
+];
+
+// Generate FAQ schema for SEO
+const faqSchema = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": faqData.map((faq) => ({
+    "@type": "Question",
+    "name": faq.question,
+    "acceptedAnswer": {
+      "@type": "Answer",
+      "text": faq.answer
+    }
+  }))
+};
 
 export default function HomePage() {
   const { authenticated } = usePrivy();
@@ -17,14 +52,22 @@ export default function HomePage() {
   }
 
   return (
+    <>
+      {/* FAQ Schema for SEO (Google Rich Snippets) */}
+      <Script
+        id="faq-schema"
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(faqSchema) }}
+      />
+
     <div className="min-h-screen bg-background">
       {/* Hero Section - Conversion Focused */}
       <section className="relative min-h-[90vh] flex items-center overflow-hidden">
-        {/* Background Effects - Same as Varity */}
-        <div className="absolute inset-0 z-0">
+        {/* Background Effects - Same as Varity (responsive for mobile) */}
+        <div className="absolute inset-0 z-0 overflow-hidden">
           <div className="absolute inset-0 bg-gradient-to-b from-electric-400/5 via-background to-background" />
-          <div className="absolute top-1/3 left-1/2 -translate-x-1/2 w-[800px] h-[800px] bg-electric-400/10 rounded-full blur-3xl" />
-          <div className="absolute bottom-0 right-0 w-[600px] h-[600px] bg-brand-500/10 rounded-full blur-3xl" />
+          <div className="absolute top-1/3 left-1/2 -translate-x-1/2 w-[400px] md:w-[800px] h-[400px] md:h-[800px] bg-electric-400/10 rounded-full blur-3xl" />
+          <div className="absolute bottom-0 right-0 w-[300px] md:w-[600px] h-[300px] md:h-[600px] bg-brand-500/10 rounded-full blur-3xl" />
         </div>
 
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10 py-16 lg:py-24">
@@ -142,8 +185,8 @@ export default function HomePage() {
                     </div>
                   </div>
 
-                  {/* Quick Stats */}
-                  <div className="grid grid-cols-3 gap-3 mb-6">
+                  {/* Quick Stats - Responsive grid */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
                     {[
                       { label: "Revenue", value: "$1.2M", change: "+12%" },
                       { label: "Customers", value: "8.4K", change: "+8%" },
@@ -189,27 +232,10 @@ export default function HomePage() {
           </div>
 
           <div className="grid md:grid-cols-2 gap-6">
-            {[
-              {
-                q: "How quickly can I get started?",
-                a: "2 minutes. Connect your data sources and start asking questions immediately."
-              },
-              {
-                q: "What happens after the free trial?",
-                a: "Choose to continue at $99-299/month or export your data. No surprises."
-              },
-              {
-                q: "Is my data secure?",
-                a: "Yes. 5-layer encryption with decentralized storage. You own your data."
-              },
-              {
-                q: "Do I need technical skills?",
-                a: "No. If you can use email, you can use our dashboard."
-              }
-            ].map((faq) => (
-              <div key={faq.q} className="p-6 rounded-lg bg-background-secondary border border-border">
-                <h3 className="font-semibold text-foreground mb-2">{faq.q}</h3>
-                <p className="text-sm text-foreground-secondary">{faq.a}</p>
+            {faqData.map((faq) => (
+              <div key={faq.question} className="p-6 rounded-lg bg-background-secondary border border-border">
+                <h3 className="font-semibold text-foreground mb-2">{faq.question}</h3>
+                <p className="text-sm text-foreground-secondary">{faq.answer}</p>
               </div>
             ))}
           </div>
@@ -271,5 +297,6 @@ export default function HomePage() {
         </div>
       </footer>
     </div>
+    </>
   );
 }

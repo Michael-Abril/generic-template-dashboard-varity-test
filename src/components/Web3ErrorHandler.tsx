@@ -1,7 +1,26 @@
 'use client';
 
 import { useState } from 'react';
-import { Lightbulb, AlertTriangle } from 'lucide-react';
+import { Lightbulb, AlertTriangle, Ban, Wallet, Fuel, Hash, XCircle, Globe, ArrowLeftRight, CircleDollarSign } from 'lucide-react';
+
+// Icon type mapping for error states
+type ErrorIconType = 'cancel' | 'insufficient' | 'warning' | 'network' | 'wrongNetwork' | 'wallet' | 'gas' | 'nonce' | 'error';
+
+// Helper to get Lucide icon component based on icon type
+function getErrorIcon(iconType: ErrorIconType) {
+  const iconMap: Record<ErrorIconType, React.ReactNode> = {
+    cancel: <Ban className="w-7 h-7 text-red-500" />,
+    insufficient: <CircleDollarSign className="w-7 h-7 text-amber-500" />,
+    warning: <AlertTriangle className="w-7 h-7 text-amber-500" />,
+    network: <Globe className="w-7 h-7 text-red-500" />,
+    wrongNetwork: <ArrowLeftRight className="w-7 h-7 text-orange-500" />,
+    wallet: <Wallet className="w-7 h-7 text-blue-500" />,
+    gas: <Fuel className="w-7 h-7 text-orange-500" />,
+    nonce: <Hash className="w-7 h-7 text-purple-500" />,
+    error: <XCircle className="w-7 h-7 text-red-500" />,
+  };
+  return iconMap[iconType] || iconMap.error;
+}
 
 export interface Web3Error {
   code?: number | string;
@@ -48,7 +67,7 @@ export function Web3ErrorHandler({
       <div className="p-4">
         <div className="flex items-start gap-3">
           <div className="flex-shrink-0">
-            <span className="text-3xl">{errorInfo.icon}</span>
+            {getErrorIcon(errorInfo.icon as ErrorIconType)}
           </div>
           <div className="flex-1 min-w-0">
             <h3 className="text-lg font-bold text-red-900 mb-1">
@@ -193,7 +212,7 @@ function parseWeb3Error(error: Web3Error | Error | string): {
         'Make sure you want to proceed before confirming in your wallet'
       ],
       technicalDetails: errorMessage,
-      icon: '🚫'
+      icon: 'cancel'
     };
   }
 
@@ -213,7 +232,7 @@ function parseWeb3Error(error: Web3Error | Error | string): {
       ],
       technicalDetails: errorMessage,
       helpUrl: 'https://docs.varity.xyz/bridging',
-      icon: '💰'
+      icon: 'insufficient'
     };
   }
 
@@ -234,7 +253,7 @@ function parseWeb3Error(error: Web3Error | Error | string): {
       ],
       technicalDetails: errorReason || errorMessage,
       helpUrl: 'https://docs.varity.xyz/troubleshooting',
-      icon: '⚠️'
+      icon: 'warning'
     };
   }
 
@@ -256,7 +275,7 @@ function parseWeb3Error(error: Web3Error | Error | string): {
       ],
       technicalDetails: errorMessage,
       helpUrl: 'https://status.varity.xyz',
-      icon: '🌐'
+      icon: 'network'
     };
   }
 
@@ -276,7 +295,7 @@ function parseWeb3Error(error: Web3Error | Error | string): {
       ],
       technicalDetails: errorMessage,
       helpUrl: 'https://docs.varity.xyz/network-setup',
-      icon: '🔀'
+      icon: 'wrongNetwork'
     };
   }
 
@@ -296,7 +315,7 @@ function parseWeb3Error(error: Web3Error | Error | string): {
       ],
       technicalDetails: errorMessage,
       helpUrl: 'https://docs.varity.xyz/wallet-setup',
-      icon: '👛'
+      icon: 'wallet'
     };
   }
 
@@ -315,7 +334,7 @@ function parseWeb3Error(error: Web3Error | Error | string): {
         'Try again in a few moments'
       ],
       technicalDetails: errorMessage,
-      icon: '⛽'
+      icon: 'gas'
     };
   }
 
@@ -330,7 +349,7 @@ function parseWeb3Error(error: Web3Error | Error | string): {
         'Refresh the page and try again'
       ],
       technicalDetails: errorMessage,
-      icon: '🔢'
+      icon: 'nonce'
     };
   }
 
@@ -345,7 +364,7 @@ function parseWeb3Error(error: Web3Error | Error | string): {
     ],
     technicalDetails: errorMessage,
     helpUrl: 'https://docs.varity.xyz/support',
-    icon: '❌'
+    icon: 'error'
   };
 }
 
@@ -366,7 +385,7 @@ export function Web3ErrorInline({
   return (
     <div className={`bg-red-50 border border-red-200 rounded-lg p-3 ${className}`}>
       <div className="flex items-start gap-2">
-        <span className="text-xl flex-shrink-0">{errorInfo.icon}</span>
+        <div className="flex-shrink-0">{getErrorIcon(errorInfo.icon as ErrorIconType)}</div>
         <div className="flex-1 min-w-0">
           <p className="text-sm font-semibold text-red-900">{errorInfo.title}</p>
           <p className="text-xs text-red-800 mt-1">{errorInfo.userMessage}</p>

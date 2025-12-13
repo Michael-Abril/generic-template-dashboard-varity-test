@@ -288,14 +288,14 @@ export function SignupProgressBar({
         </span>
       </div>
 
-      {/* Tiered offer explanation - more subtle now that CTA is prominent */}
+      {/* Tiered offer explanation - responsive for mobile */}
       <div className="mt-4 pt-3 border-t border-background-secondary">
-        <div className="flex items-center gap-3 text-xs text-foreground-muted">
+        <div className="flex flex-wrap items-center justify-center sm:justify-start gap-x-3 gap-y-2 text-xs text-foreground-muted">
           <div className="flex items-center gap-1.5">
             <div className="w-2 h-2 rounded-full bg-brand-400"></div>
             <span>First 100: <span className="text-brand-400 font-medium">1 month free</span></span>
           </div>
-          <span className="text-foreground-muted/50">|</span>
+          <span className="text-foreground-muted/50 hidden sm:inline">|</span>
           <div className="flex items-center gap-1.5">
             <div className="w-2 h-2 rounded-full bg-foreground-muted/30"></div>
             <span>After: 14-day trial</span>

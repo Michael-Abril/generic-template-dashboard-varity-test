@@ -3,6 +3,7 @@ import { logger } from '@/lib/logger';
 
 import { useState, useEffect } from 'react';
 import { ethers } from 'ethers';
+import { AlertTriangle } from 'lucide-react';
 
 interface GasEstimatorProps {
   contract: ethers.Contract | null;
@@ -106,7 +107,7 @@ export function GasEstimator({
       <div className={`bg-red-50 border border-red-200 rounded-lg p-4 ${className}`}>
         <div className="flex items-start justify-between">
           <div className="flex items-start gap-3">
-            <span className="text-red-600 text-xl">⚠️</span>
+            <AlertTriangle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
             <div>
               <p className="text-sm font-medium text-red-900">Gas Estimation Failed</p>
               <p className="text-xs text-red-700 mt-1">{error}</p>

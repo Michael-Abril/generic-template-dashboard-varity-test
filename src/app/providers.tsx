@@ -3,6 +3,7 @@
 import React, { useState, useEffect, createContext, useContext } from 'react';
 import { PrivyProvider, usePrivy, useWallets } from '@privy-io/react-auth';
 import { ThirdwebProvider } from 'thirdweb/react';
+import { Zap, Check, Clock, AlertTriangle } from 'lucide-react';
 import { varietyTestnet5 as varietyTestnet, varietyTestnetWagmi } from '../lib/varity-chain';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { createThirdwebClient } from 'thirdweb';
@@ -35,8 +36,8 @@ function InitializingScreen() {
         <div className="flex justify-center mb-4">
           <div className="relative">
             <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-blue-600"></div>
-            <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-2xl">
-              ⚡
+            <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2">
+              <Zap className="w-6 h-6 text-blue-600" />
             </div>
           </div>
         </div>
@@ -44,10 +45,10 @@ function InitializingScreen() {
         <p className="text-gray-600 mb-4">
           Setting up Web3 providers and authentication. This should take just a few seconds.
         </p>
-        <div className="text-sm text-gray-500">
-          <p>✓ Loading Privy authentication</p>
-          <p>✓ Connecting to Varity L3</p>
-          <p>✓ Preparing wallet connection</p>
+        <div className="text-sm text-gray-500 space-y-1">
+          <p className="flex items-center gap-2"><Check className="w-4 h-4 text-green-500" /> Loading Privy authentication</p>
+          <p className="flex items-center gap-2"><Check className="w-4 h-4 text-green-500" /> Connecting to Varity L3</p>
+          <p className="flex items-center gap-2"><Check className="w-4 h-4 text-green-500" /> Preparing wallet connection</p>
         </div>
       </div>
     </div>
@@ -61,7 +62,9 @@ function InitTimeoutScreen({ onRetry }: { onRetry: () => void }) {
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-lg shadow-lg p-8 max-w-md">
-        <div className="text-yellow-600 text-5xl mb-4">⏱️</div>
+        <div className="w-16 h-16 bg-yellow-100 rounded-full flex items-center justify-center mx-auto mb-4">
+          <Clock className="w-8 h-8 text-yellow-600" />
+        </div>
         <h1 className="text-2xl font-bold text-gray-900 mb-2">Initialization Taking Longer Than Expected</h1>
         <p className="text-gray-600 mb-4">
           The Web3 providers are taking longer than usual to initialize. This might be due to network conditions.
@@ -235,7 +238,9 @@ export function Providers({ children }: { children: React.ReactNode }) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
         <div className="bg-white rounded-lg shadow-lg p-8 max-w-md">
-          <div className="text-red-600 text-5xl mb-4">⚠️</div>
+          <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <AlertTriangle className="w-8 h-8 text-red-600" />
+          </div>
           <h1 className="text-2xl font-bold text-gray-900 mb-2">Configuration Error</h1>
           <p className="text-gray-600 mb-4">
             Missing required environment variable: <strong>{configError}</strong>
@@ -289,7 +294,9 @@ export function Providers({ children }: { children: React.ReactNode }) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
         <div className="bg-white rounded-lg shadow-lg p-8 max-w-md">
-          <div className="text-red-600 text-5xl mb-4">⚠️</div>
+          <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <AlertTriangle className="w-8 h-8 text-red-600" />
+          </div>
           <h1 className="text-2xl font-bold text-gray-900 mb-2">Thirdweb Initialization Error</h1>
           <p className="text-gray-600 mb-4">
             Failed to initialize thirdweb client. This is required for wallet connections and marketplace transactions.
