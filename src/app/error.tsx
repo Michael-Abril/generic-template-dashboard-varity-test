@@ -1,12 +1,13 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
 import { AlertTriangle } from 'lucide-react';
-import { logger } from '@/lib/logger';
 
 /**
  * Error Page
- * Catches errors in the app router and displays a user-friendly error page
+ * Catches errors in the app router and displays a user-friendly error page.
+ * Auto-resets when the user navigates to a different page.
  */
 export default function Error({
   error,
@@ -15,14 +16,35 @@ export default function Error({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  const pathname = usePathname();
+  const router = useRouter();
+  const initialPathRef = useRef(pathname);
+
+  // Auto-reset when pathname changes (user navigates to a different page)
   useEffect(() => {
-    // Log the error to error tracking service
+    if (pathname !== initialPathRef.current) {
+      reset();
+    }
+  }, [pathname, reset]);
+
+  useEffect(() => {
+    // Log the error to console in development
     console.error('App error boundary caught error', {
       message: error.message,
       digest: error.digest,
       stack: error.stack,
     });
   }, [error]);
+
+  const handleGoHome = () => {
+    // Use router.push to properly navigate and trigger reset
+    router.push('/dashboard');
+  };
+
+  const handleTryAgain = () => {
+    // Reset the error boundary
+    reset();
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-blue-50 to-purple-50 flex items-center justify-center px-4">
@@ -59,17 +81,17 @@ export default function Error({
         {/* Action Buttons */}
         <div className="flex flex-col sm:flex-row gap-4 justify-center mb-8">
           <button
-            onClick={reset}
-            className="bg-gradient-to-r from-blue-600 to-purple-600 text-white px-8 py-3 rounded-lg font-semibold hover:shadow-lg transition-all"
+            onClick={handleTryAgain}
+            className="bg-gradient-to-r from-blue-600 to-purple-600 text-white px-8 py-3 rounded-lg font-semibold hover:shadow-lg hover:scale-[1.02] active:scale-[0.98] transition-all duration-200"
           >
             Try Again
           </button>
-          <a
-            href="/"
-            className="bg-white text-gray-900 px-8 py-3 rounded-lg font-semibold border-2 border-gray-200 hover:border-gray-300 hover:shadow-lg transition-all inline-block"
+          <button
+            onClick={handleGoHome}
+            className="bg-white text-gray-900 px-8 py-3 rounded-lg font-semibold border-2 border-gray-200 hover:border-gray-300 hover:shadow-lg hover:scale-[1.01] active:scale-[0.99] transition-all duration-200"
           >
-            Go Home
-          </a>
+            Go to Dashboard
+          </button>
         </div>
 
         {/* Help Text */}
