@@ -133,10 +133,10 @@ export function Sidebar({ installedTools = [] }: SidebarProps) {
                   href={item.path}
                   onClick={() => setIsMobileOpen(false)}
                   className={`
-                    flex items-center gap-3 px-3 py-2.5 rounded-lg font-medium transition-colors
+                    flex items-center gap-3 px-3 py-2.5 rounded-lg font-medium transition-all duration-200
                     ${isActive(item.path)
-                      ? 'bg-blue-50 text-blue-700'
-                      : 'text-gray-700 hover:bg-gray-100'
+                      ? 'bg-blue-50 text-blue-700 shadow-sm'
+                      : 'text-gray-700 hover:bg-gray-100 hover:translate-x-1'
                     }
                   `}
                 >
@@ -189,10 +189,10 @@ export function Sidebar({ installedTools = [] }: SidebarProps) {
               href="/integrations"
               onClick={() => setIsMobileOpen(false)}
               className={`
-                flex items-center gap-3 px-3 py-2.5 rounded-lg font-medium transition-colors
+                flex items-center gap-3 px-3 py-2.5 rounded-lg font-medium transition-all duration-200
                 ${isActive('/integrations')
-                  ? 'bg-blue-50 text-blue-700'
-                  : 'text-gray-700 hover:bg-gray-100'
+                  ? 'bg-blue-50 text-blue-700 shadow-sm'
+                  : 'text-gray-700 hover:bg-gray-100 hover:translate-x-1'
                 }
               `}
             >
@@ -203,10 +203,10 @@ export function Sidebar({ installedTools = [] }: SidebarProps) {
               href="/marketplace"
               onClick={() => setIsMobileOpen(false)}
               className={`
-                flex items-center gap-3 px-3 py-2.5 rounded-lg font-medium transition-colors
+                flex items-center gap-3 px-3 py-2.5 rounded-lg font-medium transition-all duration-200
                 ${isActive('/marketplace')
-                  ? 'bg-blue-50 text-blue-700'
-                  : 'text-gray-700 hover:bg-gray-100'
+                  ? 'bg-blue-50 text-blue-700 shadow-sm'
+                  : 'text-gray-700 hover:bg-gray-100 hover:translate-x-1'
                 }
               `}
             >
@@ -217,10 +217,10 @@ export function Sidebar({ installedTools = [] }: SidebarProps) {
               href="/analytics"
               onClick={() => setIsMobileOpen(false)}
               className={`
-                flex items-center gap-3 px-3 py-2.5 rounded-lg font-medium transition-colors
+                flex items-center gap-3 px-3 py-2.5 rounded-lg font-medium transition-all duration-200
                 ${isActive('/analytics')
-                  ? 'bg-blue-50 text-blue-700'
-                  : 'text-gray-700 hover:bg-gray-100'
+                  ? 'bg-blue-50 text-blue-700 shadow-sm'
+                  : 'text-gray-700 hover:bg-gray-100 hover:translate-x-1'
                 }
               `}
             >
@@ -231,10 +231,10 @@ export function Sidebar({ installedTools = [] }: SidebarProps) {
               href="/ai-assistant"
               onClick={() => setIsMobileOpen(false)}
               className={`
-                flex items-center gap-3 px-3 py-2.5 rounded-lg font-medium transition-colors
+                flex items-center gap-3 px-3 py-2.5 rounded-lg font-medium transition-all duration-200
                 ${isActive('/ai-assistant')
-                  ? 'bg-blue-50 text-blue-700'
-                  : 'text-gray-700 hover:bg-gray-100'
+                  ? 'bg-blue-50 text-blue-700 shadow-sm'
+                  : 'text-gray-700 hover:bg-gray-100 hover:translate-x-1'
                 }
               `}
             >
@@ -245,10 +245,10 @@ export function Sidebar({ installedTools = [] }: SidebarProps) {
               href="/settings"
               onClick={() => setIsMobileOpen(false)}
               className={`
-                flex items-center gap-3 px-3 py-2.5 rounded-lg font-medium transition-colors
+                flex items-center gap-3 px-3 py-2.5 rounded-lg font-medium transition-all duration-200
                 ${isActive('/settings')
-                  ? 'bg-blue-50 text-blue-700'
-                  : 'text-gray-700 hover:bg-gray-100'
+                  ? 'bg-blue-50 text-blue-700 shadow-sm'
+                  : 'text-gray-700 hover:bg-gray-100 hover:translate-x-1'
                 }
               `}
             >

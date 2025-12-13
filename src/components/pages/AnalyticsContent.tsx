@@ -191,7 +191,7 @@ export default function AnalyticsContent() {
           {/* Header */}
           <div className="mb-8">
             <div className="flex items-center gap-2 text-sm text-gray-500 mb-2">
-              <Link href="/dashboard" className="hover:text-gray-700">Dashboard</Link>
+              <Link href="/dashboard" className="hover:text-gray-700 transition-colors duration-150">Dashboard</Link>
               <span>/</span>
               <span className="text-gray-900 font-medium">Analytics</span>
             </div>
@@ -303,7 +303,7 @@ export default function AnalyticsContent() {
 
           {/* Key Metrics Summary */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-            <div className="bg-white border border-gray-200 rounded-xl p-6">
+            <div className="bg-white border border-gray-200 rounded-xl p-6 hover:shadow-lg hover:border-gray-300 hover:-translate-y-0.5 transition-all duration-200">
               <div className="flex items-center gap-3 mb-3">
                 <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
                   <DollarSign className="w-6 h-6 text-green-600" />
@@ -322,7 +322,7 @@ export default function AnalyticsContent() {
               </p>
             </div>
 
-            <div className="bg-white border border-gray-200 rounded-xl p-6">
+            <div className="bg-white border border-gray-200 rounded-xl p-6 hover:shadow-lg hover:border-gray-300 hover:-translate-y-0.5 transition-all duration-200">
               <div className="flex items-center gap-3 mb-3">
                 <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
                   <Users className="w-6 h-6 text-blue-600" />
@@ -341,7 +341,7 @@ export default function AnalyticsContent() {
               </p>
             </div>
 
-            <div className="bg-white border border-gray-200 rounded-xl p-6">
+            <div className="bg-white border border-gray-200 rounded-xl p-6 hover:shadow-lg hover:border-gray-300 hover:-translate-y-0.5 transition-all duration-200">
               <div className="flex items-center gap-3 mb-3">
                 <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center">
                   <BarChart3 className="w-6 h-6 text-orange-600" />
@@ -356,7 +356,7 @@ export default function AnalyticsContent() {
               <p className="text-sm text-orange-600 font-medium">Per month average</p>
             </div>
 
-            <div className="bg-white border border-gray-200 rounded-xl p-6">
+            <div className="bg-white border border-gray-200 rounded-xl p-6 hover:shadow-lg hover:border-gray-300 hover:-translate-y-0.5 transition-all duration-200">
               <div className="flex items-center gap-3 mb-3">
                 <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center">
                   <Target className="w-6 h-6 text-purple-600" />

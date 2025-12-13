@@ -364,7 +364,7 @@ export default function MarketplaceContent() {
                   <p className="text-red-800 text-sm mt-1">{error}</p>
                   <button
                     onClick={loadMarketplaceData}
-                    className="mt-2 text-sm text-red-700 underline hover:text-red-900"
+                    className="mt-2 text-sm text-red-700 underline hover:text-red-900 transition-colors duration-150"
                   >
                     Try Again
                   </button>
@@ -384,7 +384,7 @@ export default function MarketplaceContent() {
                 <nav className="flex gap-8" aria-label="Tabs">
                   <button
                     onClick={() => setMarketplaceTab('available')}
-                    className={`pb-4 px-1 border-b-2 font-medium text-sm transition-colors ${
+                    className={`pb-4 px-1 border-b-2 font-medium text-sm transition-colors duration-150 ${
                       marketplaceTab === 'available'
                         ? 'border-blue-600 text-blue-600'
                         : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
@@ -401,7 +401,7 @@ export default function MarketplaceContent() {
                   </button>
                   <button
                     onClick={() => setMarketplaceTab('coming-soon')}
-                    className={`pb-4 px-1 border-b-2 font-medium text-sm transition-colors ${
+                    className={`pb-4 px-1 border-b-2 font-medium text-sm transition-colors duration-150 ${
                       marketplaceTab === 'coming-soon'
                         ? 'border-blue-600 text-blue-600'
                         : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
@@ -482,7 +482,7 @@ export default function MarketplaceContent() {
 
               {/* Stats Bar - Context aware based on tab */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-                <div className="bg-white border border-gray-200 rounded-lg p-4">
+                <div className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-lg hover:border-gray-300 hover:-translate-y-0.5 transition-all duration-200 cursor-default">
                   <p className="text-sm text-gray-600">
                     {marketplaceTab === 'available' ? 'Available Integrations' : 'Coming Soon'}
                   </p>
@@ -490,11 +490,11 @@ export default function MarketplaceContent() {
                     {marketplaceTab === 'available' ? availableProducts.length : comingSoonProducts.length}
                   </p>
                 </div>
-                <div className="bg-white border border-gray-200 rounded-lg p-4">
+                <div className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-lg hover:border-gray-300 hover:-translate-y-0.5 transition-all duration-200 cursor-default">
                   <p className="text-sm text-gray-600">Showing Results</p>
                   <p className="text-2xl font-bold text-blue-600">{filteredProducts.length}</p>
                 </div>
-                <div className="bg-white border border-gray-200 rounded-lg p-4">
+                <div className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-lg hover:border-gray-300 hover:-translate-y-0.5 transition-all duration-200 cursor-default">
                   <p className="text-sm text-gray-600">Your Connected</p>
                   <p className="text-2xl font-bold text-green-600">{userLicenses.length}</p>
                 </div>
@@ -534,10 +534,10 @@ export default function MarketplaceContent() {
                     return (
                     <div
                       key={product.id}
-                      className={`bg-white rounded-xl border border-gray-200 p-6 transition-shadow relative ${
+                      className={`bg-white rounded-xl border border-gray-200 p-6 relative ${
                         isComingSoon
-                          ? 'opacity-60 cursor-not-allowed'
-                          : 'hover:shadow-lg cursor-pointer'
+                          ? 'opacity-60 cursor-not-allowed transition-all duration-200'
+                          : 'hover:shadow-xl hover:border-blue-300 hover:-translate-y-1 transition-all duration-300 cursor-pointer'
                       }`}
                       onClick={() => !isComingSoon && handleSelectProduct(product)}
                     >

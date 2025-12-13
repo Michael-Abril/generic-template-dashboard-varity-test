@@ -73,8 +73,8 @@ class Message(Base):
     rag_sources = Column(JSON, default=list)  # List of RAG source references
     web_sources = Column(JSON, default=list)  # List of {title, url} for web sources
 
-    # Metadata
-    metadata = Column(JSON, default=dict)  # Additional metadata (model used, tokens, etc.)
+    # Extra info (model used, tokens, etc.) - note: 'metadata' is reserved in SQLAlchemy
+    message_metadata = Column(JSON, default=dict)
 
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -97,7 +97,7 @@ class MessageCreate(BaseModel):
     content: str
     rag_sources: List[str] = []
     web_sources: List[Dict[str, str]] = []
-    metadata: Dict[str, Any] = {}
+    message_metadata: Dict[str, Any] = {}
 
 
 class MessageResponse(BaseModel):
@@ -108,7 +108,7 @@ class MessageResponse(BaseModel):
     content: str
     rag_sources: List[str]
     web_sources: List[Dict[str, str]]
-    metadata: Dict[str, Any]
+    message_metadata: Dict[str, Any]
     created_at: datetime
 
     class Config:

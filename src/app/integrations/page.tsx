@@ -303,7 +303,7 @@ function IntegrationsContent() {
                   return (
                     <div
                       key={integration.provider}
-                      className="bg-white rounded-xl border-2 border-green-200 p-6 hover:shadow-lg transition-all"
+                      className="bg-white rounded-xl border-2 border-green-200 p-6 hover:shadow-xl hover:border-green-300 hover:-translate-y-1 transition-all duration-300"
                     >
                       <div className="flex items-start justify-between mb-4">
                         <div className="flex items-center gap-3">

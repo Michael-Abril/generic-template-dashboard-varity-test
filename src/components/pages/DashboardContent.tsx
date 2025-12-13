@@ -233,7 +233,7 @@ export default function DashboardContent() {
                 <p className="text-sm text-yellow-800">{kpisError}</p>
                 <button
                   onClick={fetchKPIs}
-                  className="ml-auto text-sm text-yellow-700 hover:text-yellow-800 font-semibold"
+                  className="ml-auto text-sm text-yellow-700 hover:text-yellow-800 hover:underline font-semibold transition-all duration-150"
                 >
                   Retry
                 </button>
@@ -480,7 +480,7 @@ export default function DashboardContent() {
                     <p className="text-xs text-yellow-800">{activityError}</p>
                     <button
                       onClick={fetchRecentActivity}
-                      className="ml-auto text-xs text-yellow-700 hover:text-yellow-800 font-semibold"
+                      className="ml-auto text-xs text-yellow-700 hover:text-yellow-800 hover:underline font-semibold transition-all duration-150"
                     >
                       Retry
                     </button>
@@ -546,7 +546,7 @@ export default function DashboardContent() {
                     <p className="text-xs text-yellow-800">{customersError}</p>
                     <button
                       onClick={fetchTopCustomers}
-                      className="ml-auto text-xs text-yellow-700 hover:text-yellow-800 font-semibold"
+                      className="ml-auto text-xs text-yellow-700 hover:text-yellow-800 hover:underline font-semibold transition-all duration-150"
                     >
                       Retry
                     </button>

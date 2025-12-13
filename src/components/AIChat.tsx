@@ -40,7 +40,7 @@ interface ConversationWithMessages extends Conversation {
     content: string;
     rag_sources: string[];
     web_sources: Array<{ title: string; url: string }>;
-    metadata: Record<string, unknown>;
+    message_metadata: Record<string, unknown>;
     created_at: string;
   }>;
 }
@@ -188,7 +188,7 @@ export function AIChat() {
           content: message.content,
           rag_sources: message.rag_sources || [],
           web_sources: message.web_sources || [],
-          metadata: {}
+          message_metadata: {}
         })
       });
       // Refresh conversations to update last_message_at

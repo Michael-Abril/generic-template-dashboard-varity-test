@@ -78,10 +78,10 @@ async def list_conversations(
         if pinned_first:
             query = query.order_by(
                 desc(Conversation.is_pinned),
-                desc(Conversation.last_message_at.nulls_last())
+                desc(Conversation.last_message_at).nullslast()
             )
         else:
-            query = query.order_by(desc(Conversation.last_message_at.nulls_last()))
+            query = query.order_by(desc(Conversation.last_message_at).nullslast())
 
         query = query.offset(offset).limit(limit)
 
@@ -197,7 +197,7 @@ async def get_conversation(
                 content=msg.content,
                 rag_sources=msg.rag_sources or [],
                 web_sources=msg.web_sources or [],
-                metadata=msg.metadata or {},
+                message_metadata=msg.message_metadata or {},
                 created_at=msg.created_at
             )
             for msg in conversation.messages
@@ -386,7 +386,7 @@ async def add_message(
             content=request.content,
             rag_sources=request.rag_sources,
             web_sources=request.web_sources,
-            metadata=request.metadata
+            message_metadata=request.message_metadata
         )
 
         db.add(message)
@@ -411,7 +411,7 @@ async def add_message(
             content=message.content,
             rag_sources=message.rag_sources or [],
             web_sources=message.web_sources or [],
-            metadata=message.metadata or {},
+            message_metadata=message.message_metadata or {},
             created_at=message.created_at
         )
 
@@ -473,7 +473,7 @@ async def get_messages(
                 content=msg.content,
                 rag_sources=msg.rag_sources or [],
                 web_sources=msg.web_sources or [],
-                metadata=msg.metadata or {},
+                message_metadata=msg.message_metadata or {},
                 created_at=msg.created_at
             )
             for msg in messages
