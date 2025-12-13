@@ -7,6 +7,42 @@
 
 ---
 
+## 🚀 QUICK LAUNCH CHECKLIST (FOR LAPTOP)
+
+**When starting on a new machine, do these steps first:**
+
+### Step 1: Clone and Setup (5 min)
+```bash
+git clone https://github.com/varity-Labs/generic-template-dashboard.git
+cd generic-template-dashboard
+npm install --legacy-peer-deps
+```
+
+### Step 2: Run the Database Migration (CRITICAL - not done yet!)
+```bash
+# Get DATABASE_URL from Railway: Dashboard → PostgreSQL Service → Variables
+cd backend
+DATABASE_URL="postgresql://YOUR_RAILWAY_URL" alembic upgrade head
+```
+
+### Step 3: Add Missing OAuth Credentials in Railway
+Go to Railway Dashboard → Backend Service → Variables → Add:
+- `GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET`
+- `MICROSOFT_CLIENT_ID` + `MICROSOFT_CLIENT_SECRET`
+- `SLACK_CLIENT_ID` + `SLACK_CLIENT_SECRET`
+
+### Step 4: Test OAuth Flow
+1. Visit https://app.varity.so/marketplace
+2. Click "Connect" on QuickBooks (should work)
+3. Click "Connect" on Google (needs credentials from Step 3)
+
+### Step 5: Test Everything Else
+- AI Assistant: https://app.varity.so/ai-assistant
+- Dashboard: https://app.varity.so/dashboard
+- Settings: https://app.varity.so/settings
+
+---
+
 ## 🚨 CRITICAL: CURRENT SPRINT - REMAINING WORK
 
 This dashboard is Varity's **flagship product** for go-to-market. It is LIVE but needs these items finished before businesses can fully use it:
@@ -35,13 +71,67 @@ This dashboard is Varity's **flagship product** for go-to-market. It is LIVE but
 
 **Problem:** OAuth integrations on the marketplace page are NOT working. Users cannot connect QuickBooks, Google, Slack, etc.
 
+### Bug Fixes Applied (Dec 13, 2025 - CODE PUSHED TO GITHUB)
+
+Three critical bugs were identified and **fixed in code** (commit `21fd3a0`):
+
+| Bug | Root Cause | Fix Applied | File |
+|-----|------------|-------------|------|
+| **`invalid_grant` error** | OAuth callback useEffect ran twice (codes are single-use) | Added `hasProcessed` flag to prevent re-execution | `src/app/oauth/callback/[provider]/page.tsx` |
+| **`NOT NULL constraint failed`** | `oauth_tokens.product_id` was required but never set | Made `product_id` nullable | `backend/app/models/purchase.py` |
+| **QuickBooks `realmId` missing** | Frontend didn't extract realmId from callback URL | Extract from URL, pass to backend | Both frontend callback + `backend/app/api/v1/oauth.py` |
+
+### ⚠️ DATABASE MIGRATION NOT YET RUN
+
+**CRITICAL:** The database migration `fix_oauth_token_product_id_nullable.py` was created but **NOT RUN** on Railway.
+
+**Why it failed:** The `DATABASE_URL` environment variable is NOT linked to the backend service in Railway. When running `railway run alembic upgrade head`, it used local SQLite instead of Railway's PostgreSQL.
+
+**To fix this, you MUST:**
+
+1. **Get DATABASE_URL from Railway PostgreSQL Service:**
+   - Go to Railway Dashboard → Your Project → PostgreSQL service (not backend!)
+   - Click on "Variables" tab
+   - Copy the `DATABASE_URL` value (starts with `postgresql://...`)
+
+2. **Run Migration Locally with Railway DATABASE_URL:**
+   ```bash
+   cd backend
+
+   # Option A: Run directly with DATABASE_URL
+   DATABASE_URL="postgresql://postgres:YOUR_PASSWORD@YOUR_HOST:5432/railway" alembic upgrade head
+
+   # Option B: If migration history is out of sync, stamp first then upgrade
+   DATABASE_URL="postgresql://..." alembic stamp 73e5589972b4
+   DATABASE_URL="postgresql://..." alembic upgrade head
+   ```
+
+3. **Alternative: Link DATABASE_URL to Backend Service:**
+   - Railway Dashboard → Backend Service → Variables
+   - Add Reference: Click "Add Variable" → "Reference" → Select PostgreSQL's DATABASE_URL
+   - Redeploy backend
+   - Then `railway run alembic upgrade head` will work
+
+**Migration file location:** `backend/alembic/versions/fix_oauth_token_product_id_nullable.py`
+
+**Migration Status Check:**
+```bash
+# Check what migrations have been applied
+DATABASE_URL="postgresql://..." alembic history --verbose
+DATABASE_URL="postgresql://..." alembic current
+```
+
+---
+
 **Root Cause Fixed (Dec 13, 2025):**
 - `OAUTH_REDIRECT_BASE_URL` in Railway was set incorrectly
 - Now set to: `https://app.varity.so`
 
 **What Still Needs to Be Done:**
 
-1. **Add OAuth Credentials in Railway Dashboard** for each provider:
+1. **Run the Alembic migration** (see above)
+
+2. **Add OAuth Credentials in Railway Dashboard** for each provider:
    - Go to: Railway Dashboard → Variables
    - Add credentials for: Google, Microsoft, Slack, HubSpot, etc.
 

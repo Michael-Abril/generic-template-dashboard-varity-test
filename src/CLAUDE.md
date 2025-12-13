@@ -59,6 +59,28 @@ git push origin main
 
 ### 1. OAuth Integrations (PRIORITY 1)
 
+**Bug Fixes Applied (Dec 13, 2025) - Commit `21fd3a0`:**
+
+| Bug | Fix | File |
+|-----|-----|------|
+| `invalid_grant` error (OAuth codes used twice) | Added `hasProcessed` flag to prevent double useEffect execution | `app/oauth/callback/[provider]/page.tsx` |
+| QuickBooks `realmId` missing | Extract `realmId` from URL, pass to backend | `app/oauth/callback/[provider]/page.tsx` |
+
+**Key Code Pattern (to understand the fix):**
+```typescript
+// OAuth codes are SINGLE-USE! This flag prevents double execution
+const [hasProcessed, setHasProcessed] = useState(false);
+
+useEffect(() => {
+  const handleOAuthCallback = async () => {
+    if (hasProcessed) return;  // <-- CRITICAL: Prevent re-execution
+    setHasProcessed(true);
+    // ... rest of OAuth handling
+  };
+  handleOAuthCallback();
+}, [hasProcessed, ...otherDeps]);
+```
+
 Test at https://app.varity.so/marketplace
 
 - [ ] Click "Connect" on QuickBooks

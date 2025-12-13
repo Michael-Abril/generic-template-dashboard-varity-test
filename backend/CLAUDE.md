@@ -8,6 +8,50 @@
 
 ---
 
+## 🔴 CRITICAL: PENDING DATABASE MIGRATION
+
+**Status:** Migration file created but NOT RUN on Railway database.
+
+**Migration File:** `alembic/versions/fix_oauth_token_product_id_nullable.py`
+
+**What it does:** Makes `oauth_tokens.product_id` nullable (fixes NOT NULL constraint error)
+
+### How to Run the Migration
+
+**Problem:** `DATABASE_URL` is NOT linked to the backend service in Railway. The PostgreSQL connection string exists in the PostgreSQL service but isn't automatically available to backend.
+
+**Solution:**
+
+1. **Get DATABASE_URL from Railway:**
+   - Railway Dashboard → Project → PostgreSQL service (the database, not backend!)
+   - Click "Variables" tab
+   - Copy `DATABASE_URL` value
+
+2. **Run migration locally:**
+   ```bash
+   cd backend
+   pip install alembic psycopg2-binary  # If not installed
+
+   # Run the migration
+   DATABASE_URL="postgresql://postgres:PASSWORD@HOST:5432/railway" alembic upgrade head
+   ```
+
+3. **Alternative - Link DATABASE_URL permanently:**
+   - Railway Dashboard → Backend Service → Variables
+   - Click "Add Variable" → "Reference"
+   - Select PostgreSQL service's DATABASE_URL
+   - Redeploy backend
+   - Then run: `railway run alembic upgrade head`
+
+### Migration History
+
+| Revision | Description | Status |
+|----------|-------------|--------|
+| `73e5589972b4` | Base migration | ✅ Applied |
+| `fix_oauth_product_id` | Make product_id nullable | 🔴 NOT APPLIED |
+
+---
+
 ## 🚨 PRODUCTION DEPLOYMENT (Railway)
 
 ### Live URLs
