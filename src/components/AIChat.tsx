@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useWallets } from '@privy-io/react-auth';
 import { useWalletSync } from '../app/providers';
 import { logger } from '@/lib/logger';
-import { Bot, MessageSquare, Plus, Pin, PinOff, Trash2, Edit2, X, Check, Archive, MoreVertical } from 'lucide-react';
+import { Bot, MessageSquare, Plus, Pin, PinOff, Trash2, Edit2, X, Check, Archive, MoreVertical, Sparkles, Search, FileText, ChevronDown } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
@@ -64,6 +64,8 @@ export function AIChat() {
   const [editingTitle, setEditingTitle] = useState<number | null>(null);
   const [newTitle, setNewTitle] = useState('');
   const [menuOpenId, setMenuOpenId] = useState<number | null>(null);
+  const [aiMode, setAiMode] = useState<'standard' | 'deep_research' | 'analyze'>('standard');
+  const [showModeSelector, setShowModeSelector] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Scroll to bottom on new messages
@@ -441,7 +443,7 @@ export function AIChat() {
                               if (e.key === 'Enter') renameConversation(conv.id, newTitle);
                               if (e.key === 'Escape') setEditingTitle(null);
                             }}
-                            className="flex-1 px-2 py-1 text-sm border rounded"
+                            className="flex-1 px-2 py-1 text-sm border rounded text-gray-900 bg-white"
                             autoFocus
                             onClick={(e) => e.stopPropagation()}
                           />
@@ -701,6 +703,82 @@ export function AIChat() {
 
         {/* Input */}
         <div className="border-t border-gray-200 p-4 bg-white">
+          {/* AI Mode Selector */}
+          <div className="flex items-center gap-2 mb-3">
+            <div className="relative">
+              <button
+                onClick={() => setShowModeSelector(!showModeSelector)}
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                  aiMode === 'standard'
+                    ? 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    : aiMode === 'deep_research'
+                    ? 'bg-purple-100 text-purple-700 hover:bg-purple-200'
+                    : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
+                }`}
+              >
+                {aiMode === 'standard' && <Sparkles className="w-4 h-4" />}
+                {aiMode === 'deep_research' && <Search className="w-4 h-4" />}
+                {aiMode === 'analyze' && <FileText className="w-4 h-4" />}
+                <span>
+                  {aiMode === 'standard' && 'Standard'}
+                  {aiMode === 'deep_research' && 'Deep Research'}
+                  {aiMode === 'analyze' && 'Analyze'}
+                </span>
+                <ChevronDown className="w-3 h-3" />
+              </button>
+
+              {showModeSelector && (
+                <div className="absolute bottom-full left-0 mb-2 w-64 bg-white border border-gray-200 rounded-lg shadow-lg z-10">
+                  <div className="p-2">
+                    <button
+                      onClick={() => { setAiMode('standard'); setShowModeSelector(false); }}
+                      className={`w-full flex items-start gap-3 p-3 rounded-lg text-left transition-colors ${
+                        aiMode === 'standard' ? 'bg-gray-100' : 'hover:bg-gray-50'
+                      }`}
+                    >
+                      <Sparkles className="w-5 h-5 text-gray-600 mt-0.5" />
+                      <div>
+                        <p className="font-medium text-gray-900 text-sm">Standard</p>
+                        <p className="text-xs text-gray-500">Quick answers using your business data</p>
+                      </div>
+                    </button>
+                    <button
+                      onClick={() => { setAiMode('deep_research'); setShowModeSelector(false); }}
+                      className={`w-full flex items-start gap-3 p-3 rounded-lg text-left transition-colors ${
+                        aiMode === 'deep_research' ? 'bg-purple-100' : 'hover:bg-gray-50'
+                      }`}
+                    >
+                      <Search className="w-5 h-5 text-purple-600 mt-0.5" />
+                      <div>
+                        <p className="font-medium text-gray-900 text-sm">Deep Research</p>
+                        <p className="text-xs text-gray-500">Comprehensive analysis with web search</p>
+                      </div>
+                    </button>
+                    <button
+                      onClick={() => { setAiMode('analyze'); setShowModeSelector(false); }}
+                      className={`w-full flex items-start gap-3 p-3 rounded-lg text-left transition-colors ${
+                        aiMode === 'analyze' ? 'bg-blue-100' : 'hover:bg-gray-50'
+                      }`}
+                    >
+                      <FileText className="w-5 h-5 text-blue-600 mt-0.5" />
+                      <div>
+                        <p className="font-medium text-gray-900 text-sm">Analyze & Report</p>
+                        <p className="text-xs text-gray-500">Create PDF reports and spreadsheets</p>
+                      </div>
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {aiMode !== 'standard' && (
+              <span className="text-xs text-gray-500">
+                {aiMode === 'deep_research' && 'Using web search + business data'}
+                {aiMode === 'analyze' && 'Will generate downloadable reports'}
+              </span>
+            )}
+          </div>
+
           <div className="flex gap-2">
             <input
               type="text"
@@ -708,7 +786,11 @@ export function AIChat() {
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && sendMessage()}
               placeholder={
-                installedTools.length > 0
+                aiMode === 'deep_research'
+                  ? "What would you like me to research?"
+                  : aiMode === 'analyze'
+                  ? "What report would you like me to create?"
+                  : installedTools.length > 0
                   ? "Ask me anything about your business..."
                   : "Ask questions about your business. Connect tools for deeper insights."
               }
