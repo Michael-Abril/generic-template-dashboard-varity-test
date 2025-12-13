@@ -2,7 +2,7 @@
 import { logger } from '@/lib/logger';
 
 import React, { useState } from 'react';
-import { useAccount } from 'wagmi';
+import { usePrivy, useWallets } from '@privy-io/react-auth';
 import { Button } from '@/components/ui/button';
 import { Loader2, Link2, CheckCircle2, AlertCircle } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -40,7 +40,14 @@ export function OAuthButton({
   onSuccess,
   onError
 }: OAuthButtonProps) {
-  const { address: walletAddress, isConnected: walletConnected } = useAccount();
+  // Use Privy for authentication and wallet access (NOT wagmi)
+  const { authenticated, user } = usePrivy();
+  const { wallets } = useWallets();
+
+  // Get wallet address from Privy (embedded wallet created for email/social login)
+  const primaryWallet = wallets?.[0];
+  const walletAddress = primaryWallet?.address || user?.wallet?.address;
+  const walletConnected = authenticated && !!walletAddress;
   const [isLoading, setIsLoading] = useState(false);
   const [showDialog, setShowDialog] = useState(false);
   const [error, setError] = useState<string | null>(null);
