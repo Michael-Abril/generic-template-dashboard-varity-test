@@ -1,8 +1,45 @@
 # Varity Generic AI Dashboard Template
 
-**Status:** Production-Ready for Beta Launch
+**Status:** LIVE at https://app.varity.so - Finishing OAuth & Integration Testing
 **Network:** Varity L3 Arbitrum Rollup (Testnet)
 **License:** MIT - "Powered by Varity" attribution required
+**Last Updated:** December 13, 2025
+
+---
+
+## 🚨 CURRENT STATUS (December 2025)
+
+### Live Deployment
+
+| Service | URL | Status |
+|---------|-----|--------|
+| **Frontend** | https://app.varity.so | ✅ Live on Vercel |
+| **Backend** | https://generic-template-dashboard-production.up.railway.app | ✅ Live on Railway |
+| **Health Check** | https://generic-template-dashboard-production.up.railway.app/health | ✅ Healthy |
+
+### Remaining Work (In Priority Order)
+
+| # | Task | Status | Notes |
+|---|------|--------|-------|
+| 1 | **Fix OAuth Integrations** | 🔴 NOT WORKING | Marketplace Connect buttons don't work |
+| 2 | **Test AI Assistant** | 🟡 NEEDS TESTING | Verify Together.ai works in production |
+| 3 | **Verify Filecoin Storage** | 🟡 NEEDS TESTING | Confirm Pinata sync and data display |
+| 4 | **Fix Settings Page** | 🟡 NEEDS TESTING | All buttons/features must work |
+| 5 | **100% Integration** | 🟡 NEEDS TESTING | Every button on every page must work |
+
+### OAuth Fix (PRIORITY 1)
+
+The OAuth integrations are NOT working. Root cause was `OAUTH_REDIRECT_BASE_URL` set incorrectly in Railway (fixed Dec 13, 2025).
+
+**Still needed:**
+1. Add OAuth credentials for Google, Microsoft, Slack in Railway Variables
+2. Register redirect URIs in each provider's developer console:
+   ```
+   https://app.varity.so/oauth/callback/google
+   https://app.varity.so/oauth/callback/microsoft
+   https://app.varity.so/oauth/callback/slack
+   ```
+3. Test OAuth flow end-to-end in browser
 
 ---
 

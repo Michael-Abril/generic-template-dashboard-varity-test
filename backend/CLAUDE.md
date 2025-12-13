@@ -1,9 +1,103 @@
 # CLAUDE.md - Backend (FastAPI)
 
-**Last Updated:** December 7, 2025
+**Last Updated:** December 13, 2025
 **Framework:** FastAPI + SQLAlchemy + Pydantic
 **Python Version:** 3.8+
-**Container:** generic-template-backend (Port 8002)
+**Production:** Railway (https://generic-template-dashboard-production.up.railway.app)
+**Local Container:** generic-template-backend (Port 8002)
+
+---
+
+## 🚨 PRODUCTION DEPLOYMENT (Railway)
+
+### Live URLs
+
+| Service | URL |
+|---------|-----|
+| **Backend API** | https://generic-template-dashboard-production.up.railway.app |
+| **Health Check** | https://generic-template-dashboard-production.up.railway.app/health |
+| **API Docs** | https://generic-template-dashboard-production.up.railway.app/docs |
+
+### Critical Railway Environment Variables
+
+These MUST be set correctly in Railway Dashboard → Variables:
+
+```bash
+# CRITICAL FOR OAUTH (Fixed Dec 13, 2025)
+FRONTEND_URL=https://app.varity.so
+OAUTH_REDIRECT_BASE_URL=https://app.varity.so
+
+# Database (auto-configured by Railway)
+DATABASE_URL=postgresql://...
+
+# AI/LLM
+TOGETHER_API_KEY=your-together-api-key
+
+# Storage
+PINATA_API_KEY=your-pinata-key
+PINATA_SECRET_KEY=your-pinata-secret
+
+# OAuth Credentials (PRIORITY - add these!)
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+MICROSOFT_CLIENT_ID=
+MICROSOFT_CLIENT_SECRET=
+SLACK_CLIENT_ID=
+SLACK_CLIENT_SECRET=
+```
+
+### Deployment Workflow
+
+```bash
+# All changes deploy automatically via GitHub
+# 1. Make changes locally
+# 2. Commit and push to main branch
+git add .
+git commit -m "fix: description"
+git push origin main
+
+# 3. Railway auto-deploys in 2-3 minutes
+# 4. Check logs in Railway dashboard if issues
+```
+
+---
+
+## 🔴 PRIORITY: FIX OAUTH INTEGRATIONS
+
+### The Problem
+
+OAuth integrations on the marketplace page are NOT working. Users cannot connect QuickBooks, Google, Slack, etc.
+
+### Root Cause (Fixed Dec 13, 2025)
+
+`OAUTH_REDIRECT_BASE_URL` was set incorrectly in Railway. Now set to `https://app.varity.so`.
+
+### What Still Needs to Be Done
+
+1. **Add OAuth Credentials in Railway Dashboard** for each provider:
+   - Go to: Railway Dashboard → Project → Variables
+   - Add: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, etc.
+
+2. **Register Redirect URIs** in each OAuth provider's developer portal:
+   ```
+   https://app.varity.so/oauth/callback/quickbooks
+   https://app.varity.so/oauth/callback/google
+   https://app.varity.so/oauth/callback/microsoft
+   https://app.varity.so/oauth/callback/slack
+   https://app.varity.so/oauth/callback/hubspot
+   ```
+
+3. **Test Each OAuth Flow** in browser at https://app.varity.so
+
+### OAuth Provider Setup Links
+
+| Provider | Developer Portal | Status |
+|----------|-----------------|--------|
+| **QuickBooks** | https://developer.intuit.com | ✅ Configured |
+| **Google** | https://console.cloud.google.com/apis/credentials | 🔴 NEEDS CREDENTIALS |
+| **Microsoft** | https://portal.azure.com (Azure AD) | 🔴 NEEDS CREDENTIALS |
+| **Slack** | https://api.slack.com/apps | 🔴 NEEDS CREDENTIALS |
+| **HubSpot** | https://developers.hubspot.com | 🟡 Secondary |
 
 ---
 

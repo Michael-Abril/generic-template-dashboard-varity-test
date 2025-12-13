@@ -1,10 +1,113 @@
 # CLAUDE.md - Frontend (Next.js 14)
 
-**Last Updated:** December 7, 2025
+**Last Updated:** December 13, 2025
 **Framework:** Next.js 14 (App Router)
 **Language:** TypeScript
 **Styling:** Tailwind CSS
-**Port:** 3001
+**Production:** Vercel (https://app.varity.so)
+**Local Port:** 3001
+
+---
+
+## 🚨 PRODUCTION DEPLOYMENT (Vercel)
+
+### Live URL
+
+| Service | URL |
+|---------|-----|
+| **Frontend** | https://app.varity.so |
+
+### Critical Vercel Environment Variables
+
+These are set in Vercel Dashboard → Project → Settings → Environment Variables:
+
+```bash
+# Backend API URL
+NEXT_PUBLIC_API_URL=https://generic-template-dashboard-production.up.railway.app
+
+# Privy Authentication
+NEXT_PUBLIC_PRIVY_APP_ID=cmhwbozxu004fjr0cicfz0tf8
+
+# thirdweb Web3
+NEXT_PUBLIC_THIRDWEB_CLIENT_ID=acb17e07e34ab2b8317aa40cbb1b5e1d
+
+# Varity L3 Network
+NEXT_PUBLIC_VARITY_CHAIN_ID=33529
+NEXT_PUBLIC_VARITY_RPC_URL=https://rpc-varity-testnet-rroe52pwjp.t.conduit.xyz
+```
+
+### Deployment Workflow
+
+```bash
+# All changes deploy automatically via GitHub
+# 1. Make changes locally
+# 2. Test build locally
+npm run build
+
+# 3. Commit and push to main branch
+git add .
+git commit -m "fix: description"
+git push origin main
+
+# 4. Vercel auto-deploys in 2-3 minutes
+# 5. Check https://app.varity.so
+```
+
+---
+
+## 🔴 PRIORITY TESTING CHECKLIST
+
+### 1. OAuth Integrations (PRIORITY 1)
+
+Test at https://app.varity.so/marketplace
+
+- [ ] Click "Connect" on QuickBooks
+- [ ] Click "Connect" on Google Workspace
+- [ ] Click "Connect" on Microsoft 365
+- [ ] Click "Connect" on Slack
+- [ ] Verify redirects to provider's auth page
+- [ ] Verify callback redirects back to /integrations
+
+### 2. AI Assistant (PRIORITY 2)
+
+Test at https://app.varity.so/ai-assistant
+
+- [ ] Send a chat message
+- [ ] Verify response returns from Together.ai (not error)
+- [ ] Test with business data after OAuth is working
+
+### 3. Filecoin Storage (PRIORITY 3)
+
+After OAuth is working:
+
+- [ ] Connect an integration
+- [ ] Trigger data sync
+- [ ] Verify data appears on Dashboard page
+- [ ] Verify data appears on Integrations page
+- [ ] Verify data appears on Analytics page
+
+### 4. Settings Page (PRIORITY 4)
+
+Test at https://app.varity.so/settings
+
+- [ ] Profile settings save/update works
+- [ ] Notification preferences work
+- [ ] Security settings work
+- [ ] All buttons are functional
+
+### 5. 100% Integration (PRIORITY 5)
+
+Test EVERY page:
+
+| Page | URL | What to Test |
+|------|-----|--------------|
+| Dashboard | /dashboard | KPIs load, recent activity shows |
+| Marketplace | /marketplace | Products display, Connect buttons work |
+| Integrations | /integrations | Connected apps show, data displays |
+| AI Assistant | /ai-assistant | Chat works, responses return |
+| Analytics | /analytics | Charts load with data |
+| Settings | /settings | All buttons/features work |
+| Onboarding | /onboarding | Flow completes |
 
 ---
 

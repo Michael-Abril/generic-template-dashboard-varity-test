@@ -1,41 +1,260 @@
 # CLAUDE.md - Generic Company Dashboard Template
 
-**Last Updated:** December 7, 2025
-**Status:** 95% Complete - Ready for SMB Beta Testing
-**Build Status:** Passing (Frontend + Backend healthy)
-**Priority:** Get businesses onboarded for Varity go-to-market
+**Last Updated:** December 13, 2025
+**Status:** LIVE at https://app.varity.so - Finishing OAuth & Full Integration
+**Build Status:** ✅ Passing (Frontend on Vercel + Backend on Railway)
+**Priority:** FINISH remaining features so businesses can start onboarding
 
 ---
 
-## CRITICAL CONTEXT FOR CLAUDE CODE
+## 🚨 CRITICAL: CURRENT SPRINT - REMAINING WORK
 
-This is the **Generic Company Dashboard Template** - Varity's flagship product for launching businesses on 100% decentralized infrastructure (DePin). We are on a **critical deadline** to finish this for customer onboarding.
+This dashboard is Varity's **flagship product** for go-to-market. It is LIVE but needs these items finished before businesses can fully use it:
 
-**Location:** `/varity/chains/arbitrum/deployments/testnet/testing/generic-company-dashboard/`
+### SPRINT PRIORITIES (In Order)
 
-### Completion Status
+| # | Task | Status | Description |
+|---|------|--------|-------------|
+| 1 | **Fix OAuth Integrations** | 🔴 NOT WORKING | Marketplace integrations don't connect - MUST FIX FIRST |
+| 2 | **Test AI Assistant** | 🟡 NEEDS TESTING | Verify AI chat works with Together.ai in production |
+| 3 | **Verify Filecoin Storage** | 🟡 NEEDS TESTING | Confirm data syncs to Pinata and shows in dashboard |
+| 4 | **Fix Settings Page** | 🟡 NEEDS TESTING | Ensure all buttons/features actually work |
+| 5 | **100% Frontend-Backend Integration** | 🟡 NEEDS TESTING | Every button across ALL pages must work |
+
+### Live Deployment URLs
+
+| Service | URL | Status |
+|---------|-----|--------|
+| **Frontend** | https://app.varity.so | ✅ Live on Vercel |
+| **Backend** | https://generic-template-dashboard-production.up.railway.app | ✅ Live on Railway |
+| **Health Check** | https://generic-template-dashboard-production.up.railway.app/health | ✅ Healthy |
+
+---
+
+## 🔴 PRIORITY 1: FIX OAUTH INTEGRATIONS (BLOCKING)
+
+**Problem:** OAuth integrations on the marketplace page are NOT working. Users cannot connect QuickBooks, Google, Slack, etc.
+
+**Root Cause Fixed (Dec 13, 2025):**
+- `OAUTH_REDIRECT_BASE_URL` in Railway was set incorrectly
+- Now set to: `https://app.varity.so`
+
+**What Still Needs to Be Done:**
+
+1. **Add OAuth Credentials in Railway Dashboard** for each provider:
+   - Go to: Railway Dashboard → Variables
+   - Add credentials for: Google, Microsoft, Slack, HubSpot, etc.
+
+2. **Register Redirect URIs** in each OAuth provider's dashboard:
+   ```
+   https://app.varity.so/oauth/callback/quickbooks
+   https://app.varity.so/oauth/callback/google
+   https://app.varity.so/oauth/callback/microsoft
+   https://app.varity.so/oauth/callback/slack
+   https://app.varity.so/oauth/callback/hubspot
+   https://app.varity.so/oauth/callback/zendesk
+   https://app.varity.so/oauth/callback/salesforce
+   https://app.varity.so/oauth/callback/shopify
+   ```
+
+3. **Test Each OAuth Flow** in browser at https://app.varity.so
+
+### OAuth Provider Setup Links
+
+| Provider | Developer Portal | Priority |
+|----------|-----------------|----------|
+| **QuickBooks** | https://developer.intuit.com | ✅ Configured |
+| **Google Workspace** | https://console.cloud.google.com/apis/credentials | 🔴 Priority 1 |
+| **Microsoft 365** | https://portal.azure.com (Azure AD) | 🔴 Priority 2 |
+| **Slack** | https://api.slack.com/apps | 🔴 Priority 3 |
+| **HubSpot** | https://developers.hubspot.com | 🟡 Secondary |
+| **Zendesk** | https://developer.zendesk.com | 🟡 Secondary |
+| **Salesforce** | https://developer.salesforce.com | 🟡 Secondary |
+| **Shopify** | https://partners.shopify.com | 🟡 Secondary |
+
+---
+
+## 🟡 PRIORITY 2: TEST AI ASSISTANT
+
+**What to Test:**
+1. Go to https://app.varity.so/ai-assistant
+2. Send a chat message
+3. Verify response comes back from Together.ai (not error)
+4. Test with business data after OAuth is working
+
+**Backend Health Check:**
+```bash
+curl https://generic-template-dashboard-production.up.railway.app/api/v1/ai/health
+# Should show: together_healthy: true
+```
+
+**If AI Not Working:**
+- Check `TOGETHER_API_KEY` is set in Railway Variables
+- Current model: `meta-llama/Llama-3.3-70B-Instruct-Turbo`
+
+---
+
+## 🟡 PRIORITY 3: VERIFY FILECOIN/PINATA STORAGE
+
+**What to Test:**
+1. Connect an OAuth integration (after Priority 1 is fixed)
+2. Trigger a data sync
+3. Verify data appears in:
+   - Dashboard page (KPIs, recent activity)
+   - Integrations page (connected apps, data)
+   - Analytics page (charts, metrics)
+
+**Backend Health Check:**
+```bash
+curl https://generic-template-dashboard-production.up.railway.app/health
+# Should show: pinata: "connected"
+```
+
+**Data Flow:**
+```
+OAuth Connect → Fetch Data → Encrypt → Store in Pinata → Index in Qdrant → Display in Dashboard
+```
+
+---
+
+## 🟡 PRIORITY 4: FIX SETTINGS PAGE
+
+**What to Test:**
+1. Go to https://app.varity.so/settings
+2. Test EVERY button and feature:
+   - Profile settings (save/update)
+   - Notification preferences
+   - Security settings
+   - Billing/subscription info
+   - Team management (if applicable)
+3. Verify changes persist after page refresh
+
+---
+
+## 🟡 PRIORITY 5: 100% FRONTEND-BACKEND INTEGRATION
+
+**Goal:** Every single button, feature, and functionality across the ENTIRE dashboard must work.
+
+**Pages to Test:**
+
+| Page | URL | What to Test |
+|------|-----|--------------|
+| **Dashboard** | /dashboard | KPIs load, recent activity, quick actions |
+| **Marketplace** | /marketplace | Products display, OAuth connect buttons |
+| **Integrations** | /integrations | Connected apps show, data displays |
+| **AI Assistant** | /ai-assistant | Chat works, responses return |
+| **Analytics** | /analytics | Charts load, data displays |
+| **Settings** | /settings | All buttons work, changes save |
+| **Onboarding** | /onboarding | Flow completes successfully |
+
+---
+
+## 💻 LAPTOP-ONLY DEVELOPMENT WORKFLOW
+
+**No Docker Required!** All testing happens via Vercel/Railway auto-deploy.
+
+### What You Need on Your Laptop:
+- ✅ Git
+- ✅ Node.js 18+
+- ✅ Cursor IDE
+- ✅ Claude Code (terminal)
+- ❌ Docker (NOT needed)
+- ❌ Railway CLI (NOT needed)
+- ❌ Vercel CLI (NOT needed)
+
+### Development Workflow:
+
+```bash
+# 1. Clone repo (one time)
+git clone https://github.com/varity-Labs/generic-template-dashboard.git
+cd generic-template-dashboard
+
+# 2. Make code changes in Cursor IDE with Claude Code
+
+# 3. Test frontend build locally (catches TypeScript errors)
+npm install --legacy-peer-deps
+npm run build
+
+# 4. Commit and push to trigger auto-deploy
+git add .
+git commit -m "fix: description of fix"
+git push origin main
+
+# 5. Wait 2-3 minutes for Vercel + Railway to auto-deploy
+
+# 6. Test at https://app.varity.so
+```
+
+### GitHub Repo:
+```
+https://github.com/varity-Labs/generic-template-dashboard.git
+```
+
+### Codebase Size:
+- **Source code:** ~20 MB
+- **Frontend:** 77 files, ~15,650 lines
+- **Backend:** 91 files, ~31,514 lines
+- **Total:** 168 files, ~47,000 lines
+
+---
+
+## DEPLOYMENT ARCHITECTURE
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    PRODUCTION DEPLOYMENT                         │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  GitHub Repo ──push──► Vercel (Frontend) ──► app.varity.so      │
+│       │                                                          │
+│       └──push──► Railway (Backend) ──► API endpoint              │
+│                                                                  │
+│  Environment Variables:                                          │
+│  ├── Vercel: NEXT_PUBLIC_API_URL, PRIVY_APP_ID, etc.            │
+│  └── Railway: DATABASE_URL, PINATA_*, TOGETHER_API_KEY, etc.    │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Key Environment Variables
+
+**Vercel (Frontend):**
+- `NEXT_PUBLIC_API_URL` = Railway backend URL
+- `NEXT_PUBLIC_PRIVY_APP_ID` = Privy app ID
+- `NEXT_PUBLIC_THIRDWEB_CLIENT_ID` = Thirdweb client ID
+
+**Railway (Backend):**
+- `FRONTEND_URL` = `https://app.varity.so`
+- `OAUTH_REDIRECT_BASE_URL` = `https://app.varity.so`
+- `TOGETHER_API_KEY` = Together.ai API key
+- `PINATA_API_KEY` = Pinata API key
+- `DATABASE_URL` = PostgreSQL connection string
+- OAuth credentials for each provider
+
+---
+
+## COMPLETION STATUS
 
 | Component | Status | Notes |
 |-----------|--------|-------|
-| **Frontend (Next.js)** | 100% | All pages, components, Coming Soon badges working |
-| **Backend (FastAPI)** | 100% | All endpoints, services healthy |
-| **Docker Infrastructure** | 100% | All 5 containers healthy |
-| **Database (PostgreSQL)** | 100% | 25 products, 15 categories seeded |
-| **Cache (Redis)** | 100% | Connected, working |
-| **AI/LLM (Ollama)** | 100% | TinyLlama model, RAG ready |
-| **Vector DB (Qdrant)** | 100% | Connected, embeddings ready |
-| **Storage (Filecoin/Pinata)** | 100% | Connected, multi-tenant |
-| **Marketplace** | 100% | 25 SMB products with Coming Soon badges |
-| **OAuth Integrations** | **10%** | QuickBooks configured, 3 priority remaining |
-| **Smart Contracts** | 100% | Deployed on Arbitrum Sepolia |
+| **Frontend (Next.js)** | ✅ 100% | Live at app.varity.so |
+| **Backend (FastAPI)** | ✅ 100% | Live on Railway, healthy |
+| **Database (PostgreSQL)** | ✅ 100% | Connected on Railway |
+| **AI/LLM (Together.ai)** | ✅ 100% | Configured, needs testing |
+| **Storage (Filecoin/Pinata)** | ✅ 100% | Connected, needs testing |
+| **Marketplace** | ✅ 100% | 24 products loaded |
+| **OAuth Integrations** | 🔴 **10%** | **NOT WORKING - FIX FIRST** |
+| **Settings Page** | 🟡 **NEEDS TESTING** | Buttons may not work |
+| **Dashboard Data** | 🟡 **NEEDS TESTING** | Depends on OAuth working |
+| **Analytics Page** | 🟡 **NEEDS TESTING** | Depends on data sync |
 
-### Marketplace Products (25 Total)
+### Marketplace Products (24 Total)
 
-**Ready for OAuth Setup (14 products):**
-- QuickBooks (Accounting) - **CONFIGURED**
-- Google Workspace (Productivity) - Priority #1
-- Microsoft 365 (Productivity) - Priority #2
-- Slack (Communication) - Priority #3
+**OAuth Providers to Configure:**
+- QuickBooks (Accounting) - Credentials in Railway
+- Google Workspace (Productivity) - **PRIORITY 1**
+- Microsoft 365 (Productivity) - **PRIORITY 2**
+- Slack (Communication) - **PRIORITY 3**
 - HubSpot (CRM)
 - Zendesk (Support)
 - Salesforce (CRM)
@@ -47,34 +266,8 @@ This is the **Generic Company Dashboard Template** - Varity's flagship product f
 - Zoom (Communication)
 - Dropbox (Storage)
 
-**Coming Soon (11 products - No OAuth needed yet):**
-- Stripe (requires Connect business verification)
-- Square (Point of Sale)
-- PayPal (Payments)
-- Gusto (Payroll/HR)
-- Calendly (Scheduling)
-- Canva (Design)
-- Asana (Project Management)
-- Trello (Project Management)
-- Monday.com (Project Management)
-- Intercom (Customer Service)
-- Twilio (Communications)
-
-### What Needs to Be Done (Priority Order)
-
-1. **OAuth Provider Setup** (PRIORITY - Universal SMB Tools)
-   - **Priority 1 - Google Workspace:** https://console.cloud.google.com/apis/credentials
-   - **Priority 2 - Microsoft 365:** https://portal.azure.com (Azure AD)
-   - **Priority 3 - Slack:** https://api.slack.com/apps
-
-2. **Secondary OAuth Providers** (After priorities complete)
-   - HubSpot: https://developers.hubspot.com
-   - Zendesk: https://developer.zendesk.com
-   - Salesforce: https://developer.salesforce.com (longer approval process)
-   - Shopify: https://partners.shopify.com
-
-3. **End-to-End Testing** - All OAuth flows need browser testing
-4. **Production Deployment** - Deploy to Varity L3 mainnet
+**Coming Soon (No OAuth needed):**
+- Stripe, Square, PayPal, Gusto, Calendly, Canva, Asana, Trello, Monday.com, Intercom
 
 ---
 
