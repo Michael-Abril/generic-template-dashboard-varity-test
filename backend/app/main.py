@@ -67,6 +67,7 @@ ALLOWED_ORIGINS = [
     "https://generic-template-dashboard.vercel.app",  # Vercel deployment
     "https://app.varity.so",  # Dashboard custom domain
     "https://varity.so",  # Marketing website (for signup stats API)
+    "https://www.varity.so",  # Marketing website with www prefix
 ]
 
 app.add_middleware(
