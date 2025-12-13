@@ -124,6 +124,15 @@ class Settings(BaseSettings):
     # LLM Provider Selection: "together" (cloud) or "ollama" (local)
     llm_provider: str = Field("together", env="LLM_PROVIDER")
 
+    # Web Search Configuration (for AI Assistant internet access)
+    # Tavily is recommended for LLM-optimized search results
+    # Get API key from: https://tavily.com/
+    tavily_api_key: Optional[str] = Field(None, env="TAVILY_API_KEY")
+
+    # Alternative: Serper.dev for Google Search results
+    # Get API key from: https://serper.dev/
+    serper_api_key: Optional[str] = Field(None, env="SERPER_API_KEY")
+
     # Logging Configuration
     log_level: str = "INFO"
     log_format: str = "json"

@@ -104,7 +104,8 @@ class OllamaBusinessService:
         user_query: str,
         integration: Optional[str] = None,
         data_type: Optional[str] = None,
-        max_context_items: int = 5
+        max_context_items: int = 5,
+        mode: str = "auto"
     ) -> Dict[str, Any]:
         """
         Query AI with business-specific RAG context

@@ -8,9 +8,10 @@ without data retention by cloud providers.
 Features:
 - General LLM mode (works without integrations)
 - Document analysis capabilities
-- Deep research mode
+- Deep research mode with web search
 - Multi-tenant RAG integration when integrations are connected
 - Streaming responses for real-time chat
+- Web search integration for real-time internet access
 """
 
 import os
@@ -21,6 +22,7 @@ from typing import Dict, Any, Optional, List, AsyncGenerator
 from datetime import datetime
 
 from .rag_service import BusinessRAGService
+from .web_search_service import web_search_service
 
 logger = logging.getLogger(__name__)
 
@@ -686,3 +688,282 @@ Be thorough but concise. Focus on information that would be valuable for busines
         except Exception as e:
             logger.error(f"Failed to get available models: {e}")
             return {"models": [], "error": str(e)}
+
+    async def web_search_query(
+        self,
+        business_wallet: str,
+        user_query: str,
+        search_query: Optional[str] = None,
+        max_search_results: int = 5
+    ) -> Dict[str, Any]:
+        """
+        Answer a question using web search results.
+
+        This method searches the web for relevant information and uses it
+        to generate an informed response. Perfect for questions about
+        current events, market data, regulations, or any real-time information.
+
+        Args:
+            business_wallet: Business wallet address (for logging/tracking)
+            user_query: User's question
+            search_query: Optional custom search query (defaults to user_query)
+            max_search_results: Maximum search results to use
+
+        Returns:
+            Dict with AI answer and web sources
+        """
+        logger.info(f"Web search query from {business_wallet[:10]}...: '{user_query[:50]}...'")
+
+        # Use provided search query or derive from user query
+        actual_search_query = search_query or user_query
+
+        # Perform web search
+        search_context = await web_search_service.search_and_summarize(
+            actual_search_query,
+            max_results=max_search_results
+        )
+
+        # Build system prompt with web search context
+        system_prompt = f"""You are an AI assistant with access to real-time web search results.
+Use the following web search information to answer the user's question accurately and helpfully.
+
+{search_context}
+
+Guidelines:
+- Cite specific sources when possible (mention "According to [source]...")
+- If the search results don't fully answer the question, say so
+- Provide accurate, factual information based on the search results
+- Be helpful and comprehensive in your response
+- If information conflicts between sources, mention the discrepancy"""
+
+        try:
+            messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_query}
+            ]
+
+            payload = {
+                "model": self.model,
+                "messages": messages,
+                "temperature": 0.5,  # Lower temperature for factual responses
+                "max_tokens": 2048,
+            }
+
+            headers = {
+                "Authorization": f"Bearer {self.api_key}",
+                "Content-Type": "application/json"
+            }
+
+            async with httpx.AsyncClient(timeout=120.0) as client:
+                response = await client.post(
+                    f"{self.api_url}/chat/completions",
+                    json=payload,
+                    headers=headers
+                )
+                response.raise_for_status()
+                result = response.json()
+                answer = result["choices"][0]["message"]["content"]
+
+                # Get search results for source attribution
+                search_result = await web_search_service.search(actual_search_query, max_search_results)
+                sources = [
+                    {"title": r["title"], "url": r["url"]}
+                    for r in search_result.get("results", [])
+                ]
+
+                return {
+                    "answer": answer,
+                    "mode": "web_search",
+                    "search_query": actual_search_query,
+                    "sources": sources,
+                    "web_search_provider": search_result.get("provider"),
+                    "timestamp": datetime.utcnow().isoformat()
+                }
+
+        except Exception as e:
+            logger.error(f"Web search query error: {str(e)}")
+            raise
+
+    async def query_with_web_search(
+        self,
+        business_wallet: str,
+        user_query: str,
+        integration: Optional[str] = None,
+        data_type: Optional[str] = None,
+        enable_web_search: bool = True,
+        max_context_items: int = 5,
+        max_search_results: int = 3
+    ) -> Dict[str, Any]:
+        """
+        Query AI with both RAG context AND web search results.
+
+        This is the most powerful query mode - combines:
+        1. Business-specific RAG data (if available)
+        2. Real-time web search results (if enabled)
+
+        Args:
+            business_wallet: Business wallet address
+            user_query: User's question
+            integration: Optional filter by integration
+            data_type: Optional filter by data type
+            enable_web_search: Whether to include web search
+            max_context_items: Maximum RAG results
+            max_search_results: Maximum web search results
+
+        Returns:
+            Dict with answer, sources, and metadata
+        """
+        logger.info(
+            f"Combined query from {business_wallet[:10]}...: "
+            f"'{user_query[:50]}...' (web_search={enable_web_search})"
+        )
+
+        context_parts = []
+        source_cids = []
+        web_sources = []
+
+        # 1. Try to get RAG context from business data
+        try:
+            rag_results = await self.rag_service.query_business_rag(
+                business_wallet=business_wallet,
+                query=user_query,
+                limit=max_context_items,
+                integration=integration,
+                data_type=data_type
+            )
+
+            for idx, result in enumerate(rag_results, 1):
+                data = result.get("data", {})
+                cid = result.get("cid", "")
+                integration_name = result.get("integration", "")
+                data_type_name = result.get("data_type", "")
+
+                context_entry = f"""
+Business Data Source {idx} (Integration: {integration_name}, Type: {data_type_name}):
+{json.dumps(data, indent=2)}
+"""
+                context_parts.append(context_entry.strip())
+                source_cids.append(cid)
+
+        except Exception as e:
+            logger.warning(f"RAG query failed: {e}")
+
+        # 2. Get web search results if enabled
+        web_search_context = ""
+        if enable_web_search and web_search_service.is_available():
+            try:
+                web_search_context = await web_search_service.search_and_summarize(
+                    user_query,
+                    max_results=max_search_results
+                )
+                search_result = await web_search_service.search(user_query, max_search_results)
+                web_sources = [
+                    {"title": r["title"], "url": r["url"]}
+                    for r in search_result.get("results", [])
+                ]
+            except Exception as e:
+                logger.warning(f"Web search failed: {e}")
+
+        # 3. Build comprehensive system prompt
+        system_prompt = self._get_combined_system_prompt(
+            context_parts,
+            web_search_context
+        )
+
+        # 4. Query Together.ai
+        try:
+            messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_query}
+            ]
+
+            payload = {
+                "model": self.model,
+                "messages": messages,
+                "temperature": 0.5,
+                "max_tokens": 3072,
+            }
+
+            headers = {
+                "Authorization": f"Bearer {self.api_key}",
+                "Content-Type": "application/json"
+            }
+
+            async with httpx.AsyncClient(timeout=120.0) as client:
+                response = await client.post(
+                    f"{self.api_url}/chat/completions",
+                    json=payload,
+                    headers=headers
+                )
+                response.raise_for_status()
+                result = response.json()
+                answer = result["choices"][0]["message"]["content"]
+
+                # Determine mode based on what context was used
+                mode = "general"
+                if context_parts and web_search_context:
+                    mode = "combined"
+                elif context_parts:
+                    mode = "rag"
+                elif web_search_context:
+                    mode = "web_search"
+
+                return {
+                    "answer": answer,
+                    "mode": mode,
+                    "rag_sources": source_cids,
+                    "web_sources": web_sources,
+                    "context_used": bool(context_parts),
+                    "web_search_used": bool(web_search_context),
+                    "timestamp": datetime.utcnow().isoformat()
+                }
+
+        except Exception as e:
+            logger.error(f"Combined query error: {str(e)}")
+            raise
+
+    def _get_combined_system_prompt(
+        self,
+        rag_context_parts: List[str],
+        web_search_context: str
+    ) -> str:
+        """Build system prompt combining RAG and web search context"""
+
+        parts = [
+            "You are an intelligent AI assistant for business professionals.",
+            "",
+        ]
+
+        # Add RAG context if available
+        if rag_context_parts:
+            rag_context = "\n\n".join(rag_context_parts)
+            parts.append("BUSINESS-SPECIFIC DATA:")
+            parts.append(rag_context)
+            parts.append("")
+
+        # Add web search context if available
+        if web_search_context:
+            parts.append("REAL-TIME WEB INFORMATION:")
+            parts.append(web_search_context)
+            parts.append("")
+
+        # Add instructions
+        parts.append("Guidelines:")
+        if rag_context_parts and web_search_context:
+            parts.append("- You have access to both business-specific data AND web search results")
+            parts.append("- Prioritize business-specific data for company questions")
+            parts.append("- Use web search for market trends, regulations, or external information")
+            parts.append("- Clearly indicate which source you're referencing")
+        elif rag_context_parts:
+            parts.append("- Answer based on the business-specific data provided")
+            parts.append("- Reference specific data points when answering")
+        elif web_search_context:
+            parts.append("- Use the web search results to answer accurately")
+            parts.append("- Cite sources when possible")
+        else:
+            parts.append("- Provide helpful, accurate general assistance")
+            parts.append("- Be clear when you're providing general guidance")
+
+        parts.append("- Be concise, professional, and actionable")
+
+        return "\n".join(parts)

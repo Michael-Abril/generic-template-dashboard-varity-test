@@ -34,6 +34,7 @@ from app.services.encryption_service import EncryptionService
 from app.services.ollama_service import OllamaBusinessService
 from app.services.together_service import TogetherBusinessService, TogetherService
 from app.services.rag_service import BusinessRAGService
+from app.services.web_search_service import web_search_service
 
 logger = logging.getLogger(__name__)
 
@@ -140,6 +141,46 @@ class ResearchQueryResponse(BaseModel):
     context_used: bool
     mode: str = "research"
     depth: str
+    metadata: Dict[str, Any]
+
+
+class WebSearchRequest(BaseModel):
+    """Web search query request"""
+    query: str
+    wallet_address: str
+    search_query: Optional[str] = None  # Optional custom search query
+    max_results: int = 5
+
+
+class WebSearchResponse(BaseModel):
+    """Web search query response"""
+    answer: str
+    mode: str = "web_search"
+    search_query: str
+    sources: List[Dict[str, str]]
+    provider: Optional[str]
+    metadata: Dict[str, Any]
+
+
+class CombinedQueryRequest(BaseModel):
+    """Combined RAG + Web Search query request"""
+    query: str
+    wallet_address: str
+    integration: Optional[str] = None
+    data_type: Optional[str] = None
+    enable_web_search: bool = True
+    max_rag_results: int = 5
+    max_search_results: int = 3
+
+
+class CombinedQueryResponse(BaseModel):
+    """Combined RAG + Web Search query response"""
+    answer: str
+    mode: str
+    rag_sources: List[str]
+    web_sources: List[Dict[str, str]]
+    context_used: bool
+    web_search_used: bool
     metadata: Dict[str, Any]
 
 
@@ -829,6 +870,200 @@ async def deep_research(request: ResearchQueryRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# ==================== Web Search Mode ====================
+
+@router.post("/search", response_model=WebSearchResponse)
+async def web_search_query(request: WebSearchRequest):
+    """
+    AI query with web search for real-time internet information
+
+    This endpoint provides AI responses powered by live web search results.
+    Perfect for questions about:
+    - Current events and news
+    - Market trends and financial data
+    - Regulations and compliance updates
+    - Industry benchmarks and statistics
+    - Any information that requires up-to-date sources
+
+    Args:
+        request: Web search query request
+
+    Returns:
+        AI response with web sources
+    """
+    try:
+        logger.info(
+            f"Web search request from {request.wallet_address}: "
+            f"'{request.query[:100]}...'"
+        )
+
+        # Check if web search is available
+        if not web_search_service.is_available():
+            raise HTTPException(
+                status_code=503,
+                detail="Web search is not configured. Please add TAVILY_API_KEY or SERPER_API_KEY to enable web search."
+            )
+
+        provider = get_llm_provider()
+
+        if provider == "together" and os.getenv("TOGETHER_API_KEY"):
+            # Use Together.ai with web search
+            result = await together_business_service.web_search_query(
+                business_wallet=request.wallet_address,
+                user_query=request.query,
+                search_query=request.search_query,
+                max_search_results=request.max_results
+            )
+        else:
+            # Fallback: Direct web search without LLM enhancement
+            search_result = await web_search_service.search(
+                request.search_query or request.query,
+                max_results=request.max_results
+            )
+
+            if not search_result["success"]:
+                raise HTTPException(status_code=500, detail=search_result.get("error", "Web search failed"))
+
+            # Build simple response from search results
+            answer_parts = []
+            if search_result.get("answer"):
+                answer_parts.append(search_result["answer"])
+            for r in search_result.get("results", [])[:3]:
+                answer_parts.append(f"- {r['title']}: {r['content'][:200]}")
+
+            result = {
+                "answer": "\n\n".join(answer_parts) or "No relevant results found.",
+                "mode": "web_search",
+                "search_query": request.search_query or request.query,
+                "sources": [{"title": r["title"], "url": r["url"]} for r in search_result.get("results", [])],
+                "web_search_provider": search_result.get("provider"),
+                "timestamp": datetime.now().isoformat()
+            }
+
+        return WebSearchResponse(
+            answer=result["answer"],
+            mode="web_search",
+            search_query=result.get("search_query", request.query),
+            sources=result.get("sources", []),
+            provider=result.get("web_search_provider"),
+            metadata={
+                "wallet_address": request.wallet_address,
+                "llm_provider": provider,
+                "timestamp": datetime.now().isoformat()
+            }
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Web search query failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/query/combined", response_model=CombinedQueryResponse)
+async def combined_query(request: CombinedQueryRequest):
+    """
+    Combined AI query with both RAG and Web Search
+
+    This is the most powerful query mode - combines:
+    1. Business-specific RAG data (from connected integrations)
+    2. Real-time web search results (for external information)
+
+    Use this for questions that need both your business data AND
+    external context, like:
+    - "How do my sales compare to industry benchmarks?"
+    - "What regulations affect my overdue invoices?"
+    - "How are my competitors pricing similar products?"
+
+    Args:
+        request: Combined query request
+
+    Returns:
+        AI response with both RAG and web sources
+    """
+    try:
+        logger.info(
+            f"Combined query from {request.wallet_address}: "
+            f"'{request.query[:100]}...' (web_search={request.enable_web_search})"
+        )
+
+        provider = get_llm_provider()
+
+        if provider == "together" and os.getenv("TOGETHER_API_KEY"):
+            # Use Together.ai combined query
+            result = await together_business_service.query_with_web_search(
+                business_wallet=request.wallet_address,
+                user_query=request.query,
+                integration=request.integration,
+                data_type=request.data_type,
+                enable_web_search=request.enable_web_search,
+                max_context_items=request.max_rag_results,
+                max_search_results=request.max_search_results
+            )
+        else:
+            # Fallback: Use Ollama for RAG only (no web search in fallback)
+            result = await ollama_business_service.query_business_ai(
+                business_wallet=request.wallet_address,
+                user_query=request.query,
+                integration=request.integration,
+                data_type=request.data_type,
+                max_context_items=request.max_rag_results
+            )
+            result["web_sources"] = []
+            result["web_search_used"] = False
+            result["rag_sources"] = result.get("sources", [])
+
+        return CombinedQueryResponse(
+            answer=result["answer"],
+            mode=result.get("mode", "general"),
+            rag_sources=result.get("rag_sources", result.get("sources", [])),
+            web_sources=result.get("web_sources", []),
+            context_used=result.get("context_used", False),
+            web_search_used=result.get("web_search_used", False),
+            metadata={
+                "wallet_address": request.wallet_address,
+                "integration": request.integration,
+                "data_type": request.data_type,
+                "llm_provider": provider,
+                "web_search_enabled": request.enable_web_search,
+                "timestamp": datetime.now().isoformat()
+            }
+        )
+
+    except Exception as e:
+        logger.error(f"Combined query failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/search/health")
+async def web_search_health():
+    """
+    Check health of web search service
+
+    Returns status of web search configuration and availability.
+    """
+    try:
+        health = await web_search_service.health_check()
+
+        return {
+            "success": True,
+            "web_search": health,
+            "timestamp": datetime.now().isoformat()
+        }
+
+    except Exception as e:
+        logger.error(f"Web search health check failed: {e}")
+        return {
+            "success": False,
+            "web_search": {
+                "available": False,
+                "operational": False,
+                "error": str(e)
+            },
+            "timestamp": datetime.now().isoformat()
+        }
+
+
 @router.get("/models")
 async def get_available_models():
     """
@@ -957,6 +1192,7 @@ async def get_ai_capabilities():
     """
     provider = get_llm_provider()
     has_together_key = bool(os.getenv("TOGETHER_API_KEY"))
+    web_search_available = web_search_service.is_available()
 
     return {
         "success": True,
@@ -982,6 +1218,21 @@ async def get_ai_capabilities():
                 "endpoint": "/api/v1/ai/research",
                 "depth_options": ["quick", "standard", "comprehensive"]
             },
+            "web_search": {
+                "enabled": web_search_available,
+                "requires_integrations": False,
+                "description": "AI with real-time internet access - search the web for current information",
+                "endpoint": "/api/v1/ai/search",
+                "provider": web_search_service.provider if web_search_available else None,
+                "note": "Requires TAVILY_API_KEY or SERPER_API_KEY" if not web_search_available else "Web search enabled"
+            },
+            "combined_query": {
+                "enabled": True,
+                "requires_integrations": False,
+                "description": "Combine business data (RAG) with web search for comprehensive answers",
+                "endpoint": "/api/v1/ai/query/combined",
+                "note": "Best of both worlds - your business data + live internet information"
+            },
             "rag_chat": {
                 "enabled": True,
                 "requires_integrations": True,
@@ -999,6 +1250,12 @@ async def get_ai_capabilities():
             "provider": "Together.ai" if provider == "together" and has_together_key else "Ollama (self-hosted)",
             "model": os.getenv("TOGETHER_MODEL", "meta-llama/Llama-3.3-70B-Instruct-Turbo") if provider == "together" else os.getenv("OLLAMA_MODEL", "mistral"),
             "privacy": "Open-source models - your data is never used for training"
+        },
+        "web_search_info": {
+            "available": web_search_available,
+            "provider": web_search_service.provider if web_search_available else None,
+            "tavily_configured": bool(os.getenv("TAVILY_API_KEY")),
+            "serper_configured": bool(os.getenv("SERPER_API_KEY"))
         },
         "timestamp": datetime.now().isoformat()
     }
