@@ -574,6 +574,9 @@ async def get_top_customers(
         # ============================================
         total_revenue = sum(customer_revenue.values())
 
+        # Initialize customers list (prevents "referenced before assignment" error)
+        customers = []
+
         if customer_revenue:
             # Sort by revenue and get top N
             sorted_customers = sorted(

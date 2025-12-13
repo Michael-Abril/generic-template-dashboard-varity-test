@@ -41,9 +41,9 @@ class WalletAuthMiddleware(BaseHTTPMiddleware):
 
     # Endpoints that require wallet signature
     # SECURITY FIX (SEC-006): Added OAuth endpoints to protected paths
+    # NOTE: AI endpoints removed - they use wallet_address in request body instead
     PROTECTED_PATHS = [
         "/api/v1/settings",
-        "/api/v1/ai/chat",
         "/api/v1/sync/",
         "/api/v1/team",
         "/api/v1/storage/upload",
@@ -56,10 +56,20 @@ class WalletAuthMiddleware(BaseHTTPMiddleware):
 
     # OAuth callback endpoints that should NOT require wallet auth
     # (OAuth providers can't send wallet signatures)
+    # Also includes AI endpoints - wallet auth handled via request body
     OAUTH_EXEMPT_PATHS = [
         "/api/v1/oauth/callback",     # OAuth callback (both GET and POST)
         "/api/v1/oauth/authorize",    # OAuth authorization start
         "/api/v1/oauth/start/",       # OAuth flow start endpoints
+        "/api/v1/ai/chat",            # AI chat endpoints (wallet in request body)
+        "/api/v1/ai/chat/general",    # General AI chat
+        "/api/v1/ai/query",           # AI query endpoint
+        "/api/v1/ai/analyze",         # Document analysis
+        "/api/v1/ai/research",        # Deep research
+        "/api/v1/ai/search",          # Web search
+        "/api/v1/ai/health",          # AI health check (public)
+        "/api/v1/ai/models",          # AI models list (public)
+        "/api/v1/ai/capabilities",    # AI capabilities (public)
     ]
 
     # Message expiry in seconds (5 minutes)
