@@ -45,11 +45,39 @@ class TogetherService:
             f"model={self.model}, url={self.api_url}"
         )
 
+    # Default system prompt for all Varity Dashboard queries
+    VARITY_SYSTEM_PROMPT = """You are the Varity Dashboard AI Assistant - the intelligent business partner built into your company's unified dashboard.
+
+## WHAT IS VARITY DASHBOARD?
+Varity Dashboard is a company-specific AI dashboard that serves as the central hub for managing all business operations. It aggregates data from all the software tools a business uses into one unified interface with AI-powered insights.
+
+## YOUR CAPABILITIES
+1. **Business Intelligence**: Analyze and provide insights from connected software integrations (QuickBooks, Salesforce, Shopify, Slack, Google Workspace, HubSpot, Zendesk, and 20+ more)
+2. **Data Analysis**: Answer questions about financials, customers, sales, inventory, and operations from your integrated business tools
+3. **Report Generation**: Create professional PDF reports and Excel spreadsheets
+4. **General Knowledge**: Answer any business question like a knowledgeable assistant
+5. **Research**: Conduct market research and competitive analysis when in Deep Research mode
+
+## HOW TO GET PERSONALIZED INSIGHTS
+To unlock AI-powered analysis of YOUR specific business data:
+1. Go to the **Integrations** page in the left sidebar
+2. Connect your business software (QuickBooks for accounting, Salesforce for CRM, Shopify for e-commerce, etc.)
+3. Once connected, I can analyze YOUR actual business data and provide personalized insights
+
+## CURRENT STATUS
+If no integrations are connected yet, I can still help with:
+- General business questions and advice
+- Industry best practices
+- Strategic planning and recommendations
+- Explaining how Varity Dashboard features work
+
+I'm here to be your intelligent business partner. How can I help you today?"""
+
     async def query(
         self,
         prompt: str,
         context: str = "",
-        system_prompt: str = "You are a helpful AI assistant for business intelligence.",
+        system_prompt: str = "",
         stream: bool = False,
         temperature: float = 0.7,
         max_tokens: int = 2048
@@ -68,7 +96,9 @@ class TogetherService:
         Returns:
             LLM response
         """
-        messages = [{"role": "system", "content": system_prompt}]
+        # Use Varity default prompt if none provided
+        effective_prompt = system_prompt if system_prompt else self.VARITY_SYSTEM_PROMPT
+        messages = [{"role": "system", "content": effective_prompt}]
 
         if context:
             messages.append({
@@ -104,7 +134,7 @@ class TogetherService:
         self,
         prompt: str,
         context: str = "",
-        system_prompt: str = "You are a helpful AI assistant for business intelligence.",
+        system_prompt: str = "",
         temperature: float = 0.7,
         max_tokens: int = 2048
     ) -> AsyncGenerator[str, None]:
@@ -121,7 +151,9 @@ class TogetherService:
         Yields:
             Chunks of AI response
         """
-        messages = [{"role": "system", "content": system_prompt}]
+        # Use Varity default prompt if none provided
+        effective_prompt = system_prompt if system_prompt else self.VARITY_SYSTEM_PROMPT
+        messages = [{"role": "system", "content": effective_prompt}]
 
         if context:
             messages.append({

@@ -300,40 +300,99 @@ export function AIChat() {
     await addMessageToConversation(convId, userMessage);
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/v1/ai/query/combined`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          query: input,
-          wallet_address: address,
-          enable_web_search: true,
-          max_rag_results: 5,
-          max_search_results: 3
-        })
-      });
-
-      if (!response.ok) throw new Error(`AI request failed: ${response.statusText}`);
-
-      const data = await response.json() as {
-        answer: string;
+      let responseData: {
+        answer?: string;
+        response?: string;
+        analysis?: string;
         rag_sources?: string[];
         web_sources?: Array<{ title: string; url: string }>;
+        sources?: string[];
       };
 
-      const sourceNames: string[] = [];
-      if (data.rag_sources?.length) {
-        sourceNames.push(...data.rag_sources.map(s => `📊 ${s}`));
+      // Route to different endpoints based on AI mode
+      if (aiMode === 'standard') {
+        // Standard mode: Use general chat endpoint (no web search)
+        // This provides direct, authoritative Varity Dashboard responses
+        const response = await fetch(`${API_BASE_URL}/api/v1/ai/chat/general`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: input,
+            wallet_address: address,
+            temperature: 0.7,
+            max_tokens: 2048
+          })
+        });
+        if (!response.ok) throw new Error(`AI request failed: ${response.statusText}`);
+        responseData = await response.json();
+
+      } else if (aiMode === 'deep_research') {
+        // Deep Research mode: Use combined query WITH web search enabled
+        // This mode searches the internet for comprehensive research
+        const response = await fetch(`${API_BASE_URL}/api/v1/ai/query/combined`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            query: input,
+            wallet_address: address,
+            enable_web_search: true,
+            max_rag_results: 5,
+            max_search_results: 5
+          })
+        });
+        if (!response.ok) throw new Error(`AI request failed: ${response.statusText}`);
+        responseData = await response.json();
+
+      } else if (aiMode === 'analyze') {
+        // Analyze & Report mode: Use document analysis or research endpoint
+        // without web search, focused on business data analysis
+        const response = await fetch(`${API_BASE_URL}/api/v1/ai/research`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            query: input,
+            wallet_address: address,
+            depth: 'comprehensive'
+          })
+        });
+        if (!response.ok) throw new Error(`AI request failed: ${response.statusText}`);
+        responseData = await response.json();
+
+      } else {
+        // Fallback to standard mode
+        const response = await fetch(`${API_BASE_URL}/api/v1/ai/chat/general`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: input,
+            wallet_address: address
+          })
+        });
+        if (!response.ok) throw new Error(`AI request failed: ${response.statusText}`);
+        responseData = await response.json();
       }
-      if (data.web_sources?.length) {
-        sourceNames.push(...data.web_sources.map(s => `🌐 ${s.title}`));
+
+      // Extract the response text (different endpoints use different field names)
+      const answerText = responseData.answer || responseData.response || responseData.analysis || 'No response received';
+
+      // Build source names for display
+      const sourceNames: string[] = [];
+      if (responseData.rag_sources?.length) {
+        sourceNames.push(...responseData.rag_sources.map(s => `📊 ${s}`));
+      }
+      if (responseData.web_sources?.length) {
+        sourceNames.push(...responseData.web_sources.map(s => `🌐 ${s.title}`));
+      }
+      if (responseData.sources?.length) {
+        sourceNames.push(...responseData.sources.map(s => `📄 ${s}`));
       }
 
       const assistantMessage: Message = {
         role: 'assistant',
-        content: data.answer,
+        content: answerText,
         sources: sourceNames,
-        rag_sources: data.rag_sources || [],
-        web_sources: data.web_sources || [],
+        rag_sources: responseData.rag_sources || [],
+        web_sources: responseData.web_sources || [],
         timestamp: new Date()
       };
 
