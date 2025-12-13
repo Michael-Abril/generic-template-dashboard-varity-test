@@ -32,7 +32,7 @@ interface OAuthCallbackPageProps {
 function OAuthCallbackContent({ params }: OAuthCallbackPageProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { address: walletAddress, isConnected } = useAccount();
+  const { address: wagmiWalletAddress, isConnected } = useAccount();
 
   const [status, setStatus] = useState<'processing' | 'success' | 'error'>('processing');
   const [message, setMessage] = useState<string>('');
@@ -44,6 +44,21 @@ function OAuthCallbackContent({ params }: OAuthCallbackPageProps) {
   const state = searchParams.get('state');
   const error = searchParams.get('error');
   const errorDescription = searchParams.get('error_description');
+
+  // Get wallet address from wagmi OR localStorage (persisted before OAuth redirect)
+  const getWalletAddress = (): string | null => {
+    // First try wagmi (if wallet is connected in this session)
+    if (isConnected && wagmiWalletAddress) {
+      return wagmiWalletAddress;
+    }
+    // Fall back to localStorage (stored before OAuth redirect)
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('varity_oauth_wallet_address');
+    }
+    return null;
+  };
+
+  const walletAddress = getWalletAddress();
 
   useEffect(() => {
     const handleOAuthCallback = async () => {
@@ -69,11 +84,12 @@ function OAuthCallbackContent({ params }: OAuthCallbackPageProps) {
         return;
       }
 
-      // Verify wallet is connected (required for encryption)
-      if (!isConnected || !walletAddress) {
-        const errorMsg = 'Please connect your wallet to securely store OAuth tokens. Your tokens are encrypted with your wallet address.';
+      // Try to get wallet address (from wagmi or localStorage)
+      const effectiveWallet = getWalletAddress();
+      if (!effectiveWallet) {
+        const errorMsg = 'Wallet address not found. Please try connecting again from the integrations page.';
         setStatus('error');
-        setMessage('Wallet Not Connected');
+        setMessage('Wallet Not Found');
         setDetails(errorMsg);
         notifyOpenerOfError(errorMsg);
         return;
@@ -104,7 +120,7 @@ function OAuthCallbackContent({ params }: OAuthCallbackPageProps) {
         setDetails('Your OAuth tokens will be encrypted with your wallet address for maximum privacy.');
 
         // Call backend to exchange code for tokens
-        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8001'}/api/v1/oauth/callback`, {
+        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8002'}/api/v1/oauth/callback`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -113,7 +129,7 @@ function OAuthCallbackContent({ params }: OAuthCallbackPageProps) {
             provider: params.provider,
             code,
             state,
-            wallet_address: walletAddress,
+            wallet_address: effectiveWallet,
             // Include redirect URI for token exchange
             redirect_uri: `${window.location.origin}/oauth/callback/${params.provider}`
           }),
@@ -125,14 +141,18 @@ function OAuthCallbackContent({ params }: OAuthCallbackPageProps) {
           throw new Error(data.detail || data.message || 'Failed to exchange authorization code');
         }
 
-        // Success!
+        // Success! Clear the stored wallet address
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem('varity_oauth_wallet_address');
+        }
+
         setStatus('success');
         setMessage(`Successfully connected ${params.provider}!`);
         setDetails(`Your ${params.provider} account has been securely connected. Tokens are encrypted with your wallet.`);
 
         // Trigger initial sync
         if (data.requires_sync) {
-          await triggerInitialSync(params.provider, walletAddress);
+          await triggerInitialSync(params.provider, effectiveWallet);
         }
 
         // Check if this page was opened in a new tab from integrations page

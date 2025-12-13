@@ -73,6 +73,10 @@ export function OAuthButton({
       sessionStorage.setItem(`oauth_state_${provider}`, state);
       sessionStorage.setItem(`oauth_wallet_${provider}`, walletAddress);
 
+      // Also store wallet in localStorage for cross-tab/window access during OAuth callback
+      // This is needed because OAuth redirect opens in popup and loses wagmi state
+      localStorage.setItem('varity_oauth_wallet_address', walletAddress);
+
       // Get OAuth authorization URL from backend
       const response = await fetch(
         `${process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000'}/api/v1/oauth/start/${provider}`,
