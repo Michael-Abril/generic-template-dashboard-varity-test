@@ -210,8 +210,8 @@ function IntegrationsContent() {
 
   return (
     <Layout>
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50 py-12">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50 py-6">
+        <div className="px-4 sm:px-6">
 
           {/* Header */}
           <div className="mb-8">
@@ -390,8 +390,8 @@ export default function IntegrationsPage() {
   return (
     <Suspense fallback={
       <Layout>
-        <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50 py-12">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50 py-6">
+          <div className="px-4 sm:px-6">
             <div className="text-center py-12">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
               <p className="text-gray-600">Loading...</p>

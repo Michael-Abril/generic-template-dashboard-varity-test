@@ -10,10 +10,11 @@ import { IntegrationLogo } from '@/components/IntegrationLogo';
 import { AlertTriangle, XCircle, Search } from 'lucide-react';
 import { useToast } from '@/components/ui/Toast';
 import { MarketplaceSkeleton } from '@/components/ui/Skeleton';
-import { CONTRACTS, USDC_ABI, TOOL_MARKETPLACE_ABI, parseUSDC } from '@/lib/contracts';
+// TODO: Re-enable for USDC marketplace purchases (post-GTM)
+// import { CONTRACTS, USDC_ABI, TOOL_MARKETPLACE_ABI, parseUSDC } from '@/lib/contracts';
+// import { ethers } from 'ethers';
 import * as marketplaceService from '@/services/marketplaceService';
 import type { ProductSummary, ProductDetail, PricingPlan } from '@/services/marketplaceService';
-import { ethers } from 'ethers';
 
 /**
  * Tool Integration Marketplace - Enterprise UI with Dynamic Data
@@ -318,7 +319,7 @@ export default function MarketplaceContent() {
   return (
     <Layout>
       <div className="min-h-screen bg-gray-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="px-4 sm:px-6 py-6">
           {/* Header */}
           <div className="mb-8">
             <div className="flex items-center gap-2 text-sm text-gray-500 mb-4">
