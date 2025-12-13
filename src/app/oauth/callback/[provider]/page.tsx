@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useAccount } from 'wagmi';
+import { usePrivy, useWallets } from '@privy-io/react-auth';
 import {
   Card,
   CardContent,
@@ -32,7 +32,10 @@ interface OAuthCallbackPageProps {
 function OAuthCallbackContent({ params }: OAuthCallbackPageProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { address: wagmiWalletAddress, isConnected } = useAccount();
+
+  // Use Privy for authentication (NOT wagmi - wagmi doesn't see Privy embedded wallets)
+  const { authenticated, user } = usePrivy();
+  const { wallets } = useWallets();
 
   const [status, setStatus] = useState<'processing' | 'success' | 'error'>('processing');
   const [message, setMessage] = useState<string>('');
@@ -45,11 +48,13 @@ function OAuthCallbackContent({ params }: OAuthCallbackPageProps) {
   const error = searchParams.get('error');
   const errorDescription = searchParams.get('error_description');
 
-  // Get wallet address from wagmi OR localStorage (persisted before OAuth redirect)
+  // Get wallet address from Privy OR localStorage (persisted before OAuth redirect)
   const getWalletAddress = (): string | null => {
-    // First try wagmi (if wallet is connected in this session)
-    if (isConnected && wagmiWalletAddress) {
-      return wagmiWalletAddress;
+    // First try Privy (if authenticated in this session)
+    const primaryWallet = wallets?.[0];
+    const privyWalletAddress = primaryWallet?.address || user?.wallet?.address;
+    if (authenticated && privyWalletAddress) {
+      return privyWalletAddress;
     }
     // Fall back to localStorage (stored before OAuth redirect)
     if (typeof window !== 'undefined') {
@@ -197,7 +202,7 @@ function OAuthCallbackContent({ params }: OAuthCallbackPageProps) {
     };
 
     handleOAuthCallback();
-  }, [code, state, error, errorDescription, params.provider, walletAddress, isConnected, router]);
+  }, [code, state, error, errorDescription, params.provider, walletAddress, authenticated, wallets, router]);
 
   const triggerInitialSync = async (provider: string, wallet: string) => {
     try {
