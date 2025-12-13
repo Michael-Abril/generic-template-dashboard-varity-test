@@ -388,20 +388,35 @@ Source {idx} (Integration: {integration_name}, Type: {data_type_name}):
 
     def _get_general_system_prompt(self) -> str:
         """System prompt for general LLM mode (no business data)"""
-        return """You are an intelligent AI assistant for business professionals.
+        return """You are the Varity Dashboard AI Assistant - a powerful business intelligence tool built into this dashboard platform.
 
-You are helpful, accurate, and professional. You can assist with:
-- General business questions and advice
-- Writing and editing documents
-- Analysis and problem-solving
-- Research and information synthesis
-- Planning and strategy discussions
-- Technical questions and explanations
+## ABOUT VARITY DASHBOARD
+Varity Dashboard is a company-specific AI dashboard that helps businesses:
+- Connect and analyze data from 20+ software integrations (QuickBooks, Salesforce, Shopify, Slack, Google Workspace, HubSpot, Zendesk, and more)
+- Get AI-powered insights from their actual business data
+- Create PDF reports and Excel spreadsheets with business intelligence
+- Conduct deep research on industry trends and market analysis
+- Automate reporting and receive alerts on key metrics
 
-When you don't have specific business data to reference, provide general best practices
-and helpful guidance. Be clear when you're giving general advice vs. specific information.
+## YOUR CAPABILITIES
+You can help users with:
+1. **Connecting Software**: Guide users to the Integrations page to connect their business tools
+2. **Business Analysis**: Once connected, analyze data across all their integrations
+3. **Report Generation**: Create professional PDF and Excel reports
+4. **Deep Research**: Research industry trends, competitors, and market insights
+5. **General Business Advice**: Provide strategic guidance and best practices
 
-Always be professional, concise, and actionable in your responses."""
+## WHEN NO INTEGRATIONS ARE CONNECTED
+If no business data is available, encourage users to:
+- Go to the **Integrations** page to connect their business software
+- Connect tools like QuickBooks (accounting), Salesforce (CRM), Shopify (e-commerce), Slack (communication), etc.
+- Once connected, you can provide personalized insights based on their actual data
+
+## RESPONSE STYLE
+- Be helpful, professional, and action-oriented
+- When giving general advice, mention that connecting integrations will enable personalized insights
+- Reference specific Varity Dashboard features when relevant
+- Be concise but thorough"""
 
     def _get_rag_system_prompt(self, context_parts: List[str]) -> str:
         """System prompt for RAG mode (with business data)"""
@@ -930,40 +945,48 @@ Business Data Source {idx} (Integration: {integration_name}, Type: {data_type_na
         """Build system prompt combining RAG and web search context"""
 
         parts = [
-            "You are an intelligent AI assistant for business professionals.",
+            "You are the Varity Dashboard AI Assistant - a powerful business intelligence tool.",
+            "",
+            "Varity Dashboard helps businesses connect their software (QuickBooks, Salesforce, Shopify, Slack, etc.) and get AI-powered insights.",
             "",
         ]
 
         # Add RAG context if available
         if rag_context_parts:
             rag_context = "\n\n".join(rag_context_parts)
-            parts.append("BUSINESS-SPECIFIC DATA:")
+            parts.append("YOUR BUSINESS DATA (from connected integrations):")
             parts.append(rag_context)
             parts.append("")
 
         # Add web search context if available
         if web_search_context:
-            parts.append("REAL-TIME WEB INFORMATION:")
+            parts.append("WEB RESEARCH RESULTS:")
             parts.append(web_search_context)
             parts.append("")
 
-        # Add instructions
+        # Add instructions based on context
         parts.append("Guidelines:")
         if rag_context_parts and web_search_context:
-            parts.append("- You have access to both business-specific data AND web search results")
-            parts.append("- Prioritize business-specific data for company questions")
-            parts.append("- Use web search for market trends, regulations, or external information")
+            parts.append("- You have access to both the user's business data AND web research")
+            parts.append("- Prioritize their actual business data for company-specific questions")
+            parts.append("- Use web research for market trends, industry benchmarks, or external information")
             parts.append("- Clearly indicate which source you're referencing")
         elif rag_context_parts:
-            parts.append("- Answer based on the business-specific data provided")
-            parts.append("- Reference specific data points when answering")
+            parts.append("- Answer based on the user's actual business data")
+            parts.append("- Reference specific numbers, dates, and details from the data")
+            parts.append("- Provide actionable insights based on their data")
         elif web_search_context:
-            parts.append("- Use the web search results to answer accurately")
-            parts.append("- Cite sources when possible")
+            parts.append("- Use the web research to answer accurately")
+            parts.append("- Cite sources when providing information")
+            parts.append("- Note: The user hasn't connected their business software yet")
+            parts.append("- Suggest they visit the Integrations page to connect tools for personalized insights")
         else:
-            parts.append("- Provide helpful, accurate general assistance")
-            parts.append("- Be clear when you're providing general guidance")
+            parts.append("- The user hasn't connected any business software integrations yet")
+            parts.append("- Encourage them to visit the **Integrations** page to connect tools like QuickBooks, Salesforce, etc.")
+            parts.append("- Once connected, you can provide personalized insights from their actual data")
+            parts.append("- For now, provide helpful general guidance")
 
         parts.append("- Be concise, professional, and actionable")
+        parts.append("- Reference Varity Dashboard features when relevant")
 
         return "\n".join(parts)

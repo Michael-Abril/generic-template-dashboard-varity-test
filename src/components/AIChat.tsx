@@ -397,7 +397,7 @@ export function AIChat() {
   }
 
   return (
-    <div className="flex h-[650px] border border-gray-200 rounded-xl overflow-hidden bg-white shadow-sm">
+    <div className="flex h-full border border-gray-200 rounded-xl overflow-hidden bg-white shadow-sm">
       {/* Sidebar - Conversation History */}
       {showSidebar && (
         <div className="w-64 bg-gray-50 border-r border-gray-200 flex flex-col">
