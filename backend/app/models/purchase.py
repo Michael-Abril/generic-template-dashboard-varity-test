@@ -129,7 +129,7 @@ class OAuthToken(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_address = Column(String(42), nullable=False, index=True)
     purchase_id = Column(Integer, ForeignKey("purchases.id"))
-    product_id = Column(Integer, ForeignKey("marketplace_products.id"), nullable=False)
+    product_id = Column(Integer, ForeignKey("marketplace_products.id"), nullable=True)  # Nullable - OAuth can exist without marketplace product
 
     # OAuth details - stored encrypted
     provider = Column(String(50), nullable=False)  # quickbooks, stripe, salesforce, etc.

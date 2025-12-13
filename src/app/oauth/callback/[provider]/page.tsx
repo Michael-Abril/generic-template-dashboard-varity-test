@@ -41,12 +41,14 @@ function OAuthCallbackContent({ params }: OAuthCallbackPageProps) {
   const [message, setMessage] = useState<string>('');
   const [details, setDetails] = useState<string>('');
   const [isRedirecting, setIsRedirecting] = useState(false);
+  const [hasProcessed, setHasProcessed] = useState(false); // Prevent double execution - OAuth codes are single-use!
 
   // Extract query parameters
   const code = searchParams.get('code');
   const state = searchParams.get('state');
   const error = searchParams.get('error');
   const errorDescription = searchParams.get('error_description');
+  const realmId = searchParams.get('realmId'); // QuickBooks company ID
 
   // Get wallet address from Privy OR localStorage (persisted before OAuth redirect)
   const getWalletAddress = (): string | null => {
@@ -67,6 +69,13 @@ function OAuthCallbackContent({ params }: OAuthCallbackPageProps) {
 
   useEffect(() => {
     const handleOAuthCallback = async () => {
+      // CRITICAL: Prevent double execution - OAuth codes are single-use!
+      // This effect can run multiple times if Privy's auth state changes after initial render
+      if (hasProcessed) {
+        return;
+      }
+      setHasProcessed(true);
+
       // Helper function to notify opener of errors
       const notifyOpenerOfError = (errorMsg: string) => {
         if (window.opener && !window.opener.closed) {
@@ -136,7 +145,9 @@ function OAuthCallbackContent({ params }: OAuthCallbackPageProps) {
             state,
             wallet_address: effectiveWallet,
             // Include redirect URI for token exchange
-            redirect_uri: `${window.location.origin}/oauth/callback/${params.provider}`
+            redirect_uri: `${window.location.origin}/oauth/callback/${params.provider}`,
+            // QuickBooks requires realmId (company ID) for API calls
+            ...(realmId && { realm_id: realmId })
           }),
         });
 
@@ -202,7 +213,7 @@ function OAuthCallbackContent({ params }: OAuthCallbackPageProps) {
     };
 
     handleOAuthCallback();
-  }, [code, state, error, errorDescription, params.provider, walletAddress, authenticated, wallets, router]);
+  }, [code, state, error, errorDescription, params.provider, walletAddress, authenticated, wallets, router, hasProcessed, realmId]);
 
   const triggerInitialSync = async (provider: string, wallet: string) => {
     try {
