@@ -44,30 +44,50 @@ class BusinessRAGService:
     """
 
     def __init__(self):
-        """Initialize Qdrant client and Ollama embedding settings"""
+        """Initialize Qdrant client and embedding settings"""
         # Connect to Qdrant (local or cloud)
         qdrant_url = getattr(settings, 'qdrant_url', 'http://localhost:6334')
-        self.qdrant = QdrantClient(url=qdrant_url)
+        qdrant_api_key = getattr(settings, 'qdrant_api_key', None) or os.getenv("QDRANT_API_KEY")
 
-        # Ollama embedding configuration
-        # Using nomic-embed-text for better quality embeddings (768 dimensions)
+        # Initialize Qdrant client with optional API key for cloud
+        if qdrant_api_key:
+            self.qdrant = QdrantClient(url=qdrant_url, api_key=qdrant_api_key)
+            logger.info(f"Qdrant Cloud client initialized with API key")
+        else:
+            self.qdrant = QdrantClient(url=qdrant_url)
+            logger.info(f"Qdrant local client initialized (no API key)")
+
+        # Embedding configuration - Together.ai primary, Ollama fallback
+        self.together_api_key = os.getenv("TOGETHER_API_KEY", "")
+        self.together_api_url = os.getenv("TOGETHER_API_URL", "https://api.together.xyz/v1")
+        self.together_embedding_model = os.getenv(
+            "TOGETHER_EMBEDDING_MODEL",
+            "togethercomputer/m2-bert-80M-8k-retrieval"
+        )
+
+        # Ollama fallback for local development
         self.ollama_url = os.getenv("OLLAMA_URL", "http://localhost:11435")
-        self.embedding_model = os.getenv("OLLAMA_EMBEDDING_MODEL", "nomic-embed-text")
-        self.embedding_dimension = 768  # nomic-embed-text has 768 dimensions
+        self.ollama_embedding_model = os.getenv("OLLAMA_EMBEDDING_MODEL", "nomic-embed-text")
 
-        # HTTP client for Ollama API with timeout
+        # Embedding dimension (m2-bert-80M-8k-retrieval = 768, nomic-embed-text = 768)
+        self.embedding_dimension = 768
+
+        # HTTP client with timeout
         self.http_client = httpx.AsyncClient(timeout=30.0)
+
+        # Determine embedding provider
+        self.use_together_embeddings = bool(self.together_api_key)
 
         logger.info(
             f"BusinessRAGService initialized: "
             f"Qdrant={qdrant_url}, "
-            f"Ollama={self.ollama_url}, "
-            f"Embedding model={self.embedding_model} (dim={self.embedding_dimension})"
+            f"Embeddings={'Together.ai' if self.use_together_embeddings else 'Ollama'}, "
+            f"Model={self.together_embedding_model if self.use_together_embeddings else self.ollama_embedding_model}"
         )
 
     async def _generate_embedding(self, text: str) -> List[float]:
         """
-        Generate embedding using Ollama API
+        Generate embedding using Together.ai (primary) or Ollama (fallback)
 
         Args:
             text: Text to embed
@@ -75,11 +95,33 @@ class BusinessRAGService:
         Returns:
             List of floats representing the embedding vector
         """
+        # Try Together.ai first if API key is available
+        if self.use_together_embeddings:
+            try:
+                response = await self.http_client.post(
+                    f"{self.together_api_url}/embeddings",
+                    headers={
+                        "Authorization": f"Bearer {self.together_api_key}",
+                        "Content-Type": "application/json"
+                    },
+                    json={
+                        "model": self.together_embedding_model,
+                        "input": text
+                    }
+                )
+                response.raise_for_status()
+                result = response.json()
+                # Together.ai returns embeddings in OpenAI-compatible format
+                return result["data"][0]["embedding"]
+            except Exception as e:
+                logger.warning(f"Together.ai embedding failed, trying Ollama: {str(e)}")
+
+        # Fallback to Ollama for local development
         try:
             response = await self.http_client.post(
                 f"{self.ollama_url}/api/embeddings",
                 json={
-                    "model": self.embedding_model,
+                    "model": self.ollama_embedding_model,
                     "prompt": text
                 }
             )
@@ -87,8 +129,8 @@ class BusinessRAGService:
             result = response.json()
             return result["embedding"]
         except httpx.HTTPError as e:
-            logger.error(f"Failed to generate embedding: {str(e)}")
-            # Fallback: return zero vector if Ollama fails
+            logger.error(f"Failed to generate embedding (both providers failed): {str(e)}")
+            # Fallback: return zero vector if both fail
             return [0.0] * self.embedding_dimension
 
     def _get_collection_name(self, business_wallet: str) -> str:
