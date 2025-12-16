@@ -6,7 +6,7 @@ import { useWallets } from '@privy-io/react-auth';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Layout } from '@/components/Layout';
-import { User, Bell, CreditCard, Users, Lock, Database, Download, Upload, Trash2, UserPlus, X } from 'lucide-react';
+import { User, Bell, CreditCard, Users, Lock, Database, Download, Upload, Trash2, UserPlus, X, Crown, Shield, UserCheck, Eye, Check, X as XIcon } from 'lucide-react';
 import { useToast } from '@/components/ui/Toast';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
@@ -36,6 +36,78 @@ interface TeamMember {
   status: 'active' | 'pending';
   wallet_address?: string;
 }
+
+// Role definitions with icons, descriptions, and permissions
+const ROLE_DEFINITIONS = {
+  owner: {
+    id: 'owner' as const,
+    label: 'Owner',
+    icon: Crown,
+    color: 'from-amber-500 to-orange-500',
+    bgColor: 'bg-amber-50',
+    borderColor: 'border-amber-200',
+    textColor: 'text-amber-700',
+    description: 'Full control over the entire organization. Can manage billing, delete the company, and perform all actions.',
+    permissions: [
+      { label: 'Full dashboard access', allowed: true },
+      { label: 'Manage all integrations', allowed: true },
+      { label: 'Invite & remove team members', allowed: true },
+      { label: 'Access billing & payments', allowed: true },
+      { label: 'Delete company account', allowed: true },
+    ],
+  },
+  admin: {
+    id: 'admin' as const,
+    label: 'Admin',
+    icon: Shield,
+    color: 'from-blue-500 to-indigo-500',
+    bgColor: 'bg-blue-50',
+    borderColor: 'border-blue-200',
+    textColor: 'text-blue-700',
+    description: 'Manage day-to-day operations. Full access except billing and account deletion.',
+    permissions: [
+      { label: 'Full dashboard access', allowed: true },
+      { label: 'Manage all integrations', allowed: true },
+      { label: 'Invite & remove team members', allowed: true },
+      { label: 'Access billing & payments', allowed: false },
+      { label: 'Delete company account', allowed: false },
+    ],
+  },
+  member: {
+    id: 'member' as const,
+    label: 'Member',
+    icon: UserCheck,
+    color: 'from-green-500 to-emerald-500',
+    bgColor: 'bg-green-50',
+    borderColor: 'border-green-200',
+    textColor: 'text-green-700',
+    description: 'Standard team member access. Can use integrations and view data, but cannot change settings.',
+    permissions: [
+      { label: 'View dashboards & analytics', allowed: true },
+      { label: 'Use connected integrations', allowed: true },
+      { label: 'Export data & reports', allowed: true },
+      { label: 'Manage team or settings', allowed: false },
+      { label: 'Connect new integrations', allowed: false },
+    ],
+  },
+  viewer: {
+    id: 'viewer' as const,
+    label: 'Viewer',
+    icon: Eye,
+    color: 'from-gray-400 to-gray-500',
+    bgColor: 'bg-gray-50',
+    borderColor: 'border-gray-200',
+    textColor: 'text-gray-600',
+    description: 'Read-only access for stakeholders. Can view dashboards but cannot make any changes.',
+    permissions: [
+      { label: 'View dashboards & analytics', allowed: true },
+      { label: 'View integration data', allowed: true },
+      { label: 'Export data & reports', allowed: false },
+      { label: 'Make any changes', allowed: false },
+      { label: 'Access settings', allowed: false },
+    ],
+  },
+};
 
 export default function SettingsPage() {
   const { authenticated, user } = usePrivy();
@@ -70,6 +142,11 @@ export default function SettingsPage() {
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteRole, setInviteRole] = useState<'admin' | 'member' | 'viewer'>('member');
   const [inviting, setInviting] = useState(false);
+
+  // Role selection modal state
+  const [showRoleModal, setShowRoleModal] = useState(false);
+  const [selectedMemberForRole, setSelectedMemberForRole] = useState<TeamMember | null>(null);
+  const [pendingRole, setPendingRole] = useState<'admin' | 'member' | 'viewer' | null>(null);
 
   // Delete account state
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -401,6 +478,30 @@ export default function SettingsPage() {
     }
   };
 
+  // Open role selection modal
+  const openRoleModal = (member: TeamMember) => {
+    setSelectedMemberForRole(member);
+    setPendingRole(member.role === 'owner' ? 'admin' : member.role);
+    setShowRoleModal(true);
+  };
+
+  // Confirm role change from modal
+  const confirmRoleChange = async () => {
+    if (!selectedMemberForRole || !pendingRole) return;
+
+    await handleUpdateRole(selectedMemberForRole.id, pendingRole);
+    setShowRoleModal(false);
+    setSelectedMemberForRole(null);
+    setPendingRole(null);
+  };
+
+  // Cancel role change
+  const cancelRoleChange = () => {
+    setShowRoleModal(false);
+    setSelectedMemberForRole(null);
+    setPendingRole(null);
+  };
+
   // Delete account
   const handleDeleteAccount = async () => {
     if (deleteConfirmText !== 'DELETE') {
@@ -723,17 +824,26 @@ export default function SettingsPage() {
                             }`}>
                               {member.status === 'active' ? 'Active' : 'Pending'}
                             </span>
-                            <select
-                              value={member.role}
+                            <button
+                              onClick={() => member.role !== 'owner' && openRoleModal(member)}
                               disabled={member.role === 'owner'}
-                              onChange={(e) => handleUpdateRole(member.id, e.target.value)}
-                              className="px-3 py-1 border border-gray-300 rounded text-sm bg-white disabled:bg-gray-100"
+                              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                                member.role === 'owner'
+                                  ? 'bg-amber-50 text-amber-700 border border-amber-200 cursor-default'
+                                  : 'bg-white border border-gray-300 hover:border-blue-400 hover:bg-blue-50 cursor-pointer'
+                              }`}
                             >
-                              <option value="owner">Owner</option>
-                              <option value="admin">Admin</option>
-                              <option value="member">Member</option>
-                              <option value="viewer">Viewer</option>
-                            </select>
+                              {(() => {
+                                const RoleIcon = ROLE_DEFINITIONS[member.role].icon;
+                                return <RoleIcon className="w-4 h-4" />;
+                              })()}
+                              {ROLE_DEFINITIONS[member.role].label}
+                              {member.role !== 'owner' && (
+                                <svg className="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                </svg>
+                              )}
+                            </button>
                             {member.role !== 'owner' && (
                               <button
                                 onClick={() => handleRemoveMember(member.id)}
@@ -747,21 +857,11 @@ export default function SettingsPage() {
                       ))}
                     </div>
 
-                    <div className="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
-                      <h4 className="font-semibold text-blue-900 mb-2">Team Roles</h4>
-                      <ul className="text-sm text-blue-800 space-y-1">
-                        <li><strong>Owner:</strong> Full access to all settings and billing</li>
-                        <li><strong>Admin:</strong> Can manage integrations and team members</li>
-                        <li><strong>Member:</strong> Can view and use integrations</li>
-                        <li><strong>Viewer:</strong> Read-only access to dashboards</li>
-                      </ul>
-                    </div>
-
                     {/* Invite Modal */}
                     {showInviteModal && (
                       <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-                        <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-md mx-4">
-                          <div className="flex items-center justify-between mb-4">
+                        <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto">
+                          <div className="flex items-center justify-between mb-6">
                             <h3 className="text-xl font-bold text-gray-900">Invite Team Member</h3>
                             <button
                               onClick={() => setShowInviteModal(false)}
@@ -771,7 +871,7 @@ export default function SettingsPage() {
                             </button>
                           </div>
 
-                          <div className="space-y-4">
+                          <div className="space-y-6">
                             <div>
                               <label className="block text-sm font-semibold text-gray-700 mb-2">
                                 Email Address
@@ -786,21 +886,61 @@ export default function SettingsPage() {
                             </div>
 
                             <div>
-                              <label className="block text-sm font-semibold text-gray-700 mb-2">
-                                Role
+                              <label className="block text-sm font-semibold text-gray-700 mb-3">
+                                Select Role
                               </label>
-                              <select
-                                value={inviteRole}
-                                onChange={(e) => setInviteRole(e.target.value as 'admin' | 'member' | 'viewer')}
-                                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-600 focus:border-transparent bg-white"
-                              >
-                                <option value="admin">Admin</option>
-                                <option value="member">Member</option>
-                                <option value="viewer">Viewer</option>
-                              </select>
+                              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                {(['admin', 'member', 'viewer'] as const).map((roleId) => {
+                                  const role = ROLE_DEFINITIONS[roleId];
+                                  const RoleIcon = role.icon;
+                                  const isSelected = inviteRole === roleId;
+                                  return (
+                                    <button
+                                      key={roleId}
+                                      type="button"
+                                      onClick={() => setInviteRole(roleId)}
+                                      className={`relative p-4 rounded-xl border-2 text-left transition-all ${
+                                        isSelected
+                                          ? `${role.borderColor} ${role.bgColor} ring-2 ring-offset-1 ring-blue-500`
+                                          : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                                      }`}
+                                    >
+                                      {isSelected && (
+                                        <div className="absolute top-2 right-2">
+                                          <Check className="w-5 h-5 text-blue-600" />
+                                        </div>
+                                      )}
+                                      <div className={`w-10 h-10 rounded-lg bg-gradient-to-br ${role.color} flex items-center justify-center mb-3`}>
+                                        <RoleIcon className="w-5 h-5 text-white" />
+                                      </div>
+                                      <h4 className="font-semibold text-gray-900 mb-1">{role.label}</h4>
+                                      <p className="text-xs text-gray-500 line-clamp-2">{role.description}</p>
+                                    </button>
+                                  );
+                                })}
+                              </div>
                             </div>
 
-                            <div className="flex gap-3 pt-4">
+                            {/* Selected role permissions preview */}
+                            <div className={`p-4 rounded-lg ${ROLE_DEFINITIONS[inviteRole].bgColor} border ${ROLE_DEFINITIONS[inviteRole].borderColor}`}>
+                              <h4 className={`font-semibold ${ROLE_DEFINITIONS[inviteRole].textColor} mb-2`}>
+                                {ROLE_DEFINITIONS[inviteRole].label} Permissions
+                              </h4>
+                              <ul className="space-y-1">
+                                {ROLE_DEFINITIONS[inviteRole].permissions.map((perm, idx) => (
+                                  <li key={idx} className="flex items-center gap-2 text-sm text-gray-700">
+                                    {perm.allowed ? (
+                                      <Check className="w-4 h-4 text-green-600 flex-shrink-0" />
+                                    ) : (
+                                      <XIcon className="w-4 h-4 text-red-400 flex-shrink-0" />
+                                    )}
+                                    <span className={perm.allowed ? '' : 'text-gray-400'}>{perm.label}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+
+                            <div className="flex gap-3 pt-2">
                               <button
                                 onClick={() => setShowInviteModal(false)}
                                 className="flex-1 py-3 border border-gray-300 rounded-lg font-semibold text-gray-700 hover:bg-gray-50 transition-all"
@@ -819,6 +959,112 @@ export default function SettingsPage() {
                                 {inviting ? 'Sending...' : 'Send Invitation'}
                               </button>
                             </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Role Selection Modal */}
+                    {showRoleModal && selectedMemberForRole && (
+                      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                        <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-3xl mx-4 max-h-[90vh] overflow-y-auto">
+                          <div className="flex items-center justify-between mb-6">
+                            <div>
+                              <h3 className="text-xl font-bold text-gray-900">Change Role</h3>
+                              <p className="text-sm text-gray-500 mt-1">
+                                Select a new role for {selectedMemberForRole.name}
+                              </p>
+                            </div>
+                            <button
+                              onClick={cancelRoleChange}
+                              className="text-gray-500 hover:text-gray-700"
+                            >
+                              <X className="w-5 h-5" />
+                            </button>
+                          </div>
+
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                            {(['admin', 'member', 'viewer'] as const).map((roleId) => {
+                              const role = ROLE_DEFINITIONS[roleId];
+                              const RoleIcon = role.icon;
+                              const isSelected = pendingRole === roleId;
+                              const isCurrent = selectedMemberForRole.role === roleId;
+                              return (
+                                <button
+                                  key={roleId}
+                                  type="button"
+                                  onClick={() => setPendingRole(roleId)}
+                                  className={`relative p-5 rounded-xl border-2 text-left transition-all ${
+                                    isSelected
+                                      ? `${role.borderColor} ${role.bgColor} ring-2 ring-offset-2 ring-blue-500`
+                                      : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                                  }`}
+                                >
+                                  {isSelected && (
+                                    <div className="absolute top-3 right-3">
+                                      <div className="w-6 h-6 bg-blue-600 rounded-full flex items-center justify-center">
+                                        <Check className="w-4 h-4 text-white" />
+                                      </div>
+                                    </div>
+                                  )}
+                                  {isCurrent && !isSelected && (
+                                    <div className="absolute top-3 right-3">
+                                      <span className="text-xs bg-gray-200 text-gray-600 px-2 py-1 rounded-full">Current</span>
+                                    </div>
+                                  )}
+                                  <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${role.color} flex items-center justify-center mb-4`}>
+                                    <RoleIcon className="w-6 h-6 text-white" />
+                                  </div>
+                                  <h4 className="font-bold text-gray-900 text-lg mb-2">{role.label}</h4>
+                                  <p className="text-sm text-gray-600 mb-4">{role.description}</p>
+                                  <ul className="space-y-2">
+                                    {role.permissions.map((perm, idx) => (
+                                      <li key={idx} className="flex items-center gap-2 text-sm">
+                                        {perm.allowed ? (
+                                          <Check className="w-4 h-4 text-green-600 flex-shrink-0" />
+                                        ) : (
+                                          <XIcon className="w-4 h-4 text-red-400 flex-shrink-0" />
+                                        )}
+                                        <span className={perm.allowed ? 'text-gray-700' : 'text-gray-400'}>
+                                          {perm.label}
+                                        </span>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </button>
+                              );
+                            })}
+                          </div>
+
+                          {/* Warning if changing role */}
+                          {pendingRole && pendingRole !== selectedMemberForRole.role && (
+                            <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-lg">
+                              <p className="text-sm text-amber-800">
+                                <strong>Note:</strong> Changing {selectedMemberForRole.name}&apos;s role from{' '}
+                                <span className="font-semibold">{ROLE_DEFINITIONS[selectedMemberForRole.role].label}</span> to{' '}
+                                <span className="font-semibold">{ROLE_DEFINITIONS[pendingRole].label}</span> will take effect immediately.
+                              </p>
+                            </div>
+                          )}
+
+                          <div className="flex gap-3">
+                            <button
+                              onClick={cancelRoleChange}
+                              className="flex-1 py-3 border border-gray-300 rounded-lg font-semibold text-gray-700 hover:bg-gray-50 transition-all"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              onClick={confirmRoleChange}
+                              disabled={!pendingRole || pendingRole === selectedMemberForRole.role}
+                              className={`flex-1 py-3 rounded-lg font-semibold transition-all ${
+                                !pendingRole || pendingRole === selectedMemberForRole.role
+                                  ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                                  : 'bg-blue-600 text-white hover:bg-blue-700'
+                              }`}
+                            >
+                              Update Role
+                            </button>
                           </div>
                         </div>
                       </div>
