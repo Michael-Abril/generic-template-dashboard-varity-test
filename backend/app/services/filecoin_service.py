@@ -65,10 +65,13 @@ class FilecoinService:
         Returns:
             CID (Content Identifier) of the uploaded file
         """
+        # Normalize wallet address to lowercase for consistent storage/querying
+        normalized_wallet = customer_wallet.lower()
+
         # Generate namespace
         timestamp = datetime.utcnow().isoformat()
         namespace = NamespaceConfig.build_namespace(
-            customer_wallet,
+            normalized_wallet,
             integration,
             data_type,
             timestamp
@@ -80,7 +83,7 @@ class FilecoinService:
             "pinataMetadata": {
                 "name": namespace,
                 "keyvalues": {
-                    "customer_wallet": customer_wallet,
+                    "customer_wallet": normalized_wallet,
                     "integration": integration,
                     "data_type": data_type,
                     "timestamp": timestamp,
@@ -145,10 +148,13 @@ class FilecoinService:
         Returns:
             CID of the uploaded file
         """
+        # Normalize wallet address to lowercase for consistent storage/querying
+        normalized_wallet = customer_wallet.lower()
+
         # Generate namespace
         timestamp = datetime.utcnow().isoformat()
         namespace = NamespaceConfig.build_namespace(
-            customer_wallet,
+            normalized_wallet,
             integration,
             data_type,
             timestamp
@@ -163,7 +169,7 @@ class FilecoinService:
         pin_metadata = {
             "name": namespace,
             "keyvalues": {
-                "customer_wallet": customer_wallet,
+                "customer_wallet": normalized_wallet,
                 "integration": integration,
                 "data_type": data_type,
                 "timestamp": timestamp,
