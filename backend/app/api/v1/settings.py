@@ -124,11 +124,19 @@ async def update_settings(
     """
     try:
         logger.info(f"PUT /settings called for wallet: {wallet_address}")
-        logger.info(f"Request body: {settings_update}")
 
-        # Convert Pydantic model to dict, excluding None values
-        update_data = settings_update.model_dump(exclude_none=True) if settings_update else {}
-        logger.info(f"Update data: {update_data}")
+        # DEBUG: Return early to test if endpoint is reachable
+        return {"debug": "Endpoint reached", "wallet": wallet_address}
+
+        logger.info(f"Request body type: {type(settings_update)}")
+
+        # Try to convert body - this might be where it fails
+        try:
+            update_data = settings_update.model_dump(exclude_none=True) if settings_update else {}
+            logger.info(f"Update data: {update_data}")
+        except Exception as e:
+            logger.error(f"Error converting body: {str(e)}")
+            return {"error": f"Body conversion failed: {str(e)}"}
 
         if not update_data:
             raise HTTPException(
