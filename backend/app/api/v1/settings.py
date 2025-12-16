@@ -281,3 +281,45 @@ async def validate_api_key(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to validate API key: {str(e)}"
         )
+
+
+@router.delete("/account")
+async def delete_account(
+    wallet_address: str = Query(..., description="User's wallet address"),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Delete user account
+
+    Permanently deletes all user data including:
+    - User settings and preferences
+    - API keys
+    - OAuth tokens and integrations
+    - Purchases and subscriptions
+    - Sync logs and integration configs
+
+    **WARNING**: This action is irreversible.
+    """
+    try:
+        if not wallet_address or len(wallet_address) < 10:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid wallet address"
+            )
+
+        deleted_counts = await settings_service.delete_account(db, wallet_address)
+
+        return {
+            "success": True,
+            "message": "Account and all associated data have been permanently deleted",
+            "deleted": deleted_counts
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting account: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to delete account: {str(e)}"
+        )

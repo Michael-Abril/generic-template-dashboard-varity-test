@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import logging
 
 from app.models.user_settings import UserSettings, APIKey
+from app.models.purchase import Purchase, Subscription, OAuthToken, SyncLog, IntegrationConfig
 
 logger = logging.getLogger(__name__)
 
@@ -295,6 +296,113 @@ class SettingsService:
 
         except Exception as e:
             logger.error(f"Error listing API keys for {wallet_address}: {str(e)}")
+            raise
+
+    async def delete_account(
+        self,
+        db: AsyncSession,
+        wallet_address: str
+    ) -> Dict[str, Any]:
+        """
+        Delete all account data for a user
+
+        This permanently deletes:
+        - User settings
+        - API keys
+        - OAuth tokens
+        - Purchases and subscriptions
+        - Sync logs
+        - Integration configs
+
+        Args:
+            db: Database session
+            wallet_address: User's wallet address
+
+        Returns:
+            Dict with deletion summary
+        """
+        try:
+            deleted_counts = {
+                "settings": 0,
+                "api_keys": 0,
+                "oauth_tokens": 0,
+                "sync_logs": 0,
+                "integration_configs": 0,
+                "subscriptions": 0,
+                "purchases": 0,
+            }
+
+            # Delete sync logs first (references oauth_tokens and purchases)
+            result = await db.execute(
+                select(SyncLog).where(SyncLog.user_address == wallet_address)
+            )
+            sync_logs = result.scalars().all()
+            for log in sync_logs:
+                await db.delete(log)
+            deleted_counts["sync_logs"] = len(sync_logs)
+
+            # Delete integration configs
+            result = await db.execute(
+                select(IntegrationConfig).where(IntegrationConfig.user_address == wallet_address)
+            )
+            configs = result.scalars().all()
+            for config in configs:
+                await db.delete(config)
+            deleted_counts["integration_configs"] = len(configs)
+
+            # Delete OAuth tokens
+            result = await db.execute(
+                select(OAuthToken).where(OAuthToken.user_address == wallet_address)
+            )
+            tokens = result.scalars().all()
+            for token in tokens:
+                await db.delete(token)
+            deleted_counts["oauth_tokens"] = len(tokens)
+
+            # Delete subscriptions (references purchases)
+            result = await db.execute(
+                select(Subscription).where(Subscription.user_address == wallet_address)
+            )
+            subs = result.scalars().all()
+            for sub in subs:
+                await db.delete(sub)
+            deleted_counts["subscriptions"] = len(subs)
+
+            # Delete purchases
+            result = await db.execute(
+                select(Purchase).where(Purchase.user_address == wallet_address)
+            )
+            purchases = result.scalars().all()
+            for purchase in purchases:
+                await db.delete(purchase)
+            deleted_counts["purchases"] = len(purchases)
+
+            # Delete API keys
+            result = await db.execute(
+                select(APIKey).where(APIKey.wallet_address == wallet_address)
+            )
+            api_keys = result.scalars().all()
+            for key in api_keys:
+                await db.delete(key)
+            deleted_counts["api_keys"] = len(api_keys)
+
+            # Delete user settings
+            result = await db.execute(
+                select(UserSettings).where(UserSettings.wallet_address == wallet_address)
+            )
+            settings = result.scalar_one_or_none()
+            if settings:
+                await db.delete(settings)
+                deleted_counts["settings"] = 1
+
+            await db.commit()
+
+            logger.info(f"Deleted account for wallet {wallet_address}: {deleted_counts}")
+            return deleted_counts
+
+        except Exception as e:
+            logger.error(f"Error deleting account for {wallet_address}: {str(e)}")
+            await db.rollback()
             raise
 
 

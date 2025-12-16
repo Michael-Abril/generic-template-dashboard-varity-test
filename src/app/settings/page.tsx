@@ -347,16 +347,58 @@ export default function SettingsPage() {
 
   // Update team member role
   const handleUpdateRole = async (memberId: string, newRole: string) => {
-    setTeamMembers(prev => prev.map(m =>
-      m.id === memberId ? { ...m, role: newRole as TeamMember['role'] } : m
-    ));
-    toast.success('Role updated', 'Team member role has been updated.');
+    if (!address) {
+      toast.error('Error', 'Wallet not connected');
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/v1/team/members/${memberId}/role?wallet_address=${address}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ role: newRole }),
+      });
+
+      if (response.ok) {
+        // Update local state on success
+        setTeamMembers(prev => prev.map(m =>
+          m.id === memberId ? { ...m, role: newRole as TeamMember['role'] } : m
+        ));
+        toast.success('Role updated', 'Team member role has been updated.');
+      } else {
+        const error = await response.json();
+        toast.error('Error', error.detail || 'Failed to update role');
+      }
+    } catch (error) {
+      console.error('Error updating role:', error);
+      toast.error('Error', 'Failed to update role. Please try again.');
+    }
   };
 
   // Remove team member
   const handleRemoveMember = async (memberId: string) => {
-    setTeamMembers(prev => prev.filter(m => m.id !== memberId));
-    toast.success('Member removed', 'Team member has been removed.');
+    if (!address) {
+      toast.error('Error', 'Wallet not connected');
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/v1/team/members/${memberId}?wallet_address=${address}`, {
+        method: 'DELETE',
+      });
+
+      if (response.ok) {
+        // Update local state on success
+        setTeamMembers(prev => prev.filter(m => m.id !== memberId));
+        toast.success('Member removed', 'Team member has been removed.');
+      } else {
+        const error = await response.json();
+        toast.error('Error', error.detail || 'Failed to remove member');
+      }
+    } catch (error) {
+      console.error('Error removing member:', error);
+      toast.error('Error', 'Failed to remove member. Please try again.');
+    }
   };
 
   // Delete account
@@ -385,10 +427,10 @@ export default function SettingsPage() {
   const tabs = [
     { id: 'account' as SettingsTab, label: 'Account', icon: User, disabled: false },
     { id: 'notifications' as SettingsTab, label: 'Notifications', icon: Bell, disabled: false },
-    { id: 'billing' as SettingsTab, label: 'Billing', icon: CreditCard, disabled: true, comingSoon: true },
     { id: 'team' as SettingsTab, label: 'Team', icon: Users, disabled: false },
-    { id: 'security' as SettingsTab, label: 'Security', icon: Lock, disabled: true, comingSoon: true },
     { id: 'data' as SettingsTab, label: 'Data', icon: Database, disabled: false },
+    { id: 'billing' as SettingsTab, label: 'Billing', icon: CreditCard, disabled: true, comingSoon: true },
+    { id: 'security' as SettingsTab, label: 'Security', icon: Lock, disabled: true, comingSoon: true },
   ];
 
   return (
