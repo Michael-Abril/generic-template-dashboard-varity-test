@@ -79,7 +79,7 @@ class SettingsService:
         db: AsyncSession,
         wallet_address: str,
         settings_update: Dict[str, Any]
-    ) -> UserSettings:
+    ) -> Dict[str, Any]:
         """
         Update user settings
 
@@ -106,13 +106,27 @@ class SettingsService:
                     setattr(settings, field, value)
 
             # Manually set updated_at since onupdate may not trigger with setattr
-            settings.updated_at = datetime.utcnow()
+            now = datetime.utcnow()
+            settings.updated_at = now
+
+            # Capture all values BEFORE commit to avoid session expiry issues
+            result_dict = {
+                "id": settings.id,
+                "wallet_address": settings.wallet_address,
+                "company_name": settings.company_name,
+                "industry": settings.industry,
+                "timezone": settings.timezone or "UTC",
+                "language": settings.language or "en",
+                "notification_preferences": settings.notification_preferences or {},
+                "ui_preferences": settings.ui_preferences or {},
+                "created_at": settings.created_at,
+                "updated_at": now
+            }
 
             await db.commit()
-            # Skip refresh to avoid async session issues - we already have updated values
 
             logger.info(f"Updated settings for wallet {wallet_address}")
-            return settings
+            return result_dict
 
         except Exception as e:
             logger.error(f"Error updating settings for {wallet_address}: {str(e)}")

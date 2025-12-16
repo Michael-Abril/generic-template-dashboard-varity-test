@@ -136,17 +136,17 @@ async def update_settings(
             db, wallet_address, update_data
         )
 
-        # Manually construct response to avoid serialization issues
+        # Service now returns a dict, just need to format datetime fields
         return {
-            "wallet_address": updated_settings.wallet_address,
-            "company_name": updated_settings.company_name,
-            "industry": updated_settings.industry,
-            "timezone": updated_settings.timezone or "UTC",
-            "language": updated_settings.language or "en",
-            "notification_preferences": updated_settings.notification_preferences or {},
-            "ui_preferences": updated_settings.ui_preferences or {},
-            "created_at": updated_settings.created_at.isoformat() if updated_settings.created_at else None,
-            "updated_at": updated_settings.updated_at.isoformat() if updated_settings.updated_at else None,
+            "wallet_address": updated_settings["wallet_address"],
+            "company_name": updated_settings["company_name"],
+            "industry": updated_settings["industry"],
+            "timezone": updated_settings["timezone"],
+            "language": updated_settings["language"],
+            "notification_preferences": updated_settings["notification_preferences"],
+            "ui_preferences": updated_settings["ui_preferences"],
+            "created_at": updated_settings["created_at"].isoformat() if updated_settings["created_at"] else None,
+            "updated_at": updated_settings["updated_at"].isoformat() if updated_settings["updated_at"] else None,
         }
 
     except HTTPException:
