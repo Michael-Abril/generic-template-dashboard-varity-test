@@ -113,8 +113,7 @@ async def get_settings(
 
 @router.put("/settings")
 async def update_settings(
-    wallet_address: str = Query(..., description="User's wallet address"),
-    db: AsyncSession = Depends(get_db)
+    wallet_address: str = Query(..., description="User's wallet address")
 ):
     """
     Update user settings
@@ -124,8 +123,8 @@ async def update_settings(
     try:
         logger.info(f"PUT /settings called for wallet: {wallet_address}")
 
-        # DEBUG: Return early to test if endpoint is reachable (no body param)
-        return {"debug": "Endpoint reached without body", "wallet": wallet_address}
+        # DEBUG: Return early - no body, no db
+        return {"debug": "Endpoint reached - no body, no db", "wallet": wallet_address}
 
         logger.info(f"Request body type: {type(settings_update)}")
 
