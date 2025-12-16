@@ -4,7 +4,7 @@ Settings API Endpoints
 Provides endpoints for managing user settings, preferences, and API keys.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
@@ -114,7 +114,7 @@ async def get_settings(
 @router.put("/settings", response_model=SettingsResponse)
 async def update_settings(
     wallet_address: str = Query(..., description="User's wallet address"),
-    settings_update: SettingsUpdateRequest = None,
+    settings_update: SettingsUpdateRequest = Body(...),
     db: AsyncSession = Depends(get_db)
 ):
     """

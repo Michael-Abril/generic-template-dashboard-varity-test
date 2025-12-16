@@ -105,7 +105,7 @@ class SettingsService:
                 if field in allowed_fields and value is not None:
                     setattr(settings, field, value)
 
-            settings.updated_at = datetime.utcnow()
+            # updated_at is handled automatically by SQLAlchemy's onupdate
             await db.commit()
             await db.refresh(settings)
 
