@@ -105,9 +105,11 @@ class SettingsService:
                 if field in allowed_fields and value is not None:
                     setattr(settings, field, value)
 
-            # updated_at is handled automatically by SQLAlchemy's onupdate
+            # Manually set updated_at since onupdate may not trigger with setattr
+            settings.updated_at = datetime.utcnow()
+
             await db.commit()
-            await db.refresh(settings)
+            # Skip refresh to avoid async session issues - we already have updated values
 
             logger.info(f"Updated settings for wallet {wallet_address}")
             return settings

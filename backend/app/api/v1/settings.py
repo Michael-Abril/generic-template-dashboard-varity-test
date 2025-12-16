@@ -111,7 +111,7 @@ async def get_settings(
         )
 
 
-@router.put("/settings", response_model=SettingsResponse)
+@router.put("/settings")
 async def update_settings(
     wallet_address: str = Query(..., description="User's wallet address"),
     settings_update: SettingsUpdateRequest = Body(...),
@@ -135,7 +135,19 @@ async def update_settings(
         updated_settings = await settings_service.update_user_settings(
             db, wallet_address, update_data
         )
-        return updated_settings
+
+        # Manually construct response to avoid serialization issues
+        return {
+            "wallet_address": updated_settings.wallet_address,
+            "company_name": updated_settings.company_name,
+            "industry": updated_settings.industry,
+            "timezone": updated_settings.timezone or "UTC",
+            "language": updated_settings.language or "en",
+            "notification_preferences": updated_settings.notification_preferences or {},
+            "ui_preferences": updated_settings.ui_preferences or {},
+            "created_at": updated_settings.created_at.isoformat() if updated_settings.created_at else None,
+            "updated_at": updated_settings.updated_at.isoformat() if updated_settings.updated_at else None,
+        }
 
     except HTTPException:
         raise
