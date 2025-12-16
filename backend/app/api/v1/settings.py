@@ -123,8 +123,12 @@ async def update_settings(
     Updates one or more user settings. Only provided fields will be updated.
     """
     try:
+        logger.info(f"PUT /settings called for wallet: {wallet_address}")
+        logger.info(f"Request body: {settings_update}")
+
         # Convert Pydantic model to dict, excluding None values
         update_data = settings_update.model_dump(exclude_none=True) if settings_update else {}
+        logger.info(f"Update data: {update_data}")
 
         if not update_data:
             raise HTTPException(

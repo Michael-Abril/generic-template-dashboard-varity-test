@@ -92,8 +92,12 @@ class SettingsService:
             Updated UserSettings object
         """
         try:
+            logger.info(f"update_user_settings called for {wallet_address}")
+            logger.info(f"settings_update: {settings_update}")
+
             # Get existing settings (or create default)
             settings = await self.get_user_settings(db, wallet_address)
+            logger.info(f"Got existing settings, id={settings.id}")
 
             # Update allowed fields
             allowed_fields = [
@@ -103,13 +107,16 @@ class SettingsService:
 
             for field, value in settings_update.items():
                 if field in allowed_fields and value is not None:
+                    logger.info(f"Setting {field} = {value}")
                     setattr(settings, field, value)
 
             # Manually set updated_at since onupdate may not trigger with setattr
             now = datetime.utcnow()
             settings.updated_at = now
+            logger.info("Set updated_at")
 
             # Capture all values BEFORE commit to avoid session expiry issues
+            logger.info("Building result dict...")
             result_dict = {
                 "id": settings.id,
                 "wallet_address": settings.wallet_address,
@@ -122,8 +129,11 @@ class SettingsService:
                 "created_at": settings.created_at,
                 "updated_at": now
             }
+            logger.info(f"Result dict: {result_dict}")
 
+            logger.info("Committing...")
             await db.commit()
+            logger.info("Committed successfully")
 
             logger.info(f"Updated settings for wallet {wallet_address}")
             return result_dict
