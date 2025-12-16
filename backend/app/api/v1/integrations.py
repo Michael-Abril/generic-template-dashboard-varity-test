@@ -63,10 +63,10 @@ async def get_installed_integrations(
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Get user's installed tools based on real purchases and sync logs.
+    Get user's connected integrations based on OAuth tokens.
 
-    This endpoint derives installed integrations from the marketplace
-    purchases table instead of returning hard-coded mock data.
+    This endpoint checks the OAuthToken table for active OAuth connections,
+    which is where tokens are stored after successful OAuth flows.
     """
     try:
         logger.info(f"Getting installed integrations for wallet {wallet_address}")
@@ -74,66 +74,59 @@ async def get_installed_integrations(
         # Normalize wallet address
         user_address = wallet_address.lower()
 
-        # Get all active purchases for this user
-        purchases_result = await db.execute(
-            select(Purchase)
+        # Get all active OAuth tokens for this user
+        tokens_result = await db.execute(
+            select(OAuthToken)
             .where(
                 and_(
-                    Purchase.user_address == user_address,
-                    Purchase.is_active == True,  # noqa: E712
+                    OAuthToken.user_address == user_address,
+                    OAuthToken.is_active == True,  # noqa: E712
                 )
             )
-            .options(
-                # Eager-load related product, oauth tokens, and sync logs
-                # to avoid N+1 queries
-                selectinload(Purchase.product),
-                selectinload(Purchase.oauth_tokens),
-                selectinload(Purchase.sync_logs),
-            )
         )
-        purchases = purchases_result.scalars().all()
+        oauth_tokens = tokens_result.scalars().all()
 
         installed_tools: list[dict[str, Any]] = []
 
-        for purchase in purchases:
-            product: Product = purchase.product
-            if not product or not product.active:
-                continue
+        # Provider display names mapping
+        provider_names = {
+            "quickbooks": "QuickBooks",
+            "google": "Google Workspace",
+            "microsoft": "Microsoft 365",
+            "slack": "Slack",
+            "hubspot": "HubSpot",
+            "salesforce": "Salesforce",
+            "shopify": "Shopify",
+            "zendesk": "Zendesk",
+            "stripe": "Stripe",
+            "monday": "Monday.com",
+        }
 
-            # Determine last sync and sync status from logs
-            last_sync_time = None
-            sync_status = "never"
-            data_count = 0
-
-            if purchase.sync_logs:
-                latest_sync: SyncLog | None = max(
-                    purchase.sync_logs,
-                    key=lambda s: s.started_at or datetime.min,
-                )
-                if latest_sync:
-                    last_sync_time = latest_sync.completed_at or latest_sync.started_at
-                    sync_status = latest_sync.status.value
-                    data_count = latest_sync.records_synced or 0
+        for token in oauth_tokens:
+            # Determine sync status
+            sync_status = "connected"
+            if token.expires_at and token.expires_at < datetime.utcnow():
+                sync_status = "expired"
 
             installed_tools.append(
                 {
-                    "tool_id": product.id,
-                    "tool_name": product.name,
-                    "integration": product.slug,
-                    "installed_at": purchase.purchase_date.isoformat(),
-                    "last_sync": last_sync_time.isoformat() if last_sync_time else None,
+                    "tool_id": token.id,
+                    "tool_name": provider_names.get(token.provider, token.provider.title()),
+                    "integration": token.provider,
+                    "installed_at": token.connected_at.isoformat() if token.connected_at else token.created_at.isoformat(),
+                    "last_sync": token.last_sync_at.isoformat() if token.last_sync_at else None,
                     "sync_status": sync_status,
-                    "data_count": data_count,
+                    "data_count": 0,  # Would need to query Filecoin for actual count
                 }
             )
 
-        # Convert to the simple integrations format expected by older frontends
+        # Convert to the simple integrations format expected by frontend
         integrations = [
             {
                 "id": tool["tool_id"],
                 "name": tool["tool_name"],
                 "slug": tool["integration"],
-                "connected": tool["sync_status"] in {"success", "partial"},
+                "connected": tool["sync_status"] in {"connected", "success", "partial"},
             }
             for tool in installed_tools
         ]
