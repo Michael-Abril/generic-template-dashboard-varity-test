@@ -41,6 +41,18 @@ class SettingsUpdateRequest(BaseModel):
     industry: Optional[str] = None
     timezone: Optional[str] = None
     language: Optional[str] = None
+    # New company profile fields for AI personalization
+    company_size: Optional[str] = None  # "1", "2-10", "11-50", "51-200", "201-500", "500+"
+    primary_goal: Optional[str] = None  # User's primary use case
+    # Trial fields
+    trial_tier: Optional[str] = None  # "30_day" or "14_day"
+    trial_start_date: Optional[datetime] = None
+    trial_end_date: Optional[datetime] = None
+    # Onboarding tracking
+    onboarding_completed: Optional[bool] = None
+    onboarding_completed_at: Optional[datetime] = None
+    onboarding_step: Optional[str] = None
+    # JSON preferences
     notification_preferences: Optional[Dict[str, bool]] = None
     ui_preferences: Optional[Dict[str, Any]] = None
 
@@ -52,6 +64,18 @@ class SettingsResponse(BaseModel):
     industry: Optional[str] = None
     timezone: str
     language: str
+    # Company profile fields
+    company_size: Optional[str] = None
+    primary_goal: Optional[str] = None
+    # Trial fields
+    trial_tier: Optional[str] = None
+    trial_start_date: Optional[datetime] = None
+    trial_end_date: Optional[datetime] = None
+    # Onboarding tracking
+    onboarding_completed: bool = False
+    onboarding_completed_at: Optional[datetime] = None
+    onboarding_step: Optional[str] = None
+    # JSON preferences
     notification_preferences: Dict[str, bool]
     ui_preferences: Dict[str, Any]
     created_at: datetime
@@ -143,6 +167,18 @@ async def update_settings(
             "industry": updated_settings["industry"],
             "timezone": updated_settings["timezone"],
             "language": updated_settings["language"],
+            # Company profile fields
+            "company_size": updated_settings.get("company_size"),
+            "primary_goal": updated_settings.get("primary_goal"),
+            # Trial fields
+            "trial_tier": updated_settings.get("trial_tier"),
+            "trial_start_date": updated_settings.get("trial_start_date").isoformat() if updated_settings.get("trial_start_date") else None,
+            "trial_end_date": updated_settings.get("trial_end_date").isoformat() if updated_settings.get("trial_end_date") else None,
+            # Onboarding tracking
+            "onboarding_completed": updated_settings.get("onboarding_completed", False),
+            "onboarding_completed_at": updated_settings.get("onboarding_completed_at").isoformat() if updated_settings.get("onboarding_completed_at") else None,
+            "onboarding_step": updated_settings.get("onboarding_step"),
+            # JSON preferences
             "notification_preferences": updated_settings["notification_preferences"],
             "ui_preferences": updated_settings["ui_preferences"],
             "created_at": updated_settings["created_at"].isoformat() if updated_settings["created_at"] else None,

@@ -47,12 +47,60 @@ import {
   X,
   Sparkles,
   MessageSquare,
-  ExternalLink
+  ExternalLink,
+  ChevronLeft,
+  Home,
+  Briefcase,
+  Car,
+  FileCheck,
+  FolderOpen,
+  Grid3X3,
+  List,
+  LayoutDashboard,
+  Star,
+  Bookmark,
+  MoreHorizontal,
+  Upload,
+  Paperclip,
+  Eye,
+  Edit3,
+  Trash2,
+  Copy,
+  Printer,
+  Mail,
+  Phone,
+  MapPin,
+  Calendar,
+  Hash,
+  Percent,
+  Tag,
+  Layers,
+  GitBranch,
+  Database,
+  Shield,
+  Lock,
+  Key,
+  UserPlus,
+  UserCheck,
+  UsersRound,
+  Building2,
+  Factory,
+  Store,
+  Globe,
+  Link as LinkIcon,
+  Zap,
+  Activity,
+  Target,
+  Award,
+  TrendingUp as Growth,
+  RotateCcw,
+  History,
+  Archive
 } from 'lucide-react';
 
 // ============================================================================
 // QUICKBOOKS NATIVE UI COMPONENT
-// Replicates the QuickBooks Online experience within the dashboard
+// Exact replica of QuickBooks Online interface within the dashboard
 // ============================================================================
 
 interface QuickBooksToolPageProps {
@@ -66,6 +114,93 @@ interface QuickBooksToolPageProps {
   onRefresh: () => void;
 }
 
+// QuickBooks Left Sidebar Navigation Items (exactly like QB Online)
+const QB_SIDEBAR_ITEMS = [
+  { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { id: 'bookmarks', label: 'Bookmarks', icon: Star, badge: null },
+  { id: 'banking', label: 'Banking', icon: Landmark },
+  {
+    id: 'sales',
+    label: 'Sales',
+    icon: DollarSign,
+    submenu: [
+      { id: 'overview', label: 'Overview' },
+      { id: 'all-sales', label: 'All Sales' },
+      { id: 'invoices', label: 'Invoices' },
+      { id: 'payment-links', label: 'Payment Links' },
+      { id: 'customers', label: 'Customers' },
+      { id: 'products', label: 'Products & Services' },
+    ]
+  },
+  {
+    id: 'expenses',
+    label: 'Expenses',
+    icon: Receipt,
+    submenu: [
+      { id: 'expenses-list', label: 'Expenses' },
+      { id: 'vendors', label: 'Vendors' },
+      { id: 'bills', label: 'Bills' },
+    ]
+  },
+  { id: 'projects', label: 'Projects', icon: Briefcase },
+  {
+    id: 'workers',
+    label: 'Workers',
+    icon: UsersRound,
+    submenu: [
+      { id: 'payroll', label: 'Payroll' },
+      { id: 'contractors', label: 'Contractors' },
+    ]
+  },
+  { id: 'reports', label: 'Reports', icon: BarChart3 },
+  { id: 'taxes', label: 'Taxes', icon: FileCheck },
+  { id: 'mileage', label: 'Mileage', icon: Car },
+  {
+    id: 'accounting',
+    label: 'Accounting',
+    icon: BookOpen,
+    submenu: [
+      { id: 'chart-of-accounts', label: 'Chart of Accounts' },
+      { id: 'reconcile', label: 'Reconcile' },
+    ]
+  },
+  { id: 'my-accountant', label: 'My Accountant', icon: UserCheck },
+  { id: 'apps', label: 'Apps', icon: Grid3X3 },
+];
+
+// Gear Menu Items (exactly like QB Online)
+const GEAR_MENU_ITEMS = {
+  yourCompany: [
+    { id: 'account-settings', label: 'Account and Settings', icon: Settings },
+    { id: 'manage-users', label: 'Manage Users', icon: UsersRound },
+    { id: 'custom-form-styles', label: 'Custom Form Styles', icon: FileText },
+    { id: 'feedback', label: 'Feedback', icon: MessageSquare },
+  ],
+  lists: [
+    { id: 'all-lists', label: 'All Lists', icon: List },
+    { id: 'products-services', label: 'Products and Services', icon: Package },
+    { id: 'recurring-transactions', label: 'Recurring Transactions', icon: RotateCcw },
+    { id: 'attachments', label: 'Attachments', icon: Paperclip },
+    { id: 'chart-of-accounts-gear', label: 'Chart of Accounts', icon: BookOpen },
+    { id: 'payroll-items', label: 'Payroll Items', icon: DollarSign },
+    { id: 'tags', label: 'Tags', icon: Tag },
+  ],
+  tools: [
+    { id: 'import-data', label: 'Import Data', icon: Upload },
+    { id: 'export-data', label: 'Export Data', icon: Download },
+    { id: 'reconcile-gear', label: 'Reconcile', icon: CheckCircle },
+    { id: 'budgeting', label: 'Budgeting', icon: Target },
+    { id: 'audit-log', label: 'Audit Log', icon: History },
+    { id: 'smart-look', label: 'SmartLook', icon: Eye },
+    { id: 'resolution-center', label: 'Resolution Center', icon: Shield },
+  ],
+  profile: [
+    { id: 'user-profile', label: 'User Profile', icon: UserCheck },
+    { id: 'switch-company', label: 'Switch Company', icon: Building2 },
+    { id: 'sign-out', label: 'Sign Out', icon: ArrowUpRight },
+  ]
+};
+
 function QuickBooksToolPage({
   walletAddress,
   data,
@@ -78,21 +213,40 @@ function QuickBooksToolPage({
 }: QuickBooksToolPageProps) {
   const router = useRouter();
   const [activeSection, setActiveSection] = useState<string>('dashboard');
+  const [activeSubSection, setActiveSubSection] = useState<string | null>(null);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [expandedMenus, setExpandedMenus] = useState<string[]>(['sales', 'expenses']);
   const [createMenuOpen, setCreateMenuOpen] = useState(false);
+  const [gearMenuOpen, setGearMenuOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchFocused, setSearchFocused] = useState(false);
+  const [showInvoiceForm, setShowInvoiceForm] = useState(false);
+  const [showExpenseForm, setShowExpenseForm] = useState(false);
   const createMenuRef = useRef<HTMLDivElement>(null);
+  const gearMenuRef = useRef<HTMLDivElement>(null);
 
-  // Close create menu when clicking outside
+  // Close menus when clicking outside
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (createMenuRef.current && !createMenuRef.current.contains(event.target as Node)) {
         setCreateMenuOpen(false);
       }
+      if (gearMenuRef.current && !gearMenuRef.current.contains(event.target as Node)) {
+        setGearMenuOpen(false);
+      }
     }
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  // Toggle sidebar menu expansion
+  const toggleMenu = (menuId: string) => {
+    setExpandedMenus(prev =>
+      prev.includes(menuId)
+        ? prev.filter(id => id !== menuId)
+        : [...prev, menuId]
+    );
+  };
 
   // Get records for a specific data type
   const getRecordsForType = (dataType: string): Array<Record<string, unknown>> => {
@@ -653,264 +807,1036 @@ function QuickBooksToolPage({
   // Render Reports Section
   const renderReports = () => (
     <div className="space-y-6">
-      <h2 className="text-xl font-bold text-gray-900">Reports</h2>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {[
-          { name: 'Profit and Loss', description: 'Income, costs, and expenses', icon: TrendingUp, category: 'Financial' },
-          { name: 'Balance Sheet', description: 'Assets, liabilities, and equity', icon: PieChart, category: 'Financial' },
-          { name: 'Cash Flow', description: 'Money in and out of business', icon: DollarSign, category: 'Financial' },
-          { name: 'Accounts Receivable', description: 'Money owed to you', icon: ArrowDownRight, category: 'Sales' },
-          { name: 'Accounts Payable', description: 'Money you owe', icon: ArrowUpRight, category: 'Expenses' },
-          { name: 'Sales by Customer', description: 'Revenue by customer', icon: Users, category: 'Sales' },
-          { name: 'Expenses by Vendor', description: 'Spending by vendor', icon: Truck, category: 'Expenses' },
-          { name: 'Invoice Summary', description: 'All invoices overview', icon: FileText, category: 'Sales' },
-          { name: 'Transaction List', description: 'All transactions', icon: FileSpreadsheet, category: 'Other' },
-        ].map((report, index) => (
-          <button
-            key={index}
-            className="bg-white rounded-xl border border-gray-200 p-4 text-left hover:border-green-500 hover:shadow-md transition-all group"
-          >
-            <div className="flex items-start gap-3">
-              <div className="w-10 h-10 bg-green-50 rounded-lg flex items-center justify-center group-hover:bg-green-100">
-                <report.icon className="w-5 h-5 text-green-600" />
-              </div>
-              <div>
-                <h4 className="font-medium text-gray-900 group-hover:text-green-600">{report.name}</h4>
-                <p className="text-sm text-gray-500">{report.description}</p>
-                <span className="text-xs text-gray-400 mt-1 inline-block">{report.category}</span>
-              </div>
-            </div>
+      <div className="flex items-center justify-between">
+        <h2 className="text-xl font-bold text-gray-900">Reports</h2>
+        <div className="flex items-center gap-2">
+          <button className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50">
+            <Star className="w-4 h-4" />
           </button>
-        ))}
+          <button className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50">
+            Customize
+          </button>
+        </div>
+      </div>
+
+      {/* Report Categories */}
+      <div className="space-y-6">
+        {/* Favorites */}
+        <div>
+          <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+            <Star className="w-4 h-4 text-amber-500" />
+            Favorites
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {[
+              { name: 'Profit and Loss', description: 'Income, costs, and expenses', icon: TrendingUp },
+              { name: 'Balance Sheet', description: 'Assets, liabilities, and equity', icon: PieChart },
+            ].map((report, index) => (
+              <button
+                key={index}
+                className="bg-white rounded-lg border border-gray-200 p-4 text-left hover:border-green-500 hover:shadow-sm transition-all group flex items-center gap-3"
+              >
+                <div className="w-10 h-10 bg-green-50 rounded-lg flex items-center justify-center group-hover:bg-green-100 flex-shrink-0">
+                  <report.icon className="w-5 h-5 text-green-600" />
+                </div>
+                <div className="min-w-0">
+                  <h4 className="font-medium text-gray-900 group-hover:text-green-600 truncate">{report.name}</h4>
+                  <p className="text-xs text-gray-500 truncate">{report.description}</p>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Business Overview */}
+        <div>
+          <h3 className="text-sm font-semibold text-gray-700 mb-3">Business Overview</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {[
+              { name: 'Profit and Loss', description: 'Income, costs, and expenses', icon: TrendingUp },
+              { name: 'Profit and Loss Detail', description: 'Detailed P&L breakdown', icon: FileSpreadsheet },
+              { name: 'Balance Sheet', description: 'Assets, liabilities, and equity', icon: PieChart },
+              { name: 'Balance Sheet Detail', description: 'Detailed balance sheet', icon: FileSpreadsheet },
+              { name: 'Statement of Cash Flows', description: 'Cash flow analysis', icon: DollarSign },
+              { name: 'Business Snapshot', description: 'Quick business overview', icon: BarChart3 },
+            ].map((report, index) => (
+              <button
+                key={index}
+                className="bg-white rounded-lg border border-gray-200 p-3 text-left hover:border-green-500 hover:shadow-sm transition-all group flex items-center gap-3"
+              >
+                <div className="w-8 h-8 bg-gray-50 rounded flex items-center justify-center group-hover:bg-green-50 flex-shrink-0">
+                  <report.icon className="w-4 h-4 text-gray-500 group-hover:text-green-600" />
+                </div>
+                <div className="min-w-0">
+                  <h4 className="text-sm font-medium text-gray-900 group-hover:text-green-600 truncate">{report.name}</h4>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Who Owes You */}
+        <div>
+          <h3 className="text-sm font-semibold text-gray-700 mb-3">Who Owes You</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {[
+              { name: 'Accounts Receivable Aging Summary', icon: Clock },
+              { name: 'Accounts Receivable Aging Detail', icon: FileSpreadsheet },
+              { name: 'Invoice List', icon: FileText },
+              { name: 'Customer Balance Summary', icon: Users },
+              { name: 'Customer Balance Detail', icon: FileSpreadsheet },
+              { name: 'Unbilled Charges', icon: AlertCircle },
+            ].map((report, index) => (
+              <button
+                key={index}
+                className="bg-white rounded-lg border border-gray-200 p-3 text-left hover:border-green-500 hover:shadow-sm transition-all group flex items-center gap-3"
+              >
+                <div className="w-8 h-8 bg-gray-50 rounded flex items-center justify-center group-hover:bg-green-50 flex-shrink-0">
+                  <report.icon className="w-4 h-4 text-gray-500 group-hover:text-green-600" />
+                </div>
+                <div className="min-w-0">
+                  <h4 className="text-sm font-medium text-gray-900 group-hover:text-green-600 truncate">{report.name}</h4>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* What You Owe */}
+        <div>
+          <h3 className="text-sm font-semibold text-gray-700 mb-3">What You Owe</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {[
+              { name: 'Accounts Payable Aging Summary', icon: Clock },
+              { name: 'Accounts Payable Aging Detail', icon: FileSpreadsheet },
+              { name: 'Bill Payment List', icon: Banknote },
+              { name: 'Vendor Balance Summary', icon: Truck },
+              { name: 'Vendor Balance Detail', icon: FileSpreadsheet },
+              { name: '1099 Contractor Balance', icon: UserCheck },
+            ].map((report, index) => (
+              <button
+                key={index}
+                className="bg-white rounded-lg border border-gray-200 p-3 text-left hover:border-green-500 hover:shadow-sm transition-all group flex items-center gap-3"
+              >
+                <div className="w-8 h-8 bg-gray-50 rounded flex items-center justify-center group-hover:bg-green-50 flex-shrink-0">
+                  <report.icon className="w-4 h-4 text-gray-500 group-hover:text-green-600" />
+                </div>
+                <div className="min-w-0">
+                  <h4 className="text-sm font-medium text-gray-900 group-hover:text-green-600 truncate">{report.name}</h4>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Sales and Customers */}
+        <div>
+          <h3 className="text-sm font-semibold text-gray-700 mb-3">Sales and Customers</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {[
+              { name: 'Sales by Customer Summary', icon: Users },
+              { name: 'Sales by Product/Service Summary', icon: Package },
+              { name: 'Deposit Detail', icon: Landmark },
+              { name: 'Estimates by Customer', icon: FileSpreadsheet },
+              { name: 'Sales by Customer Detail', icon: FileSpreadsheet },
+            ].map((report, index) => (
+              <button
+                key={index}
+                className="bg-white rounded-lg border border-gray-200 p-3 text-left hover:border-green-500 hover:shadow-sm transition-all group flex items-center gap-3"
+              >
+                <div className="w-8 h-8 bg-gray-50 rounded flex items-center justify-center group-hover:bg-green-50 flex-shrink-0">
+                  <report.icon className="w-4 h-4 text-gray-500 group-hover:text-green-600" />
+                </div>
+                <div className="min-w-0">
+                  <h4 className="text-sm font-medium text-gray-900 group-hover:text-green-600 truncate">{report.name}</h4>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
     </div>
   );
 
-  return (
-    <div className="min-h-screen bg-gray-50">
-      {/* QuickBooks Header Bar */}
-      <div className="bg-[#2CA01C] text-white">
-        <div className="px-4 sm:px-6 py-3 flex items-center justify-between">
-          {/* Left: Company Name */}
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 bg-white/20 rounded flex items-center justify-center">
-                <Building className="w-5 h-5" />
+  // Render Banking Section (NEW - matches QB Banking center)
+  const renderBanking = () => (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <h2 className="text-xl font-bold text-gray-900">Banking</h2>
+        <button className="px-4 py-2 bg-[#2CA01C] text-white rounded-lg hover:bg-[#248a17] text-sm font-medium">
+          Connect account
+        </button>
+      </div>
+
+      {/* Bank Accounts */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="bg-white rounded-xl border border-gray-200 p-5">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                <Landmark className="w-5 h-5 text-blue-600" />
               </div>
               <div>
-                <h1 className="font-semibold text-sm">Your Company</h1>
-                <p className="text-xs text-white/70">QuickBooks Online</p>
+                <h3 className="font-medium text-gray-900">Business Checking</h3>
+                <p className="text-xs text-gray-500">Connected • Updated today</p>
+              </div>
+            </div>
+            <button className="text-gray-400 hover:text-gray-600">
+              <MoreHorizontal className="w-5 h-5" />
+            </button>
+          </div>
+          <div className="text-2xl font-bold text-gray-900 mb-2">
+            $24,500.00
+          </div>
+          <div className="flex items-center gap-4 text-sm">
+            <span className="flex items-center gap-1 text-amber-600">
+              <Clock className="w-4 h-4" />
+              12 to review
+            </span>
+            <span className="flex items-center gap-1 text-green-600">
+              <CheckCircle className="w-4 h-4" />
+              45 categorized
+            </span>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-xl border border-gray-200 p-5">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
+                <CreditCard className="w-5 h-5 text-purple-600" />
+              </div>
+              <div>
+                <h3 className="font-medium text-gray-900">Business Credit Card</h3>
+                <p className="text-xs text-gray-500">Connected • Updated today</p>
+              </div>
+            </div>
+            <button className="text-gray-400 hover:text-gray-600">
+              <MoreHorizontal className="w-5 h-5" />
+            </button>
+          </div>
+          <div className="text-2xl font-bold text-red-600 mb-2">
+            -$3,200.00
+          </div>
+          <div className="flex items-center gap-4 text-sm">
+            <span className="flex items-center gap-1 text-amber-600">
+              <Clock className="w-4 h-4" />
+              8 to review
+            </span>
+            <span className="flex items-center gap-1 text-green-600">
+              <CheckCircle className="w-4 h-4" />
+              32 categorized
+            </span>
+          </div>
+        </div>
+
+        {/* Add Account Card */}
+        <button className="bg-gray-50 rounded-xl border-2 border-dashed border-gray-300 p-5 hover:bg-gray-100 hover:border-gray-400 transition-all flex flex-col items-center justify-center min-h-[140px]">
+          <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center mb-2 border border-gray-200">
+            <Plus className="w-5 h-5 text-gray-400" />
+          </div>
+          <span className="text-sm font-medium text-gray-600">Connect account</span>
+        </button>
+      </div>
+
+      {/* Transactions to Review */}
+      <div className="bg-white rounded-xl border border-gray-200">
+        <div className="p-4 border-b border-gray-100 flex items-center justify-between">
+          <h3 className="font-semibold text-gray-900">For Review</h3>
+          <div className="flex items-center gap-2">
+            <span className="px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full text-xs font-medium">20 items</span>
+            <button className="text-sm text-green-600 hover:text-green-700 font-medium">View all</button>
+          </div>
+        </div>
+        <div className="divide-y divide-gray-100">
+          {[
+            { date: 'Dec 15', description: 'Amazon Web Services', amount: -129.99, category: 'Software' },
+            { date: 'Dec 14', description: 'Stripe Payment', amount: 2450.00, category: 'Income' },
+            { date: 'Dec 14', description: 'Office Supplies Co', amount: -89.50, category: 'Office Expenses' },
+            { date: 'Dec 13', description: 'Client Payment - Acme Corp', amount: 5000.00, category: 'Income' },
+            { date: 'Dec 12', description: 'Adobe Creative Cloud', amount: -54.99, category: 'Software' },
+          ].map((txn, index) => (
+            <div key={index} className="p-4 flex items-center gap-4 hover:bg-gray-50">
+              <div className="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                {txn.amount > 0 ? (
+                  <ArrowDownRight className="w-5 h-5 text-green-600" />
+                ) : (
+                  <ArrowUpRight className="w-5 h-5 text-red-600" />
+                )}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-medium text-gray-900 truncate">{txn.description}</p>
+                <p className="text-sm text-gray-500">{txn.date}</p>
+              </div>
+              <div className="text-right">
+                <p className={`font-semibold ${txn.amount > 0 ? 'text-green-600' : 'text-gray-900'}`}>
+                  {txn.amount > 0 ? '+' : ''}${Math.abs(txn.amount).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                </p>
+                <p className="text-xs text-gray-500">{txn.category}</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button className="p-2 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg">
+                  <CheckCircle className="w-5 h-5" />
+                </button>
+                <button className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg">
+                  <MoreHorizontal className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+
+  // Render Products & Services Section (NEW)
+  const renderProducts = () => {
+    const products = [
+      { id: 1, name: 'Consulting Services', type: 'Service', price: 150.00, income_account: 'Services' },
+      { id: 2, name: 'Software Development', type: 'Service', price: 200.00, income_account: 'Services' },
+      { id: 3, name: 'Training Session', type: 'Service', price: 500.00, income_account: 'Services' },
+      { id: 4, name: 'Product License', type: 'Non-inventory', price: 999.00, income_account: 'Sales of Product Income' },
+    ];
+
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <h2 className="text-xl font-bold text-gray-900">Products and Services</h2>
+          <div className="flex items-center gap-3">
+            <button className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 text-sm font-medium">
+              More
+            </button>
+            <button className="px-4 py-2 bg-[#2CA01C] text-white rounded-lg hover:bg-[#248a17] text-sm font-medium flex items-center gap-2">
+              <Plus className="w-4 h-4" />
+              New
+            </button>
+          </div>
+        </div>
+
+        {/* Filter Bar */}
+        <div className="flex items-center gap-4">
+          <div className="relative flex-1 max-w-md">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Search products and services"
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+            />
+          </div>
+          <select className="px-3 py-2 border border-gray-300 rounded-lg text-sm">
+            <option>All Types</option>
+            <option>Service</option>
+            <option>Non-inventory</option>
+            <option>Inventory</option>
+          </select>
+          <select className="px-3 py-2 border border-gray-300 rounded-lg text-sm">
+            <option>Active</option>
+            <option>Inactive</option>
+            <option>All</option>
+          </select>
+        </div>
+
+        {/* Products Table */}
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <table className="w-full">
+            <thead className="bg-gray-50 border-b border-gray-200">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Name</th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Type</th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Sales Price</th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Income Account</th>
+                <th className="px-6 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">Action</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-200">
+              {products.map((product) => (
+                <tr key={product.id} className="hover:bg-gray-50">
+                  <td className="px-6 py-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 bg-green-100 rounded flex items-center justify-center">
+                        <Package className="w-4 h-4 text-green-600" />
+                      </div>
+                      <span className="font-medium text-gray-900">{product.name}</span>
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 text-sm text-gray-600">{product.type}</td>
+                  <td className="px-6 py-4 text-sm font-medium text-gray-900">
+                    ${product.price.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                  </td>
+                  <td className="px-6 py-4 text-sm text-gray-600">{product.income_account}</td>
+                  <td className="px-6 py-4 text-right">
+                    <button className="text-gray-400 hover:text-gray-600">
+                      <Edit3 className="w-4 h-4" />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  };
+
+  // Render Chart of Accounts Section (NEW)
+  const renderChartOfAccounts = () => {
+    const accounts = [
+      { id: 1, name: 'Business Checking', type: 'Bank', detail: 'Checking', balance: 24500.00 },
+      { id: 2, name: 'Accounts Receivable (A/R)', type: 'Accounts Receivable', detail: 'Accounts Receivable', balance: 12500.00 },
+      { id: 3, name: 'Inventory Asset', type: 'Other Current Assets', detail: 'Inventory', balance: 8500.00 },
+      { id: 4, name: 'Accounts Payable (A/P)', type: 'Accounts Payable', detail: 'Accounts Payable', balance: -4200.00 },
+      { id: 5, name: 'Sales of Product Income', type: 'Income', detail: 'Sales of Product Income', balance: 45000.00 },
+      { id: 6, name: 'Services', type: 'Income', detail: 'Service/Fee Income', balance: 32000.00 },
+      { id: 7, name: 'Advertising & Marketing', type: 'Expenses', detail: 'Advertising/Promotional', balance: -2500.00 },
+      { id: 8, name: 'Office Supplies & Software', type: 'Expenses', detail: 'Office/General Administrative Expenses', balance: -1800.00 },
+    ];
+
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <h2 className="text-xl font-bold text-gray-900">Chart of Accounts</h2>
+          <div className="flex items-center gap-3">
+            <button className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 text-sm font-medium flex items-center gap-2">
+              <Settings className="w-4 h-4" />
+              Account Numbering
+            </button>
+            <button className="px-4 py-2 bg-[#2CA01C] text-white rounded-lg hover:bg-[#248a17] text-sm font-medium flex items-center gap-2">
+              <Plus className="w-4 h-4" />
+              New
+            </button>
+          </div>
+        </div>
+
+        {/* Filter Bar */}
+        <div className="flex items-center gap-4">
+          <div className="relative flex-1 max-w-md">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Search accounts"
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+            />
+          </div>
+          <select className="px-3 py-2 border border-gray-300 rounded-lg text-sm">
+            <option>All Account Types</option>
+            <option>Bank</option>
+            <option>Accounts Receivable</option>
+            <option>Other Current Assets</option>
+            <option>Accounts Payable</option>
+            <option>Income</option>
+            <option>Expenses</option>
+          </select>
+        </div>
+
+        {/* Accounts Table */}
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <table className="w-full">
+            <thead className="bg-gray-50 border-b border-gray-200">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Name</th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Type</th>
+                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Detail Type</th>
+                <th className="px-6 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">QuickBooks Balance</th>
+                <th className="px-6 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">Action</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-200">
+              {accounts.map((account) => (
+                <tr key={account.id} className="hover:bg-gray-50">
+                  <td className="px-6 py-4">
+                    <span className="font-medium text-green-600 hover:text-green-700 cursor-pointer">{account.name}</span>
+                  </td>
+                  <td className="px-6 py-4 text-sm text-gray-600">{account.type}</td>
+                  <td className="px-6 py-4 text-sm text-gray-600">{account.detail}</td>
+                  <td className="px-6 py-4 text-right text-sm font-medium">
+                    <span className={account.balance >= 0 ? 'text-gray-900' : 'text-red-600'}>
+                      ${Math.abs(account.balance).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 text-right">
+                    <button className="text-gray-400 hover:text-gray-600">
+                      <ChevronDown className="w-4 h-4" />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  };
+
+  // Handle sidebar navigation
+  const handleSidebarClick = (itemId: string, subId?: string) => {
+    if (subId) {
+      setActiveSubSection(subId);
+      // Map subsection IDs to section display
+      if (subId === 'invoices' || subId === 'customers' || subId === 'products') {
+        setActiveSection(subId === 'products' ? 'products' : subId);
+      } else if (subId === 'expenses-list' || subId === 'vendors' || subId === 'bills') {
+        setActiveSection(subId === 'expenses-list' ? 'expenses' : subId);
+      } else if (subId === 'chart-of-accounts') {
+        setActiveSection('chart-of-accounts');
+      }
+    } else {
+      setActiveSection(itemId);
+      setActiveSubSection(null);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-gray-50 flex flex-col">
+      {/* QuickBooks Header Bar - Exact QB Online style */}
+      <header className="bg-[#2CA01C] text-white flex-shrink-0">
+        <div className="px-4 py-2 flex items-center justify-between">
+          {/* Left: Logo + Company */}
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+              className="p-2 hover:bg-white/20 rounded-lg transition-colors lg:hidden"
+            >
+              {sidebarCollapsed ? <ChevronRight className="w-5 h-5" /> : <ChevronLeft className="w-5 h-5" />}
+            </button>
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 bg-white rounded flex items-center justify-center">
+                <span className="text-[#2CA01C] font-bold text-lg">qb</span>
+              </div>
+              <div className="hidden sm:block">
+                <div className="flex items-center gap-1">
+                  <h1 className="font-semibold text-sm">Your Company</h1>
+                  <ChevronDown className="w-4 h-4 opacity-70" />
+                </div>
               </div>
             </div>
           </div>
 
           {/* Center: Search */}
-          <div className="flex-1 max-w-xl mx-8 hidden md:block">
-            <div className={`relative transition-all ${searchFocused ? 'scale-105' : ''}`}>
+          <div className="flex-1 max-w-xl mx-4 hidden md:block">
+            <div className={`relative transition-all ${searchFocused ? 'scale-[1.02]' : ''}`}>
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-white/60" />
               <input
                 type="text"
-                placeholder="Search transactions, customers, and more..."
+                placeholder="Search transactions, reports, and help"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onFocus={() => setSearchFocused(true)}
                 onBlur={() => setSearchFocused(false)}
-                className="w-full pl-10 pr-4 py-2 bg-white/20 border border-white/30 rounded-lg text-white placeholder-white/60 focus:bg-white focus:text-gray-900 focus:placeholder-gray-400 focus:outline-none transition-colors"
+                className="w-full pl-10 pr-4 py-2 bg-white/15 border border-white/20 rounded-md text-white placeholder-white/60 focus:bg-white focus:text-gray-900 focus:placeholder-gray-400 focus:outline-none transition-all text-sm"
               />
             </div>
           </div>
 
           {/* Right: Actions */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1">
+            {/* Create Button */}
+            <div className="relative" ref={createMenuRef}>
+              <button
+                onClick={() => setCreateMenuOpen(!createMenuOpen)}
+                className="flex items-center gap-1 px-3 py-1.5 bg-white/20 hover:bg-white/30 rounded-md transition-colors text-sm font-medium"
+              >
+                <Plus className="w-4 h-4" />
+                <span className="hidden sm:inline">Create</span>
+                <ChevronDown className="w-3 h-3 ml-1" />
+              </button>
+
+              {/* Create Menu Dropdown */}
+              {createMenuOpen && (
+                <div className="absolute right-0 mt-2 w-80 bg-white rounded-lg shadow-xl border border-gray-200 z-50 overflow-hidden">
+                  <div className="p-4 grid grid-cols-2 gap-4">
+                    <div>
+                      <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Customers</h4>
+                      {createMenuItems.customers.map((item, index) => (
+                        <button
+                          key={index}
+                          onClick={() => {
+                            if (item.label === 'Invoice') setShowInvoiceForm(true);
+                            item.action();
+                            setCreateMenuOpen(false);
+                          }}
+                          className="flex items-center gap-2 w-full px-2 py-1.5 text-sm text-gray-700 hover:bg-gray-50 rounded transition-colors"
+                        >
+                          <item.icon className="w-4 h-4 text-gray-400" />
+                          {item.label}
+                        </button>
+                      ))}
+                    </div>
+                    <div>
+                      <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Vendors</h4>
+                      {createMenuItems.vendors.map((item, index) => (
+                        <button
+                          key={index}
+                          onClick={() => {
+                            if (item.label === 'Expense') setShowExpenseForm(true);
+                            item.action();
+                            setCreateMenuOpen(false);
+                          }}
+                          className="flex items-center gap-2 w-full px-2 py-1.5 text-sm text-gray-700 hover:bg-gray-50 rounded transition-colors"
+                        >
+                          <item.icon className="w-4 h-4 text-gray-400" />
+                          {item.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="border-t border-gray-100 p-4">
+                    <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Other</h4>
+                    <div className="grid grid-cols-2 gap-1">
+                      {createMenuItems.other.map((item, index) => (
+                        <button
+                          key={index}
+                          onClick={() => { item.action(); setCreateMenuOpen(false); }}
+                          className="flex items-center gap-2 px-2 py-1.5 text-sm text-gray-700 hover:bg-gray-50 rounded transition-colors"
+                        >
+                          <item.icon className="w-4 h-4 text-gray-400" />
+                          {item.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
             <button
               onClick={onSync}
               disabled={syncing}
-              className="p-2 hover:bg-white/20 rounded-lg transition-colors"
-              title="Sync Data"
+              className="p-2 hover:bg-white/20 rounded-md transition-colors"
+              title="Sync to Filecoin"
             >
               <RefreshCw className={`w-5 h-5 ${syncing ? 'animate-spin' : ''}`} />
             </button>
-            <button className="p-2 hover:bg-white/20 rounded-lg transition-colors">
+            <button className="p-2 hover:bg-white/20 rounded-md transition-colors relative">
               <Bell className="w-5 h-5" />
+              <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
             </button>
-            <button className="p-2 hover:bg-white/20 rounded-lg transition-colors">
-              <Settings className="w-5 h-5" />
-            </button>
-            <button className="p-2 hover:bg-white/20 rounded-lg transition-colors">
+
+            {/* Gear Menu */}
+            <div className="relative" ref={gearMenuRef}>
+              <button
+                onClick={() => setGearMenuOpen(!gearMenuOpen)}
+                className="p-2 hover:bg-white/20 rounded-md transition-colors"
+              >
+                <Settings className="w-5 h-5" />
+              </button>
+
+              {gearMenuOpen && (
+                <div className="absolute right-0 mt-2 w-72 bg-white rounded-lg shadow-xl border border-gray-200 z-50 overflow-hidden">
+                  <div className="p-3 grid grid-cols-2 gap-3">
+                    <div>
+                      <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 px-2">Your Company</h4>
+                      {GEAR_MENU_ITEMS.yourCompany.map((item) => (
+                        <button
+                          key={item.id}
+                          className="flex items-center gap-2 w-full px-2 py-1.5 text-sm text-gray-700 hover:bg-gray-50 rounded transition-colors"
+                        >
+                          <item.icon className="w-4 h-4 text-gray-400" />
+                          {item.label}
+                        </button>
+                      ))}
+                    </div>
+                    <div>
+                      <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 px-2">Lists</h4>
+                      {GEAR_MENU_ITEMS.lists.slice(0, 4).map((item) => (
+                        <button
+                          key={item.id}
+                          onClick={() => {
+                            if (item.id === 'products-services') {
+                              setActiveSection('products');
+                              setGearMenuOpen(false);
+                            } else if (item.id === 'chart-of-accounts-gear') {
+                              setActiveSection('chart-of-accounts');
+                              setGearMenuOpen(false);
+                            }
+                          }}
+                          className="flex items-center gap-2 w-full px-2 py-1.5 text-sm text-gray-700 hover:bg-gray-50 rounded transition-colors"
+                        >
+                          <item.icon className="w-4 h-4 text-gray-400" />
+                          {item.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="border-t border-gray-100 p-3">
+                    <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 px-2">Tools</h4>
+                    <div className="grid grid-cols-2 gap-1">
+                      {GEAR_MENU_ITEMS.tools.slice(0, 4).map((item) => (
+                        <button
+                          key={item.id}
+                          className="flex items-center gap-2 px-2 py-1.5 text-sm text-gray-700 hover:bg-gray-50 rounded transition-colors"
+                        >
+                          <item.icon className="w-4 h-4 text-gray-400" />
+                          {item.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <button className="p-2 hover:bg-white/20 rounded-md transition-colors">
               <HelpCircle className="w-5 h-5" />
             </button>
           </div>
         </div>
-      </div>
+      </header>
 
-      {/* Create Button + Navigation */}
-      <div className="bg-white border-b border-gray-200">
-        <div className="px-4 sm:px-6 py-3 flex items-center justify-between">
-          {/* Create Button */}
-          <div className="relative" ref={createMenuRef}>
-            <button
-              onClick={() => setCreateMenuOpen(!createMenuOpen)}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-[#2CA01C] text-white rounded-lg hover:bg-[#248a17] transition-colors font-medium"
-            >
-              <Plus className="w-5 h-5" />
-              Create
-              <ChevronDown className={`w-4 h-4 transition-transform ${createMenuOpen ? 'rotate-180' : ''}`} />
-            </button>
+      {/* Main Layout: Sidebar + Content */}
+      <div className="flex flex-1 overflow-hidden">
+        {/* Left Sidebar Navigation - Exact QB Online style */}
+        <aside className={`${sidebarCollapsed ? 'w-16' : 'w-56'} bg-[#1c1c1c] text-white flex-shrink-0 overflow-y-auto transition-all duration-200 hidden lg:block`}>
+          <nav className="py-2">
+            {QB_SIDEBAR_ITEMS.map((item) => (
+              <div key={item.id}>
+                {/* Main Menu Item */}
+                <button
+                  onClick={() => {
+                    if ('submenu' in item && item.submenu) {
+                      toggleMenu(item.id);
+                    } else {
+                      handleSidebarClick(item.id);
+                    }
+                  }}
+                  className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors ${
+                    activeSection === item.id || (activeSubSection && 'submenu' in item && item.submenu?.some(s => s.id === activeSubSection))
+                      ? 'bg-white/10 text-white'
+                      : 'text-gray-300 hover:bg-white/5 hover:text-white'
+                  }`}
+                >
+                  <item.icon className="w-5 h-5 flex-shrink-0" />
+                  {!sidebarCollapsed && (
+                    <>
+                      <span className="flex-1 text-left">{item.label}</span>
+                      {'submenu' in item && item.submenu && (
+                        <ChevronDown className={`w-4 h-4 transition-transform ${expandedMenus.includes(item.id) ? 'rotate-180' : ''}`} />
+                      )}
+                    </>
+                  )}
+                </button>
 
-            {/* Create Menu Dropdown */}
-            {createMenuOpen && (
-              <div className="absolute left-0 mt-2 w-80 bg-white rounded-xl shadow-xl border border-gray-200 z-50 overflow-hidden">
-                <div className="p-4 grid grid-cols-2 gap-4">
-                  {/* Customers Column */}
-                  <div>
-                    <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Customers</h4>
-                    {createMenuItems.customers.map((item, index) => (
+                {/* Submenu Items */}
+                {'submenu' in item && item.submenu && expandedMenus.includes(item.id) && !sidebarCollapsed && (
+                  <div className="bg-black/20">
+                    {item.submenu.map((sub) => (
                       <button
-                        key={index}
-                        onClick={() => { item.action(); setCreateMenuOpen(false); }}
-                        className="flex items-center gap-2 w-full px-2 py-1.5 text-sm text-gray-700 hover:bg-gray-50 rounded transition-colors"
+                        key={sub.id}
+                        onClick={() => handleSidebarClick(item.id, sub.id)}
+                        className={`w-full flex items-center gap-3 pl-12 pr-4 py-2 text-sm transition-colors ${
+                          activeSubSection === sub.id
+                            ? 'bg-white/10 text-white'
+                            : 'text-gray-400 hover:bg-white/5 hover:text-white'
+                        }`}
                       >
-                        <item.icon className="w-4 h-4 text-gray-400" />
-                        {item.label}
+                        {sub.label}
                       </button>
                     ))}
                   </div>
-                  {/* Vendors Column */}
-                  <div>
-                    <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Vendors</h4>
-                    {createMenuItems.vendors.map((item, index) => (
-                      <button
-                        key={index}
-                        onClick={() => { item.action(); setCreateMenuOpen(false); }}
-                        className="flex items-center gap-2 w-full px-2 py-1.5 text-sm text-gray-700 hover:bg-gray-50 rounded transition-colors"
-                      >
-                        <item.icon className="w-4 h-4 text-gray-400" />
-                        {item.label}
-                      </button>
-                    ))}
+                )}
+              </div>
+            ))}
+
+            {/* Filecoin/AI Section */}
+            <div className="mt-4 pt-4 border-t border-white/10">
+              <Link
+                href="/ai-assistant"
+                className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-purple-300 hover:bg-purple-500/10 hover:text-purple-200 transition-colors"
+              >
+                <Sparkles className="w-5 h-5 flex-shrink-0" />
+                {!sidebarCollapsed && <span>AI Assistant</span>}
+              </Link>
+              <div className="px-4 py-2.5 flex items-center gap-3 text-sm text-gray-500">
+                <Database className="w-5 h-5 flex-shrink-0" />
+                {!sidebarCollapsed && (
+                  <div className="flex items-center gap-2">
+                    <span>Filecoin</span>
+                    <CheckCircle className="w-3 h-3 text-green-500" />
                   </div>
-                </div>
-                {/* Other Section */}
-                <div className="border-t border-gray-100 p-4">
-                  <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Other</h4>
-                  <div className="grid grid-cols-2 gap-1">
-                    {createMenuItems.other.map((item, index) => (
-                      <button
-                        key={index}
-                        onClick={() => { item.action(); setCreateMenuOpen(false); }}
-                        className="flex items-center gap-2 px-2 py-1.5 text-sm text-gray-700 hover:bg-gray-50 rounded transition-colors"
-                      >
-                        <item.icon className="w-4 h-4 text-gray-400" />
-                        {item.label}
-                      </button>
-                    ))}
+                )}
+              </div>
+            </div>
+          </nav>
+        </aside>
+
+        {/* Main Content Area */}
+        <main className="flex-1 overflow-y-auto bg-gray-50">
+          <div className="p-6">
+            {/* Error Message */}
+            {error && (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
+                <div className="flex items-start gap-3">
+                  <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <p className="text-red-900 font-medium">Sync Error</p>
+                    <p className="text-red-700 text-sm">{error}</p>
                   </div>
+                  <button onClick={onRefresh} className="text-red-600 hover:text-red-700">
+                    <RefreshCw className="w-4 h-4" />
+                  </button>
                 </div>
               </div>
             )}
-          </div>
 
-          {/* Section Navigation */}
-          <nav className="flex items-center gap-1">
-            {[
-              { id: 'dashboard', label: 'Dashboard', icon: BarChart3 },
-              { id: 'invoices', label: 'Invoices', icon: FileText },
-              { id: 'expenses', label: 'Expenses', icon: Receipt },
-              { id: 'customers', label: 'Customers', icon: Users },
-              { id: 'vendors', label: 'Vendors', icon: Truck },
-              { id: 'reports', label: 'Reports', icon: PieChart },
-            ].map((section) => (
-              <button
-                key={section.id}
-                onClick={() => { setActiveSection(section.id); setSearchQuery(''); }}
-                className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  activeSection === section.id
-                    ? 'bg-green-50 text-green-700'
-                    : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
-                }`}
-              >
-                <section.icon className="w-4 h-4" />
-                <span className="hidden sm:inline">{section.label}</span>
-              </button>
-            ))}
-          </nav>
-
-          {/* AI Assistant Quick Access */}
-          <Link
-            href="/ai-assistant"
-            className="inline-flex items-center gap-2 px-3 py-2 text-purple-600 hover:bg-purple-50 rounded-lg transition-colors text-sm font-medium"
-          >
-            <MessageSquare className="w-4 h-4" />
-            <span className="hidden sm:inline">Ask AI</span>
-          </Link>
-        </div>
-      </div>
-
-      {/* Main Content */}
-      <div className="px-4 sm:px-6 py-6">
-        {/* Error Message */}
-        {error && (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
-            <div className="flex items-start gap-3">
-              <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
-              <div>
-                <p className="text-red-900 font-medium">Sync Error</p>
-                <p className="text-red-700 text-sm">{error}</p>
+            {/* Loading State */}
+            {loading ? (
+              <div className="flex items-center justify-center py-12">
+                <div className="text-center">
+                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600 mx-auto mb-4"></div>
+                  <p className="text-gray-500">Loading your QuickBooks data...</p>
+                </div>
               </div>
-              <button onClick={onRefresh} className="ml-auto text-red-600 hover:text-red-700">
-                <RefreshCw className="w-4 h-4" />
+            ) : data.length === 0 ? (
+              /* Empty State */
+              <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
+                <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <Building className="w-8 h-8 text-green-600" />
+                </div>
+                <h3 className="text-xl font-semibold text-gray-900 mb-2">Welcome to QuickBooks</h3>
+                <p className="text-gray-600 mb-6 max-w-md mx-auto">
+                  Sync your QuickBooks data to see invoices, expenses, customers, and more.
+                  Your data is encrypted and stored securely on Filecoin.
+                </p>
+                <button
+                  onClick={onSync}
+                  disabled={syncing}
+                  className="inline-flex items-center gap-2 px-6 py-3 bg-[#2CA01C] text-white rounded-lg hover:bg-[#248a17] transition-colors font-medium"
+                >
+                  <RefreshCw className={`w-5 h-5 ${syncing ? 'animate-spin' : ''}`} />
+                  {syncing ? 'Syncing...' : 'Sync QuickBooks Data'}
+                </button>
+              </div>
+            ) : (
+              /* Content Based on Active Section */
+              <>
+                {activeSection === 'dashboard' && renderDashboard()}
+                {activeSection === 'banking' && renderBanking()}
+                {activeSection === 'invoices' && renderDataSection('invoices', 'Invoices')}
+                {activeSection === 'expenses' && renderDataSection('expenses', 'Expenses')}
+                {activeSection === 'customers' && renderDataSection('customers', 'Customers')}
+                {activeSection === 'vendors' && renderDataSection('vendors', 'Vendors')}
+                {activeSection === 'reports' && renderReports()}
+                {activeSection === 'products' && renderProducts()}
+                {activeSection === 'chart-of-accounts' && renderChartOfAccounts()}
+              </>
+            )}
+          </div>
+
+          {/* Filecoin Storage Badge */}
+          <div className="px-6 pb-6">
+            <div className="flex items-center justify-center gap-2 text-sm text-gray-500">
+              <Shield className="w-4 h-4 text-green-500" />
+              <span>Your data is encrypted with AES-256 and stored on Filecoin/IPFS</span>
+              {lastSync && (
+                <span className="text-gray-400">• Last sync: {new Date(lastSync).toLocaleString()}</span>
+              )}
+            </div>
+          </div>
+        </main>
+      </div>
+
+      {/* Invoice Form Modal */}
+      {showInvoiceForm && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden">
+            <div className="bg-[#2CA01C] text-white px-6 py-4 flex items-center justify-between">
+              <h2 className="font-semibold">Invoice</h2>
+              <button onClick={() => setShowInvoiceForm(false)} className="p-1 hover:bg-white/20 rounded">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-6 overflow-y-auto max-h-[calc(90vh-120px)]">
+              {/* Invoice Form - QB Style */}
+              <div className="grid grid-cols-2 gap-6 mb-6">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Customer</label>
+                  <select className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500">
+                    <option>Select a customer</option>
+                    {customers.map((c, i) => (
+                      <option key={i} value={String(c.id)}>{String(c.display_name || c.company_name)}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                  <input type="email" className="w-full px-3 py-2 border border-gray-300 rounded-lg" placeholder="customer@email.com" />
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-6 mb-6">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Invoice date</label>
+                  <input type="date" className="w-full px-3 py-2 border border-gray-300 rounded-lg" defaultValue={new Date().toISOString().split('T')[0]} />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Due date</label>
+                  <input type="date" className="w-full px-3 py-2 border border-gray-300 rounded-lg" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Terms</label>
+                  <select className="w-full px-3 py-2 border border-gray-300 rounded-lg">
+                    <option>Net 30</option>
+                    <option>Net 15</option>
+                    <option>Due on receipt</option>
+                  </select>
+                </div>
+              </div>
+              {/* Line Items */}
+              <div className="mb-6">
+                <table className="w-full">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600">Product/Service</th>
+                      <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600">Description</th>
+                      <th className="px-4 py-2 text-right text-xs font-semibold text-gray-600">Qty</th>
+                      <th className="px-4 py-2 text-right text-xs font-semibold text-gray-600">Rate</th>
+                      <th className="px-4 py-2 text-right text-xs font-semibold text-gray-600">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td className="px-4 py-2"><input className="w-full px-2 py-1 border rounded" placeholder="Select" /></td>
+                      <td className="px-4 py-2"><input className="w-full px-2 py-1 border rounded" placeholder="Description" /></td>
+                      <td className="px-4 py-2"><input type="number" className="w-full px-2 py-1 border rounded text-right" defaultValue="1" /></td>
+                      <td className="px-4 py-2"><input type="number" className="w-full px-2 py-1 border rounded text-right" placeholder="0.00" /></td>
+                      <td className="px-4 py-2 text-right font-medium">$0.00</td>
+                    </tr>
+                  </tbody>
+                </table>
+                <button className="mt-2 text-sm text-green-600 hover:text-green-700 font-medium flex items-center gap-1">
+                  <Plus className="w-4 h-4" /> Add line
+                </button>
+              </div>
+              {/* Totals */}
+              <div className="flex justify-end">
+                <div className="w-64 space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span>Subtotal</span>
+                    <span>$0.00</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span>Tax (0%)</span>
+                    <span>$0.00</span>
+                  </div>
+                  <div className="flex justify-between font-semibold text-lg border-t pt-2">
+                    <span>Total</span>
+                    <span>$0.00</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="border-t px-6 py-4 flex items-center justify-end gap-3 bg-gray-50">
+              <button onClick={() => setShowInvoiceForm(false)} className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-100">
+                Cancel
+              </button>
+              <button className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300">
+                Save
+              </button>
+              <button className="px-4 py-2 bg-[#2CA01C] text-white rounded-lg hover:bg-[#248a17]">
+                Save and send
               </button>
             </div>
           </div>
-        )}
-
-        {/* Loading State */}
-        {loading ? (
-          <div className="flex items-center justify-center py-12">
-            <div className="text-center">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600 mx-auto mb-4"></div>
-              <p className="text-gray-500">Loading your QuickBooks data...</p>
-            </div>
-          </div>
-        ) : data.length === 0 ? (
-          /* Empty State */
-          <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
-            <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Building className="w-8 h-8 text-green-600" />
-            </div>
-            <h3 className="text-xl font-semibold text-gray-900 mb-2">Welcome to QuickBooks</h3>
-            <p className="text-gray-600 mb-6 max-w-md mx-auto">
-              Sync your QuickBooks data to see invoices, expenses, customers, and more.
-              Your data is encrypted and stored securely on Filecoin.
-            </p>
-            <button
-              onClick={onSync}
-              disabled={syncing}
-              className="inline-flex items-center gap-2 px-6 py-3 bg-[#2CA01C] text-white rounded-lg hover:bg-[#248a17] transition-colors font-medium"
-            >
-              <RefreshCw className={`w-5 h-5 ${syncing ? 'animate-spin' : ''}`} />
-              {syncing ? 'Syncing...' : 'Sync QuickBooks Data'}
-            </button>
-          </div>
-        ) : (
-          /* Content Based on Active Section */
-          <>
-            {activeSection === 'dashboard' && renderDashboard()}
-            {activeSection === 'invoices' && renderDataSection('invoices', 'Invoices')}
-            {activeSection === 'expenses' && renderDataSection('expenses', 'Expenses')}
-            {activeSection === 'customers' && renderDataSection('customers', 'Customers')}
-            {activeSection === 'vendors' && renderDataSection('vendors', 'Vendors')}
-            {activeSection === 'reports' && renderReports()}
-          </>
-        )}
-
-        {/* Filecoin Storage Badge */}
-        <div className="mt-8 flex items-center justify-center gap-2 text-sm text-gray-500">
-          <CheckCircle className="w-4 h-4 text-green-500" />
-          <span>Your data is encrypted and stored on Filecoin/IPFS</span>
         </div>
-      </div>
+      )}
+
+      {/* Expense Form Modal */}
+      {showExpenseForm && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-hidden">
+            <div className="bg-[#2CA01C] text-white px-6 py-4 flex items-center justify-between">
+              <h2 className="font-semibold">Expense</h2>
+              <button onClick={() => setShowExpenseForm(false)} className="p-1 hover:bg-white/20 rounded">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-6 overflow-y-auto max-h-[calc(90vh-120px)]">
+              <div className="grid grid-cols-2 gap-6 mb-6">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Payee</label>
+                  <select className="w-full px-3 py-2 border border-gray-300 rounded-lg">
+                    <option>Select a payee</option>
+                    {vendors.map((v, i) => (
+                      <option key={i} value={String(v.id)}>{String(v.display_name || v.company_name)}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Payment account</label>
+                  <select className="w-full px-3 py-2 border border-gray-300 rounded-lg">
+                    <option>Business Checking</option>
+                    <option>Business Credit Card</option>
+                    <option>Cash</option>
+                  </select>
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-6 mb-6">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Payment date</label>
+                  <input type="date" className="w-full px-3 py-2 border border-gray-300 rounded-lg" defaultValue={new Date().toISOString().split('T')[0]} />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Payment method</label>
+                  <select className="w-full px-3 py-2 border border-gray-300 rounded-lg">
+                    <option>Check</option>
+                    <option>Credit Card</option>
+                    <option>Cash</option>
+                    <option>Bank Transfer</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Ref no.</label>
+                  <input type="text" className="w-full px-3 py-2 border border-gray-300 rounded-lg" placeholder="Optional" />
+                </div>
+              </div>
+              {/* Category/Amount */}
+              <div className="mb-6">
+                <table className="w-full">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600">Category</th>
+                      <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600">Description</th>
+                      <th className="px-4 py-2 text-right text-xs font-semibold text-gray-600">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td className="px-4 py-2">
+                        <select className="w-full px-2 py-1 border rounded">
+                          <option>Office Supplies & Software</option>
+                          <option>Advertising & Marketing</option>
+                          <option>Travel</option>
+                          <option>Utilities</option>
+                        </select>
+                      </td>
+                      <td className="px-4 py-2"><input className="w-full px-2 py-1 border rounded" placeholder="Description" /></td>
+                      <td className="px-4 py-2"><input type="number" className="w-full px-2 py-1 border rounded text-right" placeholder="0.00" /></td>
+                    </tr>
+                  </tbody>
+                </table>
+                <button className="mt-2 text-sm text-green-600 hover:text-green-700 font-medium flex items-center gap-1">
+                  <Plus className="w-4 h-4" /> Add line
+                </button>
+              </div>
+              {/* Total */}
+              <div className="flex justify-end">
+                <div className="w-48">
+                  <div className="flex justify-between font-semibold text-lg">
+                    <span>Total</span>
+                    <span>$0.00</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="border-t px-6 py-4 flex items-center justify-end gap-3 bg-gray-50">
+              <button onClick={() => setShowExpenseForm(false)} className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-100">
+                Cancel
+              </button>
+              <button className="px-4 py-2 bg-[#2CA01C] text-white rounded-lg hover:bg-[#248a17]">
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

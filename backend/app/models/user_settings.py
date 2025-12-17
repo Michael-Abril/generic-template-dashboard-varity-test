@@ -22,6 +22,20 @@ class UserSettings(Base):
     timezone = Column(String, default="UTC")
     language = Column(String, default="en")
 
+    # Company profile fields for AI personalization
+    company_size = Column(String, nullable=True)  # "1", "2-10", "11-50", "51-200", "201-500", "500+"
+    primary_goal = Column(String, nullable=True)  # User's primary use case for the dashboard
+
+    # Trial and subscription fields
+    trial_tier = Column(String, nullable=True)  # "30_day" or "14_day"
+    trial_start_date = Column(DateTime(timezone=True), nullable=True)
+    trial_end_date = Column(DateTime(timezone=True), nullable=True)
+
+    # Onboarding tracking
+    onboarding_completed = Column(Boolean, default=False)
+    onboarding_completed_at = Column(DateTime(timezone=True), nullable=True)
+    onboarding_step = Column(String, nullable=True)  # Track current step if user leaves mid-flow
+
     # JSON fields for flexibility
     notification_preferences = Column(JSON, default=lambda: {
         "weekly_summary": True,

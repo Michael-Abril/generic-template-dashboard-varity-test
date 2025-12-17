@@ -28,7 +28,7 @@ from .core.startup import startup_sequence, shutdown_sequence
 from .core.database import check_database_health
 
 # Import API routers
-from .api.v1 import marketplace_v2, marketplace_purchases, integrations, ai, oauth, sync, dashboard, admin, stats, conversations, export, team
+from .api.v1 import marketplace_v2, marketplace_purchases, integrations, ai, oauth, sync, dashboard, admin, stats, conversations, export, team, onboarding
 from .api.v1 import settings as settings_router
 
 # Import middleware
@@ -169,6 +169,11 @@ app.include_router(
     team.router,
     prefix="/api/v1/team",
     tags=["Team Management"]
+)
+app.include_router(
+    onboarding.router,
+    prefix="/api/v1",
+    tags=["Onboarding"]
 )
 
 # Initialize services

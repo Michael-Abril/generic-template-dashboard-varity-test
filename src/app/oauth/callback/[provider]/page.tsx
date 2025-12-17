@@ -166,13 +166,34 @@ function OAuthCallbackContent({ params }: OAuthCallbackPageProps) {
         setMessage(`Successfully connected ${params.provider}!`);
         setDetails(`Your ${params.provider} account has been securely connected. Tokens are encrypted with your wallet.`);
 
-        // Trigger initial sync
+        // Check if this OAuth was initiated from the onboarding flow
+        const onboardingIntegration = typeof window !== 'undefined'
+          ? localStorage.getItem('onboarding_integration')
+          : null;
+        const onboardingReturn = typeof window !== 'undefined'
+          ? localStorage.getItem('onboarding_return')
+          : null;
+
+        // Trigger initial sync (will be picked up by onboarding syncing step if from onboarding)
         if (data.requires_sync) {
           await triggerInitialSync(params.provider, effectiveWallet);
         }
 
-        // Check if this page was opened in a new tab from integrations page
-        if (window.opener && !window.opener.closed) {
+        // Handle redirect based on where OAuth was initiated from
+        if (onboardingReturn && onboardingIntegration) {
+          // Clear onboarding localStorage flags
+          localStorage.removeItem('onboarding_integration');
+          localStorage.removeItem('onboarding_step');
+          localStorage.removeItem('onboarding_return');
+
+          // Redirect back to onboarding with syncing step
+          setDetails(`${params.provider} connected! Returning to onboarding...`);
+          setTimeout(() => {
+            setIsRedirecting(true);
+            router.push(`/onboarding?integration=${onboardingIntegration}&step=syncing`);
+          }, 1500);
+        } else if (window.opener && !window.opener.closed) {
+          // Check if this page was opened in a new tab from integrations page
           // Send success message to parent window
           window.opener.postMessage({
             type: 'oauth-complete',

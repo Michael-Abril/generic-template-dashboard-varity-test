@@ -98,6 +98,13 @@ class SettingsService:
             # Build update values dict with only allowed fields
             allowed_fields = [
                 "company_name", "industry", "timezone", "language",
+                # Company profile fields
+                "company_size", "primary_goal",
+                # Trial fields
+                "trial_tier", "trial_start_date", "trial_end_date",
+                # Onboarding tracking
+                "onboarding_completed", "onboarding_completed_at", "onboarding_step",
+                # JSON preferences
                 "notification_preferences", "ui_preferences"
             ]
 
@@ -133,6 +140,18 @@ class SettingsService:
                 "industry": updated.industry,
                 "timezone": updated.timezone or "UTC",
                 "language": updated.language or "en",
+                # Company profile fields
+                "company_size": updated.company_size,
+                "primary_goal": updated.primary_goal,
+                # Trial fields
+                "trial_tier": updated.trial_tier,
+                "trial_start_date": updated.trial_start_date,
+                "trial_end_date": updated.trial_end_date,
+                # Onboarding tracking
+                "onboarding_completed": updated.onboarding_completed or False,
+                "onboarding_completed_at": updated.onboarding_completed_at,
+                "onboarding_step": updated.onboarding_step,
+                # JSON preferences
                 "notification_preferences": updated.notification_preferences or {},
                 "ui_preferences": updated.ui_preferences or {},
                 "created_at": updated.created_at,
