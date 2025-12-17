@@ -7,7 +7,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Layout } from '@/components/Layout';
 import { IntegrationLogo } from '@/components/IntegrationLogo';
-import { AlertTriangle, XCircle, Search } from 'lucide-react';
+import { AlertTriangle, XCircle, Search, CheckCircle } from 'lucide-react';
 import { useToast } from '@/components/ui/Toast';
 import { MarketplaceSkeleton } from '@/components/ui/Skeleton';
 // TODO: Re-enable for USDC marketplace purchases (post-GTM)
@@ -73,6 +73,25 @@ const getOAuthProvider = (logo: string): string => {
   return LOGO_TO_OAUTH_PROVIDER[logo] || logo;
 };
 
+// Helper to check if a product is connected via OAuth
+const isProductConnected = (logo: string, connectedIntegrations: string[]): boolean => {
+  // Check exact logo match first
+  if (connectedIntegrations.includes(logo)) return true;
+  // Check OAuth provider name match
+  const oauthProvider = getOAuthProvider(logo);
+  if (connectedIntegrations.includes(oauthProvider)) return true;
+  // Check common variations
+  const variations = [
+    logo.toLowerCase(),
+    logo.replace(/-/g, '_'),
+    logo.replace(/_/g, '-'),
+    oauthProvider.toLowerCase(),
+    oauthProvider.replace(/-/g, '_'),
+    oauthProvider.replace(/_/g, '-'),
+  ];
+  return variations.some(v => connectedIntegrations.includes(v));
+};
+
 export default function MarketplaceContent() {
   const { authenticated, ready } = usePrivy();
   const { wallets } = useWallets();
@@ -90,6 +109,7 @@ export default function MarketplaceContent() {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [sortBy, setSortBy] = useState<string>('name');
   const [userLicenses, setUserLicenses] = useState<number[]>([]);
+  const [connectedOAuthIntegrations, setConnectedOAuthIntegrations] = useState<string[]>([]);
   const [purchasing, setPurchasing] = useState<number | null>(null);
   const [purchaseStatus, setPurchaseStatus] = useState<string>('');
   const [loading, setLoading] = useState(true);
@@ -139,6 +159,41 @@ export default function MarketplaceContent() {
     };
 
     loadUserIntegrations();
+  }, [address]);
+
+  // Load connected OAuth integrations (separate from purchases)
+  useEffect(() => {
+    const loadConnectedIntegrations = async () => {
+      if (!address) {
+        setConnectedOAuthIntegrations([]);
+        return;
+      }
+      try {
+        const apiBase = process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
+        const res = await fetch(
+          `${apiBase}/api/v1/integrations/installed?wallet_address=${address}`
+        );
+        if (!res.ok) {
+          setConnectedOAuthIntegrations([]);
+          return;
+        }
+        const data = await res.json();
+        // Extract provider names from connected OAuth integrations
+        const connectedProviders = (data.integrations || [])
+          .filter((integration: { connected: boolean }) => integration.connected)
+          .map((integration: { name: string }) => {
+            // Map display names back to provider keys used in LOGO_TO_OAUTH_PROVIDER
+            const name = integration.name.toLowerCase().replace(/\s+/g, '-');
+            return name;
+          });
+        setConnectedOAuthIntegrations(connectedProviders);
+      } catch (e) {
+        console.error('Failed to load connected integrations', e);
+        setConnectedOAuthIntegrations([]);
+      }
+    };
+
+    loadConnectedIntegrations();
   }, [address]);
 
   const loadMarketplaceData = async () => {
@@ -496,7 +551,7 @@ export default function MarketplaceContent() {
                 </div>
                 <div className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-lg hover:border-gray-300 hover:-translate-y-0.5 transition-all duration-200 cursor-default">
                   <p className="text-sm text-gray-600">Your Connected</p>
-                  <p className="text-2xl font-bold text-green-600">{userLicenses.length}</p>
+                  <p className="text-2xl font-bold text-green-600">{connectedOAuthIntegrations.length}</p>
                 </div>
               </div>
 
@@ -530,19 +585,30 @@ export default function MarketplaceContent() {
                   {filteredProducts.map(product => {
                     // In "coming-soon" tab, all products are grayed out and not clickable
                     const isComingSoon = marketplaceTab === 'coming-soon' || product.coming_soon;
+                    // Check if this product is connected via OAuth
+                    const isConnected = isProductConnected(product.logo, connectedOAuthIntegrations);
 
                     return (
                     <div
                       key={product.id}
-                      className={`bg-white rounded-xl border border-gray-200 p-6 relative ${
-                        isComingSoon
-                          ? 'opacity-60 cursor-not-allowed transition-all duration-200'
-                          : 'hover:shadow-xl hover:border-blue-300 hover:-translate-y-1 transition-all duration-300 cursor-pointer'
+                      className={`bg-white rounded-xl p-6 relative ${
+                        isConnected
+                          ? 'border-2 border-green-500 ring-2 ring-green-100 hover:shadow-xl hover:-translate-y-1 transition-all duration-300 cursor-pointer'
+                          : isComingSoon
+                            ? 'border border-gray-200 opacity-60 cursor-not-allowed transition-all duration-200'
+                            : 'border border-gray-200 hover:shadow-xl hover:border-blue-300 hover:-translate-y-1 transition-all duration-300 cursor-pointer'
                       }`}
                       onClick={() => !isComingSoon && handleSelectProduct(product)}
                     >
-                      {/* Coming Soon Badge - always show on coming-soon tab */}
-                      {isComingSoon && (
+                      {/* Connected Badge - green checkmark in top right */}
+                      {isConnected && (
+                        <div className="absolute top-3 right-3 bg-green-500 text-white rounded-full p-1 shadow-md">
+                          <CheckCircle className="w-4 h-4" />
+                        </div>
+                      )}
+
+                      {/* Coming Soon Badge - only show if not connected */}
+                      {isComingSoon && !isConnected && (
                         <div className="absolute top-3 right-3 bg-amber-100 text-amber-800 text-xs font-semibold px-2 py-1 rounded-full">
                           Coming Soon
                         </div>

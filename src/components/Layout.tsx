@@ -14,7 +14,7 @@ export function Layout({ children }: LayoutProps) {
   const { address } = useWalletSync();
   const [installedTools, setInstalledTools] = useState<string[]>([]);
 
-  // Load installed tools based on real purchases/integrations
+  // Load installed tools from OAuth connections
   useEffect(() => {
     const loadInstalledTools = async () => {
       if (!authenticated || !address) {
@@ -24,16 +24,17 @@ export function Layout({ children }: LayoutProps) {
       try {
         const apiBase = process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
         const res = await fetch(
-          `${apiBase}/api/v1/marketplace/my-integrations?wallet_address=${address}`
+          `${apiBase}/api/v1/integrations/installed?wallet_address=${address}`
         );
         if (!res.ok) {
           setInstalledTools([]);
           return;
         }
-        const data = await res.json() as Array<{ product_name: string; is_purchased: boolean }>;
-        const tools = data
-          .filter((integration) => integration.is_purchased)
-          .map((integration) => integration.product_name);
+        const data = await res.json();
+        // Extract tool names from connected OAuth integrations
+        const tools = (data.integrations || [])
+          .filter((integration: { connected: boolean }) => integration.connected)
+          .map((integration: { name: string }) => integration.name);
         setInstalledTools(tools);
       } catch {
         setInstalledTools([]);
