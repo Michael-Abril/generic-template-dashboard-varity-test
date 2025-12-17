@@ -215,13 +215,18 @@ async def on_shutdown():
     await shutdown_sequence()
 
 
+# Build timestamp for deployment verification
+BUILD_TIMESTAMP = "2025-12-17T01:30:00Z"
+BUILD_VERSION = "1.0.1-settings-fix"
+
+
 # API endpoints
 @app.get("/")
 async def root():
     """Root endpoint"""
     return {
         "service": "Varity Generic Company Dashboard API",
-        "version": "1.0.0",
+        "version": BUILD_VERSION,
         "storage": "Filecoin/IPFS (Pinata)",
         "encryption": "Lit Protocol",
         "chain": settings.varity_chain_name,
@@ -262,7 +267,8 @@ async def health_check():
             "pinata": "connected" if service_status.get("pinata", False) else "not configured",
             "ollama": "connected" if service_status.get("ollama", False) else "not configured",
             "arbitrum_rpc": "connected" if service_status.get("arbitrum_rpc", False) else "not configured",
-            "version": "1.0.0",
+            "version": BUILD_VERSION,
+            "build_timestamp": BUILD_TIMESTAMP,
             "environment": os.getenv("ENVIRONMENT", "development")
         }
     except Exception as e:
