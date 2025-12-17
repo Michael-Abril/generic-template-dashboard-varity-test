@@ -421,12 +421,70 @@ export function AIChat() {
     setMessages([]);
   };
 
-  const suggestedQuestions = [
-    "What's my total revenue this month?",
-    "Show me recent expenses",
-    "Who are my top customers?",
-    "What's my profit margin?",
-  ];
+  // Integration-specific suggested questions
+  const getIntegrationQuestions = () => {
+    const questions: { question: string; integration?: string }[] = [];
+
+    // QuickBooks-specific questions
+    if (installedTools.some(t => t.toLowerCase().includes('quickbooks'))) {
+      questions.push(
+        { question: "Show my overdue invoices from QuickBooks", integration: "quickbooks" },
+        { question: "What's my accounts receivable balance?", integration: "quickbooks" },
+        { question: "Who are my top 5 customers by revenue?", integration: "quickbooks" },
+        { question: "Show my P&L summary for this month", integration: "quickbooks" },
+        { question: "What expenses are due this week?", integration: "quickbooks" },
+        { question: "Compare my revenue vs expenses this quarter", integration: "quickbooks" }
+      );
+    }
+
+    // Google Workspace questions
+    if (installedTools.some(t => t.toLowerCase().includes('google'))) {
+      questions.push(
+        { question: "What meetings do I have today?", integration: "google" },
+        { question: "Show unread emails from this week", integration: "google" },
+        { question: "Find documents shared with me recently", integration: "google" }
+      );
+    }
+
+    // Salesforce questions
+    if (installedTools.some(t => t.toLowerCase().includes('salesforce'))) {
+      questions.push(
+        { question: "Show my open deals by stage", integration: "salesforce" },
+        { question: "What leads were created this week?", integration: "salesforce" },
+        { question: "Who are my hottest opportunities?", integration: "salesforce" }
+      );
+    }
+
+    // Slack questions
+    if (installedTools.some(t => t.toLowerCase().includes('slack'))) {
+      questions.push(
+        { question: "Show recent important messages", integration: "slack" },
+        { question: "What channels am I most active in?", integration: "slack" }
+      );
+    }
+
+    // HubSpot questions
+    if (installedTools.some(t => t.toLowerCase().includes('hubspot'))) {
+      questions.push(
+        { question: "Show my deal pipeline", integration: "hubspot" },
+        { question: "What contacts were added recently?", integration: "hubspot" }
+      );
+    }
+
+    // Default questions if no specific integrations or as fallback
+    if (questions.length === 0) {
+      questions.push(
+        { question: "What's my total revenue this month?" },
+        { question: "Show me recent expenses" },
+        { question: "Who are my top customers?" },
+        { question: "What's my profit margin?" }
+      );
+    }
+
+    return questions.slice(0, 6); // Return max 6 questions
+  };
+
+  const suggestedQuestions = getIntegrationQuestions();
 
   // Show loading state while wallet syncs
   if (isLoading) {
@@ -626,9 +684,29 @@ export function AIChat() {
             </div>
             <div>
               <h2 className="text-white font-bold text-lg">AI Business Assistant</h2>
-              <div className="flex gap-2 mt-1">
+              <div className="flex flex-wrap gap-2 mt-1">
                 {installedTools.length > 0 ? (
-                  <p className="text-xs text-white/80">Connected to {installedTools.join(', ')}</p>
+                  <>
+                    <p className="text-xs text-white/80">Connected:</p>
+                    {installedTools.slice(0, 4).map((tool, i) => (
+                      <span
+                        key={i}
+                        className={`text-xs px-2 py-0.5 rounded-full ${
+                          tool.toLowerCase().includes('quickbooks') ? 'bg-green-500/30 text-green-100' :
+                          tool.toLowerCase().includes('google') ? 'bg-red-500/30 text-red-100' :
+                          tool.toLowerCase().includes('salesforce') ? 'bg-blue-500/30 text-blue-100' :
+                          tool.toLowerCase().includes('slack') ? 'bg-purple-500/30 text-purple-100' :
+                          tool.toLowerCase().includes('hubspot') ? 'bg-orange-500/30 text-orange-100' :
+                          'bg-white/20 text-white/90'
+                        }`}
+                      >
+                        {tool}
+                      </span>
+                    ))}
+                    {installedTools.length > 4 && (
+                      <span className="text-xs text-white/60">+{installedTools.length - 4} more</span>
+                    )}
+                  </>
                 ) : (
                   <p className="text-xs text-white/80">No integrations connected</p>
                 )}
@@ -641,28 +719,54 @@ export function AIChat() {
         <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50">
           {messages.length === 0 && (
             <div className="text-center py-8">
-              <div className="w-20 h-20 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-4">
-                <MessageSquare className="w-10 h-10 text-blue-500" />
+              <div className={`w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4 ${
+                installedTools.some(t => t.toLowerCase().includes('quickbooks'))
+                  ? 'bg-green-50'
+                  : 'bg-blue-50'
+              }`}>
+                <MessageSquare className={`w-10 h-10 ${
+                  installedTools.some(t => t.toLowerCase().includes('quickbooks'))
+                    ? 'text-green-500'
+                    : 'text-blue-500'
+                }`} />
               </div>
               <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                {installedTools.length > 0 ? "I'm ready to help!" : "Install integrations to get started"}
+                {installedTools.length > 0
+                  ? installedTools.some(t => t.toLowerCase().includes('quickbooks'))
+                    ? "Your QuickBooks AI Assistant is ready!"
+                    : "I'm ready to help!"
+                  : "Install integrations to get started"}
               </h3>
               <p className="text-sm text-gray-600 mb-6 max-w-md mx-auto">
                 {installedTools.length > 0
-                  ? "Ask me anything about your business data. I can analyze information across all your connected tools."
+                  ? installedTools.some(t => t.toLowerCase().includes('quickbooks'))
+                    ? "I have full access to your QuickBooks data. Ask me about invoices, expenses, customers, vendors, and financial reports."
+                    : "Ask me anything about your business data. I can analyze information across all your connected tools."
                   : "Connect tools like QuickBooks and Salesforce from the marketplace to unlock AI insights."}
               </p>
               {installedTools.length > 0 && (
-                <div className="max-w-md mx-auto">
+                <div className="max-w-lg mx-auto">
                   <p className="text-xs font-medium text-gray-700 mb-3">Try asking:</p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    {suggestedQuestions.map((question, i) => (
+                    {suggestedQuestions.map((item, i) => (
                       <button
                         key={i}
-                        onClick={() => setInput(question)}
-                        className="text-left text-xs p-3 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 hover:border-blue-300 transition-colors"
+                        onClick={() => setInput(item.question)}
+                        className="text-left text-xs p-3 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 hover:border-blue-300 transition-colors group"
                       >
-                        {question}
+                        <span className="block">{item.question}</span>
+                        {item.integration && (
+                          <span className={`text-[10px] mt-1 inline-block px-1.5 py-0.5 rounded ${
+                            item.integration === 'quickbooks' ? 'bg-green-100 text-green-700' :
+                            item.integration === 'google' ? 'bg-red-100 text-red-700' :
+                            item.integration === 'salesforce' ? 'bg-blue-100 text-blue-700' :
+                            item.integration === 'slack' ? 'bg-purple-100 text-purple-700' :
+                            item.integration === 'hubspot' ? 'bg-orange-100 text-orange-700' :
+                            'bg-gray-100 text-gray-700'
+                          }`}>
+                            {item.integration}
+                          </span>
+                        )}
                       </button>
                     ))}
                   </div>
