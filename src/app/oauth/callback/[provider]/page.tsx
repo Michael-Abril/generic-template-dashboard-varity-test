@@ -217,15 +217,13 @@ function OAuthCallbackContent({ params }: OAuthCallbackPageProps) {
 
   const triggerInitialSync = async (provider: string, wallet: string) => {
     try {
-      await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8001'}/api/v1/sync/trigger`, {
+      await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8002'}/api/v1/sync/${provider}/trigger`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          provider,
           wallet_address: wallet,
-          sync_type: 'initial'
         }),
       });
     } catch (error) {
