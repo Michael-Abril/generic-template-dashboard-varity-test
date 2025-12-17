@@ -216,8 +216,8 @@ async def on_shutdown():
 
 
 # Build timestamp for deployment verification
-BUILD_TIMESTAMP = "2025-12-17T01:45:00Z"
-BUILD_VERSION = "1.0.2-debug-error"
+BUILD_TIMESTAMP = "2025-12-17T04:45:00Z"
+BUILD_VERSION = "1.0.3-auth-fix"
 
 
 # API endpoints

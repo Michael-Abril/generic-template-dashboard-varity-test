@@ -57,6 +57,7 @@ class WalletAuthMiddleware(BaseHTTPMiddleware):
     # OAuth callback endpoints that should NOT require wallet auth
     # (OAuth providers can't send wallet signatures)
     # Also includes AI endpoints - wallet auth handled via request body
+    # Settings endpoints use wallet_address as query param for identification
     OAUTH_EXEMPT_PATHS = [
         "/api/v1/oauth/callback",     # OAuth callback (both GET and POST)
         "/api/v1/oauth/authorize",    # OAuth authorization start
@@ -70,6 +71,10 @@ class WalletAuthMiddleware(BaseHTTPMiddleware):
         "/api/v1/ai/health",          # AI health check (public)
         "/api/v1/ai/models",          # AI models list (public)
         "/api/v1/ai/capabilities",    # AI capabilities (public)
+        "/api/v1/settings",           # Settings endpoints (wallet in query param)
+        "/api/v1/account",            # Account deletion (wallet in query param)
+        "/api/v1/team",               # Team management (wallet in query param)
+        "/api/v1/export",             # Data export (wallet in query param)
     ]
 
     # Message expiry in seconds (5 minutes)

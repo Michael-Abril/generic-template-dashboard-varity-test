@@ -122,14 +122,9 @@ async def update_settings(
 
     Updates one or more user settings. Only provided fields will be updated.
     """
-    import traceback
-
     try:
-        logger.info(f"PUT /settings - Step 1: Received request for {wallet_address}")
-
         # Convert Pydantic model to dict, excluding None values
         update_data = settings_update.model_dump(exclude_none=True) if settings_update else {}
-        logger.info(f"PUT /settings - Step 2: update_data = {update_data}")
 
         if not update_data:
             raise HTTPException(
@@ -137,14 +132,12 @@ async def update_settings(
                 detail="No settings provided to update"
             )
 
-        logger.info(f"PUT /settings - Step 3: Calling settings_service.update_user_settings")
         updated_settings = await settings_service.update_user_settings(
             db, wallet_address, update_data
         )
-        logger.info(f"PUT /settings - Step 4: Got response from service")
 
         # Service returns a dict with all values
-        response = {
+        return {
             "wallet_address": updated_settings["wallet_address"],
             "company_name": updated_settings["company_name"],
             "industry": updated_settings["industry"],
@@ -155,22 +148,15 @@ async def update_settings(
             "created_at": updated_settings["created_at"].isoformat() if updated_settings["created_at"] else None,
             "updated_at": updated_settings["updated_at"].isoformat() if updated_settings["updated_at"] else None,
         }
-        logger.info(f"PUT /settings - Step 5: Returning response")
-        return response
 
     except HTTPException:
         raise
     except Exception as e:
-        error_tb = traceback.format_exc()
-        logger.error(f"PUT /settings ERROR: {str(e)}")
-        logger.error(f"PUT /settings TRACEBACK: {error_tb}")
-        # Return the actual error for debugging (TEMPORARY)
-        return {
-            "success": False,
-            "error": str(e),
-            "error_type": type(e).__name__,
-            "traceback": error_tb.split('\n')[-5:]
-        }
+        logger.error(f"Error updating settings: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update settings: {str(e)}"
+        )
 
 
 @router.get("/settings/api-keys", response_model=List[APIKeyResponse])
