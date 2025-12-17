@@ -40,7 +40,23 @@ oauth_states = {}
 STATE_SECRET = settings.secret_key if hasattr(settings, 'secret_key') else "varity-oauth-state-secret-key-2024"
 
 
-def encode_oauth_state(integration: str, wallet_address: str, shop_domain: str = None, subdomain: str = None, redirect_uri: str = None) -> str:
+def generate_pkce_pair() -> tuple:
+    """
+    Generate PKCE code_verifier and code_challenge pair.
+    Required by Salesforce, Google, Microsoft, and other OAuth providers.
+    """
+    # Generate code_verifier (43-128 characters, URL-safe)
+    code_verifier = secrets.token_urlsafe(64)[:128]
+
+    # Generate code_challenge = BASE64URL(SHA256(code_verifier))
+    code_challenge = base64.urlsafe_b64encode(
+        hashlib.sha256(code_verifier.encode()).digest()
+    ).decode().rstrip('=')
+
+    return code_verifier, code_challenge
+
+
+def encode_oauth_state(integration: str, wallet_address: str, shop_domain: str = None, subdomain: str = None, redirect_uri: str = None, code_verifier: str = None) -> str:
     """
     Encode OAuth state data into a signed token.
     This allows state validation even if the in-memory oauth_states dict is lost (e.g., backend restart).
@@ -58,6 +74,8 @@ def encode_oauth_state(integration: str, wallet_address: str, shop_domain: str =
         data["d"] = subdomain
     if redirect_uri:
         data["u"] = redirect_uri  # redirect_uri - CRITICAL for OAuth consistency
+    if code_verifier:
+        data["v"] = code_verifier  # PKCE code_verifier for token exchange
 
     # Encode data
     payload = base64.urlsafe_b64encode(json.dumps(data).encode()).decode()
@@ -101,6 +119,7 @@ def decode_oauth_state(state: str) -> Optional[Dict[str, Any]]:
             "shop_domain": data.get("s"),
             "subdomain": data.get("d"),
             "redirect_uri": data.get("u"),  # CRITICAL: Use same redirect_uri as START phase
+            "code_verifier": data.get("v"),  # PKCE code_verifier for token exchange
         }
     except Exception as e:
         logger.error(f"Failed to decode OAuth state: {e}")
@@ -289,6 +308,14 @@ async def start_oauth_flow(
         # This ensures consistency between START and CALLBACK phases
         redirect_uri = get_redirect_uri(integration)
 
+        # Generate PKCE for providers that require it
+        # Salesforce, Google, Microsoft require PKCE (code_challenge)
+        pkce_providers = ["salesforce", "google", "google_workspace", "microsoft", "hubspot", "slack"]
+        code_verifier = None
+        code_challenge = None
+        if integration in pkce_providers:
+            code_verifier, code_challenge = generate_pkce_pair()
+
         # Generate state token for CSRF protection
         # State is self-contained (encoded with signature) so it survives backend restarts
         # CRITICAL: Store redirect_uri in state to ensure same URI is used in CALLBACK
@@ -297,7 +324,8 @@ async def start_oauth_flow(
             wallet_address=request.wallet_address,
             shop_domain=request.shop_domain,
             subdomain=request.subdomain,
-            redirect_uri=redirect_uri  # Store for CALLBACK phase
+            redirect_uri=redirect_uri,  # Store for CALLBACK phase
+            code_verifier=code_verifier  # Store PKCE verifier for token exchange
         )
 
         # Also store in memory for faster lookup (optional, state is self-validating)
@@ -306,7 +334,8 @@ async def start_oauth_flow(
             "wallet_address": request.wallet_address,
             "shop_domain": request.shop_domain,
             "subdomain": request.subdomain,
-            "redirect_uri": redirect_uri
+            "redirect_uri": redirect_uri,
+            "code_verifier": code_verifier
         }
 
         # Build authorization URL
@@ -339,6 +368,11 @@ async def start_oauth_flow(
             "state": state,
             "scope": config["scope"]
         }
+
+        # Add PKCE parameters if generated
+        if code_challenge:
+            params["code_challenge"] = code_challenge
+            params["code_challenge_method"] = "S256"
 
         # Add integration-specific parameters
         if integration == "quickbooks":
@@ -461,6 +495,11 @@ async def oauth_callback_post(request: Request, db: AsyncSession = Depends(get_d
             "client_id": config["client_id"],
             "client_secret": config["client_secret"]
         }
+
+        # Add PKCE code_verifier if present (required by Salesforce, Google, Microsoft, etc.)
+        code_verifier = state_data.get("code_verifier")
+        if code_verifier:
+            token_data["code_verifier"] = code_verifier
 
         # Exchange code for token
         async with httpx.AsyncClient() as client:
@@ -734,6 +773,11 @@ async def oauth_callback(
             "client_id": config["client_id"],
             "client_secret": config["client_secret"]
         }
+
+        # Add PKCE code_verifier if present (required by Salesforce, Google, Microsoft, etc.)
+        code_verifier = state_data.get("code_verifier")
+        if code_verifier:
+            token_data["code_verifier"] = code_verifier
 
         # Exchange code for token
         async with httpx.AsyncClient() as client:
