@@ -8,7 +8,7 @@ import secrets
 import hashlib
 from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Any, Tuple
-from sqlalchemy import select, and_
+from sqlalchemy import select, and_, update
 from sqlalchemy.ext.asyncio import AsyncSession
 import logging
 
@@ -92,38 +92,52 @@ class SettingsService:
             Updated UserSettings object
         """
         try:
-            # Get existing settings (or create default)
-            settings = await self.get_user_settings(db, wallet_address)
+            # First ensure settings exist (creates default if not)
+            existing = await self.get_user_settings(db, wallet_address)
 
-            # Update allowed fields
+            # Build update values dict with only allowed fields
             allowed_fields = [
                 "company_name", "industry", "timezone", "language",
                 "notification_preferences", "ui_preferences"
             ]
 
+            update_values = {}
             for field, value in settings_update.items():
                 if field in allowed_fields and value is not None:
-                    setattr(settings, field, value)
+                    update_values[field] = value
 
-            # Manually set updated_at since onupdate may not trigger with setattr
+            # Always set updated_at
             now = datetime.utcnow()
-            settings.updated_at = now
+            update_values["updated_at"] = now
 
-            # Capture all values BEFORE commit to avoid session expiry issues
-            result_dict = {
-                "id": settings.id,
-                "wallet_address": settings.wallet_address,
-                "company_name": settings.company_name,
-                "industry": settings.industry,
-                "timezone": settings.timezone or "UTC",
-                "language": settings.language or "en",
-                "notification_preferences": settings.notification_preferences or {},
-                "ui_preferences": settings.ui_preferences or {},
-                "created_at": settings.created_at,
-                "updated_at": now
-            }
-
+            # Execute UPDATE statement directly
+            stmt = (
+                update(UserSettings)
+                .where(UserSettings.wallet_address == wallet_address)
+                .values(**update_values)
+            )
+            await db.execute(stmt)
             await db.commit()
+
+            # Fetch the updated record to return
+            result = await db.execute(
+                select(UserSettings).where(UserSettings.wallet_address == wallet_address)
+            )
+            updated = result.scalar_one()
+
+            # Build response dict
+            result_dict = {
+                "id": updated.id,
+                "wallet_address": updated.wallet_address,
+                "company_name": updated.company_name,
+                "industry": updated.industry,
+                "timezone": updated.timezone or "UTC",
+                "language": updated.language or "en",
+                "notification_preferences": updated.notification_preferences or {},
+                "ui_preferences": updated.ui_preferences or {},
+                "created_at": updated.created_at,
+                "updated_at": updated.updated_at
+            }
 
             logger.info(f"Updated settings for wallet {wallet_address}")
             return result_dict
