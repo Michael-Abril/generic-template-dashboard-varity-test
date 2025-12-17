@@ -113,7 +113,9 @@ async def get_settings(
 
 @router.put("/settings")
 async def update_settings(
-    wallet_address: str = Query(..., description="User's wallet address")
+    wallet_address: str = Query(..., description="User's wallet address"),
+    settings_update: SettingsUpdateRequest = Body(...),
+    db: AsyncSession = Depends(get_db)
 ):
     """
     Update user settings
@@ -121,20 +123,8 @@ async def update_settings(
     Updates one or more user settings. Only provided fields will be updated.
     """
     try:
-        logger.info(f"PUT /settings called for wallet: {wallet_address}")
-
-        # DEBUG: Return early - no body, no db
-        return {"debug": "Endpoint reached - no body, no db", "wallet": wallet_address}
-
-        logger.info(f"Request body type: {type(settings_update)}")
-
-        # Try to convert body - this might be where it fails
-        try:
-            update_data = settings_update.model_dump(exclude_none=True) if settings_update else {}
-            logger.info(f"Update data: {update_data}")
-        except Exception as e:
-            logger.error(f"Error converting body: {str(e)}")
-            return {"error": f"Body conversion failed: {str(e)}"}
+        # Convert Pydantic model to dict, excluding None values
+        update_data = settings_update.model_dump(exclude_none=True) if settings_update else {}
 
         if not update_data:
             raise HTTPException(
@@ -146,7 +136,7 @@ async def update_settings(
             db, wallet_address, update_data
         )
 
-        # Service now returns a dict, just need to format datetime fields
+        # Service returns a dict with all values
         return {
             "wallet_address": updated_settings["wallet_address"],
             "company_name": updated_settings["company_name"],
