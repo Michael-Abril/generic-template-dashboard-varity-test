@@ -1,6 +1,7 @@
 'use client';
 
-import { usePrivy } from '@privy-io/react-auth';
+import { useEffect, useState } from 'react';
+import { usePrivy, useWallets } from '@privy-io/react-auth';
 import { Check, Sparkles, Brain } from 'lucide-react';
 import { SignupProgressBar } from '@/components/SignupProgressBar';
 import Link from 'next/link';
@@ -41,13 +42,67 @@ const faqSchema = {
 };
 
 export default function HomePage() {
-  const { authenticated } = usePrivy();
+  const { authenticated, ready } = usePrivy();
+  const { wallets } = useWallets();
+  const [isCheckingOnboarding, setIsCheckingOnboarding] = useState(false);
+  const [hasRedirected, setHasRedirected] = useState(false);
 
-  // If already authenticated, redirect to dashboard
-  if (authenticated) {
-    if (typeof window !== 'undefined') {
-      window.location.href = '/dashboard';
-    }
+  // Check onboarding status and redirect appropriately
+  useEffect(() => {
+    const checkOnboardingAndRedirect = async () => {
+      if (!authenticated || !ready || hasRedirected || isCheckingOnboarding) return;
+
+      const walletAddress = wallets[0]?.address;
+      if (!walletAddress) return;
+
+      setIsCheckingOnboarding(true);
+
+      try {
+        const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+        const response = await fetch(
+          `${backendUrl}/api/v1/onboarding/status?wallet_address=${walletAddress}`
+        );
+
+        if (response.ok) {
+          const data = await response.json();
+          setHasRedirected(true);
+
+          // If onboarding completed, go to dashboard; otherwise go to onboarding
+          if (data.onboarding_completed) {
+            window.location.href = '/dashboard';
+          } else {
+            window.location.href = '/onboarding';
+          }
+        } else {
+          // If we can't check status, default to onboarding for new users
+          setHasRedirected(true);
+          window.location.href = '/onboarding';
+        }
+      } catch (error) {
+        console.error('Error checking onboarding status:', error);
+        // On error, send to onboarding (safer for new users)
+        setHasRedirected(true);
+        window.location.href = '/onboarding';
+      }
+    };
+
+    checkOnboardingAndRedirect();
+  }, [authenticated, ready, wallets, hasRedirected, isCheckingOnboarding]);
+
+  // Show loading state while checking onboarding status for authenticated users
+  if (authenticated && ready && !hasRedirected) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-16 h-16 border-4 border-brand-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-foreground-secondary">Loading your dashboard...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // If redirecting, show nothing
+  if (hasRedirected) {
     return null;
   }
 
