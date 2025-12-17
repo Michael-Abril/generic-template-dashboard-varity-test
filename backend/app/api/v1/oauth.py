@@ -198,6 +198,15 @@ OAUTH_CONFIGS = {
         "client_secret": settings.zendesk_client_secret if hasattr(settings, 'zendesk_client_secret') else "",
         "redirect_uri": get_redirect_uri("zendesk"),
         "scope": "read"
+    },
+    # Alias: google_workspace maps to same config as google
+    "google_workspace": {
+        "authorize_url": "https://accounts.google.com/o/oauth2/v2/auth",
+        "token_url": "https://oauth2.googleapis.com/token",
+        "client_id": settings.google_client_id if hasattr(settings, 'google_client_id') else "",
+        "client_secret": settings.google_client_secret if hasattr(settings, 'google_client_secret') else "",
+        "redirect_uri": get_redirect_uri("google_workspace"),
+        "scope": "https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/contacts.readonly"
     }
 }
 
@@ -589,6 +598,7 @@ async def oauth_callback_post(request: Request, db: AsyncSession = Depends(get_d
             sync_adapters = {
                 "quickbooks": ("app.adapters.quickbooks.sync", "QuickBooksSync"),
                 "google": ("app.adapters.google.sync", "GoogleSyncAdapter"),
+                "google_workspace": ("app.adapters.google.sync", "GoogleSyncAdapter"),
                 "microsoft": ("app.adapters.microsoft.sync", "MicrosoftSyncAdapter"),
                 "slack": ("app.adapters.slack.sync", "SlackSync"),
                 "hubspot": ("app.adapters.hubspot.sync", "HubSpotSync"),
@@ -801,6 +811,7 @@ async def oauth_callback(
             sync_adapters = {
                 "quickbooks": ("app.adapters.quickbooks.sync", "QuickBooksSync"),
                 "google": ("app.adapters.google.sync", "GoogleSyncAdapter"),
+                "google_workspace": ("app.adapters.google.sync", "GoogleSyncAdapter"),
                 "microsoft": ("app.adapters.microsoft.sync", "MicrosoftSyncAdapter"),
                 "slack": ("app.adapters.slack.sync", "SlackSync"),
                 "hubspot": ("app.adapters.hubspot.sync", "HubSpotSync"),
