@@ -1,9 +1,49 @@
 # CLAUDE.md - Generic Company Dashboard Template
 
-**Last Updated:** December 13, 2025
-**Status:** LIVE at https://app.varity.so - Finishing OAuth & Full Integration
+**Last Updated:** December 17, 2025
+**Status:** LIVE at https://app.varity.so - **BLOCKED** by QuickBooks API Authorization Issue
 **Build Status:** ✅ Passing (Frontend on Vercel + Backend on Railway)
-**Priority:** FINISH remaining features so businesses can start onboarding
+**Priority:** Fix QuickBooks app configuration to enable data sync
+
+---
+
+## 🔴🔴🔴 CRITICAL BLOCKER: QUICKBOOKS API AUTHORIZATION FAILED 🔴🔴🔴
+
+**Status as of Dec 17, 2025:**
+- ✅ OAuth connection flow WORKS (tokens are stored)
+- ✅ Credentials saved to Filecoin/IPFS (CID generated)
+- ✅ Database records created in PostgreSQL
+- ❌ **DATA SYNC FAILS** with `403 Forbidden - ApplicationAuthorizationFailed (Error 3100)`
+
+### Error from Railway Logs:
+```
+QuickBooks API error: {"fault":{"error":[{"message":"message=ApplicationAuthorizationFailed;
+errorCode=003100; statusCode=403"}],"type":"SERVICE"}}
+```
+
+### Root Cause:
+The QuickBooks developer app is in **Development Mode** and can only access sandbox companies, NOT production company data.
+
+### How to Fix (REQUIRES QuickBooks Developer Portal Access):
+
+1. **Go to QuickBooks Developer Portal:** https://developer.intuit.com/app/developer/dashboard
+2. **Select your app** (the one with Client ID in Railway variables)
+3. **Check app status** - If it says "Development", it can ONLY access sandbox data
+4. **To access production data:**
+   - Click "Production Settings"
+   - Complete the app assessment questionnaire
+   - Get app reviewed and approved by Intuit
+   - Once approved, the app will work with real QuickBooks companies
+
+### Alternative (For Testing):
+- Use QuickBooks Sandbox company instead of production company
+- Create sandbox data in QuickBooks Developer Sandbox
+- Connect the sandbox company via OAuth
+
+### Files Affected by This Issue:
+- `backend/app/adapters/quickbooks/sync.py` - Sync adapter (code is correct)
+- `backend/app/api/v1/oauth.py` - OAuth flow (code is correct)
+- The issue is **NOT in the code** - it's QuickBooks app configuration
 
 ---
 
@@ -18,28 +58,22 @@ cd generic-template-dashboard
 npm install --legacy-peer-deps
 ```
 
-### Step 2: Run the Database Migration (CRITICAL - not done yet!)
-```bash
-# Get DATABASE_URL from Railway: Dashboard → PostgreSQL Service → Variables
-cd backend
-DATABASE_URL="postgresql://YOUR_RAILWAY_URL" alembic upgrade head
-```
-
-### Step 3: Add Missing OAuth Credentials in Railway
+### Step 2: Add Missing OAuth Credentials in Railway
 Go to Railway Dashboard → Backend Service → Variables → Add:
 - `GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET`
 - `MICROSOFT_CLIENT_ID` + `MICROSOFT_CLIENT_SECRET`
 - `SLACK_CLIENT_ID` + `SLACK_CLIENT_SECRET`
 
-### Step 4: Test OAuth Flow
+### Step 3: Test OAuth Flow
 1. Visit https://app.varity.so/marketplace
-2. Click "Connect" on QuickBooks (should work)
-3. Click "Connect" on Google (needs credentials from Step 3)
+2. Click "Connect" on QuickBooks (OAuth works, but sync fails - see blocker above)
+3. Click "Connect" on Google (needs credentials from Step 2)
 
-### Step 5: Test Everything Else
+### Step 4: Test Everything Else
 - AI Assistant: https://app.varity.so/ai-assistant
 - Dashboard: https://app.varity.so/dashboard
 - Settings: https://app.varity.so/settings
+- QuickBooks Page: https://app.varity.so/dashboard/tools/quickbooks (shows "No Data" due to blocker)
 
 ---
 
@@ -51,11 +85,25 @@ This dashboard is Varity's **flagship product** for go-to-market. It is LIVE but
 
 | # | Task | Status | Description |
 |---|------|--------|-------------|
-| 1 | **Fix OAuth Integrations** | 🔴 NOT WORKING | Marketplace integrations don't connect - MUST FIX FIRST |
-| 2 | **Test AI Assistant** | 🟡 NEEDS TESTING | Verify AI chat works with Together.ai in production |
-| 3 | **Verify Filecoin Storage** | 🟡 NEEDS TESTING | Confirm data syncs to Pinata and shows in dashboard |
-| 4 | **Fix Settings Page** | 🟡 NEEDS TESTING | Ensure all buttons/features actually work |
-| 5 | **100% Frontend-Backend Integration** | 🟡 NEEDS TESTING | Every button across ALL pages must work |
+| 1 | **🔴 QuickBooks App Authorization** | 🔴 BLOCKED | App needs to be published in Intuit Developer Portal for production access |
+| 2 | **Test Other OAuth Providers** | 🟡 NEEDS CREDENTIALS | Google, Microsoft, Slack need API credentials in Railway |
+| 3 | **Test AI Assistant** | 🟡 NEEDS DATA | Works but needs synced data to be useful |
+| 4 | **Verify Filecoin Storage** | ✅ WORKING | OAuth credentials ARE being stored (CIDs generated) |
+| 5 | **Integration Tools Pages** | ✅ WORKING | /dashboard/tools/[integration] pages created |
+
+### What's Working:
+- ✅ OAuth flow (connects and stores tokens)
+- ✅ Filecoin/IPFS storage (credentials saved with CID)
+- ✅ Database storage (OAuthToken records created)
+- ✅ Sidebar shows connected tools
+- ✅ Marketplace shows green checkmark for connected integrations
+- ✅ Integration tools pages exist (/dashboard/tools/quickbooks)
+
+### What's NOT Working:
+- ❌ QuickBooks data sync (403 - app not authorized for production)
+- ❌ Dashboard KPIs (no data synced)
+- ❌ Analytics page (no data synced)
+- ❌ AI Assistant business queries (no data to query)
 
 ### Live Deployment URLs
 

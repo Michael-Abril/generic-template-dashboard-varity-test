@@ -1,10 +1,43 @@
 # CLAUDE.md - Backend (FastAPI)
 
-**Last Updated:** December 13, 2025
+**Last Updated:** December 17, 2025
 **Framework:** FastAPI + SQLAlchemy + Pydantic
 **Python Version:** 3.8+
 **Production:** Railway (https://generic-template-dashboard-production.up.railway.app)
 **Local Container:** generic-template-backend (Port 8002)
+
+---
+
+## 🔴🔴🔴 CRITICAL BLOCKER: QUICKBOOKS API AUTHORIZATION FAILED 🔴🔴🔴
+
+**Status as of Dec 17, 2025:**
+- ✅ OAuth connection flow WORKS (tokens stored in PostgreSQL + Filecoin)
+- ✅ Credentials encrypted and saved to Filecoin/IPFS (CID generated)
+- ❌ **DATA SYNC FAILS** with `403 Forbidden - ApplicationAuthorizationFailed (Error 3100)`
+
+### Error from Railway Logs:
+```
+QuickBooks API error: {"fault":{"error":[{"message":"message=ApplicationAuthorizationFailed;
+errorCode=003100; statusCode=403"}],"type":"SERVICE"}}
+```
+
+### Root Cause:
+The QuickBooks developer app is in **Development Mode** and can only access sandbox companies, NOT production company data.
+
+### How to Fix (NOT a code issue - requires QuickBooks Developer Portal):
+
+1. **Go to:** https://developer.intuit.com/app/developer/dashboard
+2. **Select your app** (Client ID: `ABX6u8d2g40ZFuGCMcaR6KNGQ0J4GWGukB1oTKtHQqkElbyYuL`)
+3. **Publish the app** for production access:
+   - Click "Production Settings"
+   - Complete the app assessment questionnaire
+   - Get app reviewed and approved by Intuit
+4. **Alternative for testing:** Use QuickBooks Sandbox company
+
+### Files Affected (code is correct, issue is config):
+- `app/adapters/quickbooks/sync.py` - Sync adapter
+- `app/api/v1/oauth.py` - OAuth flow
+- `app/services/filecoin_service.py` - Storage
 
 ---
 
@@ -137,7 +170,7 @@ OAuth integrations on the marketplace page are NOT working. Users cannot connect
 
 | Provider | Developer Portal | Status |
 |----------|-----------------|--------|
-| **QuickBooks** | https://developer.intuit.com | ✅ Configured |
+| **QuickBooks** | https://developer.intuit.com | 🔴 BLOCKED - App in Dev Mode (403 on sync) |
 | **Google** | https://console.cloud.google.com/apis/credentials | 🔴 NEEDS CREDENTIALS |
 | **Microsoft** | https://portal.azure.com (Azure AD) | 🔴 NEEDS CREDENTIALS |
 | **Slack** | https://api.slack.com/apps | 🔴 NEEDS CREDENTIALS |
