@@ -333,6 +333,12 @@ export default function HomePage() {
             <Link href="https://www.varity.so/contact" className="text-sm text-foreground-muted hover:text-foreground-secondary transition-colors">
               Contact
             </Link>
+            <Link href="https://www.varity.so/privacy" className="text-sm text-foreground-muted hover:text-foreground-secondary transition-colors">
+              Privacy Policy
+            </Link>
+            <Link href="https://www.varity.so/terms" className="text-sm text-foreground-muted hover:text-foreground-secondary transition-colors">
+              Terms of Service
+            </Link>
           </div>
 
           {/* DePin Branding */}

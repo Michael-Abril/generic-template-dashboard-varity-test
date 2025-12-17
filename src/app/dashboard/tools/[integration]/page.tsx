@@ -6,6 +6,12 @@ import { usePrivy } from '@privy-io/react-auth';
 import { useWalletSync } from '@/app/providers';
 import { Layout } from '@/components/Layout';
 import Link from 'next/link';
+import { SalesforcePage } from '@/components/integrations/salesforce';
+import { SlackPage } from '@/components/integrations/slack';
+import { HubSpotPage } from '@/components/integrations/hubspot';
+import { QuickBooksPage } from '@/components/integrations/quickbooks';
+import { GoogleWorkspacePage } from '@/components/integrations/google';
+import { Microsoft365Page } from '@/components/integrations/microsoft';
 import {
   RefreshCw,
   FileText,
@@ -2103,6 +2109,94 @@ export default function IntegrationToolPage() {
           onRefresh={fetchData}
         />
       </Layout>
+    );
+  }
+
+  // Render QuickBooks Online native UI for QuickBooks integration
+  if (integration === 'quickbooks') {
+    // Transform data into format expected by QuickBooksPage
+    const quickbooksData = data.reduce((acc, item) => {
+      acc[item.data_type] = item.data;
+      return acc;
+    }, {} as Record<string, any>);
+
+    return (
+      <QuickBooksPage
+        walletAddress={address}
+        data={quickbooksData}
+      />
+    );
+  }
+
+  // Render HubSpot CRM native UI for HubSpot integration
+  if (integration === 'hubspot') {
+    return (
+      <Layout>
+        <HubSpotPage
+          walletAddress={address}
+          data={data}
+          loading={loading}
+          syncing={syncing}
+          error={error}
+          lastSync={lastSync}
+          onSync={syncData}
+          onRefresh={fetchData}
+        />
+      </Layout>
+    );
+  }
+
+  // Render Slack-native UI for Slack integration
+  if (integration === 'slack') {
+    // Transform data into format expected by SlackPage
+    const slackData = {
+      data: data.reduce((acc, item) => {
+        acc[item.data_type] = item.data;
+        return acc;
+      }, {} as Record<string, any>)
+    };
+
+    return (
+      <SlackPage
+        walletAddress={address}
+        data={slackData}
+      />
+    );
+  }
+
+  // Render Google Workspace native UI for Google integration
+  if (integration === 'google' || integration === 'google_workspace') {
+    // Transform data into format expected by GoogleWorkspacePage
+    const googleData = data.reduce((acc, item) => {
+      acc[item.data_type] = item.data;
+      return acc;
+    }, {} as Record<string, any>);
+
+    return (
+      <GoogleWorkspacePage
+        walletAddress={address}
+        data={googleData}
+        onSync={syncData}
+        onRefresh={fetchData}
+        loading={loading}
+      />
+    );
+  }
+
+  // Render Microsoft 365 native UI for Microsoft integration
+  if (integration === 'microsoft' || integration === 'microsoft365') {
+    // Transform data into format expected by Microsoft365Page
+    const microsoftData = data.reduce((acc, item) => {
+      acc[item.data_type] = item.data;
+      return acc;
+    }, {} as Record<string, any>);
+
+    return (
+      <Microsoft365Page
+        walletAddress={address}
+        data={microsoftData}
+        onSync={syncData}
+      />
     );
   }
 

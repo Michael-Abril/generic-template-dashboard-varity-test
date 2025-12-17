@@ -28,7 +28,7 @@ from .core.startup import startup_sequence, shutdown_sequence
 from .core.database import check_database_health
 
 # Import API routers
-from .api.v1 import marketplace_v2, marketplace_purchases, integrations, ai, oauth, sync, dashboard, admin, stats, conversations, export, team, onboarding
+from .api.v1 import marketplace_v2, marketplace_purchases, integrations, ai, oauth, sync, dashboard, admin, stats, conversations, export, team, onboarding, salesforce_crud, google, microsoft
 from .api.v1 import settings as settings_router
 
 # Import middleware
@@ -174,6 +174,21 @@ app.include_router(
     onboarding.router,
     prefix="/api/v1",
     tags=["Onboarding"]
+)
+app.include_router(
+    salesforce_crud.router,
+    prefix="/api/v1/salesforce",
+    tags=["Salesforce CRUD"]
+)
+app.include_router(
+    google.router,
+    prefix="/api/v1/integrations/google",
+    tags=["Google Workspace"]
+)
+app.include_router(
+    microsoft.router,
+    prefix="/api/v1/integrations/microsoft",
+    tags=["Microsoft 365"]
 )
 
 # Initialize services

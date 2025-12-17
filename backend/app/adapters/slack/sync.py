@@ -342,3 +342,167 @@ class SlackSync:
                 }
 
         return results
+
+    async def send_message(
+        self,
+        channel: str,
+        text: str,
+        thread_ts: Optional[str] = None,
+        reply_broadcast: bool = False
+    ) -> Dict[str, Any]:
+        """
+        Send a message to a Slack channel
+
+        Args:
+            channel: Channel ID to send message to
+            text: Message text
+            thread_ts: Optional thread timestamp to reply in thread
+            reply_broadcast: If replying in thread, also send to channel
+
+        Returns:
+            Message response from Slack API
+        """
+        headers = {
+            "Authorization": f"Bearer {self.access_token}",
+            "Content-Type": "application/json"
+        }
+
+        payload = {
+            "channel": channel,
+            "text": text
+        }
+
+        if thread_ts:
+            payload["thread_ts"] = thread_ts
+            if reply_broadcast:
+                payload["reply_broadcast"] = True
+
+        async with httpx.AsyncClient() as client:
+            try:
+                response = await client.post(
+                    f"{self.api_base}/chat.postMessage",
+                    json=payload,
+                    headers=headers,
+                    timeout=30.0
+                )
+                response.raise_for_status()
+                result = response.json()
+
+                if not result.get("ok"):
+                    raise Exception(f"Slack API error: {result.get('error')}")
+
+                logger.info(f"Sent message to channel {channel}")
+                return result
+
+            except httpx.HTTPStatusError as e:
+                logger.error(f"Slack API error: {e.response.text}")
+                raise Exception(f"Failed to send message: {e.response.text}")
+            except Exception as e:
+                logger.error(f"Failed to send message: {e}")
+                raise
+
+    async def add_reaction(
+        self,
+        channel: str,
+        timestamp: str,
+        emoji: str
+    ) -> Dict[str, Any]:
+        """
+        Add a reaction emoji to a message
+
+        Args:
+            channel: Channel ID containing the message
+            timestamp: Message timestamp
+            emoji: Emoji name (without colons)
+
+        Returns:
+            Reaction response from Slack API
+        """
+        headers = {
+            "Authorization": f"Bearer {self.access_token}",
+            "Content-Type": "application/json"
+        }
+
+        payload = {
+            "channel": channel,
+            "timestamp": timestamp,
+            "name": emoji
+        }
+
+        async with httpx.AsyncClient() as client:
+            try:
+                response = await client.post(
+                    f"{self.api_base}/reactions.add",
+                    json=payload,
+                    headers=headers,
+                    timeout=30.0
+                )
+                response.raise_for_status()
+                result = response.json()
+
+                if not result.get("ok"):
+                    # If already reacted, that's okay
+                    if result.get("error") == "already_reacted":
+                        return {"ok": True, "already_reacted": True}
+                    raise Exception(f"Slack API error: {result.get('error')}")
+
+                logger.info(f"Added reaction {emoji} to message {timestamp}")
+                return result
+
+            except httpx.HTTPStatusError as e:
+                logger.error(f"Slack API error: {e.response.text}")
+                raise Exception(f"Failed to add reaction: {e.response.text}")
+            except Exception as e:
+                logger.error(f"Failed to add reaction: {e}")
+                raise
+
+    async def get_thread_replies(
+        self,
+        channel: str,
+        thread_ts: str,
+        limit: int = 100
+    ) -> List[Dict[str, Any]]:
+        """
+        Get replies in a message thread
+
+        Args:
+            channel: Channel ID
+            thread_ts: Thread timestamp (parent message)
+            limit: Maximum number of replies to fetch
+
+        Returns:
+            List of thread reply messages
+        """
+        headers = {
+            "Authorization": f"Bearer {self.access_token}",
+            "Content-Type": "application/json"
+        }
+
+        async with httpx.AsyncClient() as client:
+            try:
+                response = await client.get(
+                    f"{self.api_base}/conversations.replies",
+                    params={
+                        "channel": channel,
+                        "ts": thread_ts,
+                        "limit": limit
+                    },
+                    headers=headers,
+                    timeout=30.0
+                )
+                response.raise_for_status()
+                result = response.json()
+
+                if not result.get("ok"):
+                    raise Exception(f"Slack API error: {result.get('error')}")
+
+                messages = result.get("messages", [])
+                logger.info(f"Retrieved {len(messages)} thread replies")
+                return messages
+
+            except httpx.HTTPStatusError as e:
+                logger.error(f"Slack API error: {e.response.text}")
+                raise Exception(f"Failed to get thread replies: {e.response.text}")
+            except Exception as e:
+                logger.error(f"Failed to get thread replies: {e}")
+                raise

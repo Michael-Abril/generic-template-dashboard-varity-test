@@ -299,3 +299,180 @@ class HubSpotSync:
                 }
 
         return results
+
+    async def create_contact(self, contact_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Create a new contact in HubSpot
+
+        Args:
+            contact_data: Contact properties
+
+        Returns:
+            Created contact data
+        """
+        url = f"{self.api_base}/crm/v3/objects/contacts"
+        headers = {
+            "Authorization": f"Bearer {self.access_token}",
+            "Content-Type": "application/json"
+        }
+
+        payload = {"properties": contact_data}
+
+        async with httpx.AsyncClient() as client:
+            try:
+                response = await client.post(
+                    url,
+                    json=payload,
+                    headers=headers,
+                    timeout=30.0
+                )
+                response.raise_for_status()
+                result = response.json()
+                logger.info(f"Created contact: {result.get('id')}")
+                return result
+
+            except httpx.HTTPStatusError as e:
+                logger.error(f"HubSpot API error creating contact: {e.response.text}")
+                raise Exception(f"Failed to create contact: {e.response.text}")
+
+    async def update_contact(self, contact_id: str, contact_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Update an existing contact in HubSpot
+
+        Args:
+            contact_id: HubSpot contact ID
+            contact_data: Contact properties to update
+
+        Returns:
+            Updated contact data
+        """
+        url = f"{self.api_base}/crm/v3/objects/contacts/{contact_id}"
+        headers = {
+            "Authorization": f"Bearer {self.access_token}",
+            "Content-Type": "application/json"
+        }
+
+        payload = {"properties": contact_data}
+
+        async with httpx.AsyncClient() as client:
+            try:
+                response = await client.patch(
+                    url,
+                    json=payload,
+                    headers=headers,
+                    timeout=30.0
+                )
+                response.raise_for_status()
+                result = response.json()
+                logger.info(f"Updated contact: {contact_id}")
+                return result
+
+            except httpx.HTTPStatusError as e:
+                logger.error(f"HubSpot API error updating contact: {e.response.text}")
+                raise Exception(f"Failed to update contact: {e.response.text}")
+
+    async def delete_contact(self, contact_id: str) -> bool:
+        """
+        Delete a contact from HubSpot
+
+        Args:
+            contact_id: HubSpot contact ID
+
+        Returns:
+            True if successful
+        """
+        url = f"{self.api_base}/crm/v3/objects/contacts/{contact_id}"
+        headers = {
+            "Authorization": f"Bearer {self.access_token}"
+        }
+
+        async with httpx.AsyncClient() as client:
+            try:
+                response = await client.delete(
+                    url,
+                    headers=headers,
+                    timeout=30.0
+                )
+                response.raise_for_status()
+                logger.info(f"Deleted contact: {contact_id}")
+                return True
+
+            except httpx.HTTPStatusError as e:
+                logger.error(f"HubSpot API error deleting contact: {e.response.text}")
+                raise Exception(f"Failed to delete contact: {e.response.text}")
+
+    async def create_deal(self, deal_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Create a new deal in HubSpot"""
+        url = f"{self.api_base}/crm/v3/objects/deals"
+        headers = {
+            "Authorization": f"Bearer {self.access_token}",
+            "Content-Type": "application/json"
+        }
+
+        payload = {"properties": deal_data}
+
+        async with httpx.AsyncClient() as client:
+            try:
+                response = await client.post(url, json=payload, headers=headers, timeout=30.0)
+                response.raise_for_status()
+                return response.json()
+            except httpx.HTTPStatusError as e:
+                logger.error(f"Error creating deal: {e.response.text}")
+                raise Exception(f"Failed to create deal: {e.response.text}")
+
+    async def update_deal(self, deal_id: str, deal_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Update an existing deal in HubSpot"""
+        url = f"{self.api_base}/crm/v3/objects/deals/{deal_id}"
+        headers = {
+            "Authorization": f"Bearer {self.access_token}",
+            "Content-Type": "application/json"
+        }
+
+        payload = {"properties": deal_data}
+
+        async with httpx.AsyncClient() as client:
+            try:
+                response = await client.patch(url, json=payload, headers=headers, timeout=30.0)
+                response.raise_for_status()
+                return response.json()
+            except httpx.HTTPStatusError as e:
+                logger.error(f"Error updating deal: {e.response.text}")
+                raise Exception(f"Failed to update deal: {e.response.text}")
+
+    async def create_company(self, company_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Create a new company in HubSpot"""
+        url = f"{self.api_base}/crm/v3/objects/companies"
+        headers = {
+            "Authorization": f"Bearer {self.access_token}",
+            "Content-Type": "application/json"
+        }
+
+        payload = {"properties": company_data}
+
+        async with httpx.AsyncClient() as client:
+            try:
+                response = await client.post(url, json=payload, headers=headers, timeout=30.0)
+                response.raise_for_status()
+                return response.json()
+            except httpx.HTTPStatusError as e:
+                logger.error(f"Error creating company: {e.response.text}")
+                raise Exception(f"Failed to create company: {e.response.text}")
+
+    async def create_ticket(self, ticket_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Create a new ticket in HubSpot"""
+        url = f"{self.api_base}/crm/v3/objects/tickets"
+        headers = {
+            "Authorization": f"Bearer {self.access_token}",
+            "Content-Type": "application/json"
+        }
+
+        payload = {"properties": ticket_data}
+
+        async with httpx.AsyncClient() as client:
+            try:
+                response = await client.post(url, json=payload, headers=headers, timeout=30.0)
+                response.raise_for_status()
+                return response.json()
+            except httpx.HTTPStatusError as e:
+                logger.error(f"Error creating ticket: {e.response.text}")
+                raise Exception(f"Failed to create ticket: {e.response.text}")

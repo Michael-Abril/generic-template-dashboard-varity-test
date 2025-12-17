@@ -516,3 +516,194 @@ async def delete_tool_data(
     except Exception as e:
         logger.error(f"Failed to delete {tool} data: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================================
+# SLACK-SPECIFIC ENDPOINTS
+# ============================================================================
+
+class SlackMessageRequest(BaseModel):
+    """Slack message send request"""
+    wallet_address: str
+    channel: str
+    text: str
+    thread_ts: Optional[str] = None
+    reply_broadcast: bool = False
+
+
+class SlackReactionRequest(BaseModel):
+    """Slack reaction request"""
+    wallet_address: str
+    channel: str
+    timestamp: str
+    emoji: str
+
+
+@router.post("/slack/messages")
+async def send_slack_message(
+    request: SlackMessageRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Send a message to a Slack channel
+    """
+    try:
+        from app.adapters.slack.sync import SlackSync
+
+        # Get OAuth token for this user
+        user_address = request.wallet_address.lower()
+        token_result = await db.execute(
+            select(OAuthToken)
+            .where(
+                and_(
+                    OAuthToken.user_address == user_address,
+                    OAuthToken.provider == "slack",
+                    OAuthToken.is_active == True,  # noqa: E712
+                )
+            )
+        )
+        oauth_token = token_result.scalar_one_or_none()
+
+        if not oauth_token:
+            raise HTTPException(status_code=404, detail="Slack not connected")
+
+        # Decrypt credentials
+        credentials = await encryption_service.decrypt_oauth_token(
+            encrypted_token=oauth_token.encrypted_token,
+            customer_wallet=user_address
+        )
+
+        # Initialize Slack adapter
+        slack = SlackSync(credentials)
+
+        # Send message
+        result = await slack.send_message(
+            channel=request.channel,
+            text=request.text,
+            thread_ts=request.thread_ts,
+            reply_broadcast=request.reply_broadcast
+        )
+
+        return {
+            "success": True,
+            "data": result
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to send Slack message: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/slack/reactions")
+async def add_slack_reaction(
+    request: SlackReactionRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Add a reaction to a Slack message
+    """
+    try:
+        from app.adapters.slack.sync import SlackSync
+
+        # Get OAuth token for this user
+        user_address = request.wallet_address.lower()
+        token_result = await db.execute(
+            select(OAuthToken)
+            .where(
+                and_(
+                    OAuthToken.user_address == user_address,
+                    OAuthToken.provider == "slack",
+                    OAuthToken.is_active == True,  # noqa: E712
+                )
+            )
+        )
+        oauth_token = token_result.scalar_one_or_none()
+
+        if not oauth_token:
+            raise HTTPException(status_code=404, detail="Slack not connected")
+
+        # Decrypt credentials
+        credentials = await encryption_service.decrypt_oauth_token(
+            encrypted_token=oauth_token.encrypted_token,
+            customer_wallet=user_address
+        )
+
+        # Initialize Slack adapter
+        slack = SlackSync(credentials)
+
+        # Add reaction
+        result = await slack.add_reaction(
+            channel=request.channel,
+            timestamp=request.timestamp,
+            emoji=request.emoji.strip(':')  # Remove colons if present
+        )
+
+        return {
+            "success": True,
+            "data": result
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to add Slack reaction: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/slack/threads/{channel}/{thread_ts}")
+async def get_slack_thread(
+    channel: str,
+    thread_ts: str,
+    wallet_address: str = Query(...),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Get replies in a Slack thread
+    """
+    try:
+        from app.adapters.slack.sync import SlackSync
+
+        # Get OAuth token for this user
+        user_address = wallet_address.lower()
+        token_result = await db.execute(
+            select(OAuthToken)
+            .where(
+                and_(
+                    OAuthToken.user_address == user_address,
+                    OAuthToken.provider == "slack",
+                    OAuthToken.is_active == True,  # noqa: E712
+                )
+            )
+        )
+        oauth_token = token_result.scalar_one_or_none()
+
+        if not oauth_token:
+            raise HTTPException(status_code=404, detail="Slack not connected")
+
+        # Decrypt credentials
+        credentials = await encryption_service.decrypt_oauth_token(
+            encrypted_token=oauth_token.encrypted_token,
+            customer_wallet=user_address
+        )
+
+        # Initialize Slack adapter
+        slack = SlackSync(credentials)
+
+        # Get thread replies
+        result = await slack.get_thread_replies(
+            channel=channel,
+            thread_ts=thread_ts
+        )
+
+        return {
+            "success": True,
+            "data": result
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get Slack thread: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
