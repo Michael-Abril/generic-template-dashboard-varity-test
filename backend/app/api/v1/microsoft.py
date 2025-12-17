@@ -2,15 +2,16 @@
 Microsoft 365 API Endpoints
 Provides full CRUD operations for Outlook, Calendar, OneDrive, Contacts, and To Do
 """
-from fastapi import APIRouter, HTTPException, Query, Body
+from fastapi import APIRouter, HTTPException, Query, Body, Depends
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 import logging
 import httpx
 
-from app.core.database import get_db_session
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, and_
+from app.core.database import get_db
 from app.models.purchase import OAuthToken
-from sqlalchemy import select
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -18,17 +19,18 @@ logger = logging.getLogger(__name__)
 GRAPH_API_BASE = "https://graph.microsoft.com/v1.0"
 
 
-async def get_access_token(wallet_address: str) -> Optional[str]:
+async def get_access_token_from_db(wallet_address: str, db: AsyncSession) -> Optional[str]:
     """Get OAuth access token for Microsoft 365"""
-    async with get_db_session() as db:
-        result = await db.execute(
-            select(OAuthToken).where(
+    result = await db.execute(
+        select(OAuthToken).where(
+            and_(
                 OAuthToken.customer_wallet == wallet_address.lower(),
                 OAuthToken.provider == "microsoft"
             )
         )
-        token = result.scalar_one_or_none()
-        return token.access_token if token else None
+    )
+    token = result.scalar_one_or_none()
+    return token.access_token if token else None
 
 
 # ============================================================================
@@ -39,10 +41,11 @@ async def get_access_token(wallet_address: str) -> Optional[str]:
 async def get_mail_messages(
     wallet_address: str = Query(...),
     folder: str = Query("inbox"),
-    top: int = Query(50, le=100)
+    top: int = Query(50, le=100),
+    db: AsyncSession = Depends(get_db)
 ):
     """Get email messages from a folder"""
-    access_token = await get_access_token(wallet_address)
+    access_token = await get_access_token_from_db(wallet_address, db)
     if not access_token:
         raise HTTPException(status_code=401, detail="Not authenticated with Microsoft 365")
 
@@ -85,10 +88,11 @@ async def send_email(
     body: str = Body(...),
     cc: Optional[List[str]] = Body(None),
     bcc: Optional[List[str]] = Body(None),
-    importance: str = Body("normal")
+    importance: str = Body("normal"),
+    db: AsyncSession = Depends(get_db)
 ):
     """Send an email"""
-    access_token = await get_access_token(wallet_address)
+    access_token = await get_access_token_from_db(wallet_address, db)
     if not access_token:
         raise HTTPException(status_code=401, detail="Not authenticated with Microsoft 365")
 
@@ -134,10 +138,11 @@ async def save_draft(
     subject: str = Body(...),
     body: str = Body(...),
     cc: Optional[List[str]] = Body(None),
-    importance: str = Body("normal")
+    importance: str = Body("normal"),
+    db: AsyncSession = Depends(get_db)
 ):
     """Save email as draft"""
-    access_token = await get_access_token(wallet_address)
+    access_token = await get_access_token_from_db(wallet_address, db)
     if not access_token:
         raise HTTPException(status_code=401, detail="Not authenticated with Microsoft 365")
 
@@ -181,10 +186,11 @@ async def save_draft(
 async def get_calendar_events(
     wallet_address: str = Query(...),
     start_date: Optional[str] = Query(None),
-    end_date: Optional[str] = Query(None)
+    end_date: Optional[str] = Query(None),
+    db: AsyncSession = Depends(get_db)
 ):
     """Get calendar events"""
-    access_token = await get_access_token(wallet_address)
+    access_token = await get_access_token_from_db(wallet_address, db)
     if not access_token:
         raise HTTPException(status_code=401, detail="Not authenticated with Microsoft 365")
 
@@ -230,10 +236,11 @@ async def create_event(
     location: Optional[str] = Body(None),
     attendees: Optional[List[str]] = Body(None),
     is_online_meeting: bool = Body(False),
-    body_content: Optional[str] = Body(None)
+    body_content: Optional[str] = Body(None),
+    db: AsyncSession = Depends(get_db)
 ):
     """Create a calendar event"""
-    access_token = await get_access_token(wallet_address)
+    access_token = await get_access_token_from_db(wallet_address, db)
     if not access_token:
         raise HTTPException(status_code=401, detail="Not authenticated with Microsoft 365")
 
@@ -286,10 +293,11 @@ async def create_event(
 async def get_onedrive_files(
     wallet_address: str = Query(...),
     folder_id: Optional[str] = Query(None),
-    view: str = Query("files")
+    view: str = Query("files"),
+    db: AsyncSession = Depends(get_db)
 ):
     """Get OneDrive files"""
-    access_token = await get_access_token(wallet_address)
+    access_token = await get_access_token_from_db(wallet_address, db)
     if not access_token:
         raise HTTPException(status_code=401, detail="Not authenticated with Microsoft 365")
 
@@ -326,10 +334,11 @@ async def upload_file(
     wallet_address: str = Body(..., embed=True),
     file_name: str = Body(...),
     file_content: str = Body(...),
-    folder_id: Optional[str] = Body(None)
+    folder_id: Optional[str] = Body(None),
+    db: AsyncSession = Depends(get_db)
 ):
     """Upload a file to OneDrive (small files < 4MB)"""
-    access_token = await get_access_token(wallet_address)
+    access_token = await get_access_token_from_db(wallet_address, db)
     if not access_token:
         raise HTTPException(status_code=401, detail="Not authenticated with Microsoft 365")
 
@@ -364,10 +373,11 @@ async def upload_file(
 @router.get("/contacts")
 async def get_contacts(
     wallet_address: str = Query(...),
-    top: int = Query(100, le=500)
+    top: int = Query(100, le=500),
+    db: AsyncSession = Depends(get_db)
 ):
     """Get contacts"""
-    access_token = await get_access_token(wallet_address)
+    access_token = await get_access_token_from_db(wallet_address, db)
     if not access_token:
         raise HTTPException(status_code=401, detail="Not authenticated with Microsoft 365")
 
@@ -397,10 +407,11 @@ async def create_contact(
     email: Optional[str] = Body(None),
     phone: Optional[str] = Body(None),
     company: Optional[str] = Body(None),
-    job_title: Optional[str] = Body(None)
+    job_title: Optional[str] = Body(None),
+    db: AsyncSession = Depends(get_db)
 ):
     """Create a new contact"""
-    access_token = await get_access_token(wallet_address)
+    access_token = await get_access_token_from_db(wallet_address, db)
     if not access_token:
         raise HTTPException(status_code=401, detail="Not authenticated with Microsoft 365")
 
@@ -441,10 +452,11 @@ async def create_contact(
 @router.get("/tasks")
 async def get_tasks(
     wallet_address: str = Query(...),
-    list_id: Optional[str] = Query(None)
+    list_id: Optional[str] = Query(None),
+    db: AsyncSession = Depends(get_db)
 ):
     """Get tasks from To Do"""
-    access_token = await get_access_token(wallet_address)
+    access_token = await get_access_token_from_db(wallet_address, db)
     if not access_token:
         raise HTTPException(status_code=401, detail="Not authenticated with Microsoft 365")
 
@@ -486,10 +498,11 @@ async def create_task(
     title: str = Body(...),
     list_id: str = Body(...),
     due_date: Optional[str] = Body(None),
-    importance: str = Body("normal")
+    importance: str = Body("normal"),
+    db: AsyncSession = Depends(get_db)
 ):
     """Create a new task"""
-    access_token = await get_access_token(wallet_address)
+    access_token = await get_access_token_from_db(wallet_address, db)
     if not access_token:
         raise HTTPException(status_code=401, detail="Not authenticated with Microsoft 365")
 
@@ -530,10 +543,11 @@ async def update_task(
     wallet_address: str = Body(..., embed=True),
     list_id: str = Body(...),
     is_completed: Optional[bool] = Body(None),
-    title: Optional[str] = Body(None)
+    title: Optional[str] = Body(None),
+    db: AsyncSession = Depends(get_db)
 ):
     """Update a task"""
-    access_token = await get_access_token(wallet_address)
+    access_token = await get_access_token_from_db(wallet_address, db)
     if not access_token:
         raise HTTPException(status_code=401, detail="Not authenticated with Microsoft 365")
 
@@ -567,10 +581,11 @@ async def update_task(
 async def delete_task(
     task_id: str,
     wallet_address: str = Query(...),
-    list_id: str = Query(...)
+    list_id: str = Query(...),
+    db: AsyncSession = Depends(get_db)
 ):
     """Delete a task"""
-    access_token = await get_access_token(wallet_address)
+    access_token = await get_access_token_from_db(wallet_address, db)
     if not access_token:
         raise HTTPException(status_code=401, detail="Not authenticated with Microsoft 365")
 
