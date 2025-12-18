@@ -19,6 +19,8 @@ from app.adapters.slack.sync import SlackSync
 from app.adapters.monday.sync import MondaySync
 from app.adapters.hubspot.sync import HubSpotSync
 from app.adapters.zendesk.sync import ZendeskSync
+from app.adapters.google.sync import GoogleWorkspaceSync
+from app.adapters.microsoft.sync import MicrosoftSync
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +39,10 @@ SYNC_ADAPTERS = {
     "slack": SlackSync,
     "monday": MondaySync,
     "hubspot": HubSpotSync,
-    "zendesk": ZendeskSync
+    "zendesk": ZendeskSync,
+    "google_workspace": GoogleWorkspaceSync,
+    "google": GoogleWorkspaceSync,  # Alias for compatibility
+    "microsoft": MicrosoftSync,
 }
 
 # Sync job status storage (in production, use Redis)
