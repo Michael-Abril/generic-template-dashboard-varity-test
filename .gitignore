@@ -1,0 +1,124 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Next.js
+.next/
+out/
+build/
+dist/
+
+# Smart Contracts
+artifacts/
+cache/
+contracts/artifacts/
+contracts/cache/
+
+# TypeScript
+*.tsbuildinfo
+tsconfig.tsbuildinfo
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+*.egg-info/
+*.egg
+
+# Databases
+*.db
+*.sqlite
+*.db-journal
+*_test.db
+*_test.sqlite
+
+# Testing
+coverage/
+.nyc_output/
+*.log
+*_results.json
+*_bugs.json
+*_output.txt
+*_test_results.*
+test-results/
+.pytest_cache/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+.env.railway
+.env.vercel
+backend/.env
+backend/.env.railway
+!.env.example
+!.env.vercel.example
+!.env.railway.example
+!backend/.env.example
+!backend/.env.railway.example
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.classpath
+.settings/
+
+# OS
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+.parcel-cache/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Misc
+.turbo
+.vercel
+.changeset
+
+# Sentry (disabled - delete if recreated)
+sentry.*.config.ts
+sentry.*.config.js
+
+# Completion Reports (internal use only, not for git)
+*_COMPLETION_REPORT.md
+*_COMPLETE.md
+*_STATUS.md
+*_SUMMARY.md
+*_VERIFICATION.md
+*_VALIDATION_REPORT.md
+ANALYSIS.md
+
+# Backup files
+*.backup
+*.bak
+*.old
+
+# Build output logs
+build-output.txt
+build_output.log
+*_output.log
+lighthouse*.log
+server.log
+server_output.log
+type-check-output.txt
