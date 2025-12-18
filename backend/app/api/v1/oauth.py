@@ -152,7 +152,7 @@ OAUTH_CONFIGS = {
         "client_id": settings.salesforce_client_id if hasattr(settings, 'salesforce_client_id') else "",
         "client_secret": settings.salesforce_client_secret if hasattr(settings, 'salesforce_client_secret') else "",
         "redirect_uri": get_redirect_uri("salesforce"),
-        "scope": "api refresh_token"
+        "scope": "api refresh_token full id"
     },
     "shopify": {
         "authorize_url": "https://{shop}.myshopify.com/admin/oauth/authorize",
@@ -168,7 +168,7 @@ OAUTH_CONFIGS = {
         "client_id": settings.google_client_id if hasattr(settings, 'google_client_id') else "",
         "client_secret": settings.google_client_secret if hasattr(settings, 'google_client_secret') else "",
         "redirect_uri": get_redirect_uri("google"),
-        "scope": "https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/contacts.readonly"
+        "scope": "openid email profile https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/contacts.readonly https://www.googleapis.com/auth/tasks.readonly"
     },
     "microsoft": {
         "authorize_url": "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
@@ -176,7 +176,7 @@ OAUTH_CONFIGS = {
         "client_id": settings.microsoft_client_id if hasattr(settings, 'microsoft_client_id') else "",
         "client_secret": settings.microsoft_client_secret if hasattr(settings, 'microsoft_client_secret') else "",
         "redirect_uri": get_redirect_uri("microsoft"),
-        "scope": "https://graph.microsoft.com/Mail.Read https://graph.microsoft.com/Calendars.Read https://graph.microsoft.com/Files.Read.All https://graph.microsoft.com/Contacts.Read offline_access"
+        "scope": "openid email profile User.Read Mail.Read Calendars.Read Files.Read Contacts.Read offline_access"
     },
     "stripe": {
         "authorize_url": "https://connect.stripe.com/oauth/authorize",
@@ -208,7 +208,7 @@ OAUTH_CONFIGS = {
         "client_id": settings.hubspot_client_id if hasattr(settings, 'hubspot_client_id') else "",
         "client_secret": settings.hubspot_client_secret if hasattr(settings, 'hubspot_client_secret') else "",
         "redirect_uri": get_redirect_uri("hubspot"),
-        "scope": "crm.objects.contacts.read crm.objects.deals.read crm.objects.companies.read"
+        "scope": "crm.objects.contacts.read crm.objects.deals.read crm.objects.companies.read crm.objects.emails.read tickets"
     },
     "zendesk": {
         "authorize_url": "https://{subdomain}.zendesk.com/oauth/authorizations/new",
@@ -225,7 +225,7 @@ OAUTH_CONFIGS = {
         "client_id": settings.google_client_id if hasattr(settings, 'google_client_id') else "",
         "client_secret": settings.google_client_secret if hasattr(settings, 'google_client_secret') else "",
         "redirect_uri": get_redirect_uri("google_workspace"),
-        "scope": "https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/contacts.readonly"
+        "scope": "openid email profile https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/contacts.readonly https://www.googleapis.com/auth/tasks.readonly"
     }
 }
 
@@ -377,6 +377,11 @@ async def start_oauth_flow(
         # Add integration-specific parameters
         if integration == "quickbooks":
             params["response_mode"] = "query"
+
+        # Google/Google Workspace: Add access_type=offline for refresh tokens
+        if integration in ["google", "google_workspace"]:
+            params["access_type"] = "offline"
+            params["prompt"] = "consent"  # Force consent to ensure refresh_token is returned
 
         auth_url = f"{authorize_url}?{urlencode(params)}"
 
@@ -533,10 +538,21 @@ async def oauth_callback_post(request: Request, db: AsyncSession = Depends(get_d
             "created_at": datetime.utcnow().isoformat()
         }
 
-        # Add integration-specific data
+        # Add integration-specific data from token response
         if integration == "quickbooks" and realm_id:
             # QuickBooks realmId comes from callback URL, not token response
             credentials["realm_id"] = realm_id
+        elif integration == "salesforce":
+            # CRITICAL: Salesforce requires instance_url for all API calls
+            credentials["instance_url"] = token_response.get("instance_url")
+            credentials["id"] = token_response.get("id")  # User identity URL
+            credentials["signature"] = token_response.get("signature")
+        elif integration == "slack":
+            # Slack returns team info and bot_user_id
+            credentials["team_id"] = token_response.get("team", {}).get("id")
+            credentials["team_name"] = token_response.get("team", {}).get("name")
+            credentials["bot_user_id"] = token_response.get("bot_user_id")
+            credentials["app_id"] = token_response.get("app_id")
         elif integration == "shopify":
             credentials["shop_domain"] = state_data.get("shop_domain")
         elif integration == "zendesk":
@@ -807,9 +823,20 @@ async def oauth_callback(
             "created_at": datetime.utcnow().isoformat()
         }
 
-        # Add integration-specific data
+        # Add integration-specific data from token response
         if integration == "quickbooks" and realmId:
             credentials["realm_id"] = realmId
+        elif integration == "salesforce":
+            # CRITICAL: Salesforce requires instance_url for all API calls
+            credentials["instance_url"] = token_response.get("instance_url")
+            credentials["id"] = token_response.get("id")  # User identity URL
+            credentials["signature"] = token_response.get("signature")
+        elif integration == "slack":
+            # Slack returns team info and bot_user_id
+            credentials["team_id"] = token_response.get("team", {}).get("id")
+            credentials["team_name"] = token_response.get("team", {}).get("name")
+            credentials["bot_user_id"] = token_response.get("bot_user_id")
+            credentials["app_id"] = token_response.get("app_id")
         elif integration == "shopify":
             credentials["shop_domain"] = state_data.get("shop_domain")
         elif integration == "zendesk":

@@ -29,9 +29,14 @@ class SalesforceSync:
         if not self.access_token:
             raise ValueError("Missing Salesforce access token")
 
-        # Use default instance URL if not provided
+        # CRITICAL: instance_url is required for Salesforce API calls
+        # Each Salesforce org has a unique instance URL (e.g., na1, eu5, custom domains)
         if not self.instance_url:
-            self.instance_url = "https://na1.salesforce.com"
+            raise ValueError(
+                "Missing Salesforce instance_url. "
+                "This is returned by Salesforce during OAuth token exchange. "
+                "Please reconnect your Salesforce account."
+            )
 
         # Initialize storage services
         self.filecoin = FilecoinService()
