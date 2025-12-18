@@ -266,14 +266,14 @@ async def sync_tool_data(
             adapter = QuickBooksSync(credentials)
             result = await adapter.sync_data(request.wallet_address)
 
-        elif provider == "google":
-            from app.adapters.google.sync import GoogleSyncAdapter
-            adapter = GoogleSyncAdapter(access_token)
+        elif provider == "google" or provider == "google_workspace":
+            from app.adapters.google.sync import GoogleWorkspaceSync
+            adapter = GoogleWorkspaceSync(credentials)
             result = await adapter.sync_data(request.wallet_address)
 
         elif provider == "microsoft":
-            from app.adapters.microsoft.sync import MicrosoftSyncAdapter
-            adapter = MicrosoftSyncAdapter(access_token)
+            from app.adapters.microsoft.sync import MicrosoftSync
+            adapter = MicrosoftSync(credentials)
             result = await adapter.sync_data(request.wallet_address)
 
         elif provider == "slack":

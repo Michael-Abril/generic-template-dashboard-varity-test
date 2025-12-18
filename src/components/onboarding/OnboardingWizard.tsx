@@ -268,6 +268,8 @@ export function OnboardingWizard({
 
   const nextStep = useCallback(() => {
     const currentIndex = STEPS.indexOf(state.step);
+    // Track step completion before moving
+    onboardingAnalytics.stepCompleted(state.step, currentIndex);
     if (currentIndex < STEPS.length - 1) {
       goToStep(STEPS[currentIndex + 1]);
     }
@@ -320,14 +322,21 @@ export function OnboardingWizard({
         console.error('Failed to mark onboarding complete');
       }
 
+      // Track onboarding completion
+      onboardingAnalytics.completed(
+        state.selectedIntegration || undefined,
+        state.trialTier || undefined
+      );
+
       // Clear the localStorage draft on successful completion
       if (typeof window !== 'undefined') {
         localStorage.removeItem(ONBOARDING_DRAFT_KEY);
       }
     } catch (err) {
       console.error('Error completing onboarding:', err);
+      onboardingAnalytics.error('complete', 'api_error');
     }
-  }, [address]);
+  }, [address, state.selectedIntegration, state.trialTier]);
 
   // Get current step index for progress indicator
   const currentStepIndex = STEPS.indexOf(state.step);
