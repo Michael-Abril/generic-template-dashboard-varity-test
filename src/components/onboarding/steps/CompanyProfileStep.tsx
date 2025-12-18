@@ -81,11 +81,35 @@ export function CompanyProfileStep({
 }: CompanyProfileStepProps) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [emailTouched, setEmailTouched] = useState(false);
 
-  // Validation: company name, industry, and email are required
-  const isValidEmail = (email: string) => {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  // RFC 5322 compliant email validation
+  // Handles common business emails, subdomains, and edge cases
+  const isValidEmail = (email: string): boolean => {
+    if (!email) return false;
+
+    // RFC 5322 Official Standard regex (simplified but comprehensive)
+    const emailRegex = /^(?:[a-zA-Z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[a-zA-Z0-9!#$%&'*+/=?^_`{|}~-]+)*|"(?:[\x01-\x08\x0b\x0c\x0e-\x1f\x21\x23-\x5b\x5d-\x7f]|\\[\x01-\x09\x0b\x0c\x0e-\x7f])*")@(?:(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?\.)+[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?|\[(?:(?:(2(5[0-5]|[0-4][0-9])|1[0-9][0-9]|[1-9]?[0-9]))\.){3}(?:(2(5[0-5]|[0-4][0-9])|1[0-9][0-9]|[1-9]?[0-9])|[a-zA-Z0-9-]*[a-zA-Z0-9]:(?:[\x01-\x08\x0b\x0c\x0e-\x1f\x21-\x5a\x53-\x7f]|\\[\x01-\x09\x0b\x0c\x0e-\x7f])+)\])$/;
+
+    // Additional length check (max 254 chars per RFC 5321)
+    if (email.length > 254) return false;
+
+    // Local part max 64 chars
+    const localPart = email.split('@')[0];
+    if (localPart && localPart.length > 64) return false;
+
     return emailRegex.test(email);
+  };
+
+  // Get specific email validation error message
+  const getEmailError = (email: string): string | null => {
+    if (!email) return 'Email address is required';
+    if (!email.includes('@')) return 'Email must contain @';
+    if (email.length > 254) return 'Email is too long';
+    const localPart = email.split('@')[0];
+    if (localPart && localPart.length > 64) return 'Email username is too long';
+    if (!isValidEmail(email)) return 'Please enter a valid email address';
+    return null;
   };
 
   const isValid = companyName.trim().length > 0 &&
@@ -236,27 +260,34 @@ export function CompanyProfileStep({
 
         {/* Contact Email */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
+          <label
+            htmlFor="contact-email"
+            className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-2"
+          >
             <Mail className="w-4 h-4 text-gray-400" />
             Email Address <span className="text-red-500">*</span>
           </label>
           <input
+            id="contact-email"
             type="email"
             value={contactEmail}
             onChange={(e) => onUpdate({ contactEmail: e.target.value })}
+            onBlur={() => setEmailTouched(true)}
             placeholder="john@company.com"
+            aria-describedby="email-error email-hint"
+            aria-invalid={emailTouched && !isValidEmail(contactEmail)}
             className={`w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${
-              contactEmail && !isValidEmail(contactEmail)
+              emailTouched && contactEmail && !isValidEmail(contactEmail)
                 ? 'border-red-300 bg-red-50'
                 : 'border-gray-300 hover:border-gray-400'
             }`}
           />
-          {contactEmail && !isValidEmail(contactEmail) && (
-            <p className="mt-1.5 text-sm text-red-600 flex items-center gap-1">
-              Please enter a valid email address
+          {emailTouched && contactEmail && !isValidEmail(contactEmail) && (
+            <p id="email-error" className="mt-1.5 text-sm text-red-600 flex items-center gap-1" role="alert">
+              {getEmailError(contactEmail)}
             </p>
           )}
-          <p className="mt-1.5 text-xs text-gray-500">
+          <p id="email-hint" className="mt-1.5 text-xs text-gray-500">
             We&apos;ll send you trial updates, tips, and important notifications
           </p>
         </div>

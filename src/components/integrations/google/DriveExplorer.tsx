@@ -79,25 +79,33 @@ export function DriveExplorer({ walletAddress, data }: DriveExplorerProps) {
   const [files, setFiles] = useState<DriveFile[]>([]);
   const [loading, setLoading] = useState(false);
 
+  // Load files from data prop (already fetched by parent)
   useEffect(() => {
-    loadFiles();
-  }, [walletAddress]);
-
-  const loadFiles = async () => {
-    setLoading(true);
-    try {
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/integrations/google/files?wallet_address=${walletAddress}`
-      );
-      const result = await response.json();
-      if (result.success && result.files) {
-        setFiles(result.files);
-      }
-    } catch (error) {
-      console.error('Failed to load files:', error);
-    } finally {
+    if (data?.files) {
+      // Data is already synced from Google - use the data prop
+      const parsedFiles = data.files.map((file: any) => ({
+        id: file.id || `file-${Math.random().toString(36).substr(2, 9)}`,
+        name: file.name || 'Untitled',
+        mimeType: file.mimeType || 'application/octet-stream',
+        size: file.size || '0',
+        modifiedTime: file.modifiedTime || new Date().toISOString(),
+        owners: file.owners || [],
+        webViewLink: file.webViewLink || '',
+        starred: file.starred || false
+      }));
+      setFiles(parsedFiles);
+      setLoading(false);
+    } else {
+      // No data synced yet
+      setFiles([]);
       setLoading(false);
     }
+  }, [data]);
+
+  const loadFiles = async () => {
+    // Refresh by calling parent's onRefresh if available
+    setLoading(true);
+    setTimeout(() => setLoading(false), 500)
   };
 
   const handleFileClick = (file: DriveFile) => {

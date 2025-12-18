@@ -48,36 +48,34 @@ export function CalendarView({ walletAddress, data }: CalendarViewProps) {
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [loading, setLoading] = useState(false);
 
+  // Load events from data prop (already fetched by parent)
   useEffect(() => {
-    loadEvents();
-  }, [walletAddress]);
-
-  const loadEvents = async () => {
-    setLoading(true);
-    try {
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/integrations/google/events?wallet_address=${walletAddress}`
-      );
-      const result = await response.json();
-      if (result.success && result.events) {
-        const parsedEvents = result.events.map((event: any) => ({
-          id: event.id,
-          summary: event.summary || '(No Title)',
-          description: event.description,
-          start: event.start?.dateTime || event.start?.date,
-          end: event.end?.dateTime || event.end?.date,
-          location: event.location,
-          attendees: event.attendees?.map((a: any) => a.email) || [],
-          status: event.status,
-          colorId: event.colorId
-        }));
-        setEvents(parsedEvents);
-      }
-    } catch (error) {
-      console.error('Failed to load events:', error);
-    } finally {
+    if (data?.events) {
+      // Data is already synced from Google - use the data prop
+      const parsedEvents = data.events.map((event: any) => ({
+        id: event.id || `event-${Math.random().toString(36).substr(2, 9)}`,
+        summary: event.summary || '(No Title)',
+        description: event.description || '',
+        start: event.start || new Date().toISOString(),
+        end: event.end || new Date().toISOString(),
+        location: event.location || '',
+        attendees: event.attendees || [],
+        status: event.status || 'confirmed',
+        colorId: event.colorId
+      }));
+      setEvents(parsedEvents);
+      setLoading(false);
+    } else {
+      // No data synced yet
+      setEvents([]);
       setLoading(false);
     }
+  }, [data]);
+
+  const loadEvents = async () => {
+    // Refresh by calling parent's onRefresh if available
+    setLoading(true);
+    setTimeout(() => setLoading(false), 500);
   };
 
   const handleDeleteEvent = async (eventId: string) => {

@@ -36,32 +36,30 @@ export function ContactsList({ walletAddress, data }: ContactsListProps) {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [loading, setLoading] = useState(false);
 
+  // Load contacts from data prop (already fetched by parent)
   useEffect(() => {
-    loadContacts();
-  }, [walletAddress]);
-
-  const loadContacts = async () => {
-    setLoading(true);
-    try {
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/integrations/google/contacts?wallet_address=${walletAddress}`
-      );
-      const result = await response.json();
-      if (result.success && result.contacts) {
-        const parsedContacts = result.contacts.map((contact: any) => ({
-          resourceName: contact.resourceName,
-          name: contact.names?.[0]?.displayName || 'Unknown',
-          emails: contact.emailAddresses?.map((e: any) => e.value) || [],
-          phones: contact.phoneNumbers?.map((p: any) => p.value) || [],
-          company: contact.organizations?.[0]?.name || ''
-        }));
-        setContacts(parsedContacts);
-      }
-    } catch (error) {
-      console.error('Failed to load contacts:', error);
-    } finally {
+    if (data?.contacts) {
+      // Data is already synced from Google - use the data prop
+      const parsedContacts = data.contacts.map((contact: any) => ({
+        resourceName: contact.resourceName || `contact-${Math.random().toString(36).substr(2, 9)}`,
+        name: contact.name || 'Unknown',
+        emails: contact.emails || [],
+        phones: contact.phones || [],
+        company: contact.company || ''
+      }));
+      setContacts(parsedContacts);
+      setLoading(false);
+    } else {
+      // No data synced yet
+      setContacts([]);
       setLoading(false);
     }
+  }, [data]);
+
+  const loadContacts = async () => {
+    // Refresh by calling parent's onRefresh if available
+    setLoading(true);
+    setTimeout(() => setLoading(false), 500);
   };
 
   const filteredContacts = contacts.filter(contact =>

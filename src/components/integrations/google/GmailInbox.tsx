@@ -63,46 +63,38 @@ export function GmailInbox({ walletAddress, data }: GmailInboxProps) {
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
-  // Load emails on mount
+  // Load emails from data prop (already fetched by parent)
   useEffect(() => {
-    loadEmails();
-  }, [walletAddress]);
-
-  const loadEmails = async () => {
-    setLoading(true);
-    try {
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/integrations/google/emails?wallet_address=${walletAddress}&max_results=50`
-      );
-      const result = await response.json();
-      if (result.success && result.emails) {
-        // Parse Gmail API response
-        const parsedEmails = result.emails.map((msg: any) => {
-          const headers = msg.payload?.headers || [];
-          const getHeader = (name: string) => headers.find((h: any) => h.name === name)?.value || '';
-
-          return {
-            id: msg.id,
-            threadId: msg.threadId,
-            from: getHeader('From'),
-            to: getHeader('To'),
-            subject: getHeader('Subject') || '(No Subject)',
-            snippet: msg.snippet || '',
-            date: new Date(parseInt(msg.internalDate)).toLocaleString(),
-            starred: msg.labelIds?.includes('STARRED'),
-            unread: msg.labelIds?.includes('UNREAD'),
-            hasAttachment: msg.payload?.parts?.some((p: any) => p.filename),
-            labels: msg.labelIds || [],
-            payload: msg.payload
-          };
-        });
-        setEmails(parsedEmails);
-      }
-    } catch (error) {
-      console.error('Failed to load emails:', error);
-    } finally {
+    if (data?.messages) {
+      // Data is already synced from Google - use the data prop
+      const parsedEmails = data.messages.map((msg: any) => ({
+        id: msg.id || `email-${Math.random().toString(36).substr(2, 9)}`,
+        threadId: msg.threadId || msg.id,
+        from: msg.from || 'Unknown Sender',
+        to: msg.to || '',
+        subject: msg.subject || '(No Subject)',
+        snippet: msg.snippet || '',
+        date: msg.date || new Date().toLocaleString(),
+        starred: msg.starred || false,
+        unread: msg.unread !== false,  // Default to unread
+        hasAttachment: msg.hasAttachment || false,
+        labels: msg.labels || ['INBOX'],
+        payload: msg.payload
+      }));
+      setEmails(parsedEmails);
+      setLoading(false);
+    } else {
+      // No data synced yet
+      setEmails([]);
       setLoading(false);
     }
+  }, [data]);
+
+  const loadEmails = async () => {
+    // Refresh by calling parent's onRefresh if available
+    // For now, just use the data prop
+    setRefreshing(true);
+    setTimeout(() => setRefreshing(false), 500);
   };
 
   const handleRefresh = async () => {

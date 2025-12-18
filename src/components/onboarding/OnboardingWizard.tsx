@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { usePrivy } from '@privy-io/react-auth';
 import { useWallets } from '@privy-io/react-auth';
 import { useSearchParams, useRouter } from 'next/navigation';
@@ -12,6 +12,10 @@ import { IntegrationSelectStep } from './steps/IntegrationSelectStep';
 import { OAuthConnectStep } from './steps/OAuthConnectStep';
 import { SyncingStep } from './steps/SyncingStep';
 import { CompleteStep } from './steps/CompleteStep';
+import { onboardingAnalytics } from '@/lib/analytics';
+
+// localStorage key for draft data backup
+const ONBOARDING_DRAFT_KEY = 'varity_onboarding_draft';
 
 export type OnboardingStep =
   | 'welcome'
@@ -89,22 +93,77 @@ export function OnboardingWizard({
   const integrationSlug = searchParams.get('integration') || initialIntegration || '';
   const urlStep = searchParams.get('step') as OnboardingStep | null;
 
-  const [state, setState] = useState<OnboardingState>({
-    step: urlStep || initialStep || 'welcome',
-    companyName: '',
-    industry: '',
-    companySize: '',
-    primaryGoal: '',
-    contactEmail: '',
-    contactName: '',
-    referralSource: '',
-    selectedIntegration: integrationSlug || null,
-    trialTier: null,
-    trialDays: 30,
-  });
+  // Initialize state with localStorage draft if available
+  const getInitialState = (): OnboardingState => {
+    const defaultState: OnboardingState = {
+      step: urlStep || initialStep || 'welcome',
+      companyName: '',
+      industry: '',
+      companySize: '',
+      primaryGoal: '',
+      contactEmail: '',
+      contactName: '',
+      referralSource: '',
+      selectedIntegration: integrationSlug || null,
+      trialTier: null,
+      trialDays: 30,
+    };
+
+    // Try to restore from localStorage (client-side only)
+    if (typeof window !== 'undefined') {
+      try {
+        const draft = localStorage.getItem(ONBOARDING_DRAFT_KEY);
+        if (draft) {
+          const parsed = JSON.parse(draft);
+          // Merge draft with defaults, keeping URL params as priority
+          return {
+            ...defaultState,
+            ...parsed,
+            step: urlStep || parsed.step || defaultState.step,
+            selectedIntegration: integrationSlug || parsed.selectedIntegration || null,
+          };
+        }
+      } catch (err) {
+        console.warn('Failed to restore onboarding draft:', err);
+      }
+    }
+    return defaultState;
+  };
+
+  const [state, setState] = useState<OnboardingState>(getInitialState);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const lastSavedRef = useRef<string>('');
+
+  // Save draft to localStorage whenever state changes (debounced)
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (state.step === 'complete') {
+      // Clear draft when onboarding completes
+      localStorage.removeItem(ONBOARDING_DRAFT_KEY);
+      return;
+    }
+
+    const draftData = {
+      companyName: state.companyName,
+      industry: state.industry,
+      companySize: state.companySize,
+      primaryGoal: state.primaryGoal,
+      contactEmail: state.contactEmail,
+      contactName: state.contactName,
+      referralSource: state.referralSource,
+      selectedIntegration: state.selectedIntegration,
+      step: state.step,
+    };
+
+    const serialized = JSON.stringify(draftData);
+    // Only save if data changed (avoid unnecessary writes)
+    if (serialized !== lastSavedRef.current) {
+      lastSavedRef.current = serialized;
+      localStorage.setItem(ONBOARDING_DRAFT_KEY, serialized);
+    }
+  }, [state]);
 
   // Fetch onboarding status and trial tier on mount
   useEffect(() => {
@@ -172,6 +231,19 @@ export function OnboardingWizard({
       router.push('/');
     }
   }, [authenticated, loading, router]);
+
+  // Track onboarding started (once when wizard loads)
+  useEffect(() => {
+    if (!loading && authenticated) {
+      onboardingAnalytics.started();
+    }
+  }, [loading, authenticated]);
+
+  // Track step changes
+  useEffect(() => {
+    const stepIndex = STEPS.indexOf(state.step);
+    onboardingAnalytics.stepViewed(state.step, stepIndex);
+  }, [state.step]);
 
   // Save current step to backend
   const saveStep = useCallback(async (step: OnboardingStep) => {
@@ -246,6 +318,11 @@ export function OnboardingWizard({
 
       if (!response.ok) {
         console.error('Failed to mark onboarding complete');
+      }
+
+      // Clear the localStorage draft on successful completion
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem(ONBOARDING_DRAFT_KEY);
       }
     } catch (err) {
       console.error('Error completing onboarding:', err);

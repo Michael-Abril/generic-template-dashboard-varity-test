@@ -2,6 +2,7 @@
 
 import { Suspense } from 'react';
 import { OnboardingWizard } from '@/components/onboarding/OnboardingWizard';
+import { OnboardingErrorBoundary } from '@/components/onboarding/OnboardingErrorBoundary';
 import type { OnboardingStep } from '@/components/onboarding/OnboardingWizard';
 
 /**
@@ -31,17 +32,19 @@ function OnboardingContent() {
 
 export default function OnboardingPage() {
   return (
-    <Suspense
-      fallback={
-        <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50 flex items-center justify-center">
-          <div className="bg-white rounded-xl shadow-lg p-8 max-w-md text-center">
-            <div className="w-16 h-16 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-            <p className="text-gray-600 font-medium">Loading your dashboard...</p>
+    <OnboardingErrorBoundary>
+      <Suspense
+        fallback={
+          <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50 flex items-center justify-center">
+            <div className="bg-white rounded-xl shadow-lg p-8 max-w-md text-center">
+              <div className="w-16 h-16 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+              <p className="text-gray-600 font-medium">Loading your dashboard...</p>
+            </div>
           </div>
-        </div>
-      }
-    >
-      <OnboardingContent />
-    </Suspense>
+        }
+      >
+        <OnboardingContent />
+      </Suspense>
+    </OnboardingErrorBoundary>
   );
 }
