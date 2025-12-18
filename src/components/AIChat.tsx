@@ -565,8 +565,8 @@ export function AIChat() {
 
       if (action.type === 'email') {
         const endpoint = action.provider === 'google'
-          ? `${API_BASE_URL}/api/v1/google/send-email`
-          : `${API_BASE_URL}/api/v1/microsoft/mail/send`;
+          ? `${API_BASE_URL}/api/v1/integrations/google/send-email`
+          : `${API_BASE_URL}/api/v1/integrations/microsoft/mail/send`;
 
         const response = await fetch(endpoint, {
           method: 'POST',
@@ -602,8 +602,8 @@ export function AIChat() {
 
       } else if (action.type === 'document') {
         const endpoint = action.provider === 'google'
-          ? `${API_BASE_URL}/api/v1/google/upload-file`
-          : `${API_BASE_URL}/api/v1/microsoft/drive/upload`;
+          ? `${API_BASE_URL}/api/v1/integrations/google/upload-file`
+          : `${API_BASE_URL}/api/v1/integrations/microsoft/onedrive/upload`;
 
         // Convert content to base64 for Google, or send directly for Microsoft
         const fileContent = btoa(unescape(encodeURIComponent(action.content)));
@@ -697,12 +697,14 @@ export function AIChat() {
     const lastUserMsgIdx = messages.findLastIndex(m => m.role === 'user');
     if (lastUserMsgIdx === -1) return;
 
-    // Remove the last assistant response
-    setMessages(prev => prev.slice(0, prev.length - 1));
+    // Get the message content before modifying state
+    const messageToResend = messages[lastUserMsgIdx].content;
 
-    // Re-send the last user message
-    setInput(messages[lastUserMsgIdx].content);
-    // The input will be sent when user clicks send or presses enter
+    // Remove all messages from the last user message onwards (including both user and assistant)
+    setMessages(prev => prev.slice(0, lastUserMsgIdx));
+
+    // Re-send the last user message automatically
+    await sendMessage(messageToResend);
   };
 
   // Edit and resend a user message
@@ -715,13 +717,15 @@ export function AIChat() {
       return;
     }
 
-    // Remove all messages after this one
+    // Remove all messages from this point onwards
     setMessages(prev => prev.slice(0, idx));
 
-    // Set the edited content as input and send
-    setInput(newContent);
+    // Clear editing state
     setEditingMessageIdx(null);
     setEditedContent('');
+
+    // Re-send with the edited content
+    await sendMessage(newContent);
   };
 
   // Auto-resize textarea
@@ -754,12 +758,15 @@ export function AIChat() {
     }
   };
 
-  // Send message
-  const sendMessage = async () => {
-    if (!input.trim() || !address) return;
+  // Send message - accepts optional override message for regeneration
+  const sendMessage = async (overrideMessage?: string) => {
+    const messageContent = (overrideMessage || input).trim();
+    if (!messageContent || !address) return;
 
-    // CRITICAL: Save input value before clearing to fix the empty input bug
-    const messageContent = input.trim();
+    // Clear input only if not using override (regeneration case)
+    if (!overrideMessage) {
+      setInput('');
+    }
 
     const userMessage: Message = {
       role: 'user',
@@ -768,7 +775,6 @@ export function AIChat() {
     };
 
     setMessages(prev => [...prev, userMessage]);
-    setInput('');
     setLoading(true);
 
     // Create new abort controller for this request
@@ -2250,7 +2256,7 @@ export function AIChat() {
               )}
               {/* Send button */}
               <button
-                onClick={sendMessage}
+                onClick={() => sendMessage()}
                 disabled={loading || !input.trim()}
                 className={`p-2 rounded-xl transition-all ${
                   input.trim() && !loading
