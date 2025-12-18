@@ -2188,8 +2188,21 @@ export default function IntegrationToolPage() {
   // Render Google Workspace native UI for Google integration
   if (integration === 'google' || integration === 'google_workspace' || integration === 'googleworkspace') {
     // Transform data into format expected by GoogleWorkspacePage
+    // Backend stores: { data_type: "gmail", data: { records: [...] } }
+    // Frontend expects: { gmail: { messages: [...] } }
+    const dataTypeToPropertyMap: Record<string, string> = {
+      'gmail': 'messages',
+      'calendar': 'events',
+      'drive': 'files',
+      'contacts': 'contacts'
+    };
+
     const googleData = data.reduce((acc, item) => {
-      acc[item.data_type] = item.data;
+      const propertyName = dataTypeToPropertyMap[item.data_type] || 'records';
+      // Transform records array to expected property name
+      acc[item.data_type] = {
+        [propertyName]: item.data?.records || item.data?.[propertyName] || []
+      };
       return acc;
     }, {} as Record<string, any>);
 
@@ -2209,8 +2222,21 @@ export default function IntegrationToolPage() {
   // Render Microsoft 365 native UI for Microsoft integration
   if (integration === 'microsoft' || integration === 'microsoft365') {
     // Transform data into format expected by Microsoft365Page
+    // Backend stores: { data_type: "mail", data: { records: [...] } }
+    // Frontend expects: { mail: { messages: [...] } }
+    const msDataTypeToPropertyMap: Record<string, string> = {
+      'mail': 'messages',
+      'calendar': 'events',
+      'onedrive': 'files',
+      'contacts': 'contacts'
+    };
+
     const microsoftData = data.reduce((acc, item) => {
-      acc[item.data_type] = item.data;
+      const propertyName = msDataTypeToPropertyMap[item.data_type] || 'records';
+      // Transform records array to expected property name
+      acc[item.data_type] = {
+        [propertyName]: item.data?.records || item.data?.[propertyName] || []
+      };
       return acc;
     }, {} as Record<string, any>);
 
