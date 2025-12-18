@@ -458,6 +458,59 @@ class HubSpotSync:
                 logger.error(f"Error creating company: {e.response.text}")
                 raise Exception(f"Failed to create company: {e.response.text}")
 
+    async def update_company(self, company_id: str, company_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Update an existing company in HubSpot"""
+        url = f"{self.api_base}/crm/v3/objects/companies/{company_id}"
+        headers = {
+            "Authorization": f"Bearer {self.access_token}",
+            "Content-Type": "application/json"
+        }
+
+        payload = {"properties": company_data}
+
+        async with httpx.AsyncClient() as client:
+            try:
+                response = await client.patch(url, json=payload, headers=headers, timeout=30.0)
+                response.raise_for_status()
+                return response.json()
+            except httpx.HTTPStatusError as e:
+                logger.error(f"Error updating company: {e.response.text}")
+                raise Exception(f"Failed to update company: {e.response.text}")
+
+    async def delete_company(self, company_id: str) -> bool:
+        """Delete a company from HubSpot"""
+        url = f"{self.api_base}/crm/v3/objects/companies/{company_id}"
+        headers = {
+            "Authorization": f"Bearer {self.access_token}"
+        }
+
+        async with httpx.AsyncClient() as client:
+            try:
+                response = await client.delete(url, headers=headers, timeout=30.0)
+                response.raise_for_status()
+                logger.info(f"Deleted company: {company_id}")
+                return True
+            except httpx.HTTPStatusError as e:
+                logger.error(f"HubSpot API error deleting company: {e.response.text}")
+                raise Exception(f"Failed to delete company: {e.response.text}")
+
+    async def delete_deal(self, deal_id: str) -> bool:
+        """Delete a deal from HubSpot"""
+        url = f"{self.api_base}/crm/v3/objects/deals/{deal_id}"
+        headers = {
+            "Authorization": f"Bearer {self.access_token}"
+        }
+
+        async with httpx.AsyncClient() as client:
+            try:
+                response = await client.delete(url, headers=headers, timeout=30.0)
+                response.raise_for_status()
+                logger.info(f"Deleted deal: {deal_id}")
+                return True
+            except httpx.HTTPStatusError as e:
+                logger.error(f"HubSpot API error deleting deal: {e.response.text}")
+                raise Exception(f"Failed to delete deal: {e.response.text}")
+
     async def create_ticket(self, ticket_data: Dict[str, Any]) -> Dict[str, Any]:
         """Create a new ticket in HubSpot"""
         url = f"{self.api_base}/crm/v3/objects/tickets"
@@ -476,3 +529,39 @@ class HubSpotSync:
             except httpx.HTTPStatusError as e:
                 logger.error(f"Error creating ticket: {e.response.text}")
                 raise Exception(f"Failed to create ticket: {e.response.text}")
+
+    async def update_ticket(self, ticket_id: str, ticket_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Update an existing ticket in HubSpot"""
+        url = f"{self.api_base}/crm/v3/objects/tickets/{ticket_id}"
+        headers = {
+            "Authorization": f"Bearer {self.access_token}",
+            "Content-Type": "application/json"
+        }
+
+        payload = {"properties": ticket_data}
+
+        async with httpx.AsyncClient() as client:
+            try:
+                response = await client.patch(url, json=payload, headers=headers, timeout=30.0)
+                response.raise_for_status()
+                return response.json()
+            except httpx.HTTPStatusError as e:
+                logger.error(f"Error updating ticket: {e.response.text}")
+                raise Exception(f"Failed to update ticket: {e.response.text}")
+
+    async def delete_ticket(self, ticket_id: str) -> bool:
+        """Delete a ticket from HubSpot"""
+        url = f"{self.api_base}/crm/v3/objects/tickets/{ticket_id}"
+        headers = {
+            "Authorization": f"Bearer {self.access_token}"
+        }
+
+        async with httpx.AsyncClient() as client:
+            try:
+                response = await client.delete(url, headers=headers, timeout=30.0)
+                response.raise_for_status()
+                logger.info(f"Deleted ticket: {ticket_id}")
+                return True
+            except httpx.HTTPStatusError as e:
+                logger.error(f"HubSpot API error deleting ticket: {e.response.text}")
+                raise Exception(f"Failed to delete ticket: {e.response.text}")

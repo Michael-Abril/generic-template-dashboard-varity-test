@@ -57,11 +57,12 @@ export default function TodoList({ walletAddress }: TodoListProps) {
   const fetchTasks = async () => {
     try {
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/integrations/microsoft/tasks?wallet_address=${walletAddress}`
+        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/integrations/microsoft365/tasks?wallet_address=${walletAddress}`
       );
       if (response.ok) {
         const data = await response.json();
         setTasks(data.tasks || []);
+        setLists(data.lists || lists);
       }
     } catch (error) {
       console.error('Error fetching tasks:', error);
@@ -73,15 +74,16 @@ export default function TodoList({ walletAddress }: TodoListProps) {
 
     try {
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/integrations/microsoft/tasks`,
+        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/integrations/microsoft365/tasks`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             wallet_address: walletAddress,
             title: newTaskTitle,
-            dueDate: newTaskDueDate || undefined,
-            listId: selectedList
+            list_id: selectedList,
+            due_date: newTaskDueDate || undefined,
+            importance: 'normal'
           })
         }
       );
@@ -91,42 +93,59 @@ export default function TodoList({ walletAddress }: TodoListProps) {
         setNewTaskDueDate('');
         setShowNewTaskForm(false);
         fetchTasks();
+      } else {
+        const error = await response.json();
+        alert(`Error: ${error.detail || 'Failed to create task'}`);
       }
     } catch (error) {
       console.error('Error creating task:', error);
+      alert('Network error. Please try again.');
     }
   };
 
-  const handleToggleComplete = async (taskId: string, isCompleted: boolean) => {
+  const handleToggleComplete = async (taskId: string, isCompleted: boolean, listId: string) => {
     try {
-      await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/integrations/microsoft/tasks/${taskId}`,
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/integrations/microsoft365/tasks/${taskId}`,
         {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             wallet_address: walletAddress,
-            isCompleted: !isCompleted
+            list_id: listId,
+            is_completed: !isCompleted
           })
         }
       );
-      fetchTasks();
+      if (response.ok) {
+        fetchTasks();
+      } else {
+        const error = await response.json();
+        alert(`Error: ${error.detail || 'Failed to update task'}`);
+      }
     } catch (error) {
       console.error('Error updating task:', error);
+      alert('Network error. Please try again.');
     }
   };
 
-  const handleDeleteTask = async (taskId: string) => {
+  const handleDeleteTask = async (taskId: string, listId: string) => {
     try {
-      await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/integrations/microsoft/tasks/${taskId}?wallet_address=${walletAddress}`,
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/integrations/microsoft365/tasks/${taskId}?wallet_address=${walletAddress}&list_id=${listId}`,
         {
           method: 'DELETE'
         }
       );
-      fetchTasks();
+      if (response.ok) {
+        fetchTasks();
+      } else {
+        const error = await response.json();
+        alert(`Error: ${error.detail || 'Failed to delete task'}`);
+      }
     } catch (error) {
       console.error('Error deleting task:', error);
+      alert('Network error. Please try again.');
     }
   };
 
@@ -220,7 +239,7 @@ export default function TodoList({ walletAddress }: TodoListProps) {
                     className="group flex items-start gap-3 rounded-lg border border-gray-200 p-3 transition-all hover:shadow-sm"
                   >
                     <button
-                      onClick={() => handleToggleComplete(task.id, task.isCompleted)}
+                      onClick={() => handleToggleComplete(task.id, task.isCompleted, task.listId)}
                       className="mt-0.5 flex-shrink-0"
                     >
                       <Circle className="h-5 w-5 text-gray-400 transition-colors hover:text-blue-600" />
@@ -242,7 +261,7 @@ export default function TodoList({ walletAddress }: TodoListProps) {
                         <Star className="h-4 w-4 text-gray-400" />
                       </button>
                       <button
-                        onClick={() => handleDeleteTask(task.id)}
+                        onClick={() => handleDeleteTask(task.id, task.listId)}
                         className="rounded p-1 hover:bg-gray-100"
                       >
                         <Trash2 className="h-4 w-4 text-gray-400" />
@@ -267,7 +286,7 @@ export default function TodoList({ walletAddress }: TodoListProps) {
                     className="group flex items-start gap-3 rounded-lg border border-gray-200 p-3 opacity-60 transition-all hover:opacity-100"
                   >
                     <button
-                      onClick={() => handleToggleComplete(task.id, task.isCompleted)}
+                      onClick={() => handleToggleComplete(task.id, task.isCompleted, task.listId)}
                       className="mt-0.5 flex-shrink-0"
                     >
                       <CheckCircle className="h-5 w-5 text-green-600" />
@@ -282,7 +301,7 @@ export default function TodoList({ walletAddress }: TodoListProps) {
                       )}
                     </div>
                     <button
-                      onClick={() => handleDeleteTask(task.id)}
+                      onClick={() => handleDeleteTask(task.id, task.listId)}
                       className="opacity-0 transition-opacity group-hover:opacity-100"
                     >
                       <Trash2 className="h-4 w-4 text-gray-400" />

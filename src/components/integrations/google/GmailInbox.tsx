@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Mail,
   Star,
@@ -41,6 +41,7 @@ interface Email {
   unread?: boolean;
   hasAttachment?: boolean;
   labels?: string[];
+  payload?: any;
 }
 
 const LABELS = [
@@ -58,22 +59,126 @@ export function GmailInbox({ walletAddress, data }: GmailInboxProps) {
   const [showComposer, setShowComposer] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedEmails, setSelectedEmails] = useState<Set<string>>(new Set());
+  const [emails, setEmails] = useState<Email[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
-  const emails: Email[] = data?.messages || [];
+  // Load emails on mount
+  useEffect(() => {
+    loadEmails();
+  }, [walletAddress]);
 
-  const handleStarEmail = (emailId: string) => {
-    // API call to star/unstar email
-    console.log('Star email:', emailId);
+  const loadEmails = async () => {
+    setLoading(true);
+    try {
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/integrations/google/emails?wallet_address=${walletAddress}&max_results=50`
+      );
+      const result = await response.json();
+      if (result.success && result.emails) {
+        // Parse Gmail API response
+        const parsedEmails = result.emails.map((msg: any) => {
+          const headers = msg.payload?.headers || [];
+          const getHeader = (name: string) => headers.find((h: any) => h.name === name)?.value || '';
+
+          return {
+            id: msg.id,
+            threadId: msg.threadId,
+            from: getHeader('From'),
+            to: getHeader('To'),
+            subject: getHeader('Subject') || '(No Subject)',
+            snippet: msg.snippet || '',
+            date: new Date(parseInt(msg.internalDate)).toLocaleString(),
+            starred: msg.labelIds?.includes('STARRED'),
+            unread: msg.labelIds?.includes('UNREAD'),
+            hasAttachment: msg.payload?.parts?.some((p: any) => p.filename),
+            labels: msg.labelIds || [],
+            payload: msg.payload
+          };
+        });
+        setEmails(parsedEmails);
+      }
+    } catch (error) {
+      console.error('Failed to load emails:', error);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleArchiveEmail = (emailId: string) => {
-    // API call to archive email
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await loadEmails();
+    setRefreshing(false);
+  };
+
+  const handleStarEmail = async (emailId: string, starred: boolean) => {
+    try {
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/integrations/google/emails/${emailId}?wallet_address=${walletAddress}`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ star: !starred })
+        }
+      );
+
+      if (response.ok) {
+        // Update local state
+        setEmails(emails.map(e =>
+          e.id === emailId ? { ...e, starred: !starred } : e
+        ));
+      }
+    } catch (error) {
+      console.error('Failed to star email:', error);
+      alert('Failed to star email');
+    }
+  };
+
+  const handleArchiveEmail = async (emailId: string) => {
+    // Gmail Archive = Remove INBOX label
     console.log('Archive email:', emailId);
   };
 
-  const handleDeleteEmail = (emailId: string) => {
-    // API call to delete email
-    console.log('Delete email:', emailId);
+  const handleDeleteEmail = async (emailId: string) => {
+    if (!confirm('Are you sure you want to delete this email?')) return;
+
+    try {
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/integrations/google/emails/${emailId}?wallet_address=${walletAddress}`,
+        { method: 'DELETE' }
+      );
+
+      if (response.ok) {
+        setEmails(emails.filter(e => e.id !== emailId));
+        if (selectedEmail?.id === emailId) {
+          setSelectedEmail(null);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to delete email:', error);
+      alert('Failed to delete email');
+    }
+  };
+
+  const handleMarkAsRead = async (emailId: string, unread: boolean) => {
+    try {
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/integrations/google/emails/${emailId}?wallet_address=${walletAddress}`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mark_as_read: unread })
+        }
+      );
+
+      if (response.ok) {
+        setEmails(emails.map(e =>
+          e.id === emailId ? { ...e, unread: !unread } : e
+        ));
+      }
+    } catch (error) {
+      console.error('Failed to update email:', error);
+    }
   };
 
   const handleReply = (email: Email) => {
@@ -115,8 +220,12 @@ export function GmailInbox({ walletAddress, data }: GmailInboxProps) {
             <Mail className="h-4 w-4" />
             <span className="hidden md:inline">Compose</span>
           </button>
-          <button className="p-2 hover:bg-gray-100 rounded">
-            <RefreshCw className="h-4 w-4" />
+          <button
+            onClick={handleRefresh}
+            disabled={refreshing}
+            className="p-2 hover:bg-gray-100 rounded disabled:opacity-50"
+          >
+            <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
           </button>
         </div>
         <div className="flex items-center gap-2 text-sm text-gray-600">
@@ -154,7 +263,7 @@ export function GmailInbox({ walletAddress, data }: GmailInboxProps) {
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                handleStarEmail(email.id);
+                handleStarEmail(email.id, email.starred || false);
               }}
               className="p-1"
             >
@@ -198,13 +307,25 @@ export function GmailInbox({ walletAddress, data }: GmailInboxProps) {
               <ChevronLeft className="h-5 w-5" />
             </button>
             <div className="flex items-center gap-2">
-              <button className="p-2 hover:bg-gray-100 rounded-lg" title="Archive">
+              <button
+                onClick={() => handleArchiveEmail(selectedEmail.id)}
+                className="p-2 hover:bg-gray-100 rounded-lg"
+                title="Archive"
+              >
                 <Archive className="h-5 w-5" />
               </button>
-              <button className="p-2 hover:bg-gray-100 rounded-lg" title="Delete">
+              <button
+                onClick={() => handleDeleteEmail(selectedEmail.id)}
+                className="p-2 hover:bg-gray-100 rounded-lg"
+                title="Delete"
+              >
                 <Trash2 className="h-5 w-5" />
               </button>
-              <button className="p-2 hover:bg-gray-100 rounded-lg" title="Star">
+              <button
+                onClick={() => handleStarEmail(selectedEmail.id, selectedEmail.starred || false)}
+                className="p-2 hover:bg-gray-100 rounded-lg"
+                title="Star"
+              >
                 <Star className={`h-5 w-5 ${selectedEmail.starred ? 'fill-yellow-400 text-yellow-400' : ''}`} />
               </button>
             </div>

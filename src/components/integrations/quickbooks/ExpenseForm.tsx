@@ -132,6 +132,7 @@ export default function ExpenseForm({ expense, onClose, onSave, loading = false 
     e.preventDefault();
 
     if (validate()) {
+      // Pass formData to parent - parent handles API transformation
       onSave(formData);
     }
   };

@@ -97,6 +97,7 @@ export default function CustomerForm({ customer, onClose, onSave, loading = fals
     e.preventDefault();
 
     if (validate()) {
+      // Pass formData to parent - parent handles API transformation
       onSave(formData);
     }
   };

@@ -28,7 +28,7 @@ from .core.startup import startup_sequence, shutdown_sequence
 from .core.database import check_database_health
 
 # Import API routers
-from .api.v1 import marketplace_v2, marketplace_purchases, integrations, ai, oauth, sync, dashboard, admin, stats, conversations, export, team, onboarding, salesforce_crud, google, microsoft
+from .api.v1 import marketplace_v2, marketplace_purchases, integrations, ai, oauth, sync, dashboard, admin, stats, conversations, export, team, onboarding, salesforce_crud, google, microsoft, quickbooks_crud, hubspot_crud
 from .api.v1 import settings as settings_router
 
 # Import middleware
@@ -189,6 +189,16 @@ app.include_router(
     microsoft.router,
     prefix="/api/v1/integrations/microsoft",
     tags=["Microsoft 365"]
+)
+app.include_router(
+    quickbooks_crud.router,
+    prefix="/api/v1/quickbooks",
+    tags=["QuickBooks CRUD"]
+)
+app.include_router(
+    hubspot_crud.router,
+    prefix="/api/v1/hubspot",
+    tags=["HubSpot CRUD"]
 )
 
 # Initialize services

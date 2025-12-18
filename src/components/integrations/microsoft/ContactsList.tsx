@@ -56,13 +56,17 @@ export default function ContactsList({ walletAddress, contacts }: ContactsListPr
   const handleCreateContact = async () => {
     try {
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/integrations/microsoft/contacts`,
+        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/integrations/microsoft365/contacts`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             wallet_address: walletAddress,
-            ...formData
+            name: formData.name,
+            email: formData.email || undefined,
+            phone: formData.phone || undefined,
+            company: formData.company || undefined,
+            job_title: formData.jobTitle || undefined
           })
         }
       );
@@ -71,9 +75,15 @@ export default function ContactsList({ walletAddress, contacts }: ContactsListPr
         alert('Contact created successfully!');
         setShowContactForm(false);
         setFormData({ name: '', email: '', phone: '', company: '', jobTitle: '' });
+        // Refresh contacts list
+        window.location.reload();
+      } else {
+        const error = await response.json();
+        alert(`Error: ${error.detail || 'Failed to create contact'}`);
       }
     } catch (error) {
       console.error('Error creating contact:', error);
+      alert('Network error. Please try again.');
     }
   };
 

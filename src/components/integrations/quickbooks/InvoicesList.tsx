@@ -12,6 +12,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Badge } from '@/components/ui/badge';
+import InvoiceForm from './InvoiceForm';
 
 interface InvoicesListProps {
   walletAddress: string;
@@ -104,19 +105,55 @@ export default function InvoicesList({ walletAddress }: InvoicesListProps) {
     setShowInvoiceForm(true);
   };
 
-  const handleDeleteInvoice = (invoiceId: string) => {
-    console.log('Delete invoice:', invoiceId);
-    // TODO: API call to delete
+  const handleDeleteInvoice = async (invoiceId: string) => {
+    if (!confirm('Are you sure you want to delete this invoice?')) {
+      return;
+    }
+
+    try {
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/quickbooks/invoices/${invoiceId}?wallet_address=${walletAddress}`,
+        {
+          method: 'DELETE'
+        }
+      );
+      const result = await response.json();
+      if (result.success) {
+        alert('Invoice deleted successfully');
+        window.location.reload();
+      } else {
+        alert('Failed to delete invoice: ' + (result.detail || 'Unknown error'));
+      }
+    } catch (error) {
+      console.error('Error deleting invoice:', error);
+      alert('Failed to delete invoice');
+    }
   };
 
-  const handleSendInvoice = (invoiceId: string) => {
-    console.log('Send invoice:', invoiceId);
-    // TODO: API call to send email
+  const handleSendInvoice = async (invoiceId: string) => {
+    try {
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/quickbooks/invoices/${invoiceId}/send?wallet_address=${walletAddress}`,
+        {
+          method: 'POST'
+        }
+      );
+      const result = await response.json();
+      if (result.success) {
+        alert('Invoice sent successfully');
+      } else {
+        alert('Failed to send invoice: ' + (result.detail || 'Unknown error'));
+      }
+    } catch (error) {
+      console.error('Error sending invoice:', error);
+      alert('Failed to send invoice');
+    }
   };
 
   const handleDownloadPDF = (invoiceId: string) => {
-    console.log('Download PDF:', invoiceId);
-    // TODO: API call to generate PDF
+    // QuickBooks doesn't have a direct PDF download API
+    // This would typically open the invoice in QuickBooks
+    alert('PDF download feature coming soon');
   };
 
   const filteredInvoices = invoices.filter(invoice => {
@@ -347,21 +384,47 @@ export default function InvoicesList({ walletAddress }: InvoicesListProps) {
         </CardContent>
       </Card>
 
-      {/* TODO: InvoiceForm Modal */}
+      {/* Invoice Form Modal */}
       {showInvoiceForm && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-2xl w-full">
-            <h2 className="text-xl font-bold mb-4">
-              {selectedInvoice ? 'Edit Invoice' : 'New Invoice'}
-            </h2>
-            <p className="text-gray-500 dark:text-gray-400">
-              Invoice form will be implemented here
-            </p>
-            <Button onClick={() => setShowInvoiceForm(false)} className="mt-4">
-              Close
-            </Button>
-          </div>
-        </div>
+        <InvoiceForm
+          invoice={selectedInvoice ? {
+            customer: selectedInvoice.customer,
+            number: selectedInvoice.number,
+            date: selectedInvoice.date,
+            dueDate: selectedInvoice.dueDate
+          } : undefined}
+          onClose={() => {
+            setShowInvoiceForm(false);
+            setSelectedInvoice(null);
+          }}
+          onSave={async (invoiceData) => {
+            try {
+              const url = selectedInvoice
+                ? `${process.env.NEXT_PUBLIC_API_URL}/api/v1/quickbooks/invoices/${selectedInvoice.id}?wallet_address=${walletAddress}`
+                : `${process.env.NEXT_PUBLIC_API_URL}/api/v1/quickbooks/invoices?wallet_address=${walletAddress}`;
+
+              const method = selectedInvoice ? 'PATCH' : 'POST';
+
+              const response = await fetch(url, {
+                method,
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(invoiceData)
+              });
+
+              const result = await response.json();
+              if (result.success) {
+                setShowInvoiceForm(false);
+                setSelectedInvoice(null);
+                window.location.reload();
+              } else {
+                alert('Failed to save invoice: ' + (result.detail || 'Unknown error'));
+              }
+            } catch (error) {
+              console.error('Error saving invoice:', error);
+              alert('Failed to save invoice');
+            }
+          }}
+        />
       )}
     </div>
   );

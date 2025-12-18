@@ -27,6 +27,9 @@ export interface OnboardingState {
   industry: string;
   companySize: string;
   primaryGoal: string;
+  contactEmail: string;
+  contactName: string;
+  referralSource: string;
   selectedIntegration: string | null;
   trialTier: '30_day' | '14_day' | null;
   trialDays: number;
@@ -92,6 +95,9 @@ export function OnboardingWizard({
     industry: '',
     companySize: '',
     primaryGoal: '',
+    contactEmail: '',
+    contactName: '',
+    referralSource: '',
     selectedIntegration: integrationSlug || null,
     trialTier: null,
     trialDays: 30,
@@ -208,6 +214,9 @@ export function OnboardingWizard({
     industry?: string;
     companySize?: string;
     primaryGoal?: string;
+    contactEmail?: string;
+    contactName?: string;
+    referralSource?: string;
   }) => {
     setState(prev => ({
       ...prev,
@@ -309,6 +318,9 @@ export function OnboardingWizard({
               industry={state.industry}
               companySize={state.companySize}
               primaryGoal={state.primaryGoal}
+              contactEmail={state.contactEmail}
+              contactName={state.contactName}
+              referralSource={state.referralSource}
               onUpdate={updateCompanyProfile}
               onNext={nextStep}
               onBack={prevStep}

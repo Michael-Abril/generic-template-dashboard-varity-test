@@ -118,11 +118,22 @@ export default function InvoiceForm({ invoice, onClose, onSave }: InvoiceFormPro
       return;
     }
 
+    // Format data for QuickBooks API
     const invoiceData = {
-      ...formData,
-      lineItems,
-      subtotal: calculateSubtotal(),
-      total: calculateTotal(),
+      customer_id: formData.customer, // This should be customer ID from QuickBooks
+      invoice_number: formData.invoiceNumber,
+      invoice_date: formData.invoiceDate,
+      due_date: formData.dueDate,
+      terms: formData.terms,
+      line_items: lineItems.map(item => ({
+        description: item.description,
+        quantity: item.quantity,
+        rate: item.rate,
+        amount: item.amount
+      })),
+      discount: formData.discount,
+      tax: formData.tax,
+      notes: formData.notes
     };
 
     onSave(invoiceData);

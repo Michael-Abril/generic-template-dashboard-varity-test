@@ -1,18 +1,24 @@
 'use client';
 
 import { useState } from 'react';
-import { Building2, ArrowRight, ArrowLeft, Loader2 } from 'lucide-react';
+import { Building2, ArrowRight, ArrowLeft, Loader2, Mail, User, Megaphone } from 'lucide-react';
 
 interface CompanyProfileStepProps {
   companyName: string;
   industry: string;
   companySize: string;
   primaryGoal: string;
+  contactEmail: string;
+  contactName: string;
+  referralSource: string;
   onUpdate: (data: {
     companyName?: string;
     industry?: string;
     companySize?: string;
     primaryGoal?: string;
+    contactEmail?: string;
+    contactName?: string;
+    referralSource?: string;
   }) => void;
   onNext: () => void;
   onBack: () => void;
@@ -51,11 +57,23 @@ const PRIMARY_GOALS = [
   { value: 'all', label: 'All of the above' },
 ];
 
+const REFERRAL_SOURCES = [
+  { value: 'search', label: 'Google / Search Engine' },
+  { value: 'social', label: 'Social Media (Twitter, LinkedIn)' },
+  { value: 'friend', label: 'Friend or Colleague' },
+  { value: 'partner', label: 'Partner or Affiliate' },
+  { value: 'event', label: 'Conference or Event' },
+  { value: 'other', label: 'Other' },
+];
+
 export function CompanyProfileStep({
   companyName,
   industry,
   companySize,
   primaryGoal,
+  contactEmail,
+  contactName,
+  referralSource,
   onUpdate,
   onNext,
   onBack,
@@ -64,7 +82,16 @@ export function CompanyProfileStep({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const isValid = companyName.trim().length > 0 && industry.length > 0;
+  // Validation: company name, industry, and email are required
+  const isValidEmail = (email: string) => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  };
+
+  const isValid = companyName.trim().length > 0 &&
+                  industry.length > 0 &&
+                  contactEmail.trim().length > 0 &&
+                  isValidEmail(contactEmail);
 
   const handleSaveAndContinue = async () => {
     if (!isValid) return;
@@ -85,6 +112,9 @@ export function CompanyProfileStep({
             industry: industry,
             company_size: companySize,
             primary_goal: primaryGoal,
+            contact_email: contactEmail,
+            contact_name: contactName,
+            referral_source: referralSource,
           }),
         }
       );
@@ -103,19 +133,22 @@ export function CompanyProfileStep({
   };
 
   return (
-    <div className="p-8">
+    <div className="p-8 sm:p-10">
       {/* Header */}
-      <div className="text-center mb-8">
-        <div className="flex justify-center mb-4">
-          <div className="w-16 h-16 bg-blue-100 rounded-xl flex items-center justify-center">
-            <Building2 className="w-8 h-8 text-blue-600" />
+      <div className="text-center mb-10">
+        <div className="flex justify-center mb-5">
+          <div className="relative">
+            <div className="absolute inset-0 bg-blue-500/20 rounded-2xl blur-xl"></div>
+            <div className="relative w-18 h-18 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-2xl flex items-center justify-center shadow-xl">
+              <Building2 className="w-9 h-9 text-white" />
+            </div>
           </div>
         </div>
-        <h2 className="text-2xl font-bold text-gray-900 mb-2">
+        <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-3">
           Tell us about your company
         </h2>
-        <p className="text-gray-600">
-          This helps us personalize your AI assistant and dashboard
+        <p className="text-gray-600 text-lg max-w-md mx-auto">
+          This helps us personalize your AI assistant and provide relevant insights
         </p>
       </div>
 
@@ -173,6 +206,81 @@ export function CompanyProfileStep({
           </select>
         </div>
 
+        {/* Divider */}
+        <div className="relative py-4">
+          <div className="absolute inset-0 flex items-center">
+            <div className="w-full border-t border-gray-200" />
+          </div>
+          <div className="relative flex justify-center">
+            <span className="bg-white px-4 text-sm font-medium text-gray-500 flex items-center gap-2">
+              <Mail className="w-4 h-4" />
+              Contact Information
+            </span>
+          </div>
+        </div>
+
+        {/* Contact Name */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
+            <User className="w-4 h-4 text-gray-400" />
+            Your Name
+          </label>
+          <input
+            type="text"
+            value={contactName}
+            onChange={(e) => onUpdate({ contactName: e.target.value })}
+            placeholder="John Smith"
+            className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all hover:border-gray-400"
+          />
+        </div>
+
+        {/* Contact Email */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
+            <Mail className="w-4 h-4 text-gray-400" />
+            Email Address <span className="text-red-500">*</span>
+          </label>
+          <input
+            type="email"
+            value={contactEmail}
+            onChange={(e) => onUpdate({ contactEmail: e.target.value })}
+            placeholder="john@company.com"
+            className={`w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${
+              contactEmail && !isValidEmail(contactEmail)
+                ? 'border-red-300 bg-red-50'
+                : 'border-gray-300 hover:border-gray-400'
+            }`}
+          />
+          {contactEmail && !isValidEmail(contactEmail) && (
+            <p className="mt-1.5 text-sm text-red-600 flex items-center gap-1">
+              Please enter a valid email address
+            </p>
+          )}
+          <p className="mt-1.5 text-xs text-gray-500">
+            We&apos;ll send you trial updates, tips, and important notifications
+          </p>
+        </div>
+
+        {/* Referral Source */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
+            <Megaphone className="w-4 h-4 text-gray-400" />
+            How did you hear about us?
+          </label>
+          <select
+            value={referralSource}
+            onChange={(e) => onUpdate({ referralSource: e.target.value })}
+            className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all bg-white hover:border-gray-400"
+          >
+            <option value="">Select an option</option>
+            {REFERRAL_SOURCES.map((source) => (
+              <option key={source.value} value={source.value}>
+                {source.label}
+              </option>
+            ))}
+          </select>
+        </div>
+
         {/* Primary Goal */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -204,17 +312,20 @@ export function CompanyProfileStep({
 
         {/* Error Message */}
         {error && (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700 text-sm">
+          <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-red-700 text-sm flex items-center gap-2">
+            <div className="w-5 h-5 bg-red-100 rounded-full flex items-center justify-center flex-shrink-0">
+              <span className="text-red-600">!</span>
+            </div>
             {error}
           </div>
         )}
       </div>
 
       {/* Navigation Buttons */}
-      <div className="flex gap-4 mt-8 max-w-lg mx-auto">
+      <div className="flex gap-4 mt-10 max-w-lg mx-auto">
         <button
           onClick={onBack}
-          className="flex-1 px-6 py-3 border border-gray-300 rounded-lg font-medium text-gray-700 hover:bg-gray-50 transition-colors flex items-center justify-center gap-2"
+          className="flex-1 px-6 py-3.5 border-2 border-gray-200 rounded-xl font-semibold text-gray-700 hover:bg-gray-50 hover:border-gray-300 transition-all flex items-center justify-center gap-2"
         >
           <ArrowLeft className="w-4 h-4" />
           Back
@@ -223,21 +334,26 @@ export function CompanyProfileStep({
         <button
           onClick={handleSaveAndContinue}
           disabled={!isValid || saving}
-          className="flex-1 bg-blue-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          className="group flex-1 bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-6 py-3.5 rounded-xl font-bold hover:from-blue-700 hover:to-indigo-700 transition-all shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
         >
           {saving ? (
             <>
-              <Loader2 className="w-4 h-4 animate-spin" />
+              <Loader2 className="w-5 h-5 animate-spin" />
               Saving...
             </>
           ) : (
             <>
               Continue
-              <ArrowRight className="w-4 h-4" />
+              <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
             </>
           )}
         </button>
       </div>
+
+      {/* Privacy note */}
+      <p className="text-center text-xs text-gray-400 mt-6 max-w-md mx-auto">
+        Your information is encrypted and secure. We never share your data with third parties.
+      </p>
     </div>
   );
 }

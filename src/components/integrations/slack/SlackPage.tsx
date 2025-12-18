@@ -32,9 +32,11 @@ export function SlackPage({ walletAddress, data }: SlackPageProps) {
   const [selectedChannel, setSelectedChannel] = useState<any>(null);
   const [selectedThread, setSelectedThread] = useState<any>(null);
   const [showSearch, setShowSearch] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const [channels, setChannels] = useState<any[]>([]);
   const [dms, setDms] = useState<any[]>([]);
   const [messages, setMessages] = useState<any[]>([]);
+  const [allMessages, setAllMessages] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -45,6 +47,7 @@ export function SlackPage({ walletAddress, data }: SlackPageProps) {
       const usersData = data.data?.users?.records || [];
 
       setChannels(channelsData.filter((c: any) => c.type === 'channel'));
+      setAllMessages(messagesData); // Store all messages for search
 
       // Create DM list from users
       const dmsList = usersData.map((user: any) => ({
@@ -142,6 +145,36 @@ export function SlackPage({ walletAddress, data }: SlackPageProps) {
     }
   };
 
+  const handleSearch = (query: string) => {
+    setSearchQuery(query);
+    if (!query.trim()) {
+      // Reset to current channel messages if search is cleared
+      if (selectedChannel) {
+        const channelMessages = allMessages.filter(
+          (m: any) => m.channel_id === selectedChannel.id
+        );
+        setMessages(channelMessages);
+      }
+      return;
+    }
+
+    // Search across all messages
+    const searchResults = allMessages.filter((m: any) => {
+      const text = m.text?.toLowerCase() || '';
+      const user = m.user?.toLowerCase() || '';
+      const channelName = m.channel_name?.toLowerCase() || '';
+      const searchTerm = query.toLowerCase();
+
+      return (
+        text.includes(searchTerm) ||
+        user.includes(searchTerm) ||
+        channelName.includes(searchTerm)
+      );
+    });
+
+    setMessages(searchResults);
+  };
+
   if (loading) {
     return (
       <div className="flex h-screen items-center justify-center">
@@ -225,11 +258,23 @@ export function SlackPage({ walletAddress, data }: SlackPageProps) {
               </div>
 
               <div className="flex items-center gap-2">
-                <button className="p-2 hover:bg-gray-100 rounded">
+                <button
+                  className="p-2 hover:bg-gray-100 rounded relative group"
+                  title="Coming Soon"
+                >
                   <Phone className="h-5 w-5 text-gray-600" />
+                  <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                    Phone calls - Coming Soon
+                  </span>
                 </button>
-                <button className="p-2 hover:bg-gray-100 rounded">
+                <button
+                  className="p-2 hover:bg-gray-100 rounded relative group"
+                  title="Coming Soon"
+                >
                   <Video className="h-5 w-5 text-gray-600" />
+                  <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                    Video calls - Coming Soon
+                  </span>
                 </button>
                 <button
                   className="p-2 hover:bg-gray-100 rounded"
@@ -242,6 +287,35 @@ export function SlackPage({ walletAddress, data }: SlackPageProps) {
                 </button>
               </div>
             </div>
+
+            {/* Search Bar */}
+            {showSearch && (
+              <div className="border-b border-gray-200 p-3">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                  <input
+                    type="text"
+                    placeholder="Search messages..."
+                    value={searchQuery}
+                    onChange={(e) => handleSearch(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  />
+                  {searchQuery && (
+                    <button
+                      onClick={() => handleSearch('')}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
+                {searchQuery && (
+                  <p className="mt-2 text-sm text-gray-600">
+                    Found {messages.length} message{messages.length !== 1 ? 's' : ''}
+                  </p>
+                )}
+              </div>
+            )}
 
             {/* Messages */}
             <div className="flex-1 overflow-hidden">
@@ -285,6 +359,8 @@ export function SlackPage({ walletAddress, data }: SlackPageProps) {
           </div>
           <ThreadPanel
             thread={selectedThread}
+            channelId={selectedChannel?.id || ''}
+            walletAddress={walletAddress}
             onSendReply={(text, files) => handleSendMessage(text, files)}
             onReaction={handleReaction}
           />

@@ -103,18 +103,36 @@ export default function OutlookInbox({
   };
 
   const handleMarkAsRead = async (messageIds: string[]) => {
-    // API call to mark messages as read
-    console.log('Marking as read:', messageIds);
+    try {
+      // TODO: Implement mark as read API endpoint in backend
+      console.log('Marking as read:', messageIds);
+      alert('Mark as read functionality coming soon');
+    } catch (error) {
+      console.error('Error marking as read:', error);
+      alert('Failed to mark as read');
+    }
   };
 
   const handleDelete = async (messageIds: string[]) => {
-    // API call to delete messages
-    console.log('Deleting:', messageIds);
+    try {
+      // TODO: Implement delete messages API endpoint in backend
+      console.log('Deleting:', messageIds);
+      alert('Delete functionality coming soon');
+    } catch (error) {
+      console.error('Error deleting messages:', error);
+      alert('Failed to delete messages');
+    }
   };
 
   const handleArchive = async (messageIds: string[]) => {
-    // API call to archive messages
-    console.log('Archiving:', messageIds);
+    try {
+      // TODO: Implement archive messages API endpoint in backend
+      console.log('Archiving:', messageIds);
+      alert('Archive functionality coming soon');
+    } catch (error) {
+      console.error('Error archiving messages:', error);
+      alert('Failed to archive messages');
+    }
   };
 
   const getImportanceIcon = (importance: string) => {

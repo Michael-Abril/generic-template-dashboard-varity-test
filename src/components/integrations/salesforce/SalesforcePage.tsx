@@ -31,14 +31,18 @@ import {
   DollarSign,
   AlertCircle,
   Activity,
-  Target,
-  Award,
-  Star,
   Clock,
   Phone,
   Mail,
-  Globe
+  Edit3,
+  Trash2,
+  Eye
 } from 'lucide-react';
+import KanbanBoard from './KanbanBoard';
+import LeadForm from './LeadForm';
+import OpportunityForm from './OpportunityForm';
+import AccountForm from './AccountForm';
+import ContactForm from './ContactForm';
 
 interface SalesforcePageProps {
   walletAddress: string;
@@ -115,6 +119,35 @@ export default function SalesforcePage({ walletAddress, data, onRefresh }: Sales
   const [createMenuOpen, setCreateMenuOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState<'list' | 'kanban'>('list');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Form modal states
+  const [leadFormOpen, setLeadFormOpen] = useState(false);
+  const [opportunityFormOpen, setOpportunityFormOpen] = useState(false);
+  const [accountFormOpen, setAccountFormOpen] = useState(false);
+  const [contactFormOpen, setContactFormOpen] = useState(false);
+  const [selectedRecord, setSelectedRecord] = useState<any>(null);
+
+  // Data states
+  const [leads, setLeads] = useState<any[]>([]);
+  const [opportunities, setOpportunities] = useState<any[]>([]);
+  const [accounts, setAccounts] = useState<any[]>([]);
+  const [contacts, setContacts] = useState<any[]>([]);
+  const [cases, setCases] = useState<any[]>([]);
+  const [tasks, setTasks] = useState<any[]>([]);
+
+  useEffect(() => {
+    // Load data from props
+    if (data) {
+      setLeads(data.leads || []);
+      setOpportunities(data.opportunities || []);
+      setAccounts(data.accounts || []);
+      setContacts(data.contacts || []);
+      setCases(data.cases || []);
+      setTasks(data.tasks || []);
+    }
+  }, [data]);
 
   const toggleMenu = (menuId: string) => {
     setExpandedMenus(prev =>
@@ -125,10 +158,285 @@ export default function SalesforcePage({ walletAddress, data, onRefresh }: Sales
   };
 
   const handleCreate = (itemType: string) => {
-    // Import the form component dynamically based on itemType
     setCreateMenuOpen(false);
-    // TODO: Open respective form modal
-    console.log('Create:', itemType);
+    setSelectedRecord(null);
+
+    switch (itemType) {
+      case 'lead':
+        setLeadFormOpen(true);
+        break;
+      case 'opportunity':
+        setOpportunityFormOpen(true);
+        break;
+      case 'account':
+        setAccountFormOpen(true);
+        break;
+      case 'contact':
+        setContactFormOpen(true);
+        break;
+      default:
+        console.log('Create:', itemType, '- Coming soon');
+    }
+  };
+
+  const handleEdit = (recordType: string, record: any) => {
+    setSelectedRecord(record);
+
+    switch (recordType) {
+      case 'lead':
+        setLeadFormOpen(true);
+        break;
+      case 'opportunity':
+        setOpportunityFormOpen(true);
+        break;
+      case 'account':
+        setAccountFormOpen(true);
+        break;
+      case 'contact':
+        setContactFormOpen(true);
+        break;
+    }
+  };
+
+  // API integration functions
+  const saveLead = async (leadData: any) => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+      const endpoint = leadData.id
+        ? `${apiUrl}/api/v1/salesforce/leads/${leadData.id}`
+        : `${apiUrl}/api/v1/salesforce/leads`;
+
+      const method = leadData.id ? 'PATCH' : 'POST';
+
+      const response = await fetch(`${endpoint}?wallet_address=${walletAddress}`, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(leadData),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to save lead');
+      }
+
+      const result = await response.json();
+
+      // Update local state
+      if (leadData.id) {
+        setLeads(prev => prev.map(l => l.id === leadData.id ? { ...l, ...leadData } : l));
+      } else {
+        setLeads(prev => [...prev, { ...leadData, id: result.id }]);
+      }
+
+      onRefresh();
+    } catch (err: any) {
+      setError(err.message);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const saveOpportunity = async (oppData: any) => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+      const endpoint = oppData.id
+        ? `${apiUrl}/api/v1/salesforce/opportunities/${oppData.id}`
+        : `${apiUrl}/api/v1/salesforce/opportunities`;
+
+      const method = oppData.id ? 'PATCH' : 'POST';
+
+      const response = await fetch(`${endpoint}?wallet_address=${walletAddress}`, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(oppData),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to save opportunity');
+      }
+
+      const result = await response.json();
+
+      // Update local state
+      if (oppData.id) {
+        setOpportunities(prev => prev.map(o => o.id === oppData.id ? { ...o, ...oppData } : o));
+      } else {
+        setOpportunities(prev => [...prev, { ...oppData, id: result.id }]);
+      }
+
+      onRefresh();
+    } catch (err: any) {
+      setError(err.message);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const saveAccount = async (accountData: any) => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+      const endpoint = accountData.id
+        ? `${apiUrl}/api/v1/salesforce/accounts/${accountData.id}`
+        : `${apiUrl}/api/v1/salesforce/accounts`;
+
+      const method = accountData.id ? 'PATCH' : 'POST';
+
+      const response = await fetch(`${endpoint}?wallet_address=${walletAddress}`, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(accountData),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to save account');
+      }
+
+      const result = await response.json();
+
+      // Update local state
+      if (accountData.id) {
+        setAccounts(prev => prev.map(a => a.id === accountData.id ? { ...a, ...accountData } : a));
+      } else {
+        setAccounts(prev => [...prev, { ...accountData, id: result.id }]);
+      }
+
+      onRefresh();
+    } catch (err: any) {
+      setError(err.message);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const saveContact = async (contactData: any) => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+      const endpoint = contactData.id
+        ? `${apiUrl}/api/v1/salesforce/contacts/${contactData.id}`
+        : `${apiUrl}/api/v1/salesforce/contacts`;
+
+      const method = contactData.id ? 'PATCH' : 'POST';
+
+      const response = await fetch(`${endpoint}?wallet_address=${walletAddress}`, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(contactData),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to save contact');
+      }
+
+      const result = await response.json();
+
+      // Update local state
+      if (contactData.id) {
+        setContacts(prev => prev.map(c => c.id === contactData.id ? { ...c, ...contactData } : c));
+      } else {
+        setContacts(prev => [...prev, { ...contactData, id: result.id }]);
+      }
+
+      onRefresh();
+    } catch (err: any) {
+      setError(err.message);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleOpportunityMove = async (cardId: string, newStage: string) => {
+    try {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+      const response = await fetch(`${apiUrl}/api/v1/salesforce/opportunities/${cardId}?wallet_address=${walletAddress}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ stage: newStage }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to update opportunity stage');
+      }
+
+      // Update local state
+      setOpportunities(prev => prev.map(o =>
+        o.id === cardId ? { ...o, stage: newStage } : o
+      ));
+    } catch (err: any) {
+      setError(err.message);
+    }
+  };
+
+  const handleLeadMove = async (cardId: string, newStatus: string) => {
+    try {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+      const response = await fetch(`${apiUrl}/api/v1/salesforce/leads/${cardId}?wallet_address=${walletAddress}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to update lead status');
+      }
+
+      // Update local state
+      setLeads(prev => prev.map(l =>
+        l.id === cardId ? { ...l, status: newStatus } : l
+      ));
+    } catch (err: any) {
+      setError(err.message);
+    }
+  };
+
+  const handleDelete = async (recordType: string, recordId: string) => {
+    if (!confirm(`Are you sure you want to delete this ${recordType}?`)) {
+      return;
+    }
+
+    try {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+      const response = await fetch(
+        `${apiUrl}/api/v1/salesforce/${recordType}s/${recordId}?wallet_address=${walletAddress}`,
+        { method: 'DELETE' }
+      );
+
+      if (!response.ok) {
+        throw new Error(`Failed to delete ${recordType}`);
+      }
+
+      // Update local state
+      switch (recordType) {
+        case 'lead':
+          setLeads(prev => prev.filter(l => l.id !== recordId));
+          break;
+        case 'opportunity':
+          setOpportunities(prev => prev.filter(o => o.id !== recordId));
+          break;
+        case 'account':
+          setAccounts(prev => prev.filter(a => a.id !== recordId));
+          break;
+        case 'contact':
+          setContacts(prev => prev.filter(c => c.id !== recordId));
+          break;
+      }
+    } catch (err: any) {
+      setError(err.message);
+    }
   };
 
   // Render Salesforce-style sidebar
@@ -230,7 +538,7 @@ export default function SalesforcePage({ walletAddress, data, onRefresh }: Sales
           <div className="relative">
             <button
               onClick={() => setCreateMenuOpen(!createMenuOpen)}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+              className="flex items-center gap-2 px-4 py-2 bg-[#0176D3] text-white rounded-md hover:bg-[#014486] transition-colors"
             >
               <Plus className="w-4 h-4" />
               <span>New</span>
@@ -344,51 +652,13 @@ export default function SalesforcePage({ walletAddress, data, onRefresh }: Sales
     );
   };
 
-  // Render active section content
-  const renderSectionContent = () => {
-    // Import section components dynamically
-    switch (activeSection) {
-      case 'home':
-        return renderHomeDashboard();
-      case 'leads':
-        return viewMode === 'kanban' ? renderLeadsKanban() : renderLeadsList();
-      case 'accounts':
-        return renderAccountsList();
-      case 'contacts':
-        return renderContactsList();
-      case 'opportunities':
-        return viewMode === 'kanban' ? renderOpportunitiesKanban() : renderOpportunitiesList();
-      case 'cases':
-        return renderCasesList();
-      case 'campaigns':
-        return renderCampaignsList();
-      case 'reports':
-        return renderReportsDashboard();
-      case 'tasks':
-        return renderTasksList();
-      default:
-        return (
-          <div className="flex items-center justify-center h-full">
-            <div className="text-center">
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                {activeSection} - Coming Soon
-              </h3>
-              <p className="text-gray-500">
-                This section is under development
-              </p>
-            </div>
-          </div>
-        );
-    }
-  };
-
   // Home Dashboard
   const renderHomeDashboard = () => {
     const metrics = [
-      { label: 'Open Opportunities', value: data?.opportunities?.filter((o: any) => !o.stage?.includes('Closed')).length || 0, icon: DollarSign, color: 'blue' },
-      { label: 'New Leads This Week', value: data?.leads?.length || 0, icon: UserPlus, color: 'green' },
-      { label: 'Open Cases', value: data?.cases?.filter((c: any) => c.status !== 'Closed').length || 0, icon: AlertCircle, color: 'orange' },
-      { label: 'Tasks Due Today', value: data?.tasks?.filter((t: any) => new Date(t.due_date).toDateString() === new Date().toDateString()).length || 0, icon: CheckCircle, color: 'purple' },
+      { label: 'Open Opportunities', value: opportunities?.filter((o: any) => !o.stage?.includes('Closed')).length || 0, icon: DollarSign, color: 'blue' },
+      { label: 'New Leads This Week', value: leads?.length || 0, icon: UserPlus, color: 'green' },
+      { label: 'Open Cases', value: cases?.filter((c: any) => c.status !== 'Closed').length || 0, icon: AlertCircle, color: 'orange' },
+      { label: 'Tasks Due Today', value: tasks?.filter((t: any) => new Date(t.due_date).toDateString() === new Date().toDateString()).length || 0, icon: CheckCircle, color: 'purple' },
     ];
 
     return (
@@ -415,7 +685,7 @@ export default function SalesforcePage({ walletAddress, data, onRefresh }: Sales
           <div className="bg-white rounded-lg border border-gray-200 p-6">
             <h3 className="text-lg font-semibold mb-4">Recent Opportunities</h3>
             <div className="space-y-3">
-              {(data?.opportunities || []).slice(0, 5).map((opp: any, idx: number) => (
+              {(opportunities || []).slice(0, 5).map((opp: any, idx: number) => (
                 <div key={idx} className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0">
                   <div>
                     <div className="font-medium text-gray-900">{opp.name}</div>
@@ -434,7 +704,7 @@ export default function SalesforcePage({ walletAddress, data, onRefresh }: Sales
           <div className="bg-white rounded-lg border border-gray-200 p-6">
             <h3 className="text-lg font-semibold mb-4">Recent Leads</h3>
             <div className="space-y-3">
-              {(data?.leads || []).slice(0, 5).map((lead: any, idx: number) => (
+              {(leads || []).slice(0, 5).map((lead: any, idx: number) => (
                 <div key={idx} className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center">
@@ -463,17 +733,282 @@ export default function SalesforcePage({ walletAddress, data, onRefresh }: Sales
     );
   };
 
-  // Placeholder render functions (to be implemented with actual components)
-  const renderLeadsKanban = () => <div className="p-6">Leads Kanban View</div>;
-  const renderLeadsList = () => <div className="p-6">Leads List View</div>;
-  const renderAccountsList = () => <div className="p-6">Accounts List</div>;
-  const renderContactsList = () => <div className="p-6">Contacts List</div>;
-  const renderOpportunitiesKanban = () => <div className="p-6">Opportunities Kanban View</div>;
-  const renderOpportunitiesList = () => <div className="p-6">Opportunities List View</div>;
-  const renderCasesList = () => <div className="p-6">Cases List</div>;
-  const renderCampaignsList = () => <div className="p-6">Campaigns List</div>;
-  const renderReportsDashboard = () => <div className="p-6">Reports Dashboard</div>;
-  const renderTasksList = () => <div className="p-6">Tasks List</div>;
+  // Render Leads
+  const renderLeads = () => {
+    if (viewMode === 'kanban') {
+      return (
+        <KanbanBoard
+          type="leads"
+          data={leads}
+          onCardMove={handleLeadMove}
+          onCardClick={(card) => handleEdit('lead', card)}
+        />
+      );
+    }
+
+    return (
+      <div className="p-6">
+        <div className="bg-white rounded-lg border border-gray-200">
+          <table className="w-full">
+            <thead className="bg-gray-50 border-b border-gray-200">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Company</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {leads.map((lead) => (
+                <tr key={lead.id} className="hover:bg-gray-50">
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="text-sm font-medium text-gray-900">{lead.name}</div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="text-sm text-gray-500">{lead.company}</div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="text-sm text-gray-500">{lead.email}</div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                      lead.status === 'New' ? 'bg-blue-100 text-blue-800' :
+                      lead.status === 'Working' ? 'bg-yellow-100 text-yellow-800' :
+                      'bg-green-100 text-green-800'
+                    }`}>
+                      {lead.status}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                    <button
+                      onClick={() => handleEdit('lead', lead)}
+                      className="text-blue-600 hover:text-blue-900 mr-3"
+                    >
+                      <Edit3 className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => handleDelete('lead', lead.id)}
+                      className="text-red-600 hover:text-red-900"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  };
+
+  // Render Opportunities
+  const renderOpportunities = () => {
+    if (viewMode === 'kanban') {
+      return (
+        <KanbanBoard
+          type="opportunities"
+          data={opportunities}
+          onCardMove={handleOpportunityMove}
+          onCardClick={(card) => handleEdit('opportunity', card)}
+        />
+      );
+    }
+
+    return (
+      <div className="p-6">
+        <div className="bg-white rounded-lg border border-gray-200">
+          <table className="w-full">
+            <thead className="bg-gray-50 border-b border-gray-200">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Account</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Stage</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Close Date</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {opportunities.map((opp) => (
+                <tr key={opp.id} className="hover:bg-gray-50">
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="text-sm font-medium text-gray-900">{opp.name}</div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="text-sm text-gray-500">{opp.account_name}</div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="text-sm font-semibold text-gray-900">${opp.amount?.toLocaleString() || 0}</div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">
+                      {opp.stage}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="text-sm text-gray-500">
+                      {opp.close_date ? new Date(opp.close_date).toLocaleDateString() : 'N/A'}
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                    <button
+                      onClick={() => handleEdit('opportunity', opp)}
+                      className="text-blue-600 hover:text-blue-900 mr-3"
+                    >
+                      <Edit3 className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => handleDelete('opportunity', opp.id)}
+                      className="text-red-600 hover:text-red-900"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  };
+
+  // Render Accounts
+  const renderAccounts = () => (
+    <div className="p-6">
+      <div className="bg-white rounded-lg border border-gray-200">
+        <table className="w-full">
+          <thead className="bg-gray-50 border-b border-gray-200">
+            <tr>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Phone</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Website</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="bg-white divide-y divide-gray-200">
+            {accounts.map((account) => (
+              <tr key={account.id} className="hover:bg-gray-50">
+                <td className="px-6 py-4 whitespace-nowrap">
+                  <div className="text-sm font-medium text-gray-900">{account.name}</div>
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap">
+                  <div className="text-sm text-gray-500">{account.type}</div>
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap">
+                  <div className="text-sm text-gray-500">{account.phone}</div>
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap">
+                  <div className="text-sm text-gray-500">{account.website}</div>
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                  <button
+                    onClick={() => handleEdit('account', account)}
+                    className="text-blue-600 hover:text-blue-900 mr-3"
+                  >
+                    <Edit3 className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => handleDelete('account', account.id)}
+                    className="text-red-600 hover:text-red-900"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+
+  // Render Contacts
+  const renderContacts = () => (
+    <div className="p-6">
+      <div className="bg-white rounded-lg border border-gray-200">
+        <table className="w-full">
+          <thead className="bg-gray-50 border-b border-gray-200">
+            <tr>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Account</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Title</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Phone</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="bg-white divide-y divide-gray-200">
+            {contacts.map((contact) => (
+              <tr key={contact.id} className="hover:bg-gray-50">
+                <td className="px-6 py-4 whitespace-nowrap">
+                  <div className="text-sm font-medium text-gray-900">{contact.name}</div>
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap">
+                  <div className="text-sm text-gray-500">{contact.account_name}</div>
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap">
+                  <div className="text-sm text-gray-500">{contact.title}</div>
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap">
+                  <div className="text-sm text-gray-500">{contact.email}</div>
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap">
+                  <div className="text-sm text-gray-500">{contact.phone}</div>
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                  <button
+                    onClick={() => handleEdit('contact', contact)}
+                    className="text-blue-600 hover:text-blue-900 mr-3"
+                  >
+                    <Edit3 className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => handleDelete('contact', contact.id)}
+                    className="text-red-600 hover:text-red-900"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+
+  // Render active section content
+  const renderSectionContent = () => {
+    switch (activeSection) {
+      case 'home':
+        return renderHomeDashboard();
+      case 'leads':
+        return renderLeads();
+      case 'accounts':
+        return renderAccounts();
+      case 'contacts':
+        return renderContacts();
+      case 'opportunities':
+        return renderOpportunities();
+      default:
+        return (
+          <div className="flex items-center justify-center h-full">
+            <div className="text-center">
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                {activeSection} - Coming Soon
+              </h3>
+              <p className="text-gray-500">
+                This section is under development
+              </p>
+            </div>
+          </div>
+        );
+    }
+  };
 
   return (
     <div className="flex h-screen bg-gray-50">
@@ -490,9 +1025,59 @@ export default function SalesforcePage({ walletAddress, data, onRefresh }: Sales
 
         {/* Section Content */}
         <div className="flex-1 overflow-y-auto">
+          {error && (
+            <div className="m-6 p-4 bg-red-50 border border-red-200 rounded-md">
+              <p className="text-sm text-red-600">{error}</p>
+            </div>
+          )}
           {renderSectionContent()}
         </div>
       </div>
+
+      {/* Form Modals */}
+      <LeadForm
+        lead={selectedRecord}
+        isOpen={leadFormOpen}
+        onClose={() => {
+          setLeadFormOpen(false);
+          setSelectedRecord(null);
+        }}
+        onSave={saveLead}
+        walletAddress={walletAddress}
+      />
+
+      <OpportunityForm
+        opportunity={selectedRecord}
+        isOpen={opportunityFormOpen}
+        onClose={() => {
+          setOpportunityFormOpen(false);
+          setSelectedRecord(null);
+        }}
+        onSave={saveOpportunity}
+        walletAddress={walletAddress}
+      />
+
+      <AccountForm
+        account={selectedRecord}
+        isOpen={accountFormOpen}
+        onClose={() => {
+          setAccountFormOpen(false);
+          setSelectedRecord(null);
+        }}
+        onSave={saveAccount}
+        walletAddress={walletAddress}
+      />
+
+      <ContactForm
+        contact={selectedRecord}
+        isOpen={contactFormOpen}
+        onClose={() => {
+          setContactFormOpen(false);
+          setSelectedRecord(null);
+        }}
+        onSave={saveContact}
+        walletAddress={walletAddress}
+      />
     </div>
   );
 }

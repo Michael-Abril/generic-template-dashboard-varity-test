@@ -57,19 +57,18 @@ export default function EmailComposer({ walletAddress, onClose, replyTo }: Email
     setIsSending(true);
     try {
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/integrations/microsoft/send-email`,
+        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/integrations/microsoft365/mail/send`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             wallet_address: walletAddress,
             to: to.split(',').map((e) => e.trim()),
-            cc: cc ? cc.split(',').map((e) => e.trim()) : [],
-            bcc: bcc ? bcc.split(',').map((e) => e.trim()) : [],
             subject,
             body,
-            importance,
-            attachments: [] // File upload would need separate handling
+            cc: cc ? cc.split(',').map((e) => e.trim()) : undefined,
+            bcc: bcc ? bcc.split(',').map((e) => e.trim()) : undefined,
+            importance
           })
         }
       );
@@ -78,10 +77,11 @@ export default function EmailComposer({ walletAddress, onClose, replyTo }: Email
         alert('Email sent successfully!');
         onClose();
       } else {
-        throw new Error('Failed to send email');
+        const error = await response.json();
+        alert(`Error: ${error.detail || 'Failed to send email'}`);
       }
     } catch (error) {
-      alert('Error sending email');
+      alert('Network error. Please try again.');
       console.error(error);
     } finally {
       setIsSending(false);
@@ -91,17 +91,16 @@ export default function EmailComposer({ walletAddress, onClose, replyTo }: Email
   const handleSaveDraft = async () => {
     try {
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/integrations/microsoft/save-draft`,
+        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/integrations/microsoft365/mail/drafts`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             wallet_address: walletAddress,
             to: to.split(',').map((e) => e.trim()),
-            cc: cc ? cc.split(',').map((e) => e.trim()) : [],
-            bcc: bcc ? bcc.split(',').map((e) => e.trim()) : [],
             subject,
             body,
+            cc: cc ? cc.split(',').map((e) => e.trim()) : undefined,
             importance
           })
         }
@@ -109,9 +108,13 @@ export default function EmailComposer({ walletAddress, onClose, replyTo }: Email
 
       if (response.ok) {
         alert('Draft saved successfully!');
+      } else {
+        const error = await response.json();
+        alert(`Error: ${error.detail || 'Failed to save draft'}`);
       }
     } catch (error) {
       console.error('Error saving draft:', error);
+      alert('Network error. Please try again.');
     }
   };
 

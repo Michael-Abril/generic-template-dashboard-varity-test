@@ -143,8 +143,14 @@ export default function OneDriveExplorer({
   };
 
   const handleDownload = async (fileId: string) => {
-    console.log('Downloading file:', fileId);
-    // API call to download file
+    try {
+      // TODO: Implement download file API endpoint in backend
+      console.log('Downloading file:', fileId);
+      alert('Download functionality coming soon');
+    } catch (error) {
+      console.error('Error downloading file:', error);
+      alert('Failed to download file');
+    }
   };
 
   const handleUpload = () => {
@@ -153,20 +159,65 @@ export default function OneDriveExplorer({
     input.multiple = true;
     input.onchange = async (e: any) => {
       const files = Array.from(e.target.files) as File[];
-      console.log('Uploading files:', files);
-      // API call to upload files
+
+      for (const file of files) {
+        try {
+          const reader = new FileReader();
+          reader.onload = async (event) => {
+            const fileContent = event.target?.result as string;
+
+            const response = await fetch(
+              `${process.env.NEXT_PUBLIC_API_URL}/api/v1/integrations/microsoft365/onedrive/upload`,
+              {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  wallet_address: walletAddress,
+                  file_name: file.name,
+                  file_content: fileContent,
+                  folder_id: currentFolder || undefined
+                })
+              }
+            );
+
+            if (response.ok) {
+              alert(`File "${file.name}" uploaded successfully!`);
+              window.location.reload();
+            } else {
+              const error = await response.json();
+              alert(`Error uploading "${file.name}": ${error.detail || 'Failed'}`);
+            }
+          };
+          reader.readAsText(file);
+        } catch (error) {
+          console.error('Error uploading file:', error);
+          alert(`Failed to upload "${file.name}"`);
+        }
+      }
     };
     input.click();
   };
 
   const handleShare = (fileId: string) => {
-    console.log('Sharing file:', fileId);
-    // API call to create share link
+    try {
+      // TODO: Implement share file API endpoint in backend
+      console.log('Sharing file:', fileId);
+      alert('Share functionality coming soon');
+    } catch (error) {
+      console.error('Error sharing file:', error);
+      alert('Failed to share file');
+    }
   };
 
   const handleDelete = (fileIds: string[]) => {
-    console.log('Deleting files:', fileIds);
-    // API call to delete files
+    try {
+      // TODO: Implement delete files API endpoint in backend
+      console.log('Deleting files:', fileIds);
+      alert('Delete functionality coming soon');
+    } catch (error) {
+      console.error('Error deleting files:', error);
+      alert('Failed to delete files');
+    }
   };
 
   const renderGridView = () => (

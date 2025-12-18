@@ -44,6 +44,15 @@ export default function CalendarView({ walletAddress, view, events }: CalendarVi
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
   const [showEventModal, setShowEventModal] = useState(false);
   const [showNewEventForm, setShowNewEventForm] = useState(false);
+  const [newEventData, setNewEventData] = useState({
+    subject: '',
+    startDate: '',
+    startTime: '',
+    endDate: '',
+    endTime: '',
+    location: '',
+    isOnlineMeeting: false
+  });
 
   const goToPrevious = () => {
     const newDate = new Date(currentDate);
@@ -107,6 +116,64 @@ export default function CalendarView({ walletAddress, view, events }: CalendarVi
     if (importance === 'high') return 'bg-red-500 border-red-600';
     if (importance === 'low') return 'bg-gray-400 border-gray-500';
     return 'bg-blue-500 border-blue-600';
+  };
+
+  const handleCreateEvent = async () => {
+    if (!newEventData.subject || !newEventData.startDate || !newEventData.startTime) {
+      alert('Please fill in event title, start date, and start time');
+      return;
+    }
+
+    try {
+      const startDateTime = `${newEventData.startDate}T${newEventData.startTime}:00`;
+      const endDateTime = newEventData.endDate && newEventData.endTime
+        ? `${newEventData.endDate}T${newEventData.endTime}:00`
+        : `${newEventData.startDate}T${newEventData.startTime}:00`;
+
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/integrations/microsoft365/calendar/events`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            wallet_address: walletAddress,
+            subject: newEventData.subject,
+            start: {
+              dateTime: startDateTime,
+              timeZone: 'UTC'
+            },
+            end: {
+              dateTime: endDateTime,
+              timeZone: 'UTC'
+            },
+            location: newEventData.location || undefined,
+            is_online_meeting: newEventData.isOnlineMeeting
+          })
+        }
+      );
+
+      if (response.ok) {
+        alert('Event created successfully!');
+        setShowNewEventForm(false);
+        setNewEventData({
+          subject: '',
+          startDate: '',
+          startTime: '',
+          endDate: '',
+          endTime: '',
+          location: '',
+          isOnlineMeeting: false
+        });
+        // Refresh page to load new event
+        window.location.reload();
+      } else {
+        const error = await response.json();
+        alert(`Error: ${error.detail || 'Failed to create event'}`);
+      }
+    } catch (error) {
+      console.error('Error creating event:', error);
+      alert('Network error. Please try again.');
+    }
   };
 
   const renderDayView = () => {
@@ -435,6 +502,128 @@ export default function CalendarView({ walletAddress, view, events }: CalendarVi
               <button className="flex-1 rounded-lg border border-red-300 py-2 text-sm font-medium text-red-600 hover:bg-red-50">
                 <Trash2 className="inline h-4 w-4 mr-2" />
                 Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* New Event Form Modal */}
+      {showNewEventForm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+          <div className="w-full max-w-lg rounded-lg bg-white p-6 shadow-2xl">
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-xl font-semibold text-gray-900">New Event</h3>
+              <button
+                onClick={() => setShowNewEventForm(false)}
+                className="rounded-lg p-1 hover:bg-gray-100"
+              >
+                <X className="h-5 w-5 text-gray-500" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">
+                  Event Title *
+                </label>
+                <input
+                  type="text"
+                  value={newEventData.subject}
+                  onChange={(e) => setNewEventData({ ...newEventData, subject: e.target.value })}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+                  placeholder="Event title"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-700">
+                    Start Date *
+                  </label>
+                  <input
+                    type="date"
+                    value={newEventData.startDate}
+                    onChange={(e) => setNewEventData({ ...newEventData, startDate: e.target.value })}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-700">
+                    Start Time *
+                  </label>
+                  <input
+                    type="time"
+                    value={newEventData.startTime}
+                    onChange={(e) => setNewEventData({ ...newEventData, startTime: e.target.value })}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-700">
+                    End Date
+                  </label>
+                  <input
+                    type="date"
+                    value={newEventData.endDate}
+                    onChange={(e) => setNewEventData({ ...newEventData, endDate: e.target.value })}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-700">
+                    End Time
+                  </label>
+                  <input
+                    type="time"
+                    value={newEventData.endTime}
+                    onChange={(e) => setNewEventData({ ...newEventData, endTime: e.target.value })}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">
+                  Location
+                </label>
+                <input
+                  type="text"
+                  value={newEventData.location}
+                  onChange={(e) => setNewEventData({ ...newEventData, location: e.target.value })}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+                  placeholder="Meeting location"
+                />
+              </div>
+
+              <div>
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={newEventData.isOnlineMeeting}
+                    onChange={(e) => setNewEventData({ ...newEventData, isOnlineMeeting: e.target.checked })}
+                    className="rounded border-gray-300"
+                  />
+                  Create Teams meeting
+                </label>
+              </div>
+            </div>
+
+            <div className="mt-6 flex gap-2">
+              <button
+                onClick={handleCreateEvent}
+                className="flex-1 rounded-lg bg-blue-600 py-2 font-medium text-white hover:bg-blue-700"
+              >
+                Create Event
+              </button>
+              <button
+                onClick={() => setShowNewEventForm(false)}
+                className="flex-1 rounded-lg border border-gray-300 py-2 font-medium hover:bg-gray-50"
+              >
+                Cancel
               </button>
             </div>
           </div>

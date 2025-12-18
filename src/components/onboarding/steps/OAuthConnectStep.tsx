@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Link2, ArrowLeft, Loader2, ExternalLink, AlertCircle } from 'lucide-react';
+import { Link2, ArrowLeft, Loader2, ExternalLink, AlertCircle, Shield, CheckCircle2 } from 'lucide-react';
 import { IntegrationLogo } from '@/components/IntegrationLogo';
 
 interface OAuthConnectStepProps {
@@ -68,50 +68,56 @@ export function OAuthConnectStep({
   };
 
   return (
-    <div className="p-8">
+    <div className="p-8 sm:p-10">
       {/* Header */}
-      <div className="text-center mb-8">
-        <div className="flex justify-center mb-4">
-          <div className="w-16 h-16 bg-green-100 rounded-xl flex items-center justify-center">
-            <Link2 className="w-8 h-8 text-green-600" />
+      <div className="text-center mb-10">
+        <div className="flex justify-center mb-5">
+          <div className="relative">
+            <div className="absolute inset-0 bg-emerald-500/20 rounded-2xl blur-xl"></div>
+            <div className="relative w-18 h-18 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-2xl flex items-center justify-center shadow-xl">
+              <Link2 className="w-9 h-9 text-white" />
+            </div>
           </div>
         </div>
-        <h2 className="text-2xl font-bold text-gray-900 mb-2">
+        <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-3">
           Connect {integrationName}
         </h2>
-        <p className="text-gray-600">
-          You&apos;ll be redirected to {integrationName} to authorize the connection
+        <p className="text-gray-600 text-lg max-w-md mx-auto">
+          You&apos;ll be redirected to {integrationName} to authorize the connection securely
         </p>
       </div>
 
       {/* Integration Card */}
       <div className="max-w-md mx-auto mb-8">
-        <div className="bg-gray-50 rounded-xl p-6 text-center">
+        <div className="bg-gradient-to-br from-gray-50 to-emerald-50 rounded-2xl p-6 text-center border border-gray-100">
           <div className="flex justify-center mb-4">
-            <IntegrationLogo integration={integration} size="lg" />
+            <div className="p-3 bg-white rounded-2xl shadow-md">
+              <IntegrationLogo integration={integration} size="lg" />
+            </div>
           </div>
-          <h3 className="font-semibold text-gray-900 mb-2">{integrationName}</h3>
-          <p className="text-sm text-gray-500 mb-4">
+          <h3 className="font-bold text-gray-900 mb-2 text-lg">{integrationName}</h3>
+          <p className="text-sm text-gray-600 mb-5">
             Securely connect your {integrationName} account to sync data to your dashboard
           </p>
 
           {/* Permissions Preview */}
-          <div className="bg-white rounded-lg p-4 text-left">
-            <p className="text-xs text-gray-500 font-medium mb-2 uppercase">
+          <div className="bg-white rounded-xl p-5 text-left shadow-sm border border-gray-100">
+            <p className="text-xs text-gray-500 font-semibold mb-3 uppercase tracking-wide flex items-center gap-2">
+              <Shield className="w-3.5 h-3.5 text-emerald-500" />
               Permissions Requested
             </p>
-            <ul className="space-y-2 text-sm text-gray-600">
-              <li className="flex items-center gap-2">
-                <div className="w-1.5 h-1.5 bg-green-500 rounded-full" />
-                Read your account data
+            <ul className="space-y-3 text-sm text-gray-700">
+              <li className="flex items-center gap-3">
+                <CheckCircle2 className="w-4 h-4 text-emerald-500 flex-shrink-0" />
+                <span>Read your account data</span>
               </li>
-              <li className="flex items-center gap-2">
-                <div className="w-1.5 h-1.5 bg-green-500 rounded-full" />
-                Access financial records
+              <li className="flex items-center gap-3">
+                <CheckCircle2 className="w-4 h-4 text-emerald-500 flex-shrink-0" />
+                <span>Access financial records</span>
               </li>
-              <li className="flex items-center gap-2">
-                <div className="w-1.5 h-1.5 bg-green-500 rounded-full" />
-                Sync data to your dashboard
+              <li className="flex items-center gap-3">
+                <CheckCircle2 className="w-4 h-4 text-emerald-500 flex-shrink-0" />
+                <span>Sync data to your dashboard</span>
               </li>
             </ul>
           </div>
@@ -121,11 +127,13 @@ export function OAuthConnectStep({
       {/* Error Message */}
       {error && (
         <div className="max-w-md mx-auto mb-6">
-          <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-start gap-3">
-            <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
+          <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-start gap-3">
+            <div className="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center flex-shrink-0">
+              <AlertCircle className="w-4 h-4 text-red-500" />
+            </div>
             <div>
-              <p className="text-red-700 text-sm font-medium">Connection Error</p>
-              <p className="text-red-600 text-sm">{error}</p>
+              <p className="text-red-800 text-sm font-semibold">Connection Error</p>
+              <p className="text-red-600 text-sm mt-0.5">{error}</p>
             </div>
           </div>
         </div>
@@ -136,7 +144,7 @@ export function OAuthConnectStep({
         <button
           onClick={handleConnect}
           disabled={connecting}
-          className="w-full bg-blue-600 text-white px-6 py-4 rounded-xl font-semibold hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3"
+          className="group w-full bg-gradient-to-r from-emerald-600 to-teal-600 text-white px-6 py-4 rounded-xl font-bold text-lg hover:from-emerald-700 hover:to-teal-700 transition-all shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3"
         >
           {connecting ? (
             <>
@@ -146,7 +154,7 @@ export function OAuthConnectStep({
           ) : (
             <>
               Connect with {integrationName}
-              <ExternalLink className="w-5 h-5" />
+              <ExternalLink className="w-5 h-5 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
             </>
           )}
         </button>
@@ -157,7 +165,7 @@ export function OAuthConnectStep({
         <button
           onClick={onBack}
           disabled={connecting}
-          className="px-6 py-3 border border-gray-300 rounded-lg font-medium text-gray-700 hover:bg-gray-50 transition-colors flex items-center gap-2 disabled:opacity-50"
+          className="px-6 py-3 border-2 border-gray-200 rounded-xl font-semibold text-gray-700 hover:bg-gray-50 hover:border-gray-300 transition-all flex items-center gap-2 disabled:opacity-50"
         >
           <ArrowLeft className="w-4 h-4" />
           Back
@@ -165,7 +173,7 @@ export function OAuthConnectStep({
         <button
           onClick={onSkip}
           disabled={connecting}
-          className="px-6 py-3 text-gray-500 hover:text-gray-700 font-medium transition-colors disabled:opacity-50"
+          className="px-6 py-3 text-gray-500 hover:text-gray-700 hover:bg-gray-50 rounded-xl font-medium transition-all disabled:opacity-50"
         >
           Skip for now
         </button>
@@ -173,11 +181,18 @@ export function OAuthConnectStep({
 
       {/* Security Note */}
       <div className="max-w-md mx-auto mt-8">
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-          <p className="text-sm text-blue-700">
-            <span className="font-medium">Your data is secure.</span> We use bank-level encryption
-            and store your credentials in decentralized storage. Only you can access your data.
-          </p>
+        <div className="bg-gradient-to-br from-emerald-50 to-teal-50 border border-emerald-200 rounded-xl p-5">
+          <div className="flex items-start gap-3">
+            <div className="w-8 h-8 bg-emerald-100 rounded-lg flex items-center justify-center flex-shrink-0">
+              <Shield className="w-4 h-4 text-emerald-600" />
+            </div>
+            <div>
+              <p className="text-sm text-emerald-800 font-semibold mb-1">Your data is secure</p>
+              <p className="text-sm text-emerald-700">
+                We use bank-level encryption and store your credentials in decentralized storage. Only you can access your data.
+              </p>
+            </div>
+          </div>
         </div>
       </div>
     </div>

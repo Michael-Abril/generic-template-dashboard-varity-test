@@ -36,6 +36,11 @@ class UserSettings(Base):
     onboarding_completed_at = Column(DateTime(timezone=True), nullable=True)
     onboarding_step = Column(String, nullable=True)  # Track current step if user leaves mid-flow
 
+    # Contact information for GTM follow-up during trial
+    contact_email = Column(String, nullable=True)  # Primary contact email for trial communications
+    contact_name = Column(String, nullable=True)  # Contact person name
+    referral_source = Column(String, nullable=True)  # How did they hear about us
+
     # JSON fields for flexibility
     notification_preferences = Column(JSON, default=lambda: {
         "weekly_summary": True,

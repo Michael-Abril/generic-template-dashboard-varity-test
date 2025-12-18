@@ -17,12 +17,16 @@ interface ThreadMessage {
 
 interface ThreadPanelProps {
   thread: any;
+  channelId: string;
+  walletAddress: string;
   onSendReply: (text: string, files?: File[]) => void;
   onReaction: (messageTs: string, emoji: string) => void;
 }
 
 export function ThreadPanel({
   thread,
+  channelId,
+  walletAddress,
   onSendReply,
   onReaction
 }: ThreadPanelProps) {
@@ -32,13 +36,44 @@ export function ThreadPanel({
   useEffect(() => {
     // Fetch thread replies from backend
     const fetchReplies = async () => {
+      if (!thread || !thread.timestamp) {
+        return;
+      }
+
       setLoading(true);
       try {
-        // TODO: Implement backend endpoint for thread replies
-        // For now, show placeholder
-        setReplies([]);
+        const response = await fetch(
+          `${process.env.NEXT_PUBLIC_API_URL}/api/v1/integrations/slack/threads/${channelId}/${thread.timestamp}?wallet_address=${walletAddress}`
+        );
+
+        if (!response.ok) {
+          throw new Error(`Failed to fetch thread replies: ${response.statusText}`);
+        }
+
+        const data = await response.json();
+
+        if (data.success && data.data) {
+          // Transform Slack messages to ThreadMessage format
+          const transformedReplies = data.data
+            .filter((msg: any) => msg.ts !== thread.timestamp) // Exclude parent message
+            .map((msg: any) => ({
+              id: msg.ts,
+              user: msg.user || 'Unknown',
+              text: msg.text || '',
+              timestamp: msg.ts,
+              reactions: msg.reactions?.map((r: any) => ({
+                emoji: r.name,
+                count: r.count
+              })) || []
+            }));
+
+          setReplies(transformedReplies);
+        } else {
+          setReplies([]);
+        }
       } catch (error) {
         console.error('Failed to fetch thread replies:', error);
+        setReplies([]);
       } finally {
         setLoading(false);
       }
@@ -47,7 +82,7 @@ export function ThreadPanel({
     if (thread) {
       fetchReplies();
     }
-  }, [thread]);
+  }, [thread, channelId, walletAddress]);
 
   const formatTimestamp = (timestamp: string) => {
     const date = new Date(parseFloat(timestamp) * 1000);

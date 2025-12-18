@@ -16,6 +16,9 @@ import CustomersList from './CustomersList';
 import ExpensesList from './ExpensesList';
 import VendorsList from './VendorsList';
 import ReportViewer from './ReportViewer';
+import InvoiceForm from './InvoiceForm';
+import CustomerForm from './CustomerForm';
+import ExpenseForm from './ExpenseForm';
 
 interface QuickBooksPageProps {
   walletAddress: string;
@@ -122,10 +125,25 @@ export default function QuickBooksPage({ walletAddress, data }: QuickBooksPagePr
     setActiveSection(sectionId);
   };
 
+  const [showInvoiceForm, setShowInvoiceForm] = useState(false);
+  const [showCustomerForm, setShowCustomerForm] = useState(false);
+  const [showExpenseForm, setShowExpenseForm] = useState(false);
+
   const handleCreateAction = (action: string) => {
-    console.log('Create action:', action);
-    // TODO: Open appropriate form modal
     setShowCreateMenu(false);
+
+    // Open appropriate form based on action
+    switch(action) {
+      case 'invoice':
+        setShowInvoiceForm(true);
+        break;
+      case 'expense':
+        setShowExpenseForm(true);
+        break;
+      // Additional actions can be mapped here
+      default:
+        console.log('Create action:', action);
+    }
   };
 
   const renderActiveSection = () => {
@@ -351,6 +369,100 @@ export default function QuickBooksPage({ walletAddress, data }: QuickBooksPagePr
           {renderActiveSection()}
         </div>
       </main>
+
+      {/* Form Modals */}
+      {showInvoiceForm && (
+        <InvoiceForm
+          onClose={() => setShowInvoiceForm(false)}
+          onSave={async (invoiceData) => {
+            try {
+              const response = await fetch(
+                `${process.env.NEXT_PUBLIC_API_URL}/api/v1/quickbooks/invoices?wallet_address=${walletAddress}`,
+                {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify(invoiceData)
+                }
+              );
+              const result = await response.json();
+              if (result.success) {
+                setShowInvoiceForm(false);
+                // Refresh data if on invoices page
+                if (activeSection === 'invoices') {
+                  window.location.reload();
+                }
+              } else {
+                alert('Failed to create invoice: ' + (result.detail || 'Unknown error'));
+              }
+            } catch (error) {
+              console.error('Error creating invoice:', error);
+              alert('Failed to create invoice');
+            }
+          }}
+        />
+      )}
+
+      {showCustomerForm && (
+        <CustomerForm
+          onClose={() => setShowCustomerForm(false)}
+          onSave={async (customerData) => {
+            try {
+              const response = await fetch(
+                `${process.env.NEXT_PUBLIC_API_URL}/api/v1/quickbooks/customers?wallet_address=${walletAddress}`,
+                {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify(customerData)
+                }
+              );
+              const result = await response.json();
+              if (result.success) {
+                setShowCustomerForm(false);
+                // Refresh data if on customers page
+                if (activeSection === 'customers') {
+                  window.location.reload();
+                }
+              } else {
+                alert('Failed to create customer: ' + (result.detail || 'Unknown error'));
+              }
+            } catch (error) {
+              console.error('Error creating customer:', error);
+              alert('Failed to create customer');
+            }
+          }}
+        />
+      )}
+
+      {showExpenseForm && (
+        <ExpenseForm
+          onClose={() => setShowExpenseForm(false)}
+          onSave={async (expenseData) => {
+            try {
+              const response = await fetch(
+                `${process.env.NEXT_PUBLIC_API_URL}/api/v1/quickbooks/expenses?wallet_address=${walletAddress}`,
+                {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify(expenseData)
+                }
+              );
+              const result = await response.json();
+              if (result.success) {
+                setShowExpenseForm(false);
+                // Refresh data if on expenses page
+                if (activeSection === 'expenses-list') {
+                  window.location.reload();
+                }
+              } else {
+                alert('Failed to create expense: ' + (result.detail || 'Unknown error'));
+              }
+            } catch (error) {
+              console.error('Error creating expense:', error);
+              alert('Failed to create expense');
+            }
+          }}
+        />
+      )}
     </div>
   );
 }

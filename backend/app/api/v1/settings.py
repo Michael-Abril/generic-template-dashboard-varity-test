@@ -44,6 +44,10 @@ class SettingsUpdateRequest(BaseModel):
     # New company profile fields for AI personalization
     company_size: Optional[str] = None  # "1", "2-10", "11-50", "51-200", "201-500", "500+"
     primary_goal: Optional[str] = None  # User's primary use case
+    # Contact info for GTM follow-up
+    contact_email: Optional[str] = None  # Primary contact email for trial communications
+    contact_name: Optional[str] = None  # Contact person name
+    referral_source: Optional[str] = None  # How did they hear about us
     # Trial fields
     trial_tier: Optional[str] = None  # "30_day" or "14_day"
     trial_start_date: Optional[datetime] = None
@@ -67,6 +71,10 @@ class SettingsResponse(BaseModel):
     # Company profile fields
     company_size: Optional[str] = None
     primary_goal: Optional[str] = None
+    # Contact info for GTM follow-up
+    contact_email: Optional[str] = None
+    contact_name: Optional[str] = None
+    referral_source: Optional[str] = None
     # Trial fields
     trial_tier: Optional[str] = None
     trial_start_date: Optional[datetime] = None
@@ -170,6 +178,10 @@ async def update_settings(
             # Company profile fields
             "company_size": updated_settings.get("company_size"),
             "primary_goal": updated_settings.get("primary_goal"),
+            # Contact info for GTM follow-up
+            "contact_email": updated_settings.get("contact_email"),
+            "contact_name": updated_settings.get("contact_name"),
+            "referral_source": updated_settings.get("referral_source"),
             # Trial fields
             "trial_tier": updated_settings.get("trial_tier"),
             "trial_start_date": updated_settings.get("trial_start_date").isoformat() if updated_settings.get("trial_start_date") else None,

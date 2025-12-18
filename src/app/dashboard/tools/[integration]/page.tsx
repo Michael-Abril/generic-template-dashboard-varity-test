@@ -2146,6 +2146,23 @@ export default function IntegrationToolPage() {
     );
   }
 
+  // Render Salesforce CRM native UI for Salesforce integration
+  if (integration === 'salesforce') {
+    // Transform data into format expected by SalesforcePage
+    const salesforceData = data.reduce((acc, item) => {
+      acc[item.data_type] = item.data;
+      return acc;
+    }, {} as Record<string, any>);
+
+    return (
+      <SalesforcePage
+        walletAddress={address}
+        data={salesforceData}
+        onRefresh={fetchData}
+      />
+    );
+  }
+
   // Render Slack-native UI for Slack integration
   if (integration === 'slack') {
     // Transform data into format expected by SlackPage

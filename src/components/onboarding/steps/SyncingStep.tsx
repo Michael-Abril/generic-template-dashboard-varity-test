@@ -99,30 +99,31 @@ export function SyncingStep({
   const progressPercent = (completedCount / stages.length) * 100;
 
   return (
-    <div className="p-8">
+    <div className="p-8 sm:p-10">
       {/* Header */}
-      <div className="text-center mb-8">
-        <div className="flex justify-center mb-4">
+      <div className="text-center mb-10">
+        <div className="flex justify-center mb-5">
           <div className="relative">
-            <div className="w-16 h-16 bg-blue-100 rounded-xl flex items-center justify-center">
+            <div className={`absolute inset-0 rounded-2xl blur-xl transition-all ${syncComplete ? 'bg-green-500/20' : 'bg-blue-500/20 animate-pulse'}`}></div>
+            <div className={`relative w-20 h-20 rounded-2xl flex items-center justify-center shadow-xl transition-all ${syncComplete ? 'bg-gradient-to-br from-green-500 to-emerald-600' : 'bg-gradient-to-br from-blue-500 to-indigo-600'}`}>
               <IntegrationLogo integration={integration} size="md" />
             </div>
             {!syncComplete && (
-              <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-blue-600 rounded-full flex items-center justify-center">
-                <RefreshCw className="w-3.5 h-3.5 text-white animate-spin" />
+              <div className="absolute -bottom-2 -right-2 w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center shadow-lg border-2 border-white">
+                <RefreshCw className="w-4 h-4 text-white animate-spin" />
               </div>
             )}
             {syncComplete && (
-              <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-green-600 rounded-full flex items-center justify-center">
-                <Check className="w-3.5 h-3.5 text-white" />
+              <div className="absolute -bottom-2 -right-2 w-8 h-8 bg-green-600 rounded-full flex items-center justify-center shadow-lg border-2 border-white">
+                <Check className="w-4 h-4 text-white" />
               </div>
             )}
           </div>
         </div>
-        <h2 className="text-2xl font-bold text-gray-900 mb-2">
-          {syncComplete ? 'Sync Complete!' : `Syncing ${integrationName}`}
+        <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-3">
+          {syncComplete ? '🎉 Sync Complete!' : `Syncing ${integrationName}`}
         </h2>
-        <p className="text-gray-600">
+        <p className="text-gray-600 text-lg max-w-md mx-auto">
           {syncComplete
             ? 'Your data is ready. Let\'s meet your AI assistant!'
             : 'This may take a moment. Your data is being securely processed.'}
@@ -130,16 +131,16 @@ export function SyncingStep({
       </div>
 
       {/* Progress Bar */}
-      <div className="max-w-md mx-auto mb-8">
-        <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+      <div className="max-w-md mx-auto mb-10">
+        <div className="h-3 bg-gray-100 rounded-full overflow-hidden shadow-inner">
           <div
-            className="h-full bg-gradient-to-r from-blue-500 to-green-500 transition-all duration-500 ease-out"
+            className={`h-full transition-all duration-500 ease-out ${syncComplete ? 'bg-gradient-to-r from-green-500 to-emerald-500' : 'bg-gradient-to-r from-blue-500 to-indigo-500'}`}
             style={{ width: `${progressPercent}%` }}
           />
         </div>
-        <div className="flex justify-between mt-2 text-sm text-gray-500">
-          <span>{completedCount} of {stages.length} steps</span>
-          <span>{Math.round(progressPercent)}%</span>
+        <div className="flex justify-between mt-3 text-sm">
+          <span className="text-gray-600 font-medium">{completedCount} of {stages.length} steps</span>
+          <span className={`font-bold ${syncComplete ? 'text-green-600' : 'text-blue-600'}`}>{Math.round(progressPercent)}%</span>
         </div>
       </div>
 
@@ -153,20 +154,20 @@ export function SyncingStep({
           return (
             <div
               key={stage.id}
-              className={`flex items-center gap-4 p-4 rounded-lg transition-all ${
+              className={`flex items-center gap-4 p-4 rounded-xl transition-all ${
                 isCompleted
-                  ? 'bg-green-50 border border-green-200'
+                  ? 'bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200'
                   : isInProgress
-                  ? 'bg-blue-50 border border-blue-200'
+                  ? 'bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 shadow-sm'
                   : 'bg-gray-50 border border-gray-200'
               }`}
             >
               <div
-                className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${
+                className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all shadow-sm ${
                   isCompleted
-                    ? 'bg-green-600'
+                    ? 'bg-gradient-to-br from-green-500 to-emerald-600'
                     : isInProgress
-                    ? 'bg-blue-600'
+                    ? 'bg-gradient-to-br from-blue-500 to-indigo-600'
                     : 'bg-gray-300'
                 }`}
               >
@@ -179,7 +180,7 @@ export function SyncingStep({
                 )}
               </div>
               <span
-                className={`font-medium ${
+                className={`font-semibold ${
                   isCompleted
                     ? 'text-green-700'
                     : isInProgress
@@ -189,6 +190,9 @@ export function SyncingStep({
               >
                 {stage.label}
               </span>
+              {isCompleted && (
+                <span className="ml-auto text-xs text-green-600 font-medium">Done</span>
+              )}
             </div>
           );
         })}
@@ -197,23 +201,28 @@ export function SyncingStep({
       {/* Error Message (non-blocking) */}
       {error && (
         <div className="max-w-md mx-auto mb-6">
-          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-            <p className="text-yellow-700 text-sm">{error}</p>
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
+            <div className="w-6 h-6 bg-amber-100 rounded-full flex items-center justify-center flex-shrink-0">
+              <span className="text-amber-600 text-xs font-bold">!</span>
+            </div>
+            <p className="text-amber-700 text-sm">{error}</p>
           </div>
         </div>
       )}
 
       {/* Info Note */}
       <div className="max-w-md mx-auto">
-        <div className="bg-gray-50 rounded-lg p-4 text-center">
-          <p className="text-sm text-gray-500">
+        <div className={`rounded-xl p-5 text-center transition-all ${syncComplete ? 'bg-gradient-to-br from-green-50 to-emerald-50 border border-green-200' : 'bg-gradient-to-br from-gray-50 to-blue-50 border border-gray-100'}`}>
+          <p className="text-sm">
             {syncComplete ? (
-              <>Redirecting you to meet your AI assistant...</>
+              <span className="text-green-700 font-medium">
+                ✨ Redirecting you to meet your AI assistant...
+              </span>
             ) : (
-              <>
-                <span className="font-medium">Your data is encrypted</span> with your unique wallet key.
+              <span className="text-gray-600">
+                <span className="font-semibold text-gray-700">🔒 Your data is encrypted</span> with your unique wallet key.
                 Even we can&apos;t read it!
-              </>
+              </span>
             )}
           </p>
         </div>

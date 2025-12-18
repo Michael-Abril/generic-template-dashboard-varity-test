@@ -52,6 +52,19 @@ interface HubSpotPageProps {
   lastSync: string | null;
   onSync: () => void;
   onRefresh: () => void;
+  onCreateContact?: () => void;
+  onCreateCompany?: () => void;
+  onCreateDeal?: () => void;
+  onCreateTicket?: () => void;
+  onEditContact?: (contact: any) => void;
+  onDeleteContact?: (contactId: string) => void;
+  onEditCompany?: (company: any) => void;
+  onDeleteCompany?: (companyId: string) => void;
+  onEditDeal?: (deal: any) => void;
+  onDeleteDeal?: (dealId: string) => void;
+  onUpdateDealStage?: (dealId: string, newStage: string) => void;
+  onEditTicket?: (ticket: any) => void;
+  onDeleteTicket?: (ticketId: string) => void;
 }
 
 // HubSpot CRM Sidebar Navigation
@@ -142,7 +155,20 @@ export function HubSpotPage({
   error,
   lastSync,
   onSync,
-  onRefresh
+  onRefresh,
+  onCreateContact,
+  onCreateCompany,
+  onCreateDeal,
+  onCreateTicket,
+  onEditContact,
+  onDeleteContact,
+  onEditCompany,
+  onDeleteCompany,
+  onEditDeal,
+  onDeleteDeal,
+  onUpdateDealStage,
+  onEditTicket,
+  onDeleteTicket
 }: HubSpotPageProps) {
   const [activeSection, setActiveSection] = useState('home');
   const [activeSubmenu, setActiveSubmenu] = useState<string | null>(null);
@@ -222,28 +248,28 @@ export function HubSpotPage({
         <h2 className="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h2>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <button
-            onClick={() => setActiveSection('contacts-list')}
+            onClick={() => onCreateContact?.()}
             className="flex flex-col items-center justify-center p-4 border rounded-lg hover:bg-gray-50 transition-colors"
           >
             <Plus className="w-6 h-6 text-blue-600 mb-2" />
             <span className="text-sm font-medium">Add Contact</span>
           </button>
           <button
-            onClick={() => setActiveSection('deals')}
+            onClick={() => onCreateDeal?.()}
             className="flex flex-col items-center justify-center p-4 border rounded-lg hover:bg-gray-50 transition-colors"
           >
             <DollarSign className="w-6 h-6 text-green-600 mb-2" />
             <span className="text-sm font-medium">Create Deal</span>
           </button>
           <button
-            onClick={() => setActiveSection('companies')}
+            onClick={() => onCreateCompany?.()}
             className="flex flex-col items-center justify-center p-4 border rounded-lg hover:bg-gray-50 transition-colors"
           >
             <Building className="w-6 h-6 text-purple-600 mb-2" />
             <span className="text-sm font-medium">Add Company</span>
           </button>
           <button
-            onClick={() => setActiveSection('tickets')}
+            onClick={() => onCreateTicket?.()}
             className="flex flex-col items-center justify-center p-4 border rounded-lg hover:bg-gray-50 transition-colors"
           >
             <Headphones className="w-6 h-6 text-orange-600 mb-2" />
@@ -288,7 +314,10 @@ export function HubSpotPage({
               <Download className="w-4 h-4" />
               <span className="text-sm">Export</span>
             </button>
-            <button className="flex items-center space-x-2 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+            <button
+              onClick={() => onCreateContact?.()}
+              className="flex items-center space-x-2 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+            >
               <Plus className="w-4 h-4" />
               <span className="text-sm">Create contact</span>
             </button>
@@ -335,13 +364,25 @@ export function HubSpotPage({
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center space-x-2">
-                      <button className="p-1 hover:bg-gray-100 rounded">
+                      <button
+                        onClick={() => onEditContact?.(contact)}
+                        className="p-1 hover:bg-gray-100 rounded"
+                        title="View details"
+                      >
                         <Eye className="w-4 h-4 text-gray-600" />
                       </button>
-                      <button className="p-1 hover:bg-gray-100 rounded">
+                      <button
+                        onClick={() => onEditContact?.(contact)}
+                        className="p-1 hover:bg-gray-100 rounded"
+                        title="Edit contact"
+                      >
                         <Edit3 className="w-4 h-4 text-gray-600" />
                       </button>
-                      <button className="p-1 hover:bg-gray-100 rounded">
+                      <button
+                        onClick={() => onDeleteContact?.(contact.id)}
+                        className="p-1 hover:bg-gray-100 rounded"
+                        title="Delete contact"
+                      >
                         <Trash2 className="w-4 h-4 text-gray-600" />
                       </button>
                     </div>
@@ -366,7 +407,10 @@ export function HubSpotPage({
               <Filter className="w-4 h-4" />
               <span className="text-sm">Filter</span>
             </button>
-            <button className="flex items-center space-x-2 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+            <button
+              onClick={() => onCreateCompany?.()}
+              className="flex items-center space-x-2 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+            >
               <Plus className="w-4 h-4" />
               <span className="text-sm">Create company</span>
             </button>
@@ -400,13 +444,25 @@ export function HubSpotPage({
                   <td className="px-4 py-3 text-sm text-gray-600">{company.numberofemployees || '-'}</td>
                   <td className="px-4 py-3">
                     <div className="flex items-center space-x-2">
-                      <button className="p-1 hover:bg-gray-100 rounded">
+                      <button
+                        onClick={() => onEditCompany?.(company)}
+                        className="p-1 hover:bg-gray-100 rounded"
+                        title="View details"
+                      >
                         <Eye className="w-4 h-4 text-gray-600" />
                       </button>
-                      <button className="p-1 hover:bg-gray-100 rounded">
+                      <button
+                        onClick={() => onEditCompany?.(company)}
+                        className="p-1 hover:bg-gray-100 rounded"
+                        title="Edit company"
+                      >
                         <Edit3 className="w-4 h-4 text-gray-600" />
                       </button>
-                      <button className="p-1 hover:bg-gray-100 rounded">
+                      <button
+                        onClick={() => onDeleteCompany?.(company.id)}
+                        className="p-1 hover:bg-gray-100 rounded"
+                        title="Delete company"
+                      >
                         <Trash2 className="w-4 h-4 text-gray-600" />
                       </button>
                     </div>
@@ -439,7 +495,10 @@ export function HubSpotPage({
             >
               <List className="w-4 h-4" />
             </button>
-            <button className="flex items-center space-x-2 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+            <button
+              onClick={() => onCreateDeal?.()}
+              className="flex items-center space-x-2 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+            >
               <Plus className="w-4 h-4" />
               <span className="text-sm">Create deal</span>
             </button>
@@ -471,11 +530,26 @@ export function HubSpotPage({
                     <td className="px-4 py-3 text-sm text-gray-600">{deal.closedate || '-'}</td>
                     <td className="px-4 py-3">
                       <div className="flex items-center space-x-2">
-                        <button className="p-1 hover:bg-gray-100 rounded">
+                        <button
+                          onClick={() => onEditDeal?.(deal)}
+                          className="p-1 hover:bg-gray-100 rounded"
+                          title="View details"
+                        >
                           <Eye className="w-4 h-4 text-gray-600" />
                         </button>
-                        <button className="p-1 hover:bg-gray-100 rounded">
+                        <button
+                          onClick={() => onEditDeal?.(deal)}
+                          className="p-1 hover:bg-gray-100 rounded"
+                          title="Edit deal"
+                        >
                           <Edit3 className="w-4 h-4 text-gray-600" />
+                        </button>
+                        <button
+                          onClick={() => onDeleteDeal?.(deal.id)}
+                          className="p-1 hover:bg-gray-100 rounded"
+                          title="Delete deal"
+                        >
+                          <Trash2 className="w-4 h-4 text-gray-600" />
                         </button>
                       </div>
                     </td>
@@ -499,7 +573,10 @@ export function HubSpotPage({
       <div className="bg-white rounded-lg border">
         <div className="p-4 border-b flex items-center justify-between">
           <h2 className="text-lg font-semibold text-gray-900">Tickets ({tickets.length})</h2>
-          <button className="flex items-center space-x-2 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+          <button
+            onClick={() => onCreateTicket?.()}
+            className="flex items-center space-x-2 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+          >
             <Plus className="w-4 h-4" />
             <span className="text-sm">Create ticket</span>
           </button>
@@ -537,11 +614,26 @@ export function HubSpotPage({
                   <td className="px-4 py-3 text-sm text-gray-600">{ticket.createdate || '-'}</td>
                   <td className="px-4 py-3">
                     <div className="flex items-center space-x-2">
-                      <button className="p-1 hover:bg-gray-100 rounded">
+                      <button
+                        onClick={() => onEditTicket?.(ticket)}
+                        className="p-1 hover:bg-gray-100 rounded"
+                        title="View details"
+                      >
                         <Eye className="w-4 h-4 text-gray-600" />
                       </button>
-                      <button className="p-1 hover:bg-gray-100 rounded">
+                      <button
+                        onClick={() => onEditTicket?.(ticket)}
+                        className="p-1 hover:bg-gray-100 rounded"
+                        title="Edit ticket"
+                      >
                         <Edit3 className="w-4 h-4 text-gray-600" />
+                      </button>
+                      <button
+                        onClick={() => onDeleteTicket?.(ticket.id)}
+                        className="p-1 hover:bg-gray-100 rounded"
+                        title="Delete ticket"
+                      >
+                        <Trash2 className="w-4 h-4 text-gray-600" />
                       </button>
                     </div>
                   </td>
@@ -737,6 +829,11 @@ export function HubSpotPage({
                       {CREATE_MENU_ITEMS.contacts.map((item) => (
                         <button
                           key={item.id}
+                          onClick={() => {
+                            setShowCreateMenu(false);
+                            if (item.id === 'contact') onCreateContact?.();
+                            if (item.id === 'company') onCreateCompany?.();
+                          }}
                           className="w-full flex items-center space-x-3 px-3 py-2 rounded hover:bg-gray-50"
                         >
                           <item.icon className="w-4 h-4 text-gray-600" />
@@ -750,6 +847,27 @@ export function HubSpotPage({
                       {CREATE_MENU_ITEMS.sales.map((item) => (
                         <button
                           key={item.id}
+                          onClick={() => {
+                            setShowCreateMenu(false);
+                            if (item.id === 'deal') onCreateDeal?.();
+                          }}
+                          className="w-full flex items-center space-x-3 px-3 py-2 rounded hover:bg-gray-50"
+                        >
+                          <item.icon className="w-4 h-4 text-gray-600" />
+                          <span className="text-sm text-gray-700">{item.label}</span>
+                        </button>
+                      ))}
+
+                      <div className="border-t my-2" />
+
+                      <div className="text-xs font-semibold text-gray-500 px-3 py-2">SERVICE</div>
+                      {CREATE_MENU_ITEMS.service.map((item) => (
+                        <button
+                          key={item.id}
+                          onClick={() => {
+                            setShowCreateMenu(false);
+                            if (item.id === 'ticket') onCreateTicket?.();
+                          }}
                           className="w-full flex items-center space-x-3 px-3 py-2 rounded hover:bg-gray-50"
                         >
                           <item.icon className="w-4 h-4 text-gray-600" />

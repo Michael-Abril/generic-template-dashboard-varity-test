@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Users,
   Search,
@@ -33,8 +33,36 @@ export function ContactsList({ walletAddress, data }: ContactsListProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
   const [showContactForm, setShowContactForm] = useState(false);
+  const [contacts, setContacts] = useState<Contact[]>([]);
+  const [loading, setLoading] = useState(false);
 
-  const contacts: Contact[] = data?.contacts || [];
+  useEffect(() => {
+    loadContacts();
+  }, [walletAddress]);
+
+  const loadContacts = async () => {
+    setLoading(true);
+    try {
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/integrations/google/contacts?wallet_address=${walletAddress}`
+      );
+      const result = await response.json();
+      if (result.success && result.contacts) {
+        const parsedContacts = result.contacts.map((contact: any) => ({
+          resourceName: contact.resourceName,
+          name: contact.names?.[0]?.displayName || 'Unknown',
+          emails: contact.emailAddresses?.map((e: any) => e.value) || [],
+          phones: contact.phoneNumbers?.map((p: any) => p.value) || [],
+          company: contact.organizations?.[0]?.name || ''
+        }));
+        setContacts(parsedContacts);
+      }
+    } catch (error) {
+      console.error('Failed to load contacts:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const filteredContacts = contacts.filter(contact =>
     contact.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -43,9 +71,21 @@ export function ContactsList({ walletAddress, data }: ContactsListProps) {
   );
 
   const handleDeleteContact = async (contact: Contact) => {
-    if (confirm(`Are you sure you want to delete ${contact.name}?`)) {
-      console.log('Delete contact:', contact);
-      // API call to delete contact
+    if (!confirm(`Are you sure you want to delete ${contact.name}?`)) return;
+
+    try {
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/integrations/google/contacts/${encodeURIComponent(contact.resourceName)}?wallet_address=${walletAddress}`,
+        { method: 'DELETE' }
+      );
+
+      if (response.ok) {
+        setContacts(contacts.filter(c => c.resourceName !== contact.resourceName));
+        setSelectedContact(null);
+      }
+    } catch (error) {
+      console.error('Failed to delete contact:', error);
+      alert('Failed to delete contact');
     }
   };
 

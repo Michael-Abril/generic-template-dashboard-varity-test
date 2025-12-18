@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   FolderOpen,
   File,
@@ -76,8 +76,29 @@ export function DriveExplorer({ walletAddress, data }: DriveExplorerProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [currentPath, setCurrentPath] = useState(['My Drive']);
+  const [files, setFiles] = useState<DriveFile[]>([]);
+  const [loading, setLoading] = useState(false);
 
-  const files: DriveFile[] = data?.files || [];
+  useEffect(() => {
+    loadFiles();
+  }, [walletAddress]);
+
+  const loadFiles = async () => {
+    setLoading(true);
+    try {
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/integrations/google/files?wallet_address=${walletAddress}`
+      );
+      const result = await response.json();
+      if (result.success && result.files) {
+        setFiles(result.files);
+      }
+    } catch (error) {
+      console.error('Failed to load files:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleFileClick = (file: DriveFile) => {
     if (file.mimeType.includes('folder')) {
@@ -93,9 +114,21 @@ export function DriveExplorer({ walletAddress, data }: DriveExplorerProps) {
   };
 
   const handleDelete = async (file: DriveFile) => {
-    if (confirm(`Are you sure you want to delete "${file.name}"?`)) {
-      console.log('Delete file:', file);
-      // API call to delete file
+    if (!confirm(`Are you sure you want to delete "${file.name}"?`)) return;
+
+    try {
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/integrations/google/files/${file.id}?wallet_address=${walletAddress}`,
+        { method: 'DELETE' }
+      );
+
+      if (response.ok) {
+        setFiles(files.filter(f => f.id !== file.id));
+        setSelectedFile(null);
+      }
+    } catch (error) {
+      console.error('Failed to delete file:', error);
+      alert('Failed to delete file');
     }
   };
 

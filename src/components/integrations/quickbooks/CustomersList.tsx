@@ -11,6 +11,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import CustomerForm from './CustomerForm';
 
 interface CustomersListProps {
   walletAddress: string;
@@ -28,6 +29,43 @@ interface Customer {
 
 export default function CustomersList({ walletAddress }: CustomersListProps) {
   const [searchQuery, setSearchQuery] = useState('');
+  const [showCustomerForm, setShowCustomerForm] = useState(false);
+  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+
+  const handleCreateCustomer = () => {
+    setSelectedCustomer(null);
+    setShowCustomerForm(true);
+  };
+
+  const handleEditCustomer = (customer: Customer) => {
+    setSelectedCustomer(customer);
+    setShowCustomerForm(true);
+  };
+
+  const handleDeleteCustomer = async (customerId: string) => {
+    if (!confirm('Are you sure you want to delete this customer?')) {
+      return;
+    }
+
+    try {
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/quickbooks/customers/${customerId}?wallet_address=${walletAddress}`,
+        {
+          method: 'DELETE'
+        }
+      );
+      const result = await response.json();
+      if (result.success) {
+        alert('Customer deleted successfully');
+        window.location.reload();
+      } else {
+        alert('Failed to delete customer: ' + (result.detail || 'Unknown error'));
+      }
+    } catch (error) {
+      console.error('Error deleting customer:', error);
+      alert('Failed to delete customer');
+    }
+  };
 
   // Mock data
   const customers: Customer[] = [
@@ -74,7 +112,7 @@ export default function CustomersList({ walletAddress }: CustomersListProps) {
             Manage your customer contacts and relationships
           </p>
         </div>
-        <Button className="bg-green-600 hover:bg-green-700">
+        <Button onClick={handleCreateCustomer} className="bg-green-600 hover:bg-green-700">
           <Plus className="w-4 h-4 mr-2" />
           New Customer
         </Button>
@@ -166,11 +204,14 @@ export default function CustomersList({ walletAddress }: CustomersListProps) {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          <DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleEditCustomer(customer)}>
                             <Edit className="w-4 h-4 mr-2" />
                             Edit
                           </DropdownMenuItem>
-                          <DropdownMenuItem className="text-red-600">
+                          <DropdownMenuItem
+                            onClick={() => handleDeleteCustomer(customer.id)}
+                            className="text-red-600"
+                          >
                             <Trash2 className="w-4 h-4 mr-2" />
                             Delete
                           </DropdownMenuItem>
@@ -184,6 +225,49 @@ export default function CustomersList({ walletAddress }: CustomersListProps) {
           </div>
         </CardContent>
       </Card>
+
+      {/* Customer Form Modal */}
+      {showCustomerForm && (
+        <CustomerForm
+          customer={selectedCustomer ? {
+            displayName: selectedCustomer.displayName,
+            companyName: selectedCustomer.companyName,
+            email: selectedCustomer.email,
+            phone: selectedCustomer.phone
+          } : undefined}
+          onClose={() => {
+            setShowCustomerForm(false);
+            setSelectedCustomer(null);
+          }}
+          onSave={async (customerData) => {
+            try {
+              const url = selectedCustomer
+                ? `${process.env.NEXT_PUBLIC_API_URL}/api/v1/quickbooks/customers/${selectedCustomer.id}?wallet_address=${walletAddress}`
+                : `${process.env.NEXT_PUBLIC_API_URL}/api/v1/quickbooks/customers?wallet_address=${walletAddress}`;
+
+              const method = selectedCustomer ? 'PATCH' : 'POST';
+
+              const response = await fetch(url, {
+                method,
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(customerData)
+              });
+
+              const result = await response.json();
+              if (result.success) {
+                setShowCustomerForm(false);
+                setSelectedCustomer(null);
+                window.location.reload();
+              } else {
+                alert('Failed to save customer: ' + (result.detail || 'Unknown error'));
+              }
+            } catch (error) {
+              console.error('Error saving customer:', error);
+              alert('Failed to save customer');
+            }
+          }}
+        />
+      )}
     </div>
   );
 }

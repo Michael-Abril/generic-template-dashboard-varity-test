@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Calendar as CalendarIcon,
   ChevronLeft,
@@ -45,8 +45,60 @@ export function CalendarView({ walletAddress, data }: CalendarViewProps) {
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
   const [showEventForm, setShowEventForm] = useState(false);
   const [showEventDetail, setShowEventDetail] = useState(false);
+  const [events, setEvents] = useState<CalendarEvent[]>([]);
+  const [loading, setLoading] = useState(false);
 
-  const events: CalendarEvent[] = data?.events || [];
+  useEffect(() => {
+    loadEvents();
+  }, [walletAddress]);
+
+  const loadEvents = async () => {
+    setLoading(true);
+    try {
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/integrations/google/events?wallet_address=${walletAddress}`
+      );
+      const result = await response.json();
+      if (result.success && result.events) {
+        const parsedEvents = result.events.map((event: any) => ({
+          id: event.id,
+          summary: event.summary || '(No Title)',
+          description: event.description,
+          start: event.start?.dateTime || event.start?.date,
+          end: event.end?.dateTime || event.end?.date,
+          location: event.location,
+          attendees: event.attendees?.map((a: any) => a.email) || [],
+          status: event.status,
+          colorId: event.colorId
+        }));
+        setEvents(parsedEvents);
+      }
+    } catch (error) {
+      console.error('Failed to load events:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteEvent = async (eventId: string) => {
+    if (!confirm('Are you sure you want to delete this event?')) return;
+
+    try {
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/integrations/google/events/${eventId}?wallet_address=${walletAddress}`,
+        { method: 'DELETE' }
+      );
+
+      if (response.ok) {
+        setEvents(events.filter(e => e.id !== eventId));
+        setShowEventDetail(false);
+        setSelectedEvent(null);
+      }
+    } catch (error) {
+      console.error('Failed to delete event:', error);
+      alert('Failed to delete event');
+    }
+  };
 
   const formatDate = (date: Date) => {
     return date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
@@ -445,7 +497,10 @@ export function CalendarView({ walletAddress, data }: CalendarViewProps) {
                   <Copy className="h-4 w-4" />
                   Duplicate
                 </button>
-                <button className="flex items-center gap-2 px-4 py-2 border border-red-200 text-red-600 rounded-lg hover:bg-red-50 ml-auto">
+                <button
+                  onClick={() => handleDeleteEvent(selectedEvent.id)}
+                  className="flex items-center gap-2 px-4 py-2 border border-red-200 text-red-600 rounded-lg hover:bg-red-50 ml-auto"
+                >
                   <Trash2 className="h-4 w-4" />
                   Delete
                 </button>

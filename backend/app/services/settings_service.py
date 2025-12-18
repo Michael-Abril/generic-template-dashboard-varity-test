@@ -104,6 +104,8 @@ class SettingsService:
                 "trial_tier", "trial_start_date", "trial_end_date",
                 # Onboarding tracking
                 "onboarding_completed", "onboarding_completed_at", "onboarding_step",
+                # Contact info for GTM
+                "contact_email", "contact_name", "referral_source",
                 # JSON preferences
                 "notification_preferences", "ui_preferences"
             ]
@@ -151,6 +153,10 @@ class SettingsService:
                 "onboarding_completed": updated.onboarding_completed or False,
                 "onboarding_completed_at": updated.onboarding_completed_at,
                 "onboarding_step": updated.onboarding_step,
+                # Contact info for GTM
+                "contact_email": updated.contact_email,
+                "contact_name": updated.contact_name,
+                "referral_source": updated.referral_source,
                 # JSON preferences
                 "notification_preferences": updated.notification_preferences or {},
                 "ui_preferences": updated.ui_preferences or {},

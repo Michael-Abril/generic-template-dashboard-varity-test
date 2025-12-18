@@ -480,3 +480,507 @@ async def create_contact(
     except Exception as e:
         logger.error(f"Failed to create contact: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to create contact: {str(e)}")
+
+
+# ============================================================================
+# Gmail List/Delete/Update Endpoints
+# ============================================================================
+
+@router.get("/emails")
+async def list_emails(
+    wallet_address: str,
+    max_results: int = 50,
+    db: AsyncSession = Depends(get_db)
+):
+    """List emails from Gmail"""
+    try:
+        access_token = await get_google_access_token(wallet_address, db)
+
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                "https://gmail.googleapis.com/gmail/v1/users/me/messages",
+                headers={"Authorization": f"Bearer {access_token}"},
+                params={"maxResults": max_results},
+                timeout=30.0
+            )
+
+            if response.status_code != 200:
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail="Failed to fetch emails"
+                )
+
+            messages = response.json().get("messages", [])
+
+            # Fetch full details for each message
+            email_details = []
+            for msg in messages[:max_results]:
+                msg_response = await client.get(
+                    f"https://gmail.googleapis.com/gmail/v1/users/me/messages/{msg['id']}",
+                    headers={"Authorization": f"Bearer {access_token}"},
+                    timeout=30.0
+                )
+                if msg_response.status_code == 200:
+                    email_details.append(msg_response.json())
+
+            return {"success": True, "emails": email_details}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to list emails: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to list emails: {str(e)}")
+
+
+@router.delete("/emails/{email_id}")
+async def delete_email(
+    email_id: str,
+    wallet_address: str,
+    db: AsyncSession = Depends(get_db)
+):
+    """Delete an email"""
+    try:
+        access_token = await get_google_access_token(wallet_address, db)
+
+        async with httpx.AsyncClient() as client:
+            response = await client.delete(
+                f"https://gmail.googleapis.com/gmail/v1/users/me/messages/{email_id}",
+                headers={"Authorization": f"Bearer {access_token}"},
+                timeout=30.0
+            )
+
+            if response.status_code not in [200, 204]:
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail="Failed to delete email"
+                )
+
+            return {"success": True, "message": "Email deleted successfully"}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to delete email: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete email: {str(e)}")
+
+
+@router.patch("/emails/{email_id}")
+async def update_email(
+    email_id: str,
+    wallet_address: str,
+    mark_as_read: Optional[bool] = None,
+    star: Optional[bool] = None,
+    db: AsyncSession = Depends(get_db)
+):
+    """Update email metadata (read/unread, star)"""
+    try:
+        access_token = await get_google_access_token(wallet_address, db)
+
+        modify_request = {
+            "addLabelIds": [],
+            "removeLabelIds": []
+        }
+
+        if mark_as_read is not None:
+            if mark_as_read:
+                modify_request["removeLabelIds"].append("UNREAD")
+            else:
+                modify_request["addLabelIds"].append("UNREAD")
+
+        if star is not None:
+            if star:
+                modify_request["addLabelIds"].append("STARRED")
+            else:
+                modify_request["removeLabelIds"].append("STARRED")
+
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"https://gmail.googleapis.com/gmail/v1/users/me/messages/{email_id}/modify",
+                headers={
+                    "Authorization": f"Bearer {access_token}",
+                    "Content-Type": "application/json"
+                },
+                json=modify_request,
+                timeout=30.0
+            )
+
+            if response.status_code != 200:
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail="Failed to update email"
+                )
+
+            return {"success": True, "message": "Email updated successfully"}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to update email: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to update email: {str(e)}")
+
+
+# ============================================================================
+# Calendar List/Delete/Update Endpoints
+# ============================================================================
+
+@router.get("/events")
+async def list_events(
+    wallet_address: str,
+    max_results: int = 50,
+    db: AsyncSession = Depends(get_db)
+):
+    """List calendar events"""
+    try:
+        access_token = await get_google_access_token(wallet_address, db)
+
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                "https://www.googleapis.com/calendar/v3/calendars/primary/events",
+                headers={"Authorization": f"Bearer {access_token}"},
+                params={
+                    "maxResults": max_results,
+                    "singleEvents": True,
+                    "orderBy": "startTime",
+                    "timeMin": datetime.utcnow().isoformat() + "Z"
+                },
+                timeout=30.0
+            )
+
+            if response.status_code != 200:
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail="Failed to fetch events"
+                )
+
+            result = response.json()
+            return {"success": True, "events": result.get("items", [])}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to list events: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to list events: {str(e)}")
+
+
+@router.delete("/events/{event_id}")
+async def delete_event(
+    event_id: str,
+    wallet_address: str,
+    db: AsyncSession = Depends(get_db)
+):
+    """Delete a calendar event"""
+    try:
+        access_token = await get_google_access_token(wallet_address, db)
+
+        async with httpx.AsyncClient() as client:
+            response = await client.delete(
+                f"https://www.googleapis.com/calendar/v3/calendars/primary/events/{event_id}",
+                headers={"Authorization": f"Bearer {access_token}"},
+                timeout=30.0
+            )
+
+            if response.status_code not in [200, 204]:
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail="Failed to delete event"
+                )
+
+            return {"success": True, "message": "Event deleted successfully"}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to delete event: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete event: {str(e)}")
+
+
+@router.patch("/events/{event_id}")
+async def update_event(
+    event_id: str,
+    wallet_address: str,
+    summary: Optional[str] = None,
+    start: Optional[str] = None,
+    end: Optional[str] = None,
+    location: Optional[str] = None,
+    description: Optional[str] = None,
+    db: AsyncSession = Depends(get_db)
+):
+    """Update a calendar event"""
+    try:
+        access_token = await get_google_access_token(wallet_address, db)
+
+        # First get the current event
+        async with httpx.AsyncClient() as client:
+            get_response = await client.get(
+                f"https://www.googleapis.com/calendar/v3/calendars/primary/events/{event_id}",
+                headers={"Authorization": f"Bearer {access_token}"},
+                timeout=30.0
+            )
+
+            if get_response.status_code != 200:
+                raise HTTPException(
+                    status_code=get_response.status_code,
+                    detail="Failed to fetch event"
+                )
+
+            event = get_response.json()
+
+            # Update fields
+            if summary is not None:
+                event["summary"] = summary
+            if start is not None:
+                event["start"] = {"dateTime": start, "timeZone": "UTC"}
+            if end is not None:
+                event["end"] = {"dateTime": end, "timeZone": "UTC"}
+            if location is not None:
+                event["location"] = location
+            if description is not None:
+                event["description"] = description
+
+            # Update event
+            update_response = await client.put(
+                f"https://www.googleapis.com/calendar/v3/calendars/primary/events/{event_id}",
+                headers={
+                    "Authorization": f"Bearer {access_token}",
+                    "Content-Type": "application/json"
+                },
+                json=event,
+                timeout=30.0
+            )
+
+            if update_response.status_code != 200:
+                raise HTTPException(
+                    status_code=update_response.status_code,
+                    detail="Failed to update event"
+                )
+
+            return {"success": True, "event": update_response.json()}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to update event: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to update event: {str(e)}")
+
+
+# ============================================================================
+# Drive List/Delete Endpoints
+# ============================================================================
+
+@router.get("/files")
+async def list_files(
+    wallet_address: str,
+    max_results: int = 100,
+    db: AsyncSession = Depends(get_db)
+):
+    """List files from Google Drive"""
+    try:
+        access_token = await get_google_access_token(wallet_address, db)
+
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                "https://www.googleapis.com/drive/v3/files",
+                headers={"Authorization": f"Bearer {access_token}"},
+                params={
+                    "pageSize": max_results,
+                    "fields": "files(id,name,mimeType,size,modifiedTime,owners,webViewLink,starred)"
+                },
+                timeout=30.0
+            )
+
+            if response.status_code != 200:
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail="Failed to fetch files"
+                )
+
+            result = response.json()
+            return {"success": True, "files": result.get("files", [])}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to list files: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to list files: {str(e)}")
+
+
+@router.delete("/files/{file_id}")
+async def delete_file(
+    file_id: str,
+    wallet_address: str,
+    db: AsyncSession = Depends(get_db)
+):
+    """Delete a file from Google Drive"""
+    try:
+        access_token = await get_google_access_token(wallet_address, db)
+
+        async with httpx.AsyncClient() as client:
+            response = await client.delete(
+                f"https://www.googleapis.com/drive/v3/files/{file_id}",
+                headers={"Authorization": f"Bearer {access_token}"},
+                timeout=30.0
+            )
+
+            if response.status_code not in [200, 204]:
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail="Failed to delete file"
+                )
+
+            return {"success": True, "message": "File deleted successfully"}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to delete file: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete file: {str(e)}")
+
+
+# ============================================================================
+# Contacts List/Delete/Update Endpoints
+# ============================================================================
+
+@router.get("/contacts")
+async def list_contacts(
+    wallet_address: str,
+    max_results: int = 100,
+    db: AsyncSession = Depends(get_db)
+):
+    """List contacts"""
+    try:
+        access_token = await get_google_access_token(wallet_address, db)
+
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                "https://people.googleapis.com/v1/people/me/connections",
+                headers={"Authorization": f"Bearer {access_token}"},
+                params={
+                    "pageSize": max_results,
+                    "personFields": "names,emailAddresses,phoneNumbers,organizations"
+                },
+                timeout=30.0
+            )
+
+            if response.status_code != 200:
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail="Failed to fetch contacts"
+                )
+
+            result = response.json()
+            return {"success": True, "contacts": result.get("connections", [])}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to list contacts: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to list contacts: {str(e)}")
+
+
+@router.delete("/contacts/{resource_name}")
+async def delete_contact(
+    resource_name: str,
+    wallet_address: str,
+    db: AsyncSession = Depends(get_db)
+):
+    """Delete a contact"""
+    try:
+        access_token = await get_google_access_token(wallet_address, db)
+
+        async with httpx.AsyncClient() as client:
+            response = await client.delete(
+                f"https://people.googleapis.com/v1/{resource_name}:deleteContact",
+                headers={"Authorization": f"Bearer {access_token}"},
+                timeout=30.0
+            )
+
+            if response.status_code not in [200, 204]:
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail="Failed to delete contact"
+                )
+
+            return {"success": True, "message": "Contact deleted successfully"}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to delete contact: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete contact: {str(e)}")
+
+
+@router.patch("/contacts/{resource_name}")
+async def update_contact(
+    resource_name: str,
+    wallet_address: str,
+    given_name: Optional[str] = None,
+    family_name: Optional[str] = None,
+    email: Optional[str] = None,
+    phone: Optional[str] = None,
+    company: Optional[str] = None,
+    db: AsyncSession = Depends(get_db)
+):
+    """Update a contact"""
+    try:
+        access_token = await get_google_access_token(wallet_address, db)
+
+        # First get the current contact
+        async with httpx.AsyncClient() as client:
+            get_response = await client.get(
+                f"https://people.googleapis.com/v1/{resource_name}",
+                headers={"Authorization": f"Bearer {access_token}"},
+                params={"personFields": "names,emailAddresses,phoneNumbers,organizations"},
+                timeout=30.0
+            )
+
+            if get_response.status_code != 200:
+                raise HTTPException(
+                    status_code=get_response.status_code,
+                    detail="Failed to fetch contact"
+                )
+
+            contact = get_response.json()
+
+            # Update fields
+            if given_name is not None or family_name is not None:
+                if "names" not in contact:
+                    contact["names"] = [{}]
+                if given_name is not None:
+                    contact["names"][0]["givenName"] = given_name
+                if family_name is not None:
+                    contact["names"][0]["familyName"] = family_name
+
+            if email is not None:
+                contact["emailAddresses"] = [{"value": email, "type": "work"}]
+
+            if phone is not None:
+                contact["phoneNumbers"] = [{"value": phone, "type": "work"}]
+
+            if company is not None:
+                contact["organizations"] = [{"name": company, "type": "work"}]
+
+            # Update contact
+            update_response = await client.patch(
+                f"https://people.googleapis.com/v1/{resource_name}:updateContact",
+                headers={
+                    "Authorization": f"Bearer {access_token}",
+                    "Content-Type": "application/json"
+                },
+                params={"updatePersonFields": "names,emailAddresses,phoneNumbers,organizations"},
+                json=contact,
+                timeout=30.0
+            )
+
+            if update_response.status_code != 200:
+                raise HTTPException(
+                    status_code=update_response.status_code,
+                    detail="Failed to update contact"
+                )
+
+            return {"success": True, "contact": update_response.json()}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to update contact: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to update contact: {str(e)}")
