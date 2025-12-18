@@ -342,7 +342,8 @@ async def get_tool_data(
     tool: str,
     wallet_address: str = Query(..., description="User's wallet address"),
     data_type: Optional[str] = Query(None, description="Specific data type (e.g., 'invoices')"),
-    limit: int = Query(100, description="Maximum results to return")
+    limit: int = Query(100, description="Maximum results to return"),
+    latest_only: bool = Query(True, description="Only return most recent data per type (faster)")
 ):
     """
     Retrieve tool data from Filecoin
@@ -357,6 +358,7 @@ async def get_tool_data(
         wallet_address: User's wallet address
         data_type: Optional filter for specific data type
         limit: Maximum number of results
+        latest_only: If True, only returns most recent file per data_type (default, much faster)
 
     Returns:
         Tool data (decrypted)
@@ -367,7 +369,7 @@ async def get_tool_data(
 
         logger.info(
             f"Retrieving {tool} (normalized: {normalized_tool}) data for wallet {wallet_address}, "
-            f"type={data_type}, limit={limit}"
+            f"type={data_type}, limit={limit}, latest_only={latest_only}"
         )
 
         # List files for this integration using normalized name
@@ -386,8 +388,26 @@ async def get_tool_data(
                 "message": f"No data found for {tool}. Run sync first."
             }
 
-        # For MVP, return mock data structure
-        # In production, fetch and decrypt each file
+        # If latest_only, group by data_type and keep only the most recent per type
+        # This dramatically speeds up loading (4 files instead of 60+)
+        if latest_only:
+            files_by_type: Dict[str, Any] = {}
+            for file in files:
+                file_data_type = file.get("metadata", {}).get("data_type", "unknown")
+                file_timestamp = file.get("timestamp", "")
+
+                if file_data_type not in files_by_type:
+                    files_by_type[file_data_type] = file
+                else:
+                    # Keep the more recent file
+                    existing_timestamp = files_by_type[file_data_type].get("timestamp", "")
+                    if file_timestamp > existing_timestamp:
+                        files_by_type[file_data_type] = file
+
+            files = list(files_by_type.values())
+            logger.info(f"Filtered to {len(files)} latest files (one per data_type)")
+
+        # Retrieve and decrypt files
         all_data = []
         for file in files:
             try:
@@ -400,11 +420,14 @@ async def get_tool_data(
                     customer_wallet=wallet_address
                 )
 
+                # Get data_type from metadata or file info
+                file_data_type = file.get("metadata", {}).get("data_type") or file.get("data_type", "unknown")
+
                 all_data.append({
                     "cid": file["cid"],
-                    "data_type": file.get("data_type", "unknown"),
+                    "data_type": file_data_type,
                     "data": decrypted,
-                    "uploaded_at": file.get("uploaded_at", "")
+                    "uploaded_at": file.get("timestamp", "")
                 })
 
             except Exception as e:

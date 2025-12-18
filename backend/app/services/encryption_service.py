@@ -26,12 +26,14 @@ logger = logging.getLogger(__name__)
 
 class EncryptionService:
     """
-    Service for encrypting/decrypting data with Lit Protocol
+    Service for encrypting/decrypting data using AES-256-GCM with wallet-derived keys.
 
-    Note: This is a placeholder implementation until Lit Protocol SDK is fully integrated.
-    For MVP, we'll use a hybrid approach:
-    1. Use Lit Protocol SDK via Node.js subprocess (lit-js-sdk)
-    2. Or implement direct API calls to Lit Protocol nodes
+    This implementation uses:
+    - PBKDF2 with SHA-256 to derive unique 256-bit keys from wallet addresses
+    - AES-256-GCM for authenticated encryption
+    - Each business gets complete data isolation via wallet-specific keys
+
+    Future enhancement: Integrate Lit Protocol for decentralized key management.
     """
 
     def __init__(self):
@@ -447,8 +449,7 @@ class EncryptionService:
             data = decrypted_data
 
             logger.info(
-                f"Decrypted data for customer {customer_wallet} "
-                f"(placeholder implementation)"
+                f"Decrypted data for customer {customer_wallet} using AES-256-GCM"
             )
 
             return data
@@ -536,8 +537,7 @@ class EncryptionService:
             }
 
             logger.info(
-                f"Encrypted file {filename} for customer {customer_wallet} "
-                f"(placeholder implementation)"
+                f"Encrypted file {filename} for customer {customer_wallet} successfully"
             )
 
             return result
@@ -590,8 +590,7 @@ class EncryptionService:
             file_content = decryptor.update(ciphertext) + decryptor.finalize()
 
             logger.info(
-                f"Decrypted file for customer {customer_wallet} "
-                f"(placeholder implementation)"
+                f"Decrypted file for customer {customer_wallet} using AES-256-GCM"
             )
 
             return file_content
