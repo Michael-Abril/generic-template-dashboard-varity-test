@@ -22,10 +22,10 @@ interface CompleteStepProps {
 }
 
 const SAMPLE_QUERIES = [
-  'Show my overdue invoices',
-  'Who are my top customers?',
-  "What's my cash flow this month?",
-  'Summarize my recent transactions',
+  'Give me a summary of my business data',
+  'What activity happened this week?',
+  'Show me insights from my connected tools',
+  'What should I focus on today?',
 ];
 
 const NEXT_STEPS = [

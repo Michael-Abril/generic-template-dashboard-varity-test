@@ -662,13 +662,28 @@ export function AIChat() {
     return installedTools.some(t => t.toLowerCase().includes(provider.toLowerCase()));
   };
 
+  // Abort controller for stopping generation
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  // Stop generating response
+  const stopGenerating = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+      setLoading(false);
+    }
+  };
+
   // Send message
   const sendMessage = async () => {
     if (!input.trim() || !address) return;
 
+    // CRITICAL: Save input value before clearing to fix the empty input bug
+    const messageContent = input.trim();
+
     const userMessage: Message = {
       role: 'user',
-      content: input,
+      content: messageContent,
       timestamp: new Date()
     };
 
@@ -676,16 +691,26 @@ export function AIChat() {
     setInput('');
     setLoading(true);
 
+    // Create new abort controller for this request
+    abortControllerRef.current = new AbortController();
+
     // Create conversation if none exists
     let convId = currentConversationId;
     if (!convId) {
-      const newConv = await createNewConversation(input.substring(0, 50));
+      const newConv = await createNewConversation(messageContent.substring(0, 50));
       if (!newConv) {
         setLoading(false);
         return;
       }
       convId = newConv.id;
     }
+
+    // Request timeout (2 minutes for LLM responses)
+    const timeoutId = setTimeout(() => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    }, 120000);
 
     // Save user message
     await addMessageToConversation(convId, userMessage);
@@ -711,12 +736,13 @@ export function AIChat() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            message: input,
+            message: messageContent,
             wallet_address: address,
             integration: integrationFilter, // Filter to specific integration
             temperature: 0.7,
             max_tokens: 2048
-          })
+          }),
+          signal: abortControllerRef.current?.signal
         });
         if (!response.ok) throw new Error(`AI request failed: ${response.statusText}`);
         responseData = await response.json();
@@ -728,13 +754,14 @@ export function AIChat() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            query: input,
+            query: messageContent,
             wallet_address: address,
             integration: integrationFilter, // Filter to specific integration
             enable_web_search: enableWebSearch, // User-controlled toggle
             max_rag_results: 5,
             max_search_results: enableWebSearch ? 5 : 0
-          })
+          }),
+          signal: abortControllerRef.current?.signal
         });
         if (!response.ok) throw new Error(`AI request failed: ${response.statusText}`);
         responseData = await response.json();
@@ -746,11 +773,12 @@ export function AIChat() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            query: input,
+            query: messageContent,
             wallet_address: address,
             integration: integrationFilter, // Filter to specific integration
             depth: 'comprehensive'
-          })
+          }),
+          signal: abortControllerRef.current?.signal
         });
         if (!response.ok) throw new Error(`AI request failed: ${response.statusText}`);
         responseData = await response.json();
@@ -761,10 +789,11 @@ export function AIChat() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            message: input,
+            message: messageContent,
             wallet_address: address,
             integration: integrationFilter
-          })
+          }),
+          signal: abortControllerRef.current?.signal
         });
         if (!response.ok) throw new Error(`AI request failed: ${response.statusText}`);
         responseData = await response.json();

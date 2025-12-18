@@ -79,69 +79,138 @@ export function GoogleWorkspacePage({
     <div className="space-y-6">
       {/* Quick Stats */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-white rounded-lg border p-6">
-          <div className="flex items-center gap-3 mb-2">
-            <div className="p-2 bg-red-100 rounded-lg">
-              <Mail className="h-5 w-5 text-red-600" />
+        <div
+          className="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-lg hover:border-red-200 transition-all cursor-pointer"
+          onClick={() => setActiveTab('gmail')}
+        >
+          <div className="flex items-center gap-3 mb-3">
+            <div className="p-3 bg-red-100 rounded-xl">
+              <Mail className="h-6 w-6 text-red-600" />
             </div>
-            <h3 className="font-semibold text-gray-900">Gmail</h3>
+            <h3 className="font-bold text-gray-900">Gmail</h3>
           </div>
-          <p className="text-3xl font-bold text-gray-900">{data?.gmail?.messages?.length || 0}</p>
-          <p className="text-sm text-gray-500 mt-1">Unread messages</p>
+          <p className="text-4xl font-bold text-gray-900">{data?.gmail?.messages?.length || 0}</p>
+          <p className="text-sm text-gray-600 mt-2 font-medium">Emails synced</p>
         </div>
 
-        <div className="bg-white rounded-lg border p-6">
-          <div className="flex items-center gap-3 mb-2">
-            <div className="p-2 bg-blue-100 rounded-lg">
-              <Calendar className="h-5 w-5 text-blue-600" />
+        <div
+          className="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-lg hover:border-blue-200 transition-all cursor-pointer"
+          onClick={() => setActiveTab('calendar')}
+        >
+          <div className="flex items-center gap-3 mb-3">
+            <div className="p-3 bg-blue-100 rounded-xl">
+              <Calendar className="h-6 w-6 text-blue-600" />
             </div>
-            <h3 className="font-semibold text-gray-900">Calendar</h3>
+            <h3 className="font-bold text-gray-900">Calendar</h3>
           </div>
-          <p className="text-3xl font-bold text-gray-900">{data?.calendar?.events?.length || 0}</p>
-          <p className="text-sm text-gray-500 mt-1">Upcoming events</p>
+          <p className="text-4xl font-bold text-gray-900">{data?.calendar?.events?.length || 0}</p>
+          <p className="text-sm text-gray-600 mt-2 font-medium">Events synced</p>
         </div>
 
-        <div className="bg-white rounded-lg border p-6">
-          <div className="flex items-center gap-3 mb-2">
-            <div className="p-2 bg-yellow-100 rounded-lg">
-              <FolderOpen className="h-5 w-5 text-yellow-600" />
+        <div
+          className="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-lg hover:border-yellow-200 transition-all cursor-pointer"
+          onClick={() => setActiveTab('drive')}
+        >
+          <div className="flex items-center gap-3 mb-3">
+            <div className="p-3 bg-yellow-100 rounded-xl">
+              <FolderOpen className="h-6 w-6 text-yellow-600" />
             </div>
-            <h3 className="font-semibold text-gray-900">Drive</h3>
+            <h3 className="font-bold text-gray-900">Drive</h3>
           </div>
-          <p className="text-3xl font-bold text-gray-900">{data?.drive?.files?.length || 0}</p>
-          <p className="text-sm text-gray-500 mt-1">Files synced</p>
+          <p className="text-4xl font-bold text-gray-900">{data?.drive?.files?.length || 0}</p>
+          <p className="text-sm text-gray-600 mt-2 font-medium">Files synced</p>
         </div>
 
-        <div className="bg-white rounded-lg border p-6">
-          <div className="flex items-center gap-3 mb-2">
-            <div className="p-2 bg-green-100 rounded-lg">
-              <Users className="h-5 w-5 text-green-600" />
+        <div
+          className="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-lg hover:border-green-200 transition-all cursor-pointer"
+          onClick={() => setActiveTab('contacts')}
+        >
+          <div className="flex items-center gap-3 mb-3">
+            <div className="p-3 bg-green-100 rounded-xl">
+              <Users className="h-6 w-6 text-green-600" />
             </div>
-            <h3 className="font-semibold text-gray-900">Contacts</h3>
+            <h3 className="font-bold text-gray-900">Contacts</h3>
           </div>
-          <p className="text-3xl font-bold text-gray-900">{data?.contacts?.contacts?.length || 0}</p>
-          <p className="text-sm text-gray-500 mt-1">Contacts synced</p>
+          <p className="text-4xl font-bold text-gray-900">{data?.contacts?.contacts?.length || 0}</p>
+          <p className="text-sm text-gray-600 mt-2 font-medium">Contacts synced</p>
         </div>
       </div>
 
       {/* Recent Activity */}
-      <div className="bg-white rounded-lg border">
-        <div className="p-6 border-b">
-          <h2 className="text-lg font-semibold text-gray-900">Recent Activity</h2>
+      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
+          <h2 className="text-lg font-bold text-gray-900">Recent Activity</h2>
         </div>
-        <div className="divide-y">
-          {data?.gmail?.messages?.slice(0, 5).map((message: any, index: number) => (
-            <div key={index} className="p-4 hover:bg-gray-50">
-              <div className="flex items-start gap-3">
-                <Mail className="h-5 w-5 text-gray-400 mt-0.5" />
-                <div className="flex-1">
-                  <p className="font-medium text-gray-900">{message.subject || 'No Subject'}</p>
-                  <p className="text-sm text-gray-500">{message.from}</p>
-                  <p className="text-xs text-gray-400 mt-1">{message.date}</p>
+        {data?.gmail?.messages?.length > 0 ? (
+          <div className="divide-y divide-gray-100">
+            {data?.gmail?.messages?.slice(0, 5).map((message: any, index: number) => (
+              <div
+                key={index}
+                className="p-4 hover:bg-blue-50 cursor-pointer transition-colors"
+                onClick={() => setActiveTab('gmail')}
+              >
+                <div className="flex items-start gap-3">
+                  <div className="p-2 bg-red-100 rounded-lg">
+                    <Mail className="h-4 w-4 text-red-600" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-gray-900 truncate">{message.subject || 'No Subject'}</p>
+                    <p className="text-sm text-gray-700 truncate">{message.from}</p>
+                    <p className="text-xs text-gray-500 mt-1 font-medium">{message.date}</p>
+                  </div>
                 </div>
               </div>
+            ))}
+          </div>
+        ) : (
+          <div className="p-8 text-center">
+            <Mail className="h-10 w-10 text-gray-300 mx-auto mb-3" />
+            <p className="text-gray-600 font-medium">No recent activity</p>
+            <p className="text-sm text-gray-500 mt-1">Sync your data to see recent emails here</p>
+          </div>
+        )}
+      </div>
+
+      {/* Quick Actions */}
+      <div className="bg-white rounded-xl border border-gray-200 p-6">
+        <h2 className="text-lg font-bold text-gray-900 mb-4">Quick Actions</h2>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <button
+            onClick={() => setActiveTab('gmail')}
+            className="flex flex-col items-center gap-2 p-4 rounded-xl bg-gray-50 hover:bg-red-50 hover:border-red-200 border border-transparent transition-all"
+          >
+            <div className="p-3 bg-red-100 rounded-xl">
+              <Mail className="h-5 w-5 text-red-600" />
             </div>
-          ))}
+            <span className="text-sm font-semibold text-gray-800">Compose Email</span>
+          </button>
+          <button
+            onClick={() => setActiveTab('calendar')}
+            className="flex flex-col items-center gap-2 p-4 rounded-xl bg-gray-50 hover:bg-blue-50 hover:border-blue-200 border border-transparent transition-all"
+          >
+            <div className="p-3 bg-blue-100 rounded-xl">
+              <Calendar className="h-5 w-5 text-blue-600" />
+            </div>
+            <span className="text-sm font-semibold text-gray-800">New Event</span>
+          </button>
+          <button
+            onClick={() => setActiveTab('drive')}
+            className="flex flex-col items-center gap-2 p-4 rounded-xl bg-gray-50 hover:bg-yellow-50 hover:border-yellow-200 border border-transparent transition-all"
+          >
+            <div className="p-3 bg-yellow-100 rounded-xl">
+              <FolderOpen className="h-5 w-5 text-yellow-600" />
+            </div>
+            <span className="text-sm font-semibold text-gray-800">Upload File</span>
+          </button>
+          <button
+            onClick={() => setActiveTab('contacts')}
+            className="flex flex-col items-center gap-2 p-4 rounded-xl bg-gray-50 hover:bg-green-50 hover:border-green-200 border border-transparent transition-all"
+          >
+            <div className="p-3 bg-green-100 rounded-xl">
+              <Users className="h-5 w-5 text-green-600" />
+            </div>
+            <span className="text-sm font-semibold text-gray-800">Add Contact</span>
+          </button>
         </div>
       </div>
     </div>
@@ -161,10 +230,33 @@ export function GoogleWorkspacePage({
         return <ContactsList walletAddress={walletAddress} data={data?.contacts} />;
       case 'tasks':
         return (
-          <div className="bg-white rounded-lg border p-8 text-center">
-            <CheckCircle className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">Google Tasks</h3>
-            <p className="text-gray-500">Task management coming soon</p>
+          <div className="bg-gradient-to-br from-purple-50 to-blue-50 rounded-xl border border-purple-200 p-12 text-center">
+            <div className="max-w-md mx-auto">
+              <div className="p-4 bg-purple-100 rounded-full w-fit mx-auto mb-6">
+                <CheckCircle className="h-14 w-14 text-purple-600" />
+              </div>
+              <div className="inline-block px-4 py-1 bg-purple-200 text-purple-800 rounded-full text-sm font-bold mb-4">
+                COMING SOON
+              </div>
+              <h3 className="text-2xl font-bold text-gray-900 mb-3">Google Tasks Integration</h3>
+              <p className="text-gray-700 mb-6 leading-relaxed">
+                We&apos;re working on bringing Google Tasks to your dashboard. Soon you&apos;ll be able to manage your tasks, create to-do lists, and stay organized right from here.
+              </p>
+              <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                <button
+                  onClick={() => setActiveTab('calendar')}
+                  className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+                >
+                  View Calendar Instead
+                </button>
+                <button
+                  onClick={() => setActiveTab('home')}
+                  className="px-6 py-3 border-2 border-gray-300 text-gray-700 rounded-lg hover:bg-white hover:border-gray-400 transition-colors font-medium"
+                >
+                  Back to Home
+                </button>
+              </div>
+            </div>
           </div>
         );
       default:
@@ -187,12 +279,12 @@ export function GoogleWorkspacePage({
               </div>
 
               {/* Search Bar */}
-              <div className="hidden md:flex items-center gap-2 bg-gray-100 rounded-lg px-4 py-2 w-96">
-                <Search className="h-4 w-4 text-gray-400" />
+              <div className="hidden md:flex items-center gap-2 bg-gray-100 rounded-lg px-4 py-2 w-96 border border-gray-200 focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-100 transition-all">
+                <Search className="h-4 w-4 text-gray-500" />
                 <input
                   type="text"
                   placeholder="Search mail, calendar, drive..."
-                  className="bg-transparent border-none outline-none text-sm w-full"
+                  className="bg-transparent border-none outline-none text-sm w-full text-gray-900 placeholder:text-gray-500"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                 />
@@ -233,7 +325,7 @@ export function GoogleWorkspacePage({
           </div>
 
           {/* Tabs */}
-          <div className="flex items-center gap-1 mt-4 border-b -mb-px">
+          <div className="flex items-center gap-1 mt-4 border-b border-gray-200 -mb-px">
             {TABS.map((tab) => {
               const Icon = tab.icon;
               const isActive = activeTab === tab.id;
@@ -242,15 +334,15 @@ export function GoogleWorkspacePage({
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
                   className={`
-                    flex items-center gap-2 px-4 py-2 border-b-2 transition-all
+                    flex items-center gap-2 px-4 py-2.5 border-b-2 transition-all rounded-t-lg
                     ${isActive
-                      ? 'border-blue-600 text-blue-600 bg-blue-50'
-                      : 'border-transparent text-gray-600 hover:bg-gray-50'
+                      ? 'border-blue-600 text-blue-700 bg-blue-50 font-semibold'
+                      : 'border-transparent text-gray-700 hover:bg-gray-100 hover:text-gray-900 font-medium'
                     }
                   `}
                 >
-                  <Icon className="h-4 w-4" />
-                  <span className="font-medium">{tab.label}</span>
+                  <Icon className={`h-4 w-4 ${isActive ? 'text-blue-600' : ''}`} />
+                  <span>{tab.label}</span>
                 </button>
               );
             })}

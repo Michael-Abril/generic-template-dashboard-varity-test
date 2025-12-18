@@ -69,24 +69,27 @@ export function WelcomeStep({ trialDays, onNext }: WelcomeStepProps) {
 
       {/* Setup Steps */}
       <div className="bg-gray-50 border border-gray-100 rounded-xl p-5 sm:p-6 mb-8 max-w-xl mx-auto">
-        <h3 className="font-semibold text-gray-900 mb-4 text-sm uppercase tracking-wide text-center">Setup in 3 steps</h3>
+        <h3 className="font-semibold text-gray-900 mb-4 text-sm uppercase tracking-wide text-center">Quick Setup</h3>
         <div className="space-y-3">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 bg-blue-600 text-white rounded-lg flex items-center justify-center text-sm font-semibold flex-shrink-0">1</div>
             <div>
-              <span className="font-medium text-gray-900 text-sm">Tell us about your company</span>
+              <span className="font-medium text-gray-900 text-sm">Enter your company details</span>
+              <p className="text-xs text-gray-500">Helps personalize your dashboard</p>
             </div>
           </div>
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 bg-blue-600 text-white rounded-lg flex items-center justify-center text-sm font-semibold flex-shrink-0">2</div>
             <div>
-              <span className="font-medium text-gray-900 text-sm">Connect your first business tool</span>
+              <span className="font-medium text-gray-900 text-sm">Connect a business tool</span>
+              <p className="text-xs text-gray-500">QuickBooks, Google, Slack, and more</p>
             </div>
           </div>
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 bg-blue-600 text-white rounded-lg flex items-center justify-center text-sm font-semibold flex-shrink-0">3</div>
             <div>
-              <span className="font-medium text-gray-900 text-sm">Start asking your AI assistant</span>
+              <span className="font-medium text-gray-900 text-sm">Access your AI-powered dashboard</span>
+              <p className="text-xs text-gray-500">Get insights from your connected data</p>
             </div>
           </div>
         </div>

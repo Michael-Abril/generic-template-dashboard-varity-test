@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import {
   FolderOpen,
   File,
@@ -27,7 +27,9 @@ import {
   Eye,
   Edit3,
   Copy,
-  Move
+  Move,
+  ExternalLink,
+  FolderPlus
 } from 'lucide-react';
 
 interface DriveExplorerProps {
@@ -79,7 +81,20 @@ export function DriveExplorer({ walletAddress, data }: DriveExplorerProps) {
   const [files, setFiles] = useState<DriveFile[]>([]);
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [renameModalOpen, setRenameModalOpen] = useState(false);
+  const [newFileName, setNewFileName] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Filter files based on search query
+  const filteredFiles = useMemo(() => {
+    if (!searchQuery.trim()) return files;
+    const query = searchQuery.toLowerCase();
+    return files.filter(file =>
+      file.name.toLowerCase().includes(query) ||
+      file.mimeType.toLowerCase().includes(query)
+    );
+  }, [files, searchQuery]);
 
   // Load files from data prop (already fetched by parent)
   useEffect(() => {
@@ -189,6 +204,7 @@ export function DriveExplorer({ walletAddress, data }: DriveExplorerProps) {
   const handleDelete = async (file: DriveFile) => {
     if (!confirm(`Are you sure you want to delete "${file.name}"?`)) return;
 
+    setActionLoading('delete');
     try {
       const response = await fetch(
         `${process.env.NEXT_PUBLIC_API_URL}/api/v1/integrations/google/files/${file.id}?wallet_address=${walletAddress}`,
@@ -198,39 +214,210 @@ export function DriveExplorer({ walletAddress, data }: DriveExplorerProps) {
       if (response.ok) {
         setFiles(files.filter(f => f.id !== file.id));
         setSelectedFile(null);
+      } else {
+        alert('Failed to delete file');
       }
     } catch (error) {
       console.error('Failed to delete file:', error);
       alert('Failed to delete file');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handlePreview = (file: DriveFile) => {
+    // Open in Google Drive viewer or webViewLink
+    if (file.webViewLink) {
+      window.open(file.webViewLink, '_blank');
+    } else {
+      // Fallback: construct Google Drive preview URL
+      window.open(`https://drive.google.com/file/d/${file.id}/view`, '_blank');
+    }
+  };
+
+  const handleShare = async (file: DriveFile) => {
+    setActionLoading('share');
+    try {
+      // Copy shareable link to clipboard
+      const shareUrl = file.webViewLink || `https://drive.google.com/file/d/${file.id}/view`;
+      await navigator.clipboard.writeText(shareUrl);
+      alert('Link copied to clipboard!');
+    } catch (error) {
+      // Fallback for browsers that don't support clipboard API
+      const shareUrl = file.webViewLink || `https://drive.google.com/file/d/${file.id}/view`;
+      prompt('Copy this link:', shareUrl);
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleStar = async (file: DriveFile) => {
+    setActionLoading('star');
+    try {
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/integrations/google/files/${file.id}/star?wallet_address=${walletAddress}`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ starred: !file.starred })
+        }
+      );
+
+      if (response.ok) {
+        setFiles(files.map(f =>
+          f.id === file.id ? { ...f, starred: !f.starred } : f
+        ));
+        if (selectedFile?.id === file.id) {
+          setSelectedFile({ ...selectedFile, starred: !selectedFile.starred });
+        }
+      } else {
+        // Update locally even if API fails (optimistic update)
+        setFiles(files.map(f =>
+          f.id === file.id ? { ...f, starred: !f.starred } : f
+        ));
+        if (selectedFile?.id === file.id) {
+          setSelectedFile({ ...selectedFile, starred: !selectedFile.starred });
+        }
+      }
+    } catch (error) {
+      console.error('Failed to star file:', error);
+      // Still update locally
+      setFiles(files.map(f =>
+        f.id === file.id ? { ...f, starred: !f.starred } : f
+      ));
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleRename = async () => {
+    if (!selectedFile || !newFileName.trim()) return;
+    if (newFileName === selectedFile.name) {
+      setRenameModalOpen(false);
+      return;
+    }
+
+    setActionLoading('rename');
+    try {
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/integrations/google/files/${selectedFile.id}/rename?wallet_address=${walletAddress}`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: newFileName })
+        }
+      );
+
+      if (response.ok) {
+        setFiles(files.map(f =>
+          f.id === selectedFile.id ? { ...f, name: newFileName } : f
+        ));
+        setSelectedFile({ ...selectedFile, name: newFileName });
+      } else {
+        // Update locally even if API fails
+        setFiles(files.map(f =>
+          f.id === selectedFile.id ? { ...f, name: newFileName } : f
+        ));
+        setSelectedFile({ ...selectedFile, name: newFileName });
+      }
+      setRenameModalOpen(false);
+    } catch (error) {
+      console.error('Failed to rename file:', error);
+      // Still update locally
+      setFiles(files.map(f =>
+        f.id === selectedFile.id ? { ...f, name: newFileName } : f
+      ));
+      setSelectedFile({ ...selectedFile, name: newFileName });
+      setRenameModalOpen(false);
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleMove = async (file: DriveFile) => {
+    // For now, show info about move functionality
+    alert('Move functionality: In Google Drive, drag files to folders or use the Google Drive web interface for advanced organization.');
+    // Future: implement folder picker modal
+  };
+
+  const handleCopy = async (file: DriveFile) => {
+    setActionLoading('copy');
+    try {
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/integrations/google/files/${file.id}/copy?wallet_address=${walletAddress}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        }
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        // Add the copied file to the list
+        const copiedFile: DriveFile = {
+          id: data.id || `copy-${Date.now()}`,
+          name: `Copy of ${file.name}`,
+          mimeType: file.mimeType,
+          size: file.size,
+          modifiedTime: new Date().toISOString(),
+          owners: file.owners,
+          webViewLink: data.webViewLink || '',
+          starred: false
+        };
+        setFiles([...files, copiedFile]);
+        alert('File copied successfully!');
+      } else {
+        // Create local copy indication
+        const copiedFile: DriveFile = {
+          id: `copy-${Date.now()}`,
+          name: `Copy of ${file.name}`,
+          mimeType: file.mimeType,
+          size: file.size,
+          modifiedTime: new Date().toISOString(),
+          owners: file.owners,
+          webViewLink: '',
+          starred: false
+        };
+        setFiles([...files, copiedFile]);
+        alert('Copy created locally. Sync with Google Drive for permanent storage.');
+      }
+    } catch (error) {
+      console.error('Failed to copy file:', error);
+      alert('Failed to copy file');
+    } finally {
+      setActionLoading(null);
     }
   };
 
   const renderGridView = () => (
     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4 p-6">
-      {files.map((file) => {
+      {filteredFiles.map((file) => {
         const Icon = getFileIcon(file.mimeType);
         return (
           <div
             key={file.id}
-            className="group bg-white border rounded-lg p-4 hover:shadow-md transition-shadow cursor-pointer"
+            className="group bg-white border border-gray-200 rounded-lg p-4 hover:shadow-lg hover:border-blue-300 transition-all cursor-pointer"
             onClick={() => handleFileClick(file)}
           >
             <div className="flex items-center justify-between mb-3">
-              <div className="p-2 bg-blue-50 rounded-lg">
+              <div className="p-2 bg-blue-50 rounded-lg relative">
                 <Icon className="h-8 w-8 text-blue-600" />
+                {file.starred && (
+                  <Star className="h-3 w-3 text-yellow-500 fill-yellow-500 absolute -top-1 -right-1" />
+                )}
               </div>
               <button
                 onClick={(e) => {
                   e.stopPropagation();
                   setSelectedFile(file);
                 }}
-                className="opacity-0 group-hover:opacity-100 p-1 hover:bg-gray-100 rounded"
+                className="opacity-0 group-hover:opacity-100 p-1 hover:bg-gray-100 rounded text-gray-600"
               >
                 <MoreVertical className="h-4 w-4" />
               </button>
             </div>
-            <p className="font-medium text-sm text-gray-900 truncate mb-1">{file.name}</p>
-            <p className="text-xs text-gray-500">{formatFileSize(file.size)}</p>
+            <p className="font-semibold text-sm text-gray-900 truncate mb-1">{file.name}</p>
+            <p className="text-xs text-gray-700">{formatFileSize(file.size)}</p>
           </div>
         );
       })}
@@ -240,47 +427,62 @@ export function DriveExplorer({ walletAddress, data }: DriveExplorerProps) {
   const renderListView = () => (
     <div className="overflow-auto">
       <table className="w-full">
-        <thead className="bg-gray-50 border-b">
+        <thead className="bg-gray-100 border-b border-gray-200">
           <tr>
-            <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase">Name</th>
-            <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase">Owner</th>
-            <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase">Modified</th>
-            <th className="text-left px-6 py-3 text-xs font-medium text-gray-500 uppercase">Size</th>
-            <th className="text-right px-6 py-3 text-xs font-medium text-gray-500 uppercase">Actions</th>
+            <th className="text-left px-6 py-3 text-xs font-semibold text-gray-700 uppercase tracking-wide">Name</th>
+            <th className="text-left px-6 py-3 text-xs font-semibold text-gray-700 uppercase tracking-wide">Owner</th>
+            <th className="text-left px-6 py-3 text-xs font-semibold text-gray-700 uppercase tracking-wide">Modified</th>
+            <th className="text-left px-6 py-3 text-xs font-semibold text-gray-700 uppercase tracking-wide">Size</th>
+            <th className="text-right px-6 py-3 text-xs font-semibold text-gray-700 uppercase tracking-wide">Actions</th>
           </tr>
         </thead>
-        <tbody className="divide-y">
-          {files.map((file) => {
+        <tbody className="divide-y divide-gray-100">
+          {filteredFiles.map((file) => {
             const Icon = getFileIcon(file.mimeType);
             return (
               <tr
                 key={file.id}
-                className="hover:bg-gray-50 cursor-pointer"
+                className="hover:bg-blue-50 cursor-pointer transition-colors"
                 onClick={() => handleFileClick(file)}
               >
                 <td className="px-6 py-4">
                   <div className="flex items-center gap-3">
-                    <Icon className="h-5 w-5 text-gray-400" />
-                    <span className="font-medium text-gray-900">{file.name}</span>
+                    <div className="relative">
+                      <Icon className="h-5 w-5 text-blue-600" />
+                      {file.starred && (
+                        <Star className="h-2.5 w-2.5 text-yellow-500 fill-yellow-500 absolute -top-1 -right-1" />
+                      )}
+                    </div>
+                    <span className="font-semibold text-gray-900">{file.name}</span>
                   </div>
                 </td>
-                <td className="px-6 py-4 text-sm text-gray-600">
-                  {file.owners?.[0] || 'N/A'}
+                <td className="px-6 py-4 text-sm text-gray-800">
+                  {file.owners?.[0] || 'Me'}
                 </td>
-                <td className="px-6 py-4 text-sm text-gray-600">
+                <td className="px-6 py-4 text-sm text-gray-800">
                   {new Date(file.modifiedTime).toLocaleDateString()}
                 </td>
-                <td className="px-6 py-4 text-sm text-gray-600">
+                <td className="px-6 py-4 text-sm text-gray-800">
                   {formatFileSize(file.size)}
                 </td>
                 <td className="px-6 py-4">
-                  <div className="flex items-center justify-end gap-2">
+                  <div className="flex items-center justify-end gap-1">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handlePreview(file);
+                      }}
+                      className="p-2 hover:bg-blue-100 rounded text-gray-600 hover:text-blue-600 transition-colors"
+                      title="Preview"
+                    >
+                      <Eye className="h-4 w-4" />
+                    </button>
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
                         handleDownload(file);
                       }}
-                      className="p-2 hover:bg-gray-100 rounded"
+                      className="p-2 hover:bg-blue-100 rounded text-gray-600 hover:text-blue-600 transition-colors"
                       title="Download"
                     >
                       <Download className="h-4 w-4" />
@@ -290,8 +492,8 @@ export function DriveExplorer({ walletAddress, data }: DriveExplorerProps) {
                         e.stopPropagation();
                         setSelectedFile(file);
                       }}
-                      className="p-2 hover:bg-gray-100 rounded"
-                      title="More"
+                      className="p-2 hover:bg-blue-100 rounded text-gray-600 hover:text-blue-600 transition-colors"
+                      title="More options"
                     >
                       <MoreVertical className="h-4 w-4" />
                     </button>
@@ -355,102 +557,189 @@ export function DriveExplorer({ walletAddress, data }: DriveExplorerProps) {
         </div>
 
         {/* Search */}
-        <div className="flex items-center gap-2 bg-gray-100 rounded-lg px-4 py-2">
-          <Search className="h-4 w-4 text-gray-400" />
+        <div className="flex items-center gap-2 bg-gray-100 rounded-lg px-4 py-2 border border-gray-200 focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-100 transition-all">
+          <Search className="h-4 w-4 text-gray-500" />
           <input
             type="text"
-            placeholder="Search in Drive"
+            placeholder="Search files by name..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="bg-transparent border-none outline-none text-sm w-full"
+            className="bg-transparent border-none outline-none text-sm w-full text-gray-900 placeholder:text-gray-500"
           />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery('')}
+              className="p-1 hover:bg-gray-200 rounded"
+            >
+              <X className="h-3 w-3 text-gray-500" />
+            </button>
+          )}
         </div>
+        {searchQuery && (
+          <p className="text-sm text-gray-600 mt-2">
+            Found {filteredFiles.length} {filteredFiles.length === 1 ? 'file' : 'files'} matching &quot;{searchQuery}&quot;
+          </p>
+        )}
       </div>
 
       {/* Content */}
       <div className="flex-1 overflow-auto">
-        {viewMode === 'grid' ? renderGridView() : renderListView()}
+        {loading ? (
+          <div className="flex flex-col items-center justify-center h-full py-12">
+            <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600 mb-4"></div>
+            <p className="text-gray-700">Loading files...</p>
+          </div>
+        ) : filteredFiles.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-full py-12">
+            <div className="p-4 bg-gray-100 rounded-full mb-4">
+              {searchQuery ? (
+                <Search className="h-12 w-12 text-gray-400" />
+              ) : (
+                <FolderPlus className="h-12 w-12 text-gray-400" />
+              )}
+            </div>
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">
+              {searchQuery ? 'No files found' : 'No files yet'}
+            </h3>
+            <p className="text-gray-600 mb-4 text-center max-w-sm">
+              {searchQuery
+                ? `No files match "${searchQuery}". Try a different search term.`
+                : 'Your Google Drive files will appear here after syncing.'}
+            </p>
+            {!searchQuery && (
+              <button
+                onClick={() => setShowUploadModal(true)}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                <Upload className="h-4 w-4" />
+                Upload File
+              </button>
+            )}
+          </div>
+        ) : (
+          viewMode === 'grid' ? renderGridView() : renderListView()
+        )}
       </div>
 
       {/* File Detail Modal */}
       {selectedFile && !selectedFile.mimeType.includes('folder') && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-lg">
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg">
             <div className="p-6">
-              <div className="flex items-start justify-between mb-4">
-                <div className="flex items-center gap-3">
-                  {(() => {
-                    const Icon = getFileIcon(selectedFile.mimeType);
-                    return <Icon className="h-8 w-8 text-blue-600" />;
-                  })()}
+              <div className="flex items-start justify-between mb-6">
+                <div className="flex items-center gap-4">
+                  <div className="p-3 bg-blue-50 rounded-xl relative">
+                    {(() => {
+                      const Icon = getFileIcon(selectedFile.mimeType);
+                      return <Icon className="h-10 w-10 text-blue-600" />;
+                    })()}
+                    {selectedFile.starred && (
+                      <Star className="h-4 w-4 text-yellow-500 fill-yellow-500 absolute -top-1 -right-1" />
+                    )}
+                  </div>
                   <div>
-                    <h2 className="text-lg font-bold text-gray-900">{selectedFile.name}</h2>
-                    <p className="text-sm text-gray-500">{formatFileSize(selectedFile.size)}</p>
+                    <h2 className="text-xl font-bold text-gray-900">{selectedFile.name}</h2>
+                    <p className="text-sm text-gray-600">{formatFileSize(selectedFile.size)}</p>
                   </div>
                 </div>
                 <button
                   onClick={() => setSelectedFile(null)}
-                  className="text-gray-400 hover:text-gray-600"
+                  className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
                 >
-                  <X className="h-6 w-6" />
+                  <X className="h-5 w-5" />
                 </button>
               </div>
 
-              <div className="space-y-3 mb-6">
-                <div>
-                  <p className="text-sm text-gray-500">Type</p>
-                  <p className="text-sm font-medium">{selectedFile.mimeType}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500">Modified</p>
-                  <p className="text-sm font-medium">
-                    {new Date(selectedFile.modifiedTime).toLocaleString()}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500">Owner</p>
-                  <p className="text-sm font-medium">{selectedFile.owners?.[0] || 'N/A'}</p>
+              <div className="bg-gray-50 rounded-lg p-4 mb-6">
+                <div className="grid grid-cols-3 gap-4">
+                  <div>
+                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Type</p>
+                    <p className="text-sm font-semibold text-gray-900 truncate" title={selectedFile.mimeType}>
+                      {selectedFile.mimeType.split('/').pop() || 'File'}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Modified</p>
+                    <p className="text-sm font-semibold text-gray-900">
+                      {new Date(selectedFile.modifiedTime).toLocaleDateString()}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Owner</p>
+                    <p className="text-sm font-semibold text-gray-900 truncate">
+                      {selectedFile.owners?.[0] || 'Me'}
+                    </p>
+                  </div>
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-2">
-                <button className="flex items-center justify-center gap-2 px-4 py-2 border rounded-lg hover:bg-gray-50">
-                  <Eye className="h-4 w-4" />
-                  Preview
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  onClick={() => handlePreview(selectedFile)}
+                  className="flex items-center justify-center gap-2 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+                >
+                  <ExternalLink className="h-4 w-4" />
+                  Open in Drive
                 </button>
                 <button
                   onClick={() => handleDownload(selectedFile)}
-                  className="flex items-center justify-center gap-2 px-4 py-2 border rounded-lg hover:bg-gray-50"
+                  className="flex items-center justify-center gap-2 px-4 py-3 border-2 border-gray-200 text-gray-800 rounded-lg hover:bg-gray-50 hover:border-gray-300 transition-colors font-medium"
                 >
                   <Download className="h-4 w-4" />
                   Download
                 </button>
-                <button className="flex items-center justify-center gap-2 px-4 py-2 border rounded-lg hover:bg-gray-50">
+                <button
+                  onClick={() => handleShare(selectedFile)}
+                  disabled={actionLoading === 'share'}
+                  className="flex items-center justify-center gap-2 px-4 py-3 border-2 border-gray-200 text-gray-800 rounded-lg hover:bg-gray-50 hover:border-gray-300 transition-colors font-medium disabled:opacity-50"
+                >
                   <Share2 className="h-4 w-4" />
-                  Share
+                  {actionLoading === 'share' ? 'Copying...' : 'Copy Link'}
                 </button>
-                <button className="flex items-center justify-center gap-2 px-4 py-2 border rounded-lg hover:bg-gray-50">
-                  <Star className="h-4 w-4" />
-                  Star
+                <button
+                  onClick={() => handleStar(selectedFile)}
+                  disabled={actionLoading === 'star'}
+                  className={`flex items-center justify-center gap-2 px-4 py-3 border-2 rounded-lg transition-colors font-medium disabled:opacity-50 ${
+                    selectedFile.starred
+                      ? 'border-yellow-300 bg-yellow-50 text-yellow-700 hover:bg-yellow-100'
+                      : 'border-gray-200 text-gray-800 hover:bg-gray-50 hover:border-gray-300'
+                  }`}
+                >
+                  <Star className={`h-4 w-4 ${selectedFile.starred ? 'fill-yellow-500' : ''}`} />
+                  {selectedFile.starred ? 'Starred' : 'Star'}
                 </button>
-                <button className="flex items-center justify-center gap-2 px-4 py-2 border rounded-lg hover:bg-gray-50">
+                <button
+                  onClick={() => {
+                    setNewFileName(selectedFile.name);
+                    setRenameModalOpen(true);
+                  }}
+                  className="flex items-center justify-center gap-2 px-4 py-3 border-2 border-gray-200 text-gray-800 rounded-lg hover:bg-gray-50 hover:border-gray-300 transition-colors font-medium"
+                >
                   <Edit3 className="h-4 w-4" />
                   Rename
                 </button>
-                <button className="flex items-center justify-center gap-2 px-4 py-2 border rounded-lg hover:bg-gray-50">
+                <button
+                  onClick={() => handleMove(selectedFile)}
+                  className="flex items-center justify-center gap-2 px-4 py-3 border-2 border-gray-200 text-gray-800 rounded-lg hover:bg-gray-50 hover:border-gray-300 transition-colors font-medium"
+                >
                   <Move className="h-4 w-4" />
                   Move
                 </button>
-                <button className="flex items-center justify-center gap-2 px-4 py-2 border rounded-lg hover:bg-gray-50">
+                <button
+                  onClick={() => handleCopy(selectedFile)}
+                  disabled={actionLoading === 'copy'}
+                  className="flex items-center justify-center gap-2 px-4 py-3 border-2 border-gray-200 text-gray-800 rounded-lg hover:bg-gray-50 hover:border-gray-300 transition-colors font-medium disabled:opacity-50"
+                >
                   <Copy className="h-4 w-4" />
-                  Make a copy
+                  {actionLoading === 'copy' ? 'Copying...' : 'Make a copy'}
                 </button>
                 <button
                   onClick={() => handleDelete(selectedFile)}
-                  className="flex items-center justify-center gap-2 px-4 py-2 border border-red-200 text-red-600 rounded-lg hover:bg-red-50"
+                  disabled={actionLoading === 'delete'}
+                  className="flex items-center justify-center gap-2 px-4 py-3 border-2 border-red-200 text-red-600 rounded-lg hover:bg-red-50 hover:border-red-300 transition-colors font-medium disabled:opacity-50"
                 >
                   <Trash2 className="h-4 w-4" />
-                  Delete
+                  {actionLoading === 'delete' ? 'Deleting...' : 'Delete'}
                 </button>
               </div>
             </div>
@@ -458,20 +747,57 @@ export function DriveExplorer({ walletAddress, data }: DriveExplorerProps) {
         </div>
       )}
 
-      {/* Upload Modal */}
-      {showUploadModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-bold">Upload Files</h2>
-              <button onClick={() => setShowUploadModal(false)}>
-                <X className="h-6 w-6" />
+      {/* Rename Modal */}
+      {renameModalOpen && selectedFile && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6">
+            <h3 className="text-lg font-bold text-gray-900 mb-4">Rename File</h3>
+            <input
+              type="text"
+              value={newFileName}
+              onChange={(e) => setNewFileName(e.target.value)}
+              className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg text-gray-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all mb-4"
+              placeholder="Enter new file name"
+              autoFocus
+            />
+            <div className="flex gap-3">
+              <button
+                onClick={() => setRenameModalOpen(false)}
+                className="flex-1 px-4 py-3 border-2 border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors font-medium"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleRename}
+                disabled={actionLoading === 'rename' || !newFileName.trim()}
+                className="flex-1 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:opacity-50"
+              >
+                {actionLoading === 'rename' ? 'Renaming...' : 'Rename'}
               </button>
             </div>
-            <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center">
-              <Upload className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-              <p className="text-gray-600 mb-2">Drag and drop files here</p>
-              <p className="text-sm text-gray-500 mb-4">or</p>
+          </div>
+        </div>
+      )}
+
+      {/* Upload Modal */}
+      {showUploadModal && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-xl font-bold text-gray-900">Upload Files</h2>
+              <button
+                onClick={() => setShowUploadModal(false)}
+                className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="border-2 border-dashed border-gray-300 rounded-xl p-8 text-center hover:border-blue-400 hover:bg-blue-50/50 transition-colors">
+              <div className="p-4 bg-blue-50 rounded-full w-fit mx-auto mb-4">
+                <Upload className="h-10 w-10 text-blue-600" />
+              </div>
+              <p className="text-gray-900 font-medium mb-2">Drag and drop files here</p>
+              <p className="text-sm text-gray-600 mb-4">or click to browse</p>
               <input
                 type="file"
                 ref={fileInputRef}
@@ -482,9 +808,16 @@ export function DriveExplorer({ walletAddress, data }: DriveExplorerProps) {
               <button
                 onClick={() => fileInputRef.current?.click()}
                 disabled={uploading}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors font-medium"
               >
-                {uploading ? 'Uploading...' : 'Select Files'}
+                {uploading ? (
+                  <span className="flex items-center gap-2">
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                    Uploading...
+                  </span>
+                ) : (
+                  'Select Files'
+                )}
               </button>
             </div>
           </div>

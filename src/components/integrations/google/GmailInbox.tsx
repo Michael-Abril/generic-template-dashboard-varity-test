@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   Mail,
   Star,
@@ -20,7 +20,9 @@ import {
   ReplyAll,
   Forward,
   Download,
-  X
+  X,
+  MailOpen,
+  MailWarning
 } from 'lucide-react';
 import { EmailComposer } from './EmailComposer';
 
@@ -62,6 +64,20 @@ export function GmailInbox({ walletAddress, data }: GmailInboxProps) {
   const [emails, setEmails] = useState<Email[]>([]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [replyContext, setReplyContext] = useState<{ to: string; subject: string; type: 'reply' | 'replyAll' | 'forward' } | null>(null);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+
+  // Filter emails based on search query
+  const filteredEmails = useMemo(() => {
+    if (!searchQuery.trim()) return emails;
+    const query = searchQuery.toLowerCase();
+    return emails.filter(email =>
+      email.from.toLowerCase().includes(query) ||
+      email.to.toLowerCase().includes(query) ||
+      email.subject.toLowerCase().includes(query) ||
+      email.snippet.toLowerCase().includes(query)
+    );
+  }, [emails, searchQuery]);
 
   // Load emails from data prop (already fetched by parent)
   useEffect(() => {
@@ -127,8 +143,40 @@ export function GmailInbox({ walletAddress, data }: GmailInboxProps) {
   };
 
   const handleArchiveEmail = async (emailId: string) => {
-    // Gmail Archive = Remove INBOX label
-    console.log('Archive email:', emailId);
+    setActionLoading('archive');
+    try {
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/integrations/google/emails/${emailId}?wallet_address=${walletAddress}`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ archive: true })
+        }
+      );
+
+      if (response.ok) {
+        // Remove from inbox view
+        setEmails(emails.filter(e => e.id !== emailId));
+        if (selectedEmail?.id === emailId) {
+          setSelectedEmail(null);
+        }
+      } else {
+        // Optimistic update even if API fails
+        setEmails(emails.filter(e => e.id !== emailId));
+        if (selectedEmail?.id === emailId) {
+          setSelectedEmail(null);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to archive email:', error);
+      // Still remove from view
+      setEmails(emails.filter(e => e.id !== emailId));
+      if (selectedEmail?.id === emailId) {
+        setSelectedEmail(null);
+      }
+    } finally {
+      setActionLoading(null);
+    }
   };
 
   const handleDeleteEmail = async (emailId: string) => {
@@ -173,9 +221,20 @@ export function GmailInbox({ walletAddress, data }: GmailInboxProps) {
     }
   };
 
-  const handleReply = (email: Email) => {
+  const handleReply = (email: Email, type: 'reply' | 'replyAll' | 'forward' = 'reply') => {
+    let subject = email.subject;
+    if (type === 'forward' && !subject.toLowerCase().startsWith('fwd:')) {
+      subject = `Fwd: ${subject}`;
+    } else if ((type === 'reply' || type === 'replyAll') && !subject.toLowerCase().startsWith('re:')) {
+      subject = `Re: ${subject}`;
+    }
+
+    setReplyContext({
+      to: type === 'forward' ? '' : email.from,
+      subject,
+      type
+    });
     setShowComposer(true);
-    // Pre-fill composer with reply data
   };
 
   const toggleEmailSelection = (emailId: string) => {
@@ -190,97 +249,188 @@ export function GmailInbox({ walletAddress, data }: GmailInboxProps) {
 
   const renderEmailList = () => (
     <div className="flex-1 overflow-auto">
-      {/* Toolbar */}
-      <div className="sticky top-0 bg-white border-b px-4 py-2 flex items-center justify-between z-10">
-        <div className="flex items-center gap-2">
+      {/* Search Bar */}
+      <div className="sticky top-0 bg-white border-b px-4 py-3 z-10">
+        <div className="flex items-center gap-2 bg-gray-100 rounded-lg px-4 py-2 border border-gray-200 focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-100 transition-all mb-3">
+          <Search className="h-4 w-4 text-gray-500" />
           <input
-            type="checkbox"
-            className="rounded"
-            checked={selectedEmails.size > 0 && selectedEmails.size === emails.length}
-            onChange={(e) => {
-              if (e.target.checked) {
-                setSelectedEmails(new Set(emails.map(e => e.id)));
-              } else {
-                setSelectedEmails(new Set());
-              }
-            }}
+            type="text"
+            placeholder="Search emails by sender, subject, or content..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="bg-transparent border-none outline-none text-sm w-full text-gray-900 placeholder:text-gray-500"
           />
-          <button
-            onClick={() => setShowComposer(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-          >
-            <Mail className="h-4 w-4" />
-            <span className="hidden md:inline">Compose</span>
-          </button>
-          <button
-            onClick={handleRefresh}
-            disabled={refreshing}
-            className="p-2 hover:bg-gray-100 rounded disabled:opacity-50"
-          >
-            <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
-          </button>
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery('')}
+              className="p-1 hover:bg-gray-200 rounded"
+            >
+              <X className="h-3 w-3 text-gray-500" />
+            </button>
+          )}
         </div>
-        <div className="flex items-center gap-2 text-sm text-gray-600">
-          <span>1-{emails.length} of {emails.length}</span>
-          <button className="p-1 hover:bg-gray-100 rounded">
-            <ChevronLeft className="h-4 w-4" />
-          </button>
-          <button className="p-1 hover:bg-gray-100 rounded">
-            <ChevronRight className="h-4 w-4" />
-          </button>
+
+        {/* Toolbar */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              className="rounded border-gray-300"
+              checked={selectedEmails.size > 0 && selectedEmails.size === filteredEmails.length}
+              onChange={(e) => {
+                if (e.target.checked) {
+                  setSelectedEmails(new Set(filteredEmails.map(e => e.id)));
+                } else {
+                  setSelectedEmails(new Set());
+                }
+              }}
+            />
+            <button
+              onClick={() => {
+                setReplyContext(null);
+                setShowComposer(true);
+              }}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+            >
+              <Mail className="h-4 w-4" />
+              <span className="hidden md:inline">Compose</span>
+            </button>
+            <button
+              onClick={handleRefresh}
+              disabled={refreshing}
+              className="p-2 hover:bg-gray-100 rounded-lg disabled:opacity-50 text-gray-600 hover:text-gray-900 transition-colors"
+              title="Refresh"
+            >
+              <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+            </button>
+            {selectedEmails.size > 0 && (
+              <>
+                <button
+                  onClick={() => {
+                    selectedEmails.forEach(id => handleArchiveEmail(id));
+                    setSelectedEmails(new Set());
+                  }}
+                  className="p-2 hover:bg-gray-100 rounded-lg text-gray-600 hover:text-gray-900 transition-colors"
+                  title="Archive selected"
+                >
+                  <Archive className="h-4 w-4" />
+                </button>
+                <button
+                  onClick={() => {
+                    if (confirm(`Delete ${selectedEmails.size} selected emails?`)) {
+                      selectedEmails.forEach(id => handleDeleteEmail(id));
+                      setSelectedEmails(new Set());
+                    }
+                  }}
+                  className="p-2 hover:bg-red-50 rounded-lg text-gray-600 hover:text-red-600 transition-colors"
+                  title="Delete selected"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </>
+            )}
+          </div>
+          <div className="flex items-center gap-2 text-sm text-gray-700">
+            <span className="font-medium">
+              {searchQuery
+                ? `${filteredEmails.length} results`
+                : `1-${filteredEmails.length} of ${filteredEmails.length}`}
+            </span>
+            <button className="p-2 hover:bg-gray-100 rounded-lg text-gray-600">
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+            <button className="p-2 hover:bg-gray-100 rounded-lg text-gray-600">
+              <ChevronRight className="h-4 w-4" />
+            </button>
+          </div>
         </div>
       </div>
 
       {/* Email List */}
-      <div className="divide-y">
-        {emails.map((email) => (
-          <div
-            key={email.id}
-            className={`
-              flex items-center gap-3 px-4 py-3 hover:bg-gray-50 cursor-pointer transition-colors
-              ${email.unread ? 'bg-blue-50' : 'bg-white'}
-              ${selectedEmails.has(email.id) ? 'bg-blue-100' : ''}
-            `}
-            onClick={() => setSelectedEmail(email)}
-          >
-            <input
-              type="checkbox"
-              className="rounded"
-              checked={selectedEmails.has(email.id)}
-              onChange={(e) => {
-                e.stopPropagation();
-                toggleEmailSelection(email.id);
-              }}
-            />
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                handleStarEmail(email.id, email.starred || false);
-              }}
-              className="p-1"
-            >
-              <Star className={`h-4 w-4 ${email.starred ? 'fill-yellow-400 text-yellow-400' : 'text-gray-400'}`} />
-            </button>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className={`font-semibold truncate ${email.unread ? 'text-gray-900' : 'text-gray-700'}`}>
-                      {email.from}
-                    </span>
-                    {email.hasAttachment && <Paperclip className="h-3 w-3 text-gray-400" />}
-                  </div>
-                  <p className={`truncate ${email.unread ? 'font-semibold text-gray-900' : 'text-gray-700'}`}>
-                    {email.subject}
-                  </p>
-                  <p className="text-sm text-gray-500 truncate">{email.snippet}</p>
-                </div>
-                <span className="text-xs text-gray-500 whitespace-nowrap">{email.date}</span>
-              </div>
-            </div>
+      {filteredEmails.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-16">
+          <div className="p-4 bg-gray-100 rounded-full mb-4">
+            {searchQuery ? (
+              <Search className="h-12 w-12 text-gray-400" />
+            ) : (
+              <MailOpen className="h-12 w-12 text-gray-400" />
+            )}
           </div>
-        ))}
-      </div>
+          <h3 className="text-lg font-semibold text-gray-900 mb-2">
+            {searchQuery ? 'No emails found' : 'No emails yet'}
+          </h3>
+          <p className="text-gray-600 text-center max-w-sm">
+            {searchQuery
+              ? `No emails match "${searchQuery}". Try a different search term.`
+              : 'Your Gmail inbox will appear here after syncing.'}
+          </p>
+        </div>
+      ) : (
+        <div className="divide-y divide-gray-100">
+          {filteredEmails.map((email) => (
+            <div
+              key={email.id}
+              className={`
+                flex items-center gap-3 px-4 py-3 cursor-pointer transition-colors
+                ${email.unread ? 'bg-blue-50 hover:bg-blue-100' : 'bg-white hover:bg-gray-50'}
+                ${selectedEmails.has(email.id) ? 'bg-blue-100' : ''}
+              `}
+              onClick={() => {
+                setSelectedEmail(email);
+                if (email.unread) {
+                  handleMarkAsRead(email.id, true);
+                }
+              }}
+            >
+              <input
+                type="checkbox"
+                className="rounded border-gray-300"
+                checked={selectedEmails.has(email.id)}
+                onChange={(e) => {
+                  e.stopPropagation();
+                  toggleEmailSelection(email.id);
+                }}
+              />
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleStarEmail(email.id, email.starred || false);
+                }}
+                className="p-1 hover:bg-gray-200 rounded transition-colors"
+              >
+                <Star className={`h-4 w-4 ${email.starred ? 'fill-yellow-500 text-yellow-500' : 'text-gray-400 hover:text-yellow-500'}`} />
+              </button>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className={`truncate ${email.unread ? 'font-bold text-gray-900' : 'font-semibold text-gray-800'}`}>
+                        {email.from}
+                      </span>
+                      {email.hasAttachment && <Paperclip className="h-3.5 w-3.5 text-gray-500" />}
+                    </div>
+                    <p className={`truncate ${email.unread ? 'font-semibold text-gray-900' : 'text-gray-800'}`}>
+                      {email.subject}
+                    </p>
+                    <p className="text-sm text-gray-600 truncate">{email.snippet}</p>
+                  </div>
+                  <span className="text-xs font-medium text-gray-600 whitespace-nowrap">{email.date}</span>
+                </div>
+              </div>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleArchiveEmail(email.id);
+                }}
+                className="p-2 hover:bg-gray-200 rounded-lg text-gray-500 hover:text-gray-700 transition-colors opacity-0 group-hover:opacity-100"
+                title="Archive"
+              >
+                <Archive className="h-4 w-4" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 
@@ -290,69 +440,76 @@ export function GmailInbox({ walletAddress, data }: GmailInboxProps) {
     return (
       <div className="flex-1 bg-white flex flex-col">
         {/* Email Header */}
-        <div className="border-b px-6 py-4">
+        <div className="border-b border-gray-200 px-6 py-4">
           <div className="flex items-start justify-between mb-4">
             <button
               onClick={() => setSelectedEmail(null)}
-              className="p-2 hover:bg-gray-100 rounded-lg"
+              className="p-2 hover:bg-gray-100 rounded-lg text-gray-600 hover:text-gray-900 transition-colors"
             >
               <ChevronLeft className="h-5 w-5" />
             </button>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1">
               <button
                 onClick={() => handleArchiveEmail(selectedEmail.id)}
-                className="p-2 hover:bg-gray-100 rounded-lg"
+                disabled={actionLoading === 'archive'}
+                className="p-2 hover:bg-gray-100 rounded-lg text-gray-600 hover:text-gray-900 transition-colors disabled:opacity-50"
                 title="Archive"
               >
                 <Archive className="h-5 w-5" />
               </button>
               <button
                 onClick={() => handleDeleteEmail(selectedEmail.id)}
-                className="p-2 hover:bg-gray-100 rounded-lg"
+                className="p-2 hover:bg-red-50 rounded-lg text-gray-600 hover:text-red-600 transition-colors"
                 title="Delete"
               >
                 <Trash2 className="h-5 w-5" />
               </button>
               <button
                 onClick={() => handleStarEmail(selectedEmail.id, selectedEmail.starred || false)}
-                className="p-2 hover:bg-gray-100 rounded-lg"
-                title="Star"
+                className="p-2 hover:bg-yellow-50 rounded-lg transition-colors"
+                title={selectedEmail.starred ? 'Unstar' : 'Star'}
               >
-                <Star className={`h-5 w-5 ${selectedEmail.starred ? 'fill-yellow-400 text-yellow-400' : ''}`} />
+                <Star className={`h-5 w-5 ${selectedEmail.starred ? 'fill-yellow-500 text-yellow-500' : 'text-gray-600 hover:text-yellow-500'}`} />
               </button>
             </div>
           </div>
           <h1 className="text-2xl font-bold text-gray-900 mb-4">{selectedEmail.subject}</h1>
-          <div className="flex items-start justify-between">
+          <div className="flex items-start justify-between bg-gray-50 rounded-lg p-4">
             <div>
-              <p className="font-semibold text-gray-900">{selectedEmail.from}</p>
-              <p className="text-sm text-gray-500">to {selectedEmail.to}</p>
+              <p className="font-bold text-gray-900">{selectedEmail.from}</p>
+              <p className="text-sm text-gray-600">to {selectedEmail.to || 'me'}</p>
             </div>
-            <p className="text-sm text-gray-500">{selectedEmail.date}</p>
+            <p className="text-sm font-medium text-gray-700">{selectedEmail.date}</p>
           </div>
         </div>
 
         {/* Email Body */}
         <div className="flex-1 overflow-auto px-6 py-6">
           <div className="prose max-w-none">
-            <p>{selectedEmail.snippet}</p>
+            <p className="text-gray-800 leading-relaxed whitespace-pre-wrap">{selectedEmail.snippet}</p>
           </div>
         </div>
 
         {/* Actions */}
-        <div className="border-t px-6 py-4 flex items-center gap-2">
+        <div className="border-t border-gray-200 px-6 py-4 flex items-center gap-3 bg-gray-50">
           <button
-            onClick={() => handleReply(selectedEmail)}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+            onClick={() => handleReply(selectedEmail, 'reply')}
+            className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
           >
             <Reply className="h-4 w-4" />
             Reply
           </button>
-          <button className="flex items-center gap-2 px-4 py-2 border rounded-lg hover:bg-gray-50">
+          <button
+            onClick={() => handleReply(selectedEmail, 'replyAll')}
+            className="flex items-center gap-2 px-5 py-2.5 border-2 border-gray-200 text-gray-800 rounded-lg hover:bg-white hover:border-gray-300 transition-colors font-medium"
+          >
             <ReplyAll className="h-4 w-4" />
             Reply All
           </button>
-          <button className="flex items-center gap-2 px-4 py-2 border rounded-lg hover:bg-gray-50">
+          <button
+            onClick={() => handleReply(selectedEmail, 'forward')}
+            className="flex items-center gap-2 px-5 py-2.5 border-2 border-gray-200 text-gray-800 rounded-lg hover:bg-white hover:border-gray-300 transition-colors font-medium"
+          >
             <Forward className="h-4 w-4" />
             Forward
           </button>
@@ -362,9 +519,9 @@ export function GmailInbox({ walletAddress, data }: GmailInboxProps) {
   };
 
   return (
-    <div className="flex h-[calc(100vh-200px)] bg-white rounded-lg border overflow-hidden">
+    <div className="flex h-[calc(100vh-200px)] bg-white rounded-lg border border-gray-200 overflow-hidden">
       {/* Sidebar */}
-      <div className="w-64 border-r bg-gray-50 p-4">
+      <div className="w-64 border-r border-gray-200 bg-gray-50 p-4">
         <div className="space-y-1">
           {LABELS.map((label) => {
             const Icon = label.icon;
@@ -374,15 +531,15 @@ export function GmailInbox({ walletAddress, data }: GmailInboxProps) {
                 key={label.id}
                 onClick={() => setSelectedLabel(label.id)}
                 className={`
-                  w-full flex items-center gap-3 px-4 py-2 rounded-lg transition-colors
+                  w-full flex items-center gap-3 px-4 py-2.5 rounded-lg transition-colors
                   ${isActive
-                    ? 'bg-blue-100 text-blue-700'
-                    : 'hover:bg-gray-100 text-gray-700'
+                    ? 'bg-blue-100 text-blue-700 font-semibold'
+                    : 'hover:bg-gray-100 text-gray-800 font-medium'
                   }
                 `}
               >
                 <Icon className={`h-4 w-4 ${isActive ? 'text-blue-700' : label.color}`} />
-                <span className="font-medium">{label.label}</span>
+                <span>{label.label}</span>
               </button>
             );
           })}
@@ -390,15 +547,15 @@ export function GmailInbox({ walletAddress, data }: GmailInboxProps) {
 
         {/* Labels Section */}
         <div className="mt-6">
-          <div className="px-4 py-2 text-xs font-semibold text-gray-500 uppercase">Labels</div>
+          <div className="px-4 py-2 text-xs font-bold text-gray-600 uppercase tracking-wide">Labels</div>
           <div className="space-y-1">
-            <button className="w-full flex items-center gap-3 px-4 py-2 rounded-lg hover:bg-gray-100 text-gray-700">
-              <Tag className="h-4 w-4 text-green-500" />
-              <span className="font-medium">Personal</span>
+            <button className="w-full flex items-center gap-3 px-4 py-2.5 rounded-lg hover:bg-gray-100 text-gray-800 font-medium transition-colors">
+              <Tag className="h-4 w-4 text-green-600" />
+              <span>Personal</span>
             </button>
-            <button className="w-full flex items-center gap-3 px-4 py-2 rounded-lg hover:bg-gray-100 text-gray-700">
-              <Tag className="h-4 w-4 text-purple-500" />
-              <span className="font-medium">Work</span>
+            <button className="w-full flex items-center gap-3 px-4 py-2.5 rounded-lg hover:bg-gray-100 text-gray-800 font-medium transition-colors">
+              <Tag className="h-4 w-4 text-purple-600" />
+              <span>Work</span>
             </button>
           </div>
         </div>

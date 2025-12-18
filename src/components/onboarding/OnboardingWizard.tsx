@@ -386,7 +386,7 @@ export function OnboardingWizard({
         <OnboardingProgress
           currentStep={currentStepIndex}
           totalSteps={STEPS.length}
-          steps={['Welcome', 'Company', 'Tools', 'Connect', 'Sync', 'Ready!']}
+          steps={['Welcome', 'Your Business', 'Select Tool', 'Authorize', 'Syncing', 'Complete']}
         />
 
         {/* Step Content */}
