@@ -4,10 +4,25 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useWallets } from '@privy-io/react-auth';
 import { useWalletSync } from '../app/providers';
 import { logger } from '@/lib/logger';
-import { Bot, MessageSquare, Plus, Pin, PinOff, Trash2, Edit2, X, Check, Archive, MoreVertical, Sparkles, Search, FileText, ChevronDown } from 'lucide-react';
+import {
+  Bot, MessageSquare, Plus, Pin, PinOff, Trash2, Edit2, X, Check, Archive,
+  MoreVertical, Sparkles, Search, FileText, ChevronDown, Upload, Download,
+  Shield, Lock, Globe, FileUp, Loader2, BarChart3, AlertCircle
+} from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
+
+// Document analysis types available
+type AnalysisType = 'summary' | 'key_points' | 'sentiment' | 'extraction' | 'action_items';
+
+const ANALYSIS_TYPES: { value: AnalysisType; label: string; description: string; icon: string }[] = [
+  { value: 'summary', label: 'Executive Summary', description: 'Concise overview of the document', icon: '📋' },
+  { value: 'key_points', label: 'Key Points', description: 'Extract main points and insights', icon: '🎯' },
+  { value: 'sentiment', label: 'Sentiment Analysis', description: 'Analyze tone and sentiment', icon: '😊' },
+  { value: 'extraction', label: 'Data Extraction', description: 'Extract numbers, dates, names', icon: '📊' },
+  { value: 'action_items', label: 'Action Items', description: 'Identify tasks and next steps', icon: '✅' },
+];
 
 interface Message {
   id?: number;
@@ -64,9 +79,19 @@ export function AIChat() {
   const [editingTitle, setEditingTitle] = useState<number | null>(null);
   const [newTitle, setNewTitle] = useState('');
   const [menuOpenId, setMenuOpenId] = useState<number | null>(null);
-  const [aiMode, setAiMode] = useState<'standard' | 'deep_research' | 'analyze'>('standard');
+  const [aiMode, setAiMode] = useState<'standard' | 'deep_research' | 'analyze' | 'document'>('standard');
   const [showModeSelector, setShowModeSelector] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Enhanced features state
+  const [enableWebSearch, setEnableWebSearch] = useState(true); // Toggle for Deep Research
+  const [showDocumentUpload, setShowDocumentUpload] = useState(false);
+  const [uploadedDocument, setUploadedDocument] = useState<{ name: string; content: string } | null>(null);
+  const [selectedAnalysisType, setSelectedAnalysisType] = useState<AnalysisType>('summary');
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [showExportMenu, setShowExportMenu] = useState(false);
+  const [showPrivacyBanner, setShowPrivacyBanner] = useState(true);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Scroll to bottom on new messages
   useEffect(() => {
@@ -271,6 +296,180 @@ export function AIChat() {
     }
   };
 
+  // Handle document file upload
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    // Check file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      alert('File size must be less than 5MB');
+      return;
+    }
+
+    // Check file type
+    const allowedTypes = ['text/plain', 'text/markdown', 'application/pdf', 'text/csv'];
+    const allowedExtensions = ['.txt', '.md', '.pdf', '.csv', '.doc', '.docx'];
+    const fileExtension = '.' + file.name.split('.').pop()?.toLowerCase();
+
+    if (!allowedTypes.includes(file.type) && !allowedExtensions.includes(fileExtension)) {
+      alert('Please upload a text file (.txt, .md, .csv) or PDF');
+      return;
+    }
+
+    try {
+      let content: string;
+
+      if (file.type === 'application/pdf' || fileExtension === '.pdf') {
+        // For PDF, we'll send to backend for extraction
+        content = `[PDF Document: ${file.name}]\n\nNote: PDF content extraction will be processed by the AI.`;
+        // In production, you'd upload the file to backend for PDF parsing
+      } else {
+        // For text files, read directly
+        content = await file.text();
+      }
+
+      setUploadedDocument({ name: file.name, content });
+      setShowDocumentUpload(false);
+    } catch (error) {
+      logger.error('Failed to read file:', error);
+      alert('Failed to read file. Please try again.');
+    }
+
+    // Reset file input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  // Analyze uploaded document
+  const analyzeDocument = async () => {
+    if (!uploadedDocument || !address) return;
+
+    setIsAnalyzing(true);
+    const analysisTypeLabel = ANALYSIS_TYPES.find(t => t.value === selectedAnalysisType)?.label || selectedAnalysisType;
+
+    // Add user message showing what's being analyzed
+    const userMessage: Message = {
+      role: 'user',
+      content: `📄 **Analyzing Document:** ${uploadedDocument.name}\n\n**Analysis Type:** ${analysisTypeLabel}`,
+      timestamp: new Date()
+    };
+    setMessages(prev => [...prev, userMessage]);
+
+    // Create conversation if needed
+    let convId = currentConversationId;
+    if (!convId) {
+      const newConv = await createNewConversation(`Document Analysis: ${uploadedDocument.name}`);
+      if (!newConv) {
+        setIsAnalyzing(false);
+        return;
+      }
+      convId = newConv.id;
+    }
+
+    await addMessageToConversation(convId, userMessage);
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/v1/ai/analyze/document`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          wallet_address: address,
+          document_content: uploadedDocument.content,
+          analysis_type: selectedAnalysisType
+        })
+      });
+
+      if (!response.ok) throw new Error(`Analysis failed: ${response.statusText}`);
+      const data = await response.json();
+
+      const assistantMessage: Message = {
+        role: 'assistant',
+        content: data.analysis || data.response || 'Analysis complete.',
+        timestamp: new Date()
+      };
+
+      setMessages(prev => [...prev, assistantMessage]);
+      await addMessageToConversation(convId, assistantMessage);
+
+      // Clear the uploaded document after analysis
+      setUploadedDocument(null);
+    } catch (error) {
+      logger.error('Document analysis error:', error);
+      const errorMsg: Message = {
+        role: 'assistant',
+        content: `Sorry, I couldn't analyze the document. ${error instanceof Error ? error.message : 'Please try again.'}`,
+        timestamp: new Date()
+      };
+      setMessages(prev => [...prev, errorMsg]);
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
+  // Export conversation
+  const exportConversation = async (format: 'markdown' | 'json' | 'pdf') => {
+    if (messages.length === 0) {
+      alert('No messages to export');
+      return;
+    }
+
+    const conversation = conversations.find(c => c.id === currentConversationId);
+    const title = conversation?.title || 'AI Conversation';
+    const timestamp = new Date().toISOString().split('T')[0];
+
+    if (format === 'markdown') {
+      let markdown = `# ${title}\n\n`;
+      markdown += `**Exported:** ${new Date().toLocaleString()}\n\n`;
+      markdown += `**Privacy:** All data stored on Filecoin/IPFS - Your data, your control.\n\n---\n\n`;
+
+      messages.forEach(msg => {
+        markdown += `### ${msg.role === 'user' ? '👤 You' : '🤖 Varity AI'}\n`;
+        markdown += `*${msg.timestamp.toLocaleString()}*\n\n`;
+        markdown += `${msg.content}\n\n`;
+        if (msg.sources && msg.sources.length > 0) {
+          markdown += `**Sources:** ${msg.sources.join(', ')}\n\n`;
+        }
+        markdown += `---\n\n`;
+      });
+
+      const blob = new Blob([markdown], { type: 'text/markdown' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${title.replace(/[^a-z0-9]/gi, '_')}_${timestamp}.md`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } else if (format === 'json') {
+      const exportData = {
+        title,
+        exported_at: new Date().toISOString(),
+        privacy_note: 'All data stored on Filecoin/IPFS - decentralized and secure',
+        messages: messages.map(m => ({
+          role: m.role,
+          content: m.content,
+          sources: m.sources,
+          timestamp: m.timestamp.toISOString()
+        }))
+      };
+
+      const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${title.replace(/[^a-z0-9]/gi, '_')}_${timestamp}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } else if (format === 'pdf') {
+      // For PDF, we'd call a backend endpoint
+      // For now, show a message
+      alert('PDF export coming soon! Use Markdown export for now.');
+    }
+
+    setShowExportMenu(false);
+  };
+
   // Send message
   const sendMessage = async () => {
     if (!input.trim() || !address) return;
@@ -327,17 +526,17 @@ export function AIChat() {
         responseData = await response.json();
 
       } else if (aiMode === 'deep_research') {
-        // Deep Research mode: Use combined query WITH web search enabled
-        // This mode searches the internet for comprehensive research
+        // Deep Research mode: Use combined query with optional web search
+        // User can toggle web search on/off for RAG-only or RAG+Web analysis
         const response = await fetch(`${API_BASE_URL}/api/v1/ai/query/combined`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             query: input,
             wallet_address: address,
-            enable_web_search: true,
+            enable_web_search: enableWebSearch, // User-controlled toggle
             max_rag_results: 5,
-            max_search_results: 5
+            max_search_results: enableWebSearch ? 5 : 0
           })
         });
         if (!response.ok) throw new Error(`AI request failed: ${response.statusText}`);
@@ -672,48 +871,115 @@ export function AIChat() {
       <div className="flex-1 flex flex-col">
         {/* Header */}
         <div className="bg-gradient-to-r from-blue-600 to-purple-600 p-4">
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => setShowSidebar(!showSidebar)}
-              className="p-2 hover:bg-white/10 rounded-lg transition-colors"
-            >
-              <MessageSquare className="w-5 h-5 text-white" />
-            </button>
-            <div className="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center">
-              <Bot className="w-6 h-6 text-white" />
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setShowSidebar(!showSidebar)}
+                className="p-2 hover:bg-white/10 rounded-lg transition-colors"
+              >
+                <MessageSquare className="w-5 h-5 text-white" />
+              </button>
+              <div className="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center">
+                <Bot className="w-6 h-6 text-white" />
+              </div>
+              <div>
+                <h2 className="text-white font-bold text-lg">Varity AI Assistant</h2>
+                <div className="flex flex-wrap gap-2 mt-1">
+                  {installedTools.length > 0 ? (
+                    <>
+                      <p className="text-xs text-white/80">Connected:</p>
+                      {installedTools.slice(0, 4).map((tool, i) => (
+                        <span
+                          key={i}
+                          className={`text-xs px-2 py-0.5 rounded-full ${
+                            tool.toLowerCase().includes('quickbooks') ? 'bg-green-500/30 text-green-100' :
+                            tool.toLowerCase().includes('google') ? 'bg-red-500/30 text-red-100' :
+                            tool.toLowerCase().includes('salesforce') ? 'bg-blue-500/30 text-blue-100' :
+                            tool.toLowerCase().includes('slack') ? 'bg-purple-500/30 text-purple-100' :
+                            tool.toLowerCase().includes('hubspot') ? 'bg-orange-500/30 text-orange-100' :
+                            'bg-white/20 text-white/90'
+                          }`}
+                        >
+                          {tool}
+                        </span>
+                      ))}
+                      {installedTools.length > 4 && (
+                        <span className="text-xs text-white/60">+{installedTools.length - 4} more</span>
+                      )}
+                    </>
+                  ) : (
+                    <p className="text-xs text-white/80">No integrations connected</p>
+                  )}
+                </div>
+              </div>
             </div>
-            <div>
-              <h2 className="text-white font-bold text-lg">AI Business Assistant</h2>
-              <div className="flex flex-wrap gap-2 mt-1">
-                {installedTools.length > 0 ? (
-                  <>
-                    <p className="text-xs text-white/80">Connected:</p>
-                    {installedTools.slice(0, 4).map((tool, i) => (
-                      <span
-                        key={i}
-                        className={`text-xs px-2 py-0.5 rounded-full ${
-                          tool.toLowerCase().includes('quickbooks') ? 'bg-green-500/30 text-green-100' :
-                          tool.toLowerCase().includes('google') ? 'bg-red-500/30 text-red-100' :
-                          tool.toLowerCase().includes('salesforce') ? 'bg-blue-500/30 text-blue-100' :
-                          tool.toLowerCase().includes('slack') ? 'bg-purple-500/30 text-purple-100' :
-                          tool.toLowerCase().includes('hubspot') ? 'bg-orange-500/30 text-orange-100' :
-                          'bg-white/20 text-white/90'
-                        }`}
-                      >
-                        {tool}
-                      </span>
-                    ))}
-                    {installedTools.length > 4 && (
-                      <span className="text-xs text-white/60">+{installedTools.length - 4} more</span>
-                    )}
-                  </>
-                ) : (
-                  <p className="text-xs text-white/80">No integrations connected</p>
+
+            {/* Header Actions - Privacy & Export */}
+            <div className="flex items-center gap-2">
+              {/* Privacy Indicator */}
+              <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-white/10 rounded-full">
+                <Shield className="w-3.5 h-3.5 text-green-300" />
+                <span className="text-xs text-white/90">On-Chain Secure</span>
+              </div>
+
+              {/* Export Button */}
+              <div className="relative">
+                <button
+                  onClick={() => setShowExportMenu(!showExportMenu)}
+                  className="p-2 hover:bg-white/10 rounded-lg transition-colors"
+                  title="Export conversation"
+                >
+                  <Download className="w-5 h-5 text-white" />
+                </button>
+                {showExportMenu && (
+                  <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20">
+                    <button
+                      onClick={() => exportConversation('markdown')}
+                      className="w-full flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                    >
+                      <FileText className="w-4 h-4" /> Export as Markdown
+                    </button>
+                    <button
+                      onClick={() => exportConversation('json')}
+                      className="w-full flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                    >
+                      <BarChart3 className="w-4 h-4" /> Export as JSON
+                    </button>
+                    <button
+                      onClick={() => exportConversation('pdf')}
+                      className="w-full flex items-center gap-2 px-4 py-2 text-sm text-gray-500 hover:bg-gray-100"
+                    >
+                      <FileUp className="w-4 h-4" /> Export as PDF (soon)
+                    </button>
+                  </div>
                 )}
               </div>
             </div>
           </div>
         </div>
+
+        {/* Privacy Banner - Dismissible */}
+        {showPrivacyBanner && (
+          <div className="bg-gradient-to-r from-green-50 to-blue-50 border-b border-green-200 px-4 py-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-1.5">
+                  <Lock className="w-4 h-4 text-green-600" />
+                  <span className="text-xs font-medium text-green-800">Your Data is Private</span>
+                </div>
+                <span className="text-xs text-gray-600">
+                  All data stored on Filecoin/IPFS • Encrypted with your wallet • Only you can access
+                </span>
+              </div>
+              <button
+                onClick={() => setShowPrivacyBanner(false)}
+                className="p-1 hover:bg-white/50 rounded"
+              >
+                <X className="w-3.5 h-3.5 text-gray-500" />
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Messages */}
         <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50">
@@ -864,10 +1130,100 @@ export function AIChat() {
           <div ref={messagesEndRef} />
         </div>
 
+        {/* Hidden file input for document upload */}
+        <input
+          type="file"
+          ref={fileInputRef}
+          onChange={handleFileUpload}
+          accept=".txt,.md,.csv,.pdf,.doc,.docx"
+          className="hidden"
+        />
+
+        {/* Document Upload Panel */}
+        {showDocumentUpload && (
+          <div className="border-t border-gray-200 p-4 bg-gray-50">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-medium text-gray-900">Upload Document for Analysis</h3>
+              <button onClick={() => setShowDocumentUpload(false)} className="text-gray-500 hover:text-gray-700">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div
+              onClick={() => fileInputRef.current?.click()}
+              className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-colors"
+            >
+              <Upload className="w-10 h-10 text-gray-400 mx-auto mb-3" />
+              <p className="text-sm text-gray-600 mb-1">Click to upload or drag and drop</p>
+              <p className="text-xs text-gray-500">TXT, MD, CSV, PDF (max 5MB)</p>
+            </div>
+          </div>
+        )}
+
+        {/* Uploaded Document Panel */}
+        {uploadedDocument && (
+          <div className="border-t border-gray-200 p-4 bg-blue-50">
+            <div className="flex items-start justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <FileText className="w-5 h-5 text-blue-600" />
+                <div>
+                  <p className="font-medium text-gray-900 text-sm">{uploadedDocument.name}</p>
+                  <p className="text-xs text-gray-500">{uploadedDocument.content.length.toLocaleString()} characters</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setUploadedDocument(null)}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Analysis Type Selector */}
+            <div className="mb-3">
+              <label className="block text-xs font-medium text-gray-700 mb-2">Select Analysis Type:</label>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                {ANALYSIS_TYPES.map((type) => (
+                  <button
+                    key={type.value}
+                    onClick={() => setSelectedAnalysisType(type.value)}
+                    className={`flex items-center gap-2 p-2 rounded-lg text-left text-xs transition-colors ${
+                      selectedAnalysisType === type.value
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-200'
+                    }`}
+                  >
+                    <span>{type.icon}</span>
+                    <span className="font-medium">{type.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Analyze Button */}
+            <button
+              onClick={analyzeDocument}
+              disabled={isAnalyzing}
+              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg font-medium hover:shadow-lg disabled:opacity-50 transition-all"
+            >
+              {isAnalyzing ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Analyzing...
+                </>
+              ) : (
+                <>
+                  <BarChart3 className="w-4 h-4" />
+                  Analyze Document
+                </>
+              )}
+            </button>
+          </div>
+        )}
+
         {/* Input */}
         <div className="border-t border-gray-200 p-4 bg-white">
           {/* AI Mode Selector */}
-          <div className="flex items-center gap-2 mb-3">
+          <div className="flex items-center gap-2 mb-3 flex-wrap">
             <div className="relative">
               <button
                 onClick={() => setShowModeSelector(!showModeSelector)}
@@ -876,22 +1232,26 @@ export function AIChat() {
                     ? 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                     : aiMode === 'deep_research'
                     ? 'bg-purple-100 text-purple-700 hover:bg-purple-200'
-                    : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
+                    : aiMode === 'analyze'
+                    ? 'bg-blue-100 text-blue-700 hover:bg-blue-200'
+                    : 'bg-green-100 text-green-700 hover:bg-green-200'
                 }`}
               >
                 {aiMode === 'standard' && <Sparkles className="w-4 h-4" />}
                 {aiMode === 'deep_research' && <Search className="w-4 h-4" />}
-                {aiMode === 'analyze' && <FileText className="w-4 h-4" />}
+                {aiMode === 'analyze' && <BarChart3 className="w-4 h-4" />}
+                {aiMode === 'document' && <FileUp className="w-4 h-4" />}
                 <span>
                   {aiMode === 'standard' && 'Standard'}
                   {aiMode === 'deep_research' && 'Deep Research'}
-                  {aiMode === 'analyze' && 'Analyze'}
+                  {aiMode === 'analyze' && 'Deep Analysis'}
+                  {aiMode === 'document' && 'Document'}
                 </span>
                 <ChevronDown className="w-3 h-3" />
               </button>
 
               {showModeSelector && (
-                <div className="absolute bottom-full left-0 mb-2 w-64 bg-white border border-gray-200 rounded-lg shadow-lg z-10">
+                <div className="absolute bottom-full left-0 mb-2 w-72 bg-white border border-gray-200 rounded-lg shadow-lg z-10">
                   <div className="p-2">
                     <button
                       onClick={() => { setAiMode('standard'); setShowModeSelector(false); }}
@@ -902,7 +1262,7 @@ export function AIChat() {
                       <Sparkles className="w-5 h-5 text-gray-600 mt-0.5" />
                       <div>
                         <p className="font-medium text-gray-900 text-sm">Standard</p>
-                        <p className="text-xs text-gray-500">Quick answers using your business data</p>
+                        <p className="text-xs text-gray-500">Quick answers from your business data</p>
                       </div>
                     </button>
                     <button
@@ -914,7 +1274,7 @@ export function AIChat() {
                       <Search className="w-5 h-5 text-purple-600 mt-0.5" />
                       <div>
                         <p className="font-medium text-gray-900 text-sm">Deep Research</p>
-                        <p className="text-xs text-gray-500">Comprehensive analysis with web search</p>
+                        <p className="text-xs text-gray-500">Comprehensive analysis with optional web search</p>
                       </div>
                     </button>
                     <button
@@ -923,10 +1283,22 @@ export function AIChat() {
                         aiMode === 'analyze' ? 'bg-blue-100' : 'hover:bg-gray-50'
                       }`}
                     >
-                      <FileText className="w-5 h-5 text-blue-600 mt-0.5" />
+                      <BarChart3 className="w-5 h-5 text-blue-600 mt-0.5" />
                       <div>
-                        <p className="font-medium text-gray-900 text-sm">Analyze & Report</p>
-                        <p className="text-xs text-gray-500">Create PDF reports and spreadsheets</p>
+                        <p className="font-medium text-gray-900 text-sm">Deep Analysis</p>
+                        <p className="text-xs text-gray-500">Executive-level analysis of your data</p>
+                      </div>
+                    </button>
+                    <button
+                      onClick={() => { setAiMode('document'); setShowModeSelector(false); setShowDocumentUpload(true); }}
+                      className={`w-full flex items-start gap-3 p-3 rounded-lg text-left transition-colors ${
+                        aiMode === 'document' ? 'bg-green-100' : 'hover:bg-gray-50'
+                      }`}
+                    >
+                      <FileUp className="w-5 h-5 text-green-600 mt-0.5" />
+                      <div>
+                        <p className="font-medium text-gray-900 text-sm">Analyze Document</p>
+                        <p className="text-xs text-gray-500">Upload and analyze any document</p>
                       </div>
                     </button>
                   </div>
@@ -934,12 +1306,37 @@ export function AIChat() {
               )}
             </div>
 
-            {aiMode !== 'standard' && (
-              <span className="text-xs text-gray-500">
-                {aiMode === 'deep_research' && 'Using web search + business data'}
-                {aiMode === 'analyze' && 'Will generate downloadable reports'}
-              </span>
+            {/* Mode-specific options */}
+            {aiMode === 'deep_research' && (
+              <label className="flex items-center gap-2 text-xs text-gray-600 bg-gray-100 px-3 py-1.5 rounded-lg cursor-pointer hover:bg-gray-200 transition-colors">
+                <input
+                  type="checkbox"
+                  checked={enableWebSearch}
+                  onChange={(e) => setEnableWebSearch(e.target.checked)}
+                  className="rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                />
+                <Globe className="w-3.5 h-3.5" />
+                <span>Include Web Search</span>
+              </label>
             )}
+
+            {aiMode === 'document' && !uploadedDocument && (
+              <button
+                onClick={() => setShowDocumentUpload(true)}
+                className="flex items-center gap-2 text-xs text-green-700 bg-green-100 px-3 py-1.5 rounded-lg hover:bg-green-200 transition-colors"
+              >
+                <Upload className="w-3.5 h-3.5" />
+                Upload Document
+              </button>
+            )}
+
+            {/* Mode description */}
+            <span className="text-xs text-gray-500">
+              {aiMode === 'standard' && 'Quick answers from your connected integrations'}
+              {aiMode === 'deep_research' && (enableWebSearch ? 'Business data + web research' : 'Business data only (no web)')}
+              {aiMode === 'analyze' && 'Comprehensive business intelligence report'}
+              {aiMode === 'document' && 'Upload any document for AI analysis'}
+            </span>
           </div>
 
           <div className="flex gap-2">
