@@ -22,45 +22,63 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # Create feedback table
-    op.create_table(
-        'feedback',
-        sa.Column('id', sa.Integer(), nullable=False),
-        sa.Column('wallet_address', sa.String(), nullable=False),
-        sa.Column('feedback_type', sa.String(), nullable=False),
-        sa.Column('trial_days_remaining', sa.Integer(), nullable=True),
-        sa.Column('company_name', sa.String(), nullable=True),
-        sa.Column('industry', sa.String(), nullable=True),
-        sa.Column('responses', sa.JSON(), nullable=False),
-        sa.Column('submitted_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=True),
-        sa.Column('session_duration_days', sa.Integer(), nullable=True),
-        sa.Column('integrations_connected', sa.Integer(), nullable=True),
-        sa.PrimaryKeyConstraint('id')
-    )
-    op.create_index(op.f('ix_feedback_id'), 'feedback', ['id'], unique=False)
-    op.create_index(op.f('ix_feedback_wallet_address'), 'feedback', ['wallet_address'], unique=False)
+    # Create feedback table (skip if exists)
+    try:
+        op.create_table(
+            'feedback',
+            sa.Column('id', sa.Integer(), nullable=False),
+            sa.Column('wallet_address', sa.String(), nullable=False),
+            sa.Column('feedback_type', sa.String(), nullable=False),
+            sa.Column('trial_days_remaining', sa.Integer(), nullable=True),
+            sa.Column('company_name', sa.String(), nullable=True),
+            sa.Column('industry', sa.String(), nullable=True),
+            sa.Column('responses', sa.JSON(), nullable=False),
+            sa.Column('submitted_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=True),
+            sa.Column('session_duration_days', sa.Integer(), nullable=True),
+            sa.Column('integrations_connected', sa.Integer(), nullable=True),
+            sa.PrimaryKeyConstraint('id')
+        )
+    except Exception:
+        pass  # Table already exists
 
-    # Create feedback_summary table
-    op.create_table(
-        'feedback_summary',
-        sa.Column('id', sa.Integer(), nullable=False),
-        sa.Column('period_start', sa.DateTime(timezone=True), nullable=False),
-        sa.Column('period_end', sa.DateTime(timezone=True), nullable=False),
-        sa.Column('feedback_type', sa.String(), nullable=False),
-        sa.Column('total_submissions', sa.Integer(), server_default='0', nullable=True),
-        sa.Column('avg_nps_score', sa.Integer(), nullable=True),
-        sa.Column('promoters_count', sa.Integer(), nullable=True),
-        sa.Column('passives_count', sa.Integer(), nullable=True),
-        sa.Column('detractors_count', sa.Integer(), nullable=True),
-        sa.Column('avg_satisfaction', sa.Integer(), nullable=True),
-        sa.Column('upgrade_count', sa.Integer(), nullable=True),
-        sa.Column('need_more_time_count', sa.Integer(), nullable=True),
-        sa.Column('not_right_fit_count', sa.Integer(), nullable=True),
-        sa.Column('too_expensive_count', sa.Integer(), nullable=True),
-        sa.Column('generated_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=True),
-        sa.PrimaryKeyConstraint('id')
-    )
-    op.create_index(op.f('ix_feedback_summary_id'), 'feedback_summary', ['id'], unique=False)
+    try:
+        op.create_index(op.f('ix_feedback_id'), 'feedback', ['id'], unique=False)
+    except Exception:
+        pass  # Index already exists
+
+    try:
+        op.create_index(op.f('ix_feedback_wallet_address'), 'feedback', ['wallet_address'], unique=False)
+    except Exception:
+        pass  # Index already exists
+
+    # Create feedback_summary table (skip if exists)
+    try:
+        op.create_table(
+            'feedback_summary',
+            sa.Column('id', sa.Integer(), nullable=False),
+            sa.Column('period_start', sa.DateTime(timezone=True), nullable=False),
+            sa.Column('period_end', sa.DateTime(timezone=True), nullable=False),
+            sa.Column('feedback_type', sa.String(), nullable=False),
+            sa.Column('total_submissions', sa.Integer(), server_default='0', nullable=True),
+            sa.Column('avg_nps_score', sa.Integer(), nullable=True),
+            sa.Column('promoters_count', sa.Integer(), nullable=True),
+            sa.Column('passives_count', sa.Integer(), nullable=True),
+            sa.Column('detractors_count', sa.Integer(), nullable=True),
+            sa.Column('avg_satisfaction', sa.Integer(), nullable=True),
+            sa.Column('upgrade_count', sa.Integer(), nullable=True),
+            sa.Column('need_more_time_count', sa.Integer(), nullable=True),
+            sa.Column('not_right_fit_count', sa.Integer(), nullable=True),
+            sa.Column('too_expensive_count', sa.Integer(), nullable=True),
+            sa.Column('generated_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=True),
+            sa.PrimaryKeyConstraint('id')
+        )
+    except Exception:
+        pass  # Table already exists
+
+    try:
+        op.create_index(op.f('ix_feedback_summary_id'), 'feedback_summary', ['id'], unique=False)
+    except Exception:
+        pass  # Index already exists
 
     # Add contact info fields to user_settings (if not already present from previous migration)
     # These might already exist if add_onboarding_fields was modified, but we use batch_alter_table
