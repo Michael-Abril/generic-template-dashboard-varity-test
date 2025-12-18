@@ -7,7 +7,8 @@ import { logger } from '@/lib/logger';
 import {
   Bot, MessageSquare, Plus, Pin, PinOff, Trash2, Edit2, X, Check, Archive,
   MoreVertical, Sparkles, Search, FileText, ChevronDown, Upload, Download,
-  Shield, Lock, Globe, FileUp, Loader2, BarChart3, AlertCircle, Filter, Database
+  Shield, Lock, Globe, FileUp, Loader2, BarChart3, AlertCircle, Filter, Database,
+  Mail, Send, FilePlus, Zap, Calendar, Users
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 
@@ -23,6 +24,33 @@ const ANALYSIS_TYPES: { value: AnalysisType; label: string; description: string;
   { value: 'extraction', label: 'Data Extraction', description: 'Extract numbers, dates, names', icon: '📊' },
   { value: 'action_items', label: 'Action Items', description: 'Identify tasks and next steps', icon: '✅' },
 ];
+
+// Action types for AI-driven actions
+type ActionType = 'email' | 'document' | 'event';
+type ActionProvider = 'google' | 'microsoft';
+
+interface EmailAction {
+  type: 'email';
+  provider: ActionProvider;
+  to: string[];
+  cc?: string[];
+  subject: string;
+  body: string;
+}
+
+interface DocumentAction {
+  type: 'document';
+  provider: ActionProvider;
+  title: string;
+  content: string;
+  folder?: string;
+}
+
+interface ActionConfirmation {
+  action: EmailAction | DocumentAction;
+  status: 'pending' | 'executing' | 'success' | 'error';
+  error?: string;
+}
 
 interface Message {
   id?: number;
@@ -94,6 +122,19 @@ export function AIChat() {
   const [selectedIntegration, setSelectedIntegration] = useState<string>('all'); // Integration filter
   const [showIntegrationFilter, setShowIntegrationFilter] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Action panel state (for sending emails, creating documents)
+  const [showActionPanel, setShowActionPanel] = useState(false);
+  const [actionType, setActionType] = useState<ActionType>('email');
+  const [actionProvider, setActionProvider] = useState<ActionProvider>('google');
+  const [emailTo, setEmailTo] = useState('');
+  const [emailCc, setEmailCc] = useState('');
+  const [emailSubject, setEmailSubject] = useState('');
+  const [emailBody, setEmailBody] = useState('');
+  const [docTitle, setDocTitle] = useState('');
+  const [docContent, setDocContent] = useState('');
+  const [actionConfirmation, setActionConfirmation] = useState<ActionConfirmation | null>(null);
+  const [isExecutingAction, setIsExecutingAction] = useState(false);
 
   // Scroll to bottom on new messages
   useEffect(() => {
@@ -470,6 +511,155 @@ export function AIChat() {
     }
 
     setShowExportMenu(false);
+  };
+
+  // Prepare action for confirmation
+  const prepareAction = () => {
+    if (actionType === 'email') {
+      if (!emailTo.trim() || !emailSubject.trim()) {
+        alert('Please fill in recipient and subject');
+        return;
+      }
+      const action: EmailAction = {
+        type: 'email',
+        provider: actionProvider,
+        to: emailTo.split(',').map(e => e.trim()).filter(e => e),
+        cc: emailCc ? emailCc.split(',').map(e => e.trim()).filter(e => e) : undefined,
+        subject: emailSubject,
+        body: emailBody
+      };
+      setActionConfirmation({ action, status: 'pending' });
+    } else if (actionType === 'document') {
+      if (!docTitle.trim()) {
+        alert('Please enter a document title');
+        return;
+      }
+      const action: DocumentAction = {
+        type: 'document',
+        provider: actionProvider,
+        title: docTitle,
+        content: docContent
+      };
+      setActionConfirmation({ action, status: 'pending' });
+    }
+  };
+
+  // Execute the confirmed action
+  const executeAction = async () => {
+    if (!actionConfirmation || !address) return;
+
+    setIsExecutingAction(true);
+    setActionConfirmation(prev => prev ? { ...prev, status: 'executing' } : null);
+
+    try {
+      const { action } = actionConfirmation;
+
+      if (action.type === 'email') {
+        const endpoint = action.provider === 'google'
+          ? `${API_BASE_URL}/api/v1/google/send-email`
+          : `${API_BASE_URL}/api/v1/microsoft/mail/send`;
+
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            wallet_address: address,
+            to: action.to,
+            cc: action.cc,
+            subject: action.subject,
+            body: action.body
+          })
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.detail || `Failed to send email: ${response.statusText}`);
+        }
+
+        setActionConfirmation(prev => prev ? { ...prev, status: 'success' } : null);
+
+        // Add success message to chat
+        const successMsg: Message = {
+          role: 'assistant',
+          content: `✅ **Email sent successfully!**\n\n**To:** ${action.to.join(', ')}\n**Subject:** ${action.subject}\n\n*Sent via ${action.provider === 'google' ? 'Gmail' : 'Outlook'}*`,
+          timestamp: new Date()
+        };
+        setMessages(prev => [...prev, successMsg]);
+
+        // Clear form
+        setTimeout(() => {
+          resetActionForm();
+        }, 2000);
+
+      } else if (action.type === 'document') {
+        const endpoint = action.provider === 'google'
+          ? `${API_BASE_URL}/api/v1/google/upload-file`
+          : `${API_BASE_URL}/api/v1/microsoft/drive/upload`;
+
+        // Convert content to base64 for Google, or send directly for Microsoft
+        const fileContent = btoa(unescape(encodeURIComponent(action.content)));
+
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            wallet_address: address,
+            file_name: `${action.title}.txt`,
+            file_content: fileContent,
+            mime_type: 'text/plain',
+            name: action.title,
+            content: action.content
+          })
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.detail || `Failed to create document: ${response.statusText}`);
+        }
+
+        setActionConfirmation(prev => prev ? { ...prev, status: 'success' } : null);
+
+        // Add success message to chat
+        const successMsg: Message = {
+          role: 'assistant',
+          content: `✅ **Document created successfully!**\n\n**Title:** ${action.title}\n\n*Saved to ${action.provider === 'google' ? 'Google Drive' : 'OneDrive'}*`,
+          timestamp: new Date()
+        };
+        setMessages(prev => [...prev, successMsg]);
+
+        // Clear form
+        setTimeout(() => {
+          resetActionForm();
+        }, 2000);
+      }
+
+    } catch (error) {
+      logger.error('Action execution error:', error);
+      setActionConfirmation(prev => prev ? {
+        ...prev,
+        status: 'error',
+        error: error instanceof Error ? error.message : 'Action failed'
+      } : null);
+    } finally {
+      setIsExecutingAction(false);
+    }
+  };
+
+  // Reset action form
+  const resetActionForm = () => {
+    setShowActionPanel(false);
+    setActionConfirmation(null);
+    setEmailTo('');
+    setEmailCc('');
+    setEmailSubject('');
+    setEmailBody('');
+    setDocTitle('');
+    setDocContent('');
+  };
+
+  // Check if provider is connected
+  const isProviderConnected = (provider: string) => {
+    return installedTools.some(t => t.toLowerCase().includes(provider.toLowerCase()));
   };
 
   // Send message
@@ -982,13 +1172,27 @@ export function AIChat() {
               </div>
             </div>
 
-            {/* Header Actions - Privacy & Export */}
+            {/* Header Actions - Privacy, Actions & Export */}
             <div className="flex items-center gap-2">
               {/* Privacy Indicator */}
               <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-white/10 rounded-full">
                 <Shield className="w-3.5 h-3.5 text-green-300" />
                 <span className="text-xs text-white/90">On-Chain Secure</span>
               </div>
+
+              {/* Actions Button - Send Email, Create Doc */}
+              {(isProviderConnected('google') || isProviderConnected('microsoft')) && (
+                <button
+                  onClick={() => setShowActionPanel(!showActionPanel)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-colors ${
+                    showActionPanel ? 'bg-orange-500 text-white' : 'bg-white/10 text-white hover:bg-white/20'
+                  }`}
+                  title="Take Actions"
+                >
+                  <Zap className="w-4 h-4" />
+                  <span className="text-xs font-medium hidden sm:inline">Actions</span>
+                </button>
+              )}
 
               {/* Export Button */}
               <div className="relative">
@@ -1045,6 +1249,283 @@ export function AIChat() {
               >
                 <X className="w-3.5 h-3.5 text-gray-500" />
               </button>
+            </div>
+          </div>
+        )}
+
+        {/* Action Panel - Compose Email or Create Document */}
+        {showActionPanel && (
+          <div className="bg-white border-b border-gray-200 p-4">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-4">
+                <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+                  <Zap className="w-4 h-4 text-orange-500" />
+                  AI Actions
+                </h3>
+                {/* Action Type Tabs */}
+                <div className="flex gap-1 bg-gray-100 p-1 rounded-lg">
+                  <button
+                    onClick={() => setActionType('email')}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                      actionType === 'email' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'
+                    }`}
+                  >
+                    <Mail className="w-3.5 h-3.5" /> Send Email
+                  </button>
+                  <button
+                    onClick={() => setActionType('document')}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                      actionType === 'document' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'
+                    }`}
+                  >
+                    <FilePlus className="w-3.5 h-3.5" /> Create Document
+                  </button>
+                </div>
+              </div>
+              <button onClick={() => setShowActionPanel(false)} className="p-1 hover:bg-gray-100 rounded">
+                <X className="w-4 h-4 text-gray-500" />
+              </button>
+            </div>
+
+            {/* Provider Selection */}
+            <div className="flex items-center gap-2 mb-4">
+              <span className="text-xs text-gray-600">Send via:</span>
+              {isProviderConnected('google') && (
+                <button
+                  onClick={() => setActionProvider('google')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                    actionProvider === 'google' ? 'bg-red-100 text-red-700 ring-1 ring-red-300' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  }`}
+                >
+                  {actionType === 'email' ? 'Gmail' : 'Google Drive'}
+                </button>
+              )}
+              {isProviderConnected('microsoft') && (
+                <button
+                  onClick={() => setActionProvider('microsoft')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                    actionProvider === 'microsoft' ? 'bg-blue-100 text-blue-700 ring-1 ring-blue-300' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  }`}
+                >
+                  {actionType === 'email' ? 'Outlook' : 'OneDrive'}
+                </button>
+              )}
+            </div>
+
+            {/* Email Form */}
+            {actionType === 'email' && (
+              <div className="space-y-3">
+                <div className="flex gap-3">
+                  <div className="flex-1">
+                    <label className="block text-xs font-medium text-gray-700 mb-1">To *</label>
+                    <input
+                      type="text"
+                      value={emailTo}
+                      onChange={(e) => setEmailTo(e.target.value)}
+                      placeholder="email@example.com (comma-separated for multiple)"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                  </div>
+                  <div className="w-48">
+                    <label className="block text-xs font-medium text-gray-700 mb-1">CC</label>
+                    <input
+                      type="text"
+                      value={emailCc}
+                      onChange={(e) => setEmailCc(e.target.value)}
+                      placeholder="cc@example.com"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Subject *</label>
+                  <input
+                    type="text"
+                    value={emailSubject}
+                    onChange={(e) => setEmailSubject(e.target.value)}
+                    placeholder="Email subject"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Body</label>
+                  <textarea
+                    value={emailBody}
+                    onChange={(e) => setEmailBody(e.target.value)}
+                    placeholder="Write your email content here... You can also ask the AI to draft this for you!"
+                    rows={4}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Document Form */}
+            {actionType === 'document' && (
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Document Title *</label>
+                  <input
+                    type="text"
+                    value={docTitle}
+                    onChange={(e) => setDocTitle(e.target.value)}
+                    placeholder="My Document"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Content</label>
+                  <textarea
+                    value={docContent}
+                    onChange={(e) => setDocContent(e.target.value)}
+                    placeholder="Document content... You can also ask the AI to generate this for you!"
+                    rows={6}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Action Buttons */}
+            <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-100">
+              <p className="text-xs text-gray-500">
+                {actionType === 'email' ? 'Email will be sent from your connected account' : 'Document will be saved to your cloud drive'}
+              </p>
+              <div className="flex gap-2">
+                <button
+                  onClick={resetActionForm}
+                  className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={prepareAction}
+                  className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-lg text-sm font-medium hover:shadow-lg transition-all"
+                >
+                  <Send className="w-4 h-4" />
+                  {actionType === 'email' ? 'Preview & Send' : 'Preview & Save'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Action Confirmation Modal */}
+        {actionConfirmation && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-xl shadow-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
+              <div className="p-6">
+                <div className="flex items-center gap-3 mb-4">
+                  {actionConfirmation.action.type === 'email' ? (
+                    <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
+                      <Mail className="w-5 h-5 text-blue-600" />
+                    </div>
+                  ) : (
+                    <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center">
+                      <FilePlus className="w-5 h-5 text-green-600" />
+                    </div>
+                  )}
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-900">
+                      {actionConfirmation.status === 'success' ? 'Success!' :
+                       actionConfirmation.status === 'error' ? 'Action Failed' :
+                       actionConfirmation.status === 'executing' ? 'Executing...' :
+                       `Confirm ${actionConfirmation.action.type === 'email' ? 'Email' : 'Document'}`}
+                    </h3>
+                    <p className="text-sm text-gray-500">
+                      via {actionConfirmation.action.provider === 'google' ?
+                        (actionConfirmation.action.type === 'email' ? 'Gmail' : 'Google Drive') :
+                        (actionConfirmation.action.type === 'email' ? 'Outlook' : 'OneDrive')}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Preview Content */}
+                {actionConfirmation.status === 'pending' && (
+                  <div className="bg-gray-50 rounded-lg p-4 mb-4">
+                    {actionConfirmation.action.type === 'email' && (
+                      <div className="space-y-2 text-sm">
+                        <div><span className="font-medium text-gray-700">To:</span> <span className="text-gray-600">{actionConfirmation.action.to.join(', ')}</span></div>
+                        {actionConfirmation.action.cc && actionConfirmation.action.cc.length > 0 && (
+                          <div><span className="font-medium text-gray-700">CC:</span> <span className="text-gray-600">{actionConfirmation.action.cc.join(', ')}</span></div>
+                        )}
+                        <div><span className="font-medium text-gray-700">Subject:</span> <span className="text-gray-600">{actionConfirmation.action.subject}</span></div>
+                        <div className="pt-2 border-t border-gray-200 mt-2">
+                          <span className="font-medium text-gray-700">Body:</span>
+                          <p className="text-gray-600 mt-1 whitespace-pre-wrap">{actionConfirmation.action.body || '(No content)'}</p>
+                        </div>
+                      </div>
+                    )}
+                    {actionConfirmation.action.type === 'document' && (
+                      <div className="space-y-2 text-sm">
+                        <div><span className="font-medium text-gray-700">Title:</span> <span className="text-gray-600">{actionConfirmation.action.title}</span></div>
+                        <div className="pt-2 border-t border-gray-200 mt-2">
+                          <span className="font-medium text-gray-700">Content:</span>
+                          <p className="text-gray-600 mt-1 whitespace-pre-wrap max-h-40 overflow-y-auto">{actionConfirmation.action.content || '(Empty document)'}</p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Status Messages */}
+                {actionConfirmation.status === 'executing' && (
+                  <div className="flex items-center justify-center py-8">
+                    <div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                    <span className="ml-3 text-gray-600">Executing action...</span>
+                  </div>
+                )}
+
+                {actionConfirmation.status === 'success' && (
+                  <div className="flex items-center gap-3 py-4 text-green-700 bg-green-50 rounded-lg px-4">
+                    <Check className="w-5 h-5" />
+                    <span>{actionConfirmation.action.type === 'email' ? 'Email sent successfully!' : 'Document created successfully!'}</span>
+                  </div>
+                )}
+
+                {actionConfirmation.status === 'error' && (
+                  <div className="flex items-start gap-3 py-4 text-red-700 bg-red-50 rounded-lg px-4">
+                    <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+                    <span>{actionConfirmation.error || 'An error occurred'}</span>
+                  </div>
+                )}
+
+                {/* Action Buttons */}
+                <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-gray-100">
+                  {actionConfirmation.status === 'pending' && (
+                    <>
+                      <button
+                        onClick={() => setActionConfirmation(null)}
+                        className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={executeAction}
+                        disabled={isExecutingAction}
+                        className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg text-sm font-medium hover:shadow-lg transition-all disabled:opacity-50"
+                      >
+                        <Send className="w-4 h-4" />
+                        {actionConfirmation.action.type === 'email' ? 'Send Email' : 'Create Document'}
+                      </button>
+                    </>
+                  )}
+                  {(actionConfirmation.status === 'success' || actionConfirmation.status === 'error') && (
+                    <button
+                      onClick={() => {
+                        if (actionConfirmation.status === 'success') {
+                          resetActionForm();
+                        } else {
+                          setActionConfirmation(prev => prev ? { ...prev, status: 'pending' } : null);
+                        }
+                      }}
+                      className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-200 transition-colors"
+                    >
+                      {actionConfirmation.status === 'success' ? 'Done' : 'Try Again'}
+                    </button>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
         )}
