@@ -183,9 +183,12 @@ export default function SettingsPage() {
               newFeatures: data.notification_preferences.new_features ?? false,
             });
           }
+          // Set contact email - prioritize backend data over Privy user email
+          setContactEmail(data.contact_email || user?.email?.address || '');
+        } else {
+          // If backend fetch fails, fall back to Privy user email
+          setContactEmail(user?.email?.address || '');
         }
-        // Set contact email from Privy user
-        setContactEmail(user?.email?.address || '');
 
         // Load team members
         await loadTeamMembers();
