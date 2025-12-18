@@ -36,6 +36,26 @@ encryption_service = EncryptionService()
 # NOTE: This is in-memory and will be lost on restart. We also encode data in state as backup.
 oauth_states = {}
 
+# Normalization mapping for provider names (must match integrations.py)
+# This ensures OAuth tokens are stored with the same name used by sync/data endpoints
+PROVIDER_NAME_MAPPING = {
+    "google workspace": "google",
+    "googleworkspace": "google",
+    "google-workspace": "google",
+    "google_workspace": "google",
+    "gsuite": "google",
+    "microsoft 365": "microsoft",
+    "microsoft365": "microsoft",
+    "microsoft-365": "microsoft",
+    "ms365": "microsoft",
+}
+
+
+def normalize_provider_name(name: str) -> str:
+    """Normalize provider name to match storage format used by adapters."""
+    normalized = name.lower().strip()
+    return PROVIDER_NAME_MAPPING.get(normalized, normalized)
+
 # Secret key for state signing (should be in environment variables in production)
 STATE_SECRET = settings.secret_key if hasattr(settings, 'secret_key') else "varity-oauth-state-secret-key-2024"
 
@@ -454,6 +474,10 @@ async def oauth_callback_post(request: Request, db: AsyncSession = Depends(get_d
 
         integration = state_data["integration"]
 
+        # Normalize provider name for database storage (google_workspace -> google, etc.)
+        # This ensures sync/data endpoints can find the tokens
+        normalized_provider = normalize_provider_name(integration)
+
         # Verify provider matches state
         if integration != provider:
             raise HTTPException(
@@ -587,13 +611,14 @@ async def oauth_callback_post(request: Request, db: AsyncSession = Depends(get_d
         )
 
         # Store token in database for sync endpoint to use
+        # Use normalized_provider to ensure sync/data endpoints can find tokens
         try:
             # Check if token already exists for this user/provider
             existing_token_result = await db.execute(
                 select(OAuthToken).where(
                     and_(
                         OAuthToken.user_address == wallet_address.lower(),
-                        OAuthToken.provider == integration,
+                        OAuthToken.provider == normalized_provider,
                         OAuthToken.is_active == True  # noqa: E712
                     )
                 )
@@ -615,12 +640,12 @@ async def oauth_callback_post(request: Request, db: AsyncSession = Depends(get_d
                     if k not in ["access_token", "refresh_token", "expires_in", "token_type", "wallet_address"]
                 }
                 existing_token.updated_at = datetime.utcnow()
-                logger.info(f"Updated existing OAuth token for {integration}")
+                logger.info(f"Updated existing OAuth token for {normalized_provider} (raw: {integration})")
             else:
-                # Create new token
+                # Create new token with normalized provider name
                 new_token = OAuthToken(
                     user_address=wallet_address.lower(),
-                    provider=integration,
+                    provider=normalized_provider,
                     token_type=credentials.get("token_type", "Bearer"),
                     expires_at=expires_at,
                     scope=config.get("scope", ""),
@@ -634,7 +659,7 @@ async def oauth_callback_post(request: Request, db: AsyncSession = Depends(get_d
                 new_token.access_token = credentials["access_token"]
                 new_token.refresh_token = credentials.get("refresh_token")
                 db.add(new_token)
-                logger.info(f"Created new OAuth token for {integration}")
+                logger.info(f"Created new OAuth token for {normalized_provider} (raw: {integration})")
 
             await db.commit()
 

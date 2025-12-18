@@ -32,22 +32,23 @@ encryption_service = EncryptionService()
 
 # Integration name normalization mapping
 # Maps user-facing names to storage names (as used by adapters)
+# IMPORTANT: The Google adapter stores data with integration="google", so all variations must map to "google"
 INTEGRATION_NAME_MAPPING = {
     # Microsoft variations
     "microsoft 365": "microsoft",
     "microsoft365": "microsoft",
     "microsoft-365": "microsoft",
     "ms365": "microsoft",
-    # Google variations
-    "google workspace": "google_workspace",
-    "googleworkspace": "google_workspace",
-    "google-workspace": "google_workspace",
-    "gsuite": "google_workspace",
-    "g-suite": "google_workspace",
+    # Google variations - ALL map to "google" (what adapter uses for storage)
+    "google workspace": "google",
+    "googleworkspace": "google",
+    "google-workspace": "google",
+    "google_workspace": "google",
+    "gsuite": "google",
+    "g-suite": "google",
     # Keep canonical names as-is
     "microsoft": "microsoft",
-    "google_workspace": "google_workspace",
-    "google": "google_workspace",
+    "google": "google",
 }
 
 
