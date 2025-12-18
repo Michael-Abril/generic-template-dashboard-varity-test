@@ -35,6 +35,9 @@ const toolIconComponents: Record<string, React.ComponentType<{ className?: strin
   'Stripe': CreditCard,
   'HubSpot': TrendingUp,
   'Zendesk': Ticket,
+  'Microsoft 365': Cloud,
+  'Google_Workspace': Cloud,
+  'Google Workspace': Cloud,
 };
 
 export function Sidebar({ installedTools = [] }: SidebarProps) {
@@ -161,7 +164,7 @@ export function Sidebar({ installedTools = [] }: SidebarProps) {
                 return (
                   <Link
                     key={tool}
-                    href={`/dashboard/tools/${tool.toLowerCase().replace(/\./g, '')}`}
+                    href={`/dashboard/tools/${tool.toLowerCase().replace(/[\s.]/g, '').replace('_', '')}`}
                     onClick={() => setIsMobileOpen(false)}
                     className={`
                       flex items-center gap-3 px-3 py-2.5 rounded-lg font-medium transition-colors

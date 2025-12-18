@@ -2182,7 +2182,7 @@ export default function IntegrationToolPage() {
   }
 
   // Render Google Workspace native UI for Google integration
-  if (integration === 'google' || integration === 'google_workspace') {
+  if (integration === 'google' || integration === 'google_workspace' || integration === 'googleworkspace') {
     // Transform data into format expected by GoogleWorkspacePage
     const googleData = data.reduce((acc, item) => {
       acc[item.data_type] = item.data;
