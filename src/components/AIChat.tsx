@@ -2033,7 +2033,7 @@ export function AIChat() {
         )}
 
         {/* Input */}
-        <div className="border-t border-gray-200 p-4 bg-white">
+        <div className="border-t border-gray-200 p-4 pb-8 bg-white">
           {/* AI Mode Selector */}
           <div className="flex items-center gap-2 mb-3 flex-wrap">
             <div className="relative">
@@ -2220,12 +2220,13 @@ export function AIChat() {
             </span>
           </div>
 
-          <div className="flex gap-2">
-            <input
-              type="text"
+          {/* Professional multi-line input area */}
+          <div className="relative bg-white border border-gray-200 rounded-2xl shadow-sm focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-transparent transition-all">
+            <textarea
+              ref={textareaRef}
               value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && sendMessage()}
+              onChange={handleTextareaChange}
+              onKeyDown={handleKeyDown}
               placeholder={
                 aiMode === 'deep_research'
                   ? "What would you like me to research?"
@@ -2236,21 +2237,39 @@ export function AIChat() {
                   : "Ask questions about your business. Connect tools for deeper insights."
               }
               disabled={loading}
-              className="flex-1 border border-gray-300 bg-white text-gray-900 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed"
+              rows={1}
+              className="w-full resize-none bg-transparent text-gray-900 placeholder-gray-400 px-4 py-3.5 pr-24 focus:outline-none disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-not-allowed rounded-2xl"
+              style={{ minHeight: '52px', maxHeight: '200px' }}
             />
-            <button
-              onClick={sendMessage}
-              disabled={loading || !input.trim()}
-              className="bg-gradient-to-r from-blue-600 to-purple-600 text-white px-6 py-3 rounded-lg font-semibold hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-            >
-              {loading ? (
-                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-              ) : (
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-                </svg>
+            <div className="absolute right-2 bottom-2 flex items-center gap-1.5">
+              {/* Character count for long messages */}
+              {input.length > 100 && (
+                <span className={`text-xs ${input.length > 4000 ? 'text-red-500' : 'text-gray-400'}`}>
+                  {input.length.toLocaleString()}
+                </span>
               )}
-            </button>
+              {/* Send button */}
+              <button
+                onClick={sendMessage}
+                disabled={loading || !input.trim()}
+                className={`p-2 rounded-xl transition-all ${
+                  input.trim() && !loading
+                    ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white hover:shadow-lg hover:scale-105'
+                    : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                }`}
+                title={loading ? 'Generating...' : 'Send message (Enter)'}
+              >
+                {loading ? (
+                  <div className="w-5 h-5 border-2 border-gray-300 border-t-blue-600 rounded-full animate-spin"></div>
+                ) : (
+                  <Send className="w-5 h-5" />
+                )}
+              </button>
+            </div>
+            {/* Keyboard hint */}
+            <div className="absolute left-4 bottom-[-22px] text-[10px] text-gray-400">
+              Press Enter to send, Shift+Enter for new line
+            </div>
           </div>
         </div>
       </div>
