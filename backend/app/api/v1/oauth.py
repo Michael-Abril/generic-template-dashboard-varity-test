@@ -634,11 +634,12 @@ async def oauth_callback_post(request: Request, db: AsyncSession = Depends(get_d
 
             # Dynamic import based on integration
             # Available sync adapters (only include adapters that exist)
+            # All adapters now accept credentials dict
             sync_adapters = {
                 "quickbooks": ("app.adapters.quickbooks.sync", "QuickBooksSync"),
-                "google": ("app.adapters.google.sync", "GoogleSyncAdapter"),
-                "google_workspace": ("app.adapters.google.sync", "GoogleSyncAdapter"),
-                "microsoft": ("app.adapters.microsoft.sync", "MicrosoftSyncAdapter"),
+                "google": ("app.adapters.google.sync", "GoogleWorkspaceSync"),
+                "google_workspace": ("app.adapters.google.sync", "GoogleWorkspaceSync"),
+                "microsoft": ("app.adapters.microsoft.sync", "MicrosoftSync"),
                 "slack": ("app.adapters.slack.sync", "SlackSync"),
                 "hubspot": ("app.adapters.hubspot.sync", "HubSpotSync"),
                 "salesforce": ("app.adapters.salesforce.sync", "SalesforceSync"),
@@ -654,13 +655,8 @@ async def oauth_callback_post(request: Request, db: AsyncSession = Depends(get_d
                 module = importlib.import_module(module_path)
                 SyncClass = getattr(module, class_name)
 
-                # Initialize sync adapter with credentials
-                if class_name in ["GoogleSyncAdapter", "MicrosoftSyncAdapter"]:
-                    # These adapters take only access_token
-                    sync = SyncClass(credentials["access_token"])
-                else:
-                    # Other adapters take full credentials dict
-                    sync = SyncClass(credentials)
+                # Initialize sync adapter with credentials dict
+                sync = SyncClass(credentials)
 
                 # Trigger sync
                 sync_result = await sync.sync_data(wallet_address)
@@ -852,11 +848,12 @@ async def oauth_callback(
             logger.info(f"Triggering initial sync for {integration}...")
 
             # Available sync adapters (only include adapters that exist)
+            # All adapters now accept credentials dict
             sync_adapters = {
                 "quickbooks": ("app.adapters.quickbooks.sync", "QuickBooksSync"),
-                "google": ("app.adapters.google.sync", "GoogleSyncAdapter"),
-                "google_workspace": ("app.adapters.google.sync", "GoogleSyncAdapter"),
-                "microsoft": ("app.adapters.microsoft.sync", "MicrosoftSyncAdapter"),
+                "google": ("app.adapters.google.sync", "GoogleWorkspaceSync"),
+                "google_workspace": ("app.adapters.google.sync", "GoogleWorkspaceSync"),
+                "microsoft": ("app.adapters.microsoft.sync", "MicrosoftSync"),
                 "slack": ("app.adapters.slack.sync", "SlackSync"),
                 "hubspot": ("app.adapters.hubspot.sync", "HubSpotSync"),
                 "salesforce": ("app.adapters.salesforce.sync", "SalesforceSync"),
@@ -872,13 +869,8 @@ async def oauth_callback(
                 module = importlib.import_module(module_path)
                 SyncClass = getattr(module, class_name)
 
-                # Initialize sync adapter with credentials
-                if class_name in ["GoogleSyncAdapter", "MicrosoftSyncAdapter"]:
-                    # These adapters take only access_token
-                    sync = SyncClass(credentials["access_token"])
-                else:
-                    # Other adapters take full credentials dict
-                    sync = SyncClass(credentials)
+                # Initialize sync adapter with credentials dict
+                sync = SyncClass(credentials)
 
                 # Trigger sync (this will run in background)
                 result = await sync.sync_data(wallet_address)
