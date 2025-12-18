@@ -69,7 +69,10 @@ export function WelcomeStep({ trialDays, onNext }: WelcomeStepProps) {
 
       {/* Setup Steps */}
       <div className="bg-gray-50 border border-gray-100 rounded-xl p-5 sm:p-6 mb-8 max-w-xl mx-auto">
-        <h3 className="font-semibold text-gray-900 mb-4 text-sm uppercase tracking-wide text-center">Quick Setup</h3>
+        <div className="flex items-center justify-center gap-2 mb-4">
+          <h3 className="font-semibold text-gray-900 text-sm uppercase tracking-wide">Quick Setup</h3>
+          <span className="text-xs text-gray-400 bg-gray-200 px-2 py-0.5 rounded-full">~2 min</span>
+        </div>
         <div className="space-y-3">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 bg-blue-600 text-white rounded-lg flex items-center justify-center text-sm font-semibold flex-shrink-0">1</div>
@@ -109,6 +112,21 @@ export function WelcomeStep({ trialDays, onNext }: WelcomeStepProps) {
         <p className="text-center mt-4 text-sm text-gray-500">
           {trialDays}-day free trial • No credit card required
         </p>
+
+        {/* Trust signals */}
+        <div className="mt-6 pt-5 border-t border-gray-100">
+          <p className="text-center text-xs text-gray-400 mb-3">Trusted by growing businesses</p>
+          <div className="flex items-center justify-center gap-5 text-xs text-gray-500">
+            <span className="flex items-center gap-1.5">
+              <Shield className="w-3.5 h-3.5 text-gray-400" />
+              SOC 2 Compliant
+            </span>
+            <span className="flex items-center gap-1.5">
+              <Shield className="w-3.5 h-3.5 text-gray-400" />
+              256-bit Encryption
+            </span>
+          </div>
+        </div>
       </div>
     </div>
   );

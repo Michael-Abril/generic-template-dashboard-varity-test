@@ -136,7 +136,7 @@ export function IntegrationSelectStep({
           rel="noopener noreferrer"
           className="text-blue-600 hover:text-blue-700 font-medium text-sm inline-flex items-center gap-1"
         >
-          View all 6 integrations
+          Browse all integrations
           <ExternalLink className="w-3.5 h-3.5" />
         </a>
       </div>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Sparkles,
@@ -11,6 +11,7 @@ import {
   BarChart3,
   Users,
   Send,
+  PartyPopper,
 } from 'lucide-react';
 
 interface CompleteStepProps {
@@ -70,6 +71,13 @@ export function CompleteStep({
   const [selectedQuery, setSelectedQuery] = useState<string | null>(null);
   const [aiResponse, setAiResponse] = useState<string | null>(null);
   const [loadingAi, setLoadingAi] = useState(false);
+  const [showCelebration, setShowCelebration] = useState(false);
+
+  // Trigger celebration animation on mount
+  useEffect(() => {
+    const timer = setTimeout(() => setShowCelebration(true), 100);
+    return () => clearTimeout(timer);
+  }, []);
 
   const handleTryQuery = async (query: string) => {
     setSelectedQuery(query);
@@ -124,14 +132,18 @@ export function CompleteStep({
       {/* Success Header */}
       <div className="text-center mb-8">
         <div className="flex justify-center mb-4">
-          <div className="w-16 h-16 bg-green-600 rounded-xl flex items-center justify-center">
+          <div className={`relative w-16 h-16 bg-green-600 rounded-xl flex items-center justify-center transition-all duration-500 ${showCelebration ? 'scale-100 opacity-100' : 'scale-75 opacity-0'}`}>
             <Check className="w-8 h-8 text-white" />
+            {/* Celebration sparkles */}
+            <div className={`absolute -top-2 -right-2 transition-all duration-700 delay-300 ${showCelebration ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'}`}>
+              <PartyPopper className="w-5 h-5 text-amber-500" />
+            </div>
           </div>
         </div>
-        <h2 className="text-xl sm:text-2xl font-semibold text-gray-900 mb-2">
+        <h2 className={`text-xl sm:text-2xl font-semibold text-gray-900 mb-2 transition-all duration-500 delay-200 ${showCelebration ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
           You&apos;re all set, {companyName || 'there'}!
         </h2>
-        <p className="text-gray-600 text-sm max-w-md mx-auto">
+        <p className={`text-gray-600 text-sm max-w-md mx-auto transition-all duration-500 delay-300 ${showCelebration ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
           Your <span className="font-semibold text-green-600">{trialDays}-day free trial</span> has started.
           {integration && ' Your first integration is connected.'}
         </p>
@@ -139,15 +151,15 @@ export function CompleteStep({
 
       {/* Meet Your AI Assistant */}
       <div className="max-w-lg mx-auto mb-8">
-        <div className="bg-gray-50 border border-gray-200 rounded-xl p-5">
+        <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-100 rounded-xl p-5">
           <div className="flex items-center gap-3 mb-5">
-            <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center">
+            <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-lg flex items-center justify-center shadow-sm">
               <Sparkles className="w-5 h-5 text-white" />
             </div>
             <div>
-              <h3 className="font-semibold text-gray-900">Try Your AI Assistant</h3>
+              <h3 className="font-semibold text-gray-900">Meet Your AI Business Assistant</h3>
               <p className="text-xs text-gray-500">
-                Ask questions about your business
+                Get instant insights from your connected data
               </p>
             </div>
           </div>

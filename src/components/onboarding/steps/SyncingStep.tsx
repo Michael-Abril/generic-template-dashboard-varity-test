@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { RefreshCw, Check, Clock, Database, Shield, Sparkles } from 'lucide-react';
+import { RefreshCw, Check, Clock, Database, Shield, Sparkles, ArrowRight } from 'lucide-react';
 import { IntegrationLogo } from '@/components/IntegrationLogo';
 
 interface SyncingStepProps {
@@ -10,6 +10,8 @@ interface SyncingStepProps {
   walletAddress: string;
   onComplete: () => void;
 }
+
+const SKIP_DELAY_MS = 5000; // Show skip option after 5 seconds
 
 interface SyncStage {
   id: string;
@@ -34,6 +36,15 @@ export function SyncingStep({
   const [currentStageIndex, setCurrentStageIndex] = useState(1);
   const [syncComplete, setSyncComplete] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showSkip, setShowSkip] = useState(false);
+
+  // Show skip option after delay
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setShowSkip(true);
+    }, SKIP_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, []);
 
   useEffect(() => {
     const runSync = async () => {
@@ -208,6 +219,22 @@ export function SyncingStep({
         <div className="max-w-sm mx-auto">
           <p className="text-center text-sm text-gray-500">
             Redirecting to your dashboard...
+          </p>
+        </div>
+      )}
+
+      {/* Skip option - appears after delay */}
+      {showSkip && !syncComplete && (
+        <div className="max-w-sm mx-auto mt-6">
+          <button
+            onClick={onComplete}
+            className="w-full text-gray-500 hover:text-gray-700 font-medium text-sm py-2 flex items-center justify-center gap-2 transition-colors"
+          >
+            Continue anyway
+            <ArrowRight className="w-4 h-4" />
+          </button>
+          <p className="text-center text-xs text-gray-400 mt-1">
+            You can sync again from the dashboard
           </p>
         </div>
       )}

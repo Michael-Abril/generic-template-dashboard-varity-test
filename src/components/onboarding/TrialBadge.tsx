@@ -11,19 +11,24 @@ export function TrialBadge({ tier, days }: TrialBadgeProps) {
   const isFirstTier = tier === '30_day';
 
   return (
-    <div
-      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium ${
-        isFirstTier
-          ? 'bg-green-100 text-green-700 border border-green-200'
-          : 'bg-blue-100 text-blue-700 border border-blue-200'
-      }`}
-    >
-      <Clock className="w-3.5 h-3.5" />
-      <span>{days}-day trial</span>
+    <div className="flex flex-col items-center gap-1">
+      <div
+        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium ${
+          isFirstTier
+            ? 'bg-green-100 text-green-700 border border-green-200'
+            : 'bg-blue-100 text-blue-700 border border-blue-200'
+        }`}
+      >
+        <Clock className="w-3.5 h-3.5" />
+        <span>{days}-day free trial</span>
+        {isFirstTier && (
+          <span className="bg-green-600 text-white px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase">
+            Bonus
+          </span>
+        )}
+      </div>
       {isFirstTier && (
-        <span className="bg-green-600 text-white px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase">
-          Early
-        </span>
+        <p className="text-[10px] text-gray-400">Extended trial for early adopters</p>
       )}
     </div>
   );

@@ -171,6 +171,9 @@ export function CompanyProfileStep({
         <p className="text-gray-600 text-sm max-w-md mx-auto">
           This helps us personalize your AI assistant and provide relevant insights
         </p>
+        <p className="text-gray-400 text-xs mt-2">
+          Only 3 fields required • Takes about 1 minute
+        </p>
       </div>
 
       {/* Form */}
@@ -367,7 +370,7 @@ export function CompanyProfileStep({
 
       {/* Privacy note */}
       <p className="text-center text-xs text-gray-400 mt-5 max-w-sm mx-auto">
-        Your information is encrypted and secure.
+        Your progress is auto-saved • Data is encrypted and secure
       </p>
     </div>
   );
