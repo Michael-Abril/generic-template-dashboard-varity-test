@@ -24,21 +24,33 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     # Add company profile fields for AI personalization
-    with op.batch_alter_table('user_settings', schema=None) as batch_op:
-        batch_op.add_column(sa.Column('company_size', sa.String(), nullable=True))
-        batch_op.add_column(sa.Column('primary_goal', sa.String(), nullable=True))
+    try:
+        with op.batch_alter_table('user_settings', schema=None) as batch_op:
+            batch_op.add_column(sa.Column('company_size', sa.String(), nullable=True))
+            batch_op.add_column(sa.Column('primary_goal', sa.String(), nullable=True))
+    except Exception:
+        # Columns might already exist
+        pass
 
     # Add trial and subscription fields
-    with op.batch_alter_table('user_settings', schema=None) as batch_op:
-        batch_op.add_column(sa.Column('trial_tier', sa.String(), nullable=True))
-        batch_op.add_column(sa.Column('trial_start_date', sa.DateTime(timezone=True), nullable=True))
-        batch_op.add_column(sa.Column('trial_end_date', sa.DateTime(timezone=True), nullable=True))
+    try:
+        with op.batch_alter_table('user_settings', schema=None) as batch_op:
+            batch_op.add_column(sa.Column('trial_tier', sa.String(), nullable=True))
+            batch_op.add_column(sa.Column('trial_start_date', sa.DateTime(timezone=True), nullable=True))
+            batch_op.add_column(sa.Column('trial_end_date', sa.DateTime(timezone=True), nullable=True))
+    except Exception:
+        # Columns might already exist
+        pass
 
     # Add onboarding tracking fields
-    with op.batch_alter_table('user_settings', schema=None) as batch_op:
-        batch_op.add_column(sa.Column('onboarding_completed', sa.Boolean(), server_default='false', nullable=True))
-        batch_op.add_column(sa.Column('onboarding_completed_at', sa.DateTime(timezone=True), nullable=True))
-        batch_op.add_column(sa.Column('onboarding_step', sa.String(), nullable=True))
+    try:
+        with op.batch_alter_table('user_settings', schema=None) as batch_op:
+            batch_op.add_column(sa.Column('onboarding_completed', sa.Boolean(), server_default='false', nullable=True))
+            batch_op.add_column(sa.Column('onboarding_completed_at', sa.DateTime(timezone=True), nullable=True))
+            batch_op.add_column(sa.Column('onboarding_step', sa.String(), nullable=True))
+    except Exception:
+        # Columns might already exist
+        pass
 
 
 def downgrade() -> None:

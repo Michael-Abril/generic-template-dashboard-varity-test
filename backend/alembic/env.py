@@ -16,7 +16,9 @@ from app.core.database import Base
 from app.models import (
     Category, Product, PricingPlan, PlanFeature, PlanLimit,
     DataSyncType, ProductAddon, UserSettings, APIKey,
-    Purchase, Subscription, OAuthToken, SyncLog, IntegrationConfig
+    Purchase, Subscription, OAuthToken, SyncLog, IntegrationConfig,
+    Conversation, Message,
+    Feedback, FeedbackSummary
 )
 
 # this is the Alembic Config object, which provides
@@ -25,9 +27,11 @@ config = context.config
 
 # Override sqlalchemy.url from environment variable
 database_url = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./marketplace_test.db")
-# Alembic doesn't support async drivers, so convert aiosqlite to sqlite
+# Alembic doesn't support async drivers, so convert them to sync equivalents
 if "aiosqlite" in database_url:
     database_url = database_url.replace("sqlite+aiosqlite", "sqlite")
+if "postgresql+asyncpg" in database_url:
+    database_url = database_url.replace("postgresql+asyncpg", "postgresql")
 config.set_main_option("sqlalchemy.url", database_url)
 
 # Interpret the config file for Python logging.

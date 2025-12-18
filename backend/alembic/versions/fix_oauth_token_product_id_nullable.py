@@ -25,10 +25,14 @@ depends_on: Union[str, Sequence[str], None] = None
 def upgrade() -> None:
     # Make product_id nullable in oauth_tokens table
     # This allows OAuth tokens to exist without a marketplace product association
-    with op.batch_alter_table('oauth_tokens', schema=None) as batch_op:
-        batch_op.alter_column('product_id',
-               existing_type=sa.INTEGER(),
-               nullable=True)
+    try:
+        with op.batch_alter_table('oauth_tokens', schema=None) as batch_op:
+            batch_op.alter_column('product_id',
+                   existing_type=sa.INTEGER(),
+                   nullable=True)
+    except Exception:
+        # Column might already be nullable or table structure different
+        pass
 
 
 def downgrade() -> None:

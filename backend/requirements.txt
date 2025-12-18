@@ -17,8 +17,12 @@ python-dotenv==1.0.0
 # Database (PostgreSQL + Redis + SQLite)
 sqlalchemy==2.0.23
 asyncpg==0.29.0  # PostgreSQL async driver
+psycopg2-binary==2.9.9  # PostgreSQL sync driver (required for Alembic migrations)
 aiosqlite==0.19.0  # SQLite async driver (for development)
 redis==4.6.0
+
+# Database Migrations
+alembic==1.13.1  # Database migrations
 
 # Web3 & Blockchain - Compatible versions for Arbitrum
 web3==6.11.3
