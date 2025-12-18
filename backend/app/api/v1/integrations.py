@@ -30,6 +30,38 @@ filecoin_service = FilecoinService()
 encryption_service = EncryptionService()
 
 
+# Integration name normalization mapping
+# Maps user-facing names to storage names (as used by adapters)
+INTEGRATION_NAME_MAPPING = {
+    # Microsoft variations
+    "microsoft 365": "microsoft",
+    "microsoft365": "microsoft",
+    "microsoft-365": "microsoft",
+    "ms365": "microsoft",
+    # Google variations
+    "google workspace": "google_workspace",
+    "googleworkspace": "google_workspace",
+    "google-workspace": "google_workspace",
+    "gsuite": "google_workspace",
+    "g-suite": "google_workspace",
+    # Keep canonical names as-is
+    "microsoft": "microsoft",
+    "google_workspace": "google_workspace",
+    "google": "google_workspace",
+}
+
+
+def normalize_integration_name(name: str) -> str:
+    """
+    Normalize integration name to match storage format.
+
+    The frontend may send various forms like 'microsoft 365' or 'Microsoft 365',
+    but data is stored under canonical names like 'microsoft'.
+    """
+    normalized = name.lower().strip()
+    return INTEGRATION_NAME_MAPPING.get(normalized, normalized)
+
+
 # Pydantic models
 class InstalledTool(BaseModel):
     """Installed tool information"""
@@ -169,14 +201,17 @@ async def sync_tool_data(
         Sync result with uploaded files
     """
     try:
+        # Normalize integration name (e.g., "microsoft 365" -> "microsoft")
+        normalized_tool = normalize_integration_name(tool)
+
         logger.info(
-            f"Syncing data for {tool}, wallet={request.wallet_address}, "
+            f"Syncing data for {tool} (normalized: {normalized_tool}), wallet={request.wallet_address}, "
             f"force={request.force}"
         )
 
         # Normalize wallet address and provider
         wallet_address = request.wallet_address.lower()
-        provider = tool.lower()
+        provider = normalized_tool
 
         # Get OAuth token from database
         token_result = await db.execute(
@@ -326,15 +361,18 @@ async def get_tool_data(
         Tool data (decrypted)
     """
     try:
+        # Normalize integration name (e.g., "microsoft 365" -> "microsoft")
+        normalized_tool = normalize_integration_name(tool)
+
         logger.info(
-            f"Retrieving {tool} data for wallet {wallet_address}, "
+            f"Retrieving {tool} (normalized: {normalized_tool}) data for wallet {wallet_address}, "
             f"type={data_type}, limit={limit}"
         )
 
-        # List files for this integration
+        # List files for this integration using normalized name
         files = await filecoin_service.list_customer_files(
             customer_wallet=wallet_address,
-            integration=tool,
+            integration=normalized_tool,
             data_type=data_type,
             limit=limit
         )
@@ -486,12 +524,15 @@ async def delete_tool_data(
         Deletion result
     """
     try:
-        logger.info(f"Deleting {tool} data for wallet {wallet_address}")
+        # Normalize integration name (e.g., "microsoft 365" -> "microsoft")
+        normalized_tool = normalize_integration_name(tool)
 
-        # List all files for this integration
+        logger.info(f"Deleting {tool} (normalized: {normalized_tool}) data for wallet {wallet_address}")
+
+        # List all files for this integration using normalized name
         files = await filecoin_service.list_customer_files(
             customer_wallet=wallet_address,
-            integration=tool,
+            integration=normalized_tool,
             limit=1000
         )
 

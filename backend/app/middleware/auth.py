@@ -62,6 +62,7 @@ class WalletAuthMiddleware(BaseHTTPMiddleware):
         "/api/v1/oauth/callback",     # OAuth callback (both GET and POST)
         "/api/v1/oauth/authorize",    # OAuth authorization start
         "/api/v1/oauth/start/",       # OAuth flow start endpoints
+        "/api/v1/oauth/status/",      # OAuth status check (wallet in query param)
         "/api/v1/ai/chat",            # AI chat endpoints (wallet in request body)
         "/api/v1/ai/chat/general",    # General AI chat
         "/api/v1/ai/query",           # AI query endpoint
@@ -75,6 +76,9 @@ class WalletAuthMiddleware(BaseHTTPMiddleware):
         "/api/v1/account",            # Account deletion (wallet in query param)
         "/api/v1/team",               # Team management (wallet in query param)
         "/api/v1/export",             # Data export (wallet in query param)
+        "/api/v1/sync/",              # Sync trigger endpoints (wallet in request body)
+        "/api/v1/integrations/",      # Integrations endpoints (wallet in query param)
+        "/api/v1/dashboard/",         # Dashboard endpoints (wallet in query param)
     ]
 
     # Message expiry in seconds (5 minutes)
