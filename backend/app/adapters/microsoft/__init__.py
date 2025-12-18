@@ -1,4 +1,7 @@
 """Microsoft 365 integration adapter"""
-from .sync import MicrosoftSyncAdapter
+from .sync import MicrosoftSync
 
-__all__ = ['MicrosoftSyncAdapter']
+# Alias for backward compatibility
+MicrosoftSyncAdapter = MicrosoftSync
+
+__all__ = ['MicrosoftSync', 'MicrosoftSyncAdapter']

@@ -98,6 +98,7 @@ This dashboard is Varity's **flagship product** for go-to-market. It is LIVE but
 - ✅ Sidebar shows connected tools
 - ✅ Marketplace shows green checkmark for connected integrations
 - ✅ Integration tools pages exist (/dashboard/tools/quickbooks)
+- ✅ **Onboarding Flow** (6-step wizard with professional UI - see below)
 
 ### What's NOT Working:
 - ❌ QuickBooks data sync (403 - app not authorized for production)
@@ -252,6 +253,74 @@ curl https://generic-template-dashboard-production.up.railway.app/health
 ```
 OAuth Connect → Fetch Data → Encrypt → Store in Pinata → Index in Qdrant → Display in Dashboard
 ```
+
+---
+
+## ✅ ONBOARDING FLOW (COMPLETED Dec 17, 2025)
+
+The onboarding flow is a 6-step wizard that collects business information and connects first integrations.
+
+### Onboarding URL
+- **URL:** https://app.varity.so/onboarding
+- **Triggered:** Automatically for new users after Privy sign-in
+
+### 6-Step Flow
+
+| Step | Component | Purpose |
+|------|-----------|---------|
+| 1. Welcome | `WelcomeStep.tsx` | Introduction, trial info, feature highlights |
+| 2. Company Profile | `CompanyProfileStep.tsx` | Collect company name, industry, size, **email for GTM** |
+| 3. Integration Select | `IntegrationSelectStep.tsx` | Choose first integration based on industry |
+| 4. OAuth Connect | `OAuthConnectStep.tsx` | Authorize the selected integration |
+| 5. Syncing | `SyncingStep.tsx` | Visual sync progress with 5 stages |
+| 6. Complete | `CompleteStep.tsx` | Success, AI preview, next steps |
+
+### GTM Data Collection (Email for Trial Follow-up)
+
+During onboarding, we collect contact information for trial communications:
+
+| Field | Required | Purpose |
+|-------|----------|---------|
+| `contact_email` | ✅ Yes | Primary contact for trial updates and conversion |
+| `contact_name` | No | Personalization |
+| `referral_source` | No | Marketing attribution |
+
+**Note:** Full feedback collection happens at trial END (after 30 days) using Web3 Forms, not during onboarding.
+
+### Files Structure
+
+```
+src/components/onboarding/
+├── OnboardingWizard.tsx       # Main wizard controller (state, navigation)
+├── OnboardingProgress.tsx     # Progress indicator (mobile + desktop)
+├── TrialBadge.tsx            # Trial tier badge (30-day vs 14-day)
+└── steps/
+    ├── WelcomeStep.tsx        # Step 1: Welcome
+    ├── CompanyProfileStep.tsx # Step 2: Company info + email
+    ├── IntegrationSelectStep.tsx # Step 3: Choose integration
+    ├── OAuthConnectStep.tsx   # Step 4: OAuth authorization
+    ├── SyncingStep.tsx        # Step 5: Sync progress
+    └── CompleteStep.tsx       # Step 6: Success + AI preview
+```
+
+### Backend API Endpoints
+
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/api/v1/onboarding/status` | GET | Get onboarding progress |
+| `/api/v1/onboarding/step` | PUT | Save current step |
+| `/api/v1/onboarding/complete` | POST | Mark onboarding complete |
+| `/api/v1/onboarding/trial-tier` | GET | Get trial tier (30 or 14 days) |
+| `/api/v1/settings` | PUT | Save company profile + contact info |
+
+### UI Features
+
+- **Professional gradients** on all buttons and icons
+- **Glow effects** on active elements
+- **Responsive design** (mobile + desktop)
+- **Email validation** with visual feedback
+- **Progress persistence** (resume where you left off)
+- **Industry-based recommendations** for integrations
 
 ---
 

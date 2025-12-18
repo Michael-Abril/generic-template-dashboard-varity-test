@@ -1,4 +1,7 @@
 """Google Workspace integration adapter"""
-from .sync import GoogleSyncAdapter
+from .sync import GoogleWorkspaceSync
 
-__all__ = ['GoogleSyncAdapter']
+# Alias for backward compatibility
+GoogleSyncAdapter = GoogleWorkspaceSync
+
+__all__ = ['GoogleWorkspaceSync', 'GoogleSyncAdapter']

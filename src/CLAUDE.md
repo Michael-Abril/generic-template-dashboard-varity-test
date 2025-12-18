@@ -1,6 +1,6 @@
 # CLAUDE.md - Frontend (Next.js 14)
 
-**Last Updated:** December 13, 2025
+**Last Updated:** December 17, 2025
 **Framework:** Next.js 14 (App Router)
 **Language:** TypeScript
 **Styling:** Tailwind CSS
@@ -157,6 +157,68 @@ npm run type-check
 # 4. Test in browser
 npm run dev
 # Visit http://localhost:3001
+```
+
+---
+
+## ✅ ONBOARDING FLOW (COMPLETED Dec 17, 2025)
+
+The onboarding is a 6-step wizard that guides new users through setup and collects GTM data.
+
+### Components Location
+
+```
+src/components/onboarding/
+├── OnboardingWizard.tsx       # Main wizard controller
+├── OnboardingProgress.tsx     # Progress indicator
+├── TrialBadge.tsx            # Trial tier badge
+└── steps/
+    ├── WelcomeStep.tsx        # Step 1
+    ├── CompanyProfileStep.tsx # Step 2 (collects email)
+    ├── IntegrationSelectStep.tsx # Step 3
+    ├── OAuthConnectStep.tsx   # Step 4
+    ├── SyncingStep.tsx        # Step 5
+    └── CompleteStep.tsx       # Step 6
+```
+
+### Key Features
+- **Email validation** in CompanyProfileStep (required for GTM)
+- **Industry-based recommendations** for integrations
+- **Progress persistence** via backend API
+- **Professional UI** with gradients, glow effects, animations
+
+### State Management
+
+The `OnboardingWizard.tsx` manages all state:
+```typescript
+interface OnboardingState {
+  step: OnboardingStep;
+  companyName: string;
+  industry: string;
+  companySize: string;
+  primaryGoal: string;
+  contactEmail: string;      // Required for GTM
+  contactName: string;
+  referralSource: string;
+  selectedIntegration: string | null;
+  trialTier: '30_day' | '14_day' | null;
+  trialDays: number;
+}
+```
+
+### Backend Integration
+
+Data saved via `PUT /api/v1/settings`:
+```typescript
+body: JSON.stringify({
+  company_name: companyName,
+  industry: industry,
+  company_size: companySize,
+  primary_goal: primaryGoal,
+  contact_email: contactEmail,  // For GTM follow-up
+  contact_name: contactName,
+  referral_source: referralSource,
+})
 ```
 
 ---
