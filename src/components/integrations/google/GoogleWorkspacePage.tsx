@@ -19,7 +19,9 @@ import {
   Inbox,
   FileText,
   CheckCircle,
-  StickyNote
+  StickyNote,
+  CloudDownload,
+  AlertCircle
 } from 'lucide-react';
 import { GmailInbox } from './GmailInbox';
 import { CalendarView } from './CalendarView';
@@ -54,6 +56,24 @@ export function GoogleWorkspacePage({
 }: GoogleWorkspacePageProps) {
   const [activeTab, setActiveTab] = useState<TabType>('home');
   const [searchQuery, setSearchQuery] = useState('');
+  const [syncing, setSyncing] = useState(false);
+
+  // Check if we have any data synced
+  const hasData = data && (
+    (data.gmail?.messages?.length > 0) ||
+    (data.calendar?.events?.length > 0) ||
+    (data.drive?.files?.length > 0) ||
+    (data.contacts?.contacts?.length > 0)
+  );
+
+  const handleSync = async () => {
+    setSyncing(true);
+    try {
+      await onSync();
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   const renderHome = () => (
     <div className="space-y-6">
@@ -181,6 +201,15 @@ export function GoogleWorkspacePage({
 
             <div className="flex items-center gap-2">
               <button
+                onClick={handleSync}
+                disabled={loading || syncing}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Sync data from Google"
+              >
+                <CloudDownload className={`h-4 w-4 ${syncing ? 'animate-pulse' : ''}`} />
+                <span className="font-medium">{syncing ? 'Syncing...' : 'Sync Data'}</span>
+              </button>
+              <button
                 onClick={onRefresh}
                 disabled={loading}
                 className="p-2 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50"
@@ -231,14 +260,52 @@ export function GoogleWorkspacePage({
 
       {/* Content */}
       <div className="p-6">
-        {loading ? (
+        {/* No Data Banner */}
+        {!hasData && !loading && !syncing && (
+          <div className="mb-6 bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-200 rounded-xl p-6">
+            <div className="flex items-start gap-4">
+              <div className="p-3 bg-blue-100 rounded-lg">
+                <AlertCircle className="h-6 w-6 text-blue-600" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-lg font-semibold text-gray-900 mb-1">
+                  No Data Synced Yet
+                </h3>
+                <p className="text-gray-600 mb-4">
+                  Click the <strong>"Sync Data"</strong> button above to fetch your Gmail, Calendar, Drive, and Contacts from Google.
+                  This will securely sync your data and store it encrypted on Filecoin.
+                </p>
+                <button
+                  onClick={handleSync}
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                >
+                  <CloudDownload className="h-4 w-4" />
+                  <span className="font-medium">Sync My Google Data</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Syncing State */}
+        {syncing && (
+          <div className="flex items-center justify-center py-12">
+            <div className="text-center">
+              <CloudDownload className="h-8 w-8 text-blue-600 animate-pulse mx-auto mb-4" />
+              <p className="text-gray-600 font-medium">Syncing data from Google Workspace...</p>
+              <p className="text-sm text-gray-500 mt-2">This may take a moment. Please wait.</p>
+            </div>
+          </div>
+        )}
+
+        {loading && !syncing ? (
           <div className="flex items-center justify-center py-12">
             <div className="text-center">
               <RefreshCw className="h-8 w-8 text-blue-600 animate-spin mx-auto mb-4" />
               <p className="text-gray-600">Loading Google Workspace data...</p>
             </div>
           </div>
-        ) : (
+        ) : !syncing && (
           renderActiveTab()
         )}
       </div>
