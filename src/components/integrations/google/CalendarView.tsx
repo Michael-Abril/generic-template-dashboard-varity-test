@@ -98,6 +98,48 @@ export function CalendarView({ walletAddress, data }: CalendarViewProps) {
     }
   };
 
+  const handleDuplicateEvent = async (event: CalendarEvent) => {
+    try {
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/integrations/google/events`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            wallet_address: walletAddress,
+            summary: `${event.summary} (Copy)`,
+            description: event.description,
+            start: event.start,
+            end: event.end,
+            location: event.location,
+            attendees: event.attendees
+          })
+        }
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        setEvents([...events, {
+          id: data.id || `event-${Date.now()}`,
+          summary: `${event.summary} (Copy)`,
+          description: event.description,
+          start: event.start,
+          end: event.end,
+          location: event.location,
+          attendees: event.attendees,
+          status: 'confirmed'
+        }]);
+        setShowEventDetail(false);
+        setSelectedEvent(null);
+      } else {
+        alert('Failed to duplicate event');
+      }
+    } catch (error) {
+      console.error('Failed to duplicate event:', error);
+      alert('Failed to duplicate event');
+    }
+  };
+
   const formatDate = (date: Date) => {
     return date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
   };
@@ -491,7 +533,10 @@ export function CalendarView({ walletAddress, data }: CalendarViewProps) {
                   <Edit3 className="h-4 w-4" />
                   Edit
                 </button>
-                <button className="flex items-center gap-2 px-4 py-2 border rounded-lg hover:bg-gray-50">
+                <button
+                  onClick={() => handleDuplicateEvent(selectedEvent)}
+                  className="flex items-center gap-2 px-4 py-2 border rounded-lg hover:bg-gray-50"
+                >
                   <Copy className="h-4 w-4" />
                   Duplicate
                 </button>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   FolderOpen,
   File,
@@ -78,6 +78,8 @@ export function DriveExplorer({ walletAddress, data }: DriveExplorerProps) {
   const [currentPath, setCurrentPath] = useState(['My Drive']);
   const [files, setFiles] = useState<DriveFile[]>([]);
   const [loading, setLoading] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Load files from data prop (already fetched by parent)
   useEffect(() => {
@@ -117,8 +119,71 @@ export function DriveExplorer({ walletAddress, data }: DriveExplorerProps) {
   };
 
   const handleDownload = async (file: DriveFile) => {
-    console.log('Download file:', file);
-    // API call to download file
+    try {
+      if (file.webViewLink) {
+        window.open(file.webViewLink, '_blank');
+        return;
+      }
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/integrations/google/download-file/${file.id}?wallet_address=${walletAddress}`
+      );
+      if (response.ok) {
+        const data = await response.json();
+        if (data.content) {
+          const link = document.createElement('a');
+          link.href = `data:${file.mimeType};base64,${data.content}`;
+          link.download = file.name;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+        }
+      } else {
+        alert('Failed to download file');
+      }
+    } catch (error) {
+      console.error('Failed to download file:', error);
+      alert('Failed to download file');
+    }
+  };
+
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFiles = e.target.files;
+    if (!selectedFiles || selectedFiles.length === 0) return;
+
+    setUploading(true);
+    for (const file of Array.from(selectedFiles)) {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('wallet_address', walletAddress);
+
+      try {
+        const response = await fetch(
+          `${process.env.NEXT_PUBLIC_API_URL}/api/v1/integrations/google/upload-file`,
+          { method: 'POST', body: formData }
+        );
+        if (response.ok) {
+          const data = await response.json();
+          setFiles(prev => [...prev, {
+            id: data.id || `file-${Date.now()}`,
+            name: file.name,
+            mimeType: file.type || 'application/octet-stream',
+            size: String(file.size),
+            modifiedTime: new Date().toISOString(),
+            owners: [],
+            webViewLink: data.webViewLink || '',
+            starred: false
+          }]);
+        } else {
+          alert('Failed to upload file');
+        }
+      } catch (error) {
+        console.error('Upload failed:', error);
+        alert('Failed to upload file');
+      }
+    }
+    setUploading(false);
+    setShowUploadModal(false);
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const handleDelete = async (file: DriveFile) => {
@@ -407,8 +472,19 @@ export function DriveExplorer({ walletAddress, data }: DriveExplorerProps) {
               <Upload className="h-12 w-12 text-gray-400 mx-auto mb-4" />
               <p className="text-gray-600 mb-2">Drag and drop files here</p>
               <p className="text-sm text-gray-500 mb-4">or</p>
-              <button className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
-                Select Files
+              <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleFileSelect}
+                multiple
+                className="hidden"
+              />
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+              >
+                {uploading ? 'Uploading...' : 'Select Files'}
               </button>
             </div>
           </div>
