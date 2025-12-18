@@ -8,7 +8,8 @@ import {
   Bot, MessageSquare, Plus, Pin, PinOff, Trash2, Edit2, X, Check, Archive,
   MoreVertical, Sparkles, Search, FileText, ChevronDown, Upload, Download,
   Shield, Lock, Globe, FileUp, Loader2, BarChart3, AlertCircle, Filter, Database,
-  Mail, Send, FilePlus, Zap, Calendar, Users
+  Mail, Send, FilePlus, Zap, Calendar, Users, Copy, ThumbsUp, ThumbsDown,
+  RefreshCw, Square, RotateCcw, Pencil
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 
@@ -135,6 +136,14 @@ export function AIChat() {
   const [docContent, setDocContent] = useState('');
   const [actionConfirmation, setActionConfirmation] = useState<ActionConfirmation | null>(null);
   const [isExecutingAction, setIsExecutingAction] = useState(false);
+
+  // Message actions state
+  const [copiedMessageId, setCopiedMessageId] = useState<number | null>(null);
+  const [feedbackGiven, setFeedbackGiven] = useState<Record<number, 'up' | 'down'>>({});
+  const [editingMessageIdx, setEditingMessageIdx] = useState<number | null>(null);
+  const [editedContent, setEditedContent] = useState('');
+  const [hoveredMessageIdx, setHoveredMessageIdx] = useState<number | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Scroll to bottom on new messages
   useEffect(() => {
@@ -662,6 +671,77 @@ export function AIChat() {
     return installedTools.some(t => t.toLowerCase().includes(provider.toLowerCase()));
   };
 
+  // Copy message content to clipboard
+  const copyMessage = async (content: string, idx: number) => {
+    try {
+      await navigator.clipboard.writeText(content);
+      setCopiedMessageId(idx);
+      setTimeout(() => setCopiedMessageId(null), 2000);
+    } catch (error) {
+      logger.error('Failed to copy message:', error);
+    }
+  };
+
+  // Submit feedback for a message
+  const submitFeedback = async (idx: number, type: 'up' | 'down') => {
+    setFeedbackGiven(prev => ({ ...prev, [idx]: type }));
+    // In production, you'd send this to the backend for analytics
+    logger.info(`Feedback submitted: message ${idx} - ${type}`);
+  };
+
+  // Regenerate the last assistant response
+  const regenerateResponse = async () => {
+    if (messages.length < 2 || loading) return;
+
+    // Find the last user message
+    const lastUserMsgIdx = messages.findLastIndex(m => m.role === 'user');
+    if (lastUserMsgIdx === -1) return;
+
+    // Remove the last assistant response
+    setMessages(prev => prev.slice(0, prev.length - 1));
+
+    // Re-send the last user message
+    setInput(messages[lastUserMsgIdx].content);
+    // The input will be sent when user clicks send or presses enter
+  };
+
+  // Edit and resend a user message
+  const editAndResend = async (idx: number) => {
+    if (loading) return;
+
+    const newContent = editedContent.trim();
+    if (!newContent) {
+      setEditingMessageIdx(null);
+      return;
+    }
+
+    // Remove all messages after this one
+    setMessages(prev => prev.slice(0, idx));
+
+    // Set the edited content as input and send
+    setInput(newContent);
+    setEditingMessageIdx(null);
+    setEditedContent('');
+  };
+
+  // Auto-resize textarea
+  const handleTextareaChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setInput(e.target.value);
+    // Auto-resize
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 200)}px`;
+    }
+  };
+
+  // Handle keyboard shortcuts in textarea
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  };
+
   // Abort controller for stopping generation
   const abortControllerRef = useRef<AbortController | null>(null);
 
@@ -828,6 +908,17 @@ export function AIChat() {
       // Save assistant message
       await addMessageToConversation(convId, assistantMessage);
     } catch (error) {
+      // Handle abort/cancellation gracefully
+      if (error instanceof Error && error.name === 'AbortError') {
+        const abortMsg: Message = {
+          role: 'assistant',
+          content: '*Response generation was stopped.*',
+          timestamp: new Date()
+        };
+        setMessages(prev => [...prev, abortMsg]);
+        return;
+      }
+
       logger.error('Chat error:', error);
       const errorMessage = error instanceof Error ? error.message : 'Please try again.';
       const errorMsg: Message = {
@@ -838,6 +929,8 @@ export function AIChat() {
       setMessages(prev => [...prev, errorMsg]);
       await addMessageToConversation(convId, errorMsg);
     } finally {
+      clearTimeout(timeoutId);
+      abortControllerRef.current = null;
       setLoading(false);
     }
   };
@@ -1638,88 +1731,211 @@ export function AIChat() {
           )}
 
           {messages.map((msg, idx) => (
-            <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-              <div
-                className={`max-w-[85%] rounded-lg p-4 shadow-sm ${
-                  msg.role === 'user'
-                    ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white'
-                    : 'bg-white text-gray-900 border border-gray-200'
-                }`}
-              >
-                {msg.role === 'assistant' && (
-                  <div className="flex items-center gap-2 mb-2">
-                    <div className="w-6 h-6 bg-gradient-to-r from-blue-600 to-purple-600 rounded-full flex items-center justify-center">
-                      <Bot className="w-3 h-3 text-white" />
+            <div
+              key={idx}
+              className={`group flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+              onMouseEnter={() => setHoveredMessageIdx(idx)}
+              onMouseLeave={() => setHoveredMessageIdx(null)}
+            >
+              <div className={`relative max-w-[85%] ${msg.role === 'user' ? 'flex flex-col items-end' : ''}`}>
+                {/* User message with edit mode */}
+                {msg.role === 'user' && editingMessageIdx === idx ? (
+                  <div className="w-full">
+                    <textarea
+                      value={editedContent}
+                      onChange={(e) => setEditedContent(e.target.value)}
+                      className="w-full p-4 rounded-lg bg-white border-2 border-blue-500 text-gray-900 resize-none focus:outline-none"
+                      rows={3}
+                      autoFocus
+                    />
+                    <div className="flex justify-end gap-2 mt-2">
+                      <button
+                        onClick={() => setEditingMessageIdx(null)}
+                        className="px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={() => editAndResend(idx)}
+                        className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                      >
+                        Save & Resend
+                      </button>
                     </div>
-                    <span className="text-xs font-semibold text-gray-700">AI Assistant</span>
                   </div>
-                )}
-                <div className="prose prose-sm max-w-none leading-relaxed">
-                  <ReactMarkdown
-                    components={{
-                      h1: ({ children }) => <h1 className="text-xl font-bold mt-4 mb-2 first:mt-0">{children}</h1>,
-                      h2: ({ children }) => <h2 className="text-lg font-bold mt-3 mb-2 first:mt-0">{children}</h2>,
-                      h3: ({ children }) => <h3 className="text-base font-semibold mt-2 mb-1 first:mt-0">{children}</h3>,
-                      p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
-                      strong: ({ children }) => <strong className="font-bold">{children}</strong>,
-                      em: ({ children }) => <em className="italic">{children}</em>,
-                      ul: ({ children }) => <ul className="list-disc pl-4 mb-2 space-y-1">{children}</ul>,
-                      ol: ({ children }) => <ol className="list-decimal pl-4 mb-2 space-y-1">{children}</ol>,
-                      li: ({ children }) => <li className="mb-0.5">{children}</li>,
-                      code: ({ className, children }) => {
-                        const isInline = !className;
-                        return isInline ? (
-                          <code className="bg-gray-100 text-gray-800 px-1.5 py-0.5 rounded text-sm font-mono">{children}</code>
-                        ) : (
-                          <code className="block bg-gray-100 text-gray-800 p-3 rounded-lg text-sm font-mono overflow-x-auto my-2">{children}</code>
-                        );
-                      },
-                      pre: ({ children }) => <pre className="bg-gray-100 rounded-lg overflow-x-auto my-2">{children}</pre>,
-                      a: ({ href, children }) => (
-                        <a href={href} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 underline">
-                          {children}
-                        </a>
-                      ),
-                      blockquote: ({ children }) => (
-                        <blockquote className="border-l-4 border-gray-300 pl-4 italic text-gray-700 my-2">{children}</blockquote>
-                      ),
-                    }}
+                ) : (
+                  <div
+                    className={`rounded-2xl p-4 shadow-sm transition-all ${
+                      msg.role === 'user'
+                        ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white'
+                        : 'bg-white text-gray-900 border border-gray-100'
+                    }`}
                   >
-                    {msg.content}
-                  </ReactMarkdown>
-                </div>
-                {msg.sources && msg.sources.length > 0 && (
-                  <div className="mt-3 pt-3 border-t border-gray-200">
-                    <p className="text-xs font-semibold text-gray-700 mb-1">Sources:</p>
-                    <div className="flex flex-wrap gap-2">
-                      {msg.sources.map((source, i) => (
-                        <span key={i} className="text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded">
-                          {source}
-                        </span>
-                      ))}
+                    {msg.role === 'assistant' && (
+                      <div className="flex items-center gap-2 mb-3">
+                        <div className="w-7 h-7 bg-gradient-to-r from-blue-600 to-purple-600 rounded-full flex items-center justify-center shadow-sm">
+                          <Bot className="w-4 h-4 text-white" />
+                        </div>
+                        <span className="text-sm font-semibold text-gray-800">Varity AI</span>
+                      </div>
+                    )}
+                    <div className={`prose prose-sm max-w-none leading-relaxed ${msg.role === 'user' ? 'prose-invert' : ''}`}>
+                      <ReactMarkdown
+                        components={{
+                          h1: ({ children }) => <h1 className="text-xl font-bold mt-4 mb-2 first:mt-0">{children}</h1>,
+                          h2: ({ children }) => <h2 className="text-lg font-bold mt-3 mb-2 first:mt-0">{children}</h2>,
+                          h3: ({ children }) => <h3 className="text-base font-semibold mt-2 mb-1 first:mt-0">{children}</h3>,
+                          p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
+                          strong: ({ children }) => <strong className="font-bold">{children}</strong>,
+                          em: ({ children }) => <em className="italic">{children}</em>,
+                          ul: ({ children }) => <ul className="list-disc pl-4 mb-2 space-y-1">{children}</ul>,
+                          ol: ({ children }) => <ol className="list-decimal pl-4 mb-2 space-y-1">{children}</ol>,
+                          li: ({ children }) => <li className="mb-0.5">{children}</li>,
+                          code: ({ className, children }) => {
+                            const isInline = !className;
+                            return isInline ? (
+                              <code className={`px-1.5 py-0.5 rounded text-sm font-mono ${msg.role === 'user' ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-800'}`}>{children}</code>
+                            ) : (
+                              <code className="block bg-gray-100 text-gray-800 p-3 rounded-lg text-sm font-mono overflow-x-auto my-2">{children}</code>
+                            );
+                          },
+                          pre: ({ children }) => <pre className="bg-gray-100 rounded-lg overflow-x-auto my-2">{children}</pre>,
+                          a: ({ href, children }) => (
+                            <a href={href} target="_blank" rel="noopener noreferrer" className={`underline ${msg.role === 'user' ? 'text-white hover:text-white/80' : 'text-blue-600 hover:text-blue-800'}`}>
+                              {children}
+                            </a>
+                          ),
+                          blockquote: ({ children }) => (
+                            <blockquote className="border-l-4 border-gray-300 pl-4 italic text-gray-700 my-2">{children}</blockquote>
+                          ),
+                        }}
+                      >
+                        {msg.content}
+                      </ReactMarkdown>
                     </div>
+                    {msg.sources && msg.sources.length > 0 && (
+                      <div className="mt-3 pt-3 border-t border-gray-100">
+                        <p className="text-xs font-medium text-gray-600 mb-1.5">Sources:</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {msg.sources.map((source, i) => (
+                            <span key={i} className="text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded-full">
+                              {source}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
-                <p className={`text-xs mt-2 ${msg.role === 'user' ? 'text-white/70' : 'text-gray-500'}`}>
-                  {msg.timestamp.toLocaleTimeString()}
-                </p>
+
+                {/* Message action buttons */}
+                {editingMessageIdx !== idx && (
+                  <div
+                    className={`flex items-center gap-1 mt-1.5 transition-opacity duration-200 ${
+                      hoveredMessageIdx === idx ? 'opacity-100' : 'opacity-0'
+                    } ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                  >
+                    {/* Copy button */}
+                    <button
+                      onClick={() => copyMessage(msg.content, idx)}
+                      className={`p-1.5 rounded-lg transition-colors ${
+                        copiedMessageId === idx
+                          ? 'bg-green-100 text-green-600'
+                          : 'hover:bg-gray-100 text-gray-400 hover:text-gray-600'
+                      }`}
+                      title={copiedMessageId === idx ? 'Copied!' : 'Copy message'}
+                    >
+                      {copiedMessageId === idx ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                    </button>
+
+                    {/* Edit button for user messages */}
+                    {msg.role === 'user' && (
+                      <button
+                        onClick={() => {
+                          setEditingMessageIdx(idx);
+                          setEditedContent(msg.content);
+                        }}
+                        className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
+                        title="Edit message"
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+
+                    {/* Feedback buttons for assistant messages */}
+                    {msg.role === 'assistant' && (
+                      <>
+                        <button
+                          onClick={() => submitFeedback(idx, 'up')}
+                          className={`p-1.5 rounded-lg transition-colors ${
+                            feedbackGiven[idx] === 'up'
+                              ? 'bg-green-100 text-green-600'
+                              : 'hover:bg-gray-100 text-gray-400 hover:text-gray-600'
+                          }`}
+                          title="Good response"
+                        >
+                          <ThumbsUp className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => submitFeedback(idx, 'down')}
+                          className={`p-1.5 rounded-lg transition-colors ${
+                            feedbackGiven[idx] === 'down'
+                              ? 'bg-red-100 text-red-600'
+                              : 'hover:bg-gray-100 text-gray-400 hover:text-gray-600'
+                          }`}
+                          title="Poor response"
+                        >
+                          <ThumbsDown className="w-3.5 h-3.5" />
+                        </button>
+
+                        {/* Regenerate button (only on last assistant message) */}
+                        {idx === messages.length - 1 && (
+                          <button
+                            onClick={regenerateResponse}
+                            disabled={loading}
+                            className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors disabled:opacity-50"
+                            title="Regenerate response"
+                          >
+                            <RotateCcw className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </>
+                    )}
+
+                    {/* Timestamp */}
+                    <span className="text-[10px] text-gray-400 ml-1">
+                      {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
           ))}
 
           {loading && (
             <div className="flex justify-start">
-              <div className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
-                <div className="flex items-center gap-2">
-                  <div className="w-6 h-6 bg-gradient-to-r from-blue-600 to-purple-600 rounded-full flex items-center justify-center">
-                    <Bot className="w-3 h-3 text-white" />
+              <div className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm">
+                <div className="flex items-center gap-3">
+                  <div className="w-7 h-7 bg-gradient-to-r from-blue-600 to-purple-600 rounded-full flex items-center justify-center shadow-sm">
+                    <Bot className="w-4 h-4 text-white" />
                   </div>
-                  <div className="flex space-x-2">
-                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" />
-                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }} />
-                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }} />
+                  <div className="flex items-center gap-3">
+                    <div className="flex space-x-1.5">
+                      <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" />
+                      <div className="w-2 h-2 bg-purple-500 rounded-full animate-bounce" style={{ animationDelay: '0.15s' }} />
+                      <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '0.3s' }} />
+                    </div>
+                    <span className="text-sm text-gray-500">Thinking...</span>
                   </div>
                 </div>
+                {/* Stop button */}
+                <button
+                  onClick={stopGenerating}
+                  className="mt-3 flex items-center gap-2 px-3 py-1.5 text-sm text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors w-full justify-center"
+                >
+                  <Square className="w-3.5 h-3.5" fill="currentColor" />
+                  Stop generating
+                </button>
               </div>
             </div>
           )}

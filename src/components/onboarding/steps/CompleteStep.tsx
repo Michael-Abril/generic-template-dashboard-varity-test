@@ -30,32 +30,32 @@ const SAMPLE_QUERIES = [
 
 const NEXT_STEPS = [
   {
-    id: 'integrations',
-    label: 'Connect more integrations',
-    description: 'Sync more of your business tools',
-    icon: Plus,
-    href: '/marketplace',
-  },
-  {
     id: 'dashboard',
-    label: 'Explore the dashboard',
-    description: 'View your KPIs and insights',
+    label: 'View your dashboard',
+    description: 'See your business overview',
     icon: BarChart3,
     href: '/dashboard',
   },
   {
     id: 'ai',
-    label: 'Ask your first AI question',
-    description: 'Try the AI assistant now',
+    label: 'Try the AI assistant',
+    description: 'Ask questions about your data',
     icon: MessageSquare,
     href: '/ai-assistant',
   },
   {
+    id: 'integrations',
+    label: 'Connect more tools',
+    description: 'Add additional integrations',
+    icon: Plus,
+    href: '/marketplace',
+  },
+  {
     id: 'team',
-    label: 'Invite team members',
-    description: 'Collaborate with your team',
+    label: 'Invite your team',
+    description: 'Add employees to your account',
     icon: Users,
-    href: '/settings',
+    href: '/settings?tab=team',
   },
 ];
 
