@@ -145,6 +145,62 @@ https://app.varity.so/oauth/callback/hubspot      ← developers.hubspot.com
 
 ---
 
+## ONBOARDING FLOW (Complete - December 2025)
+
+Professional 6-step wizard optimized for 30-60 year old business owners.
+
+### Components
+
+```
+src/components/onboarding/
+├── OnboardingWizard.tsx       # Main controller (state, navigation)
+├── OnboardingProgress.tsx     # Progress indicator (mobile + desktop)
+├── TrialBadge.tsx            # Trial tier badge (30-day bonus or 14-day)
+└── steps/
+    ├── WelcomeStep.tsx        # Step 1: Welcome + trust signals
+    ├── CompanyProfileStep.tsx # Step 2: Company info + email (GTM)
+    ├── IntegrationSelectStep.tsx # Step 3: Industry-based recommendations
+    ├── OAuthConnectStep.tsx   # Step 4: OAuth with permissions preview
+    ├── SyncingStep.tsx        # Step 5: Visual 5-stage sync + skip option
+    └── CompleteStep.tsx       # Step 6: Celebration + AI preview
+```
+
+### UX Features (Based on 2025 Best Practices)
+
+| Feature | Location | Purpose |
+|---------|----------|---------|
+| **Trust Signals** | WelcomeStep | SOC 2 Compliant, 256-bit Encryption badges |
+| **Time Estimates** | WelcomeStep, CompanyProfileStep | "~2 min", "Only 3 fields required" |
+| **Auto-Save Indicator** | CompanyProfileStep | "Your progress is auto-saved" |
+| **Industry Recommendations** | IntegrationSelectStep | Shows relevant integrations for industry |
+| **Skip Options** | IntegrationSelectStep, OAuthConnectStep, SyncingStep | Reduces abandonment |
+| **Celebration Animation** | CompleteStep | Animated checkmark + PartyPopper icon |
+| **AI Preview** | CompleteStep | Interactive sample queries before dashboard |
+| **Trial Badge** | TrialBadge | "Bonus" label with explanation for 30-day users |
+
+### GTM Data Collection
+
+| Field | Required | Purpose |
+|-------|----------|---------|
+| `contact_email` | ✅ Yes | Trial communications, conversion follow-up |
+| `contact_name` | No | Personalization |
+| `company_name` | ✅ Yes | Dashboard customization |
+| `industry` | ✅ Yes | Integration recommendations |
+| `company_size` | No | Analytics |
+| `referral_source` | No | Marketing attribution |
+
+### Backend Endpoints
+
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/api/v1/onboarding/status` | GET | Get onboarding progress |
+| `/api/v1/onboarding/step` | PUT | Save current step |
+| `/api/v1/onboarding/complete` | POST | Mark onboarding complete |
+| `/api/v1/onboarding/trial-tier` | GET | Get trial tier (30 or 14 days) |
+| `/api/v1/settings` | PUT | Save company profile + contact info |
+
+---
+
 ## ARCHITECTURE OVERVIEW
 
 ```
