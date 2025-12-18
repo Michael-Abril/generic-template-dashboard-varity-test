@@ -7,7 +7,7 @@ import { logger } from '@/lib/logger';
 import {
   Bot, MessageSquare, Plus, Pin, PinOff, Trash2, Edit2, X, Check, Archive,
   MoreVertical, Sparkles, Search, FileText, ChevronDown, Upload, Download,
-  Shield, Lock, Globe, FileUp, Loader2, BarChart3, AlertCircle
+  Shield, Lock, Globe, FileUp, Loader2, BarChart3, AlertCircle, Filter, Database
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 
@@ -91,6 +91,8 @@ export function AIChat() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [showPrivacyBanner, setShowPrivacyBanner] = useState(true);
+  const [selectedIntegration, setSelectedIntegration] = useState<string>('all'); // Integration filter
+  const [showIntegrationFilter, setShowIntegrationFilter] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Scroll to bottom on new messages
@@ -508,6 +510,9 @@ export function AIChat() {
         sources?: string[];
       };
 
+      // Prepare integration filter (only include if not 'all')
+      const integrationFilter = selectedIntegration !== 'all' ? selectedIntegration : undefined;
+
       // Route to different endpoints based on AI mode
       if (aiMode === 'standard') {
         // Standard mode: Use general chat endpoint (no web search)
@@ -518,6 +523,7 @@ export function AIChat() {
           body: JSON.stringify({
             message: input,
             wallet_address: address,
+            integration: integrationFilter, // Filter to specific integration
             temperature: 0.7,
             max_tokens: 2048
           })
@@ -534,6 +540,7 @@ export function AIChat() {
           body: JSON.stringify({
             query: input,
             wallet_address: address,
+            integration: integrationFilter, // Filter to specific integration
             enable_web_search: enableWebSearch, // User-controlled toggle
             max_rag_results: 5,
             max_search_results: enableWebSearch ? 5 : 0
@@ -543,7 +550,7 @@ export function AIChat() {
         responseData = await response.json();
 
       } else if (aiMode === 'analyze') {
-        // Analyze & Report mode: Use document analysis or research endpoint
+        // Deep Analysis mode: Use research endpoint for comprehensive analysis
         // without web search, focused on business data analysis
         const response = await fetch(`${API_BASE_URL}/api/v1/ai/research`, {
           method: 'POST',
@@ -551,6 +558,7 @@ export function AIChat() {
           body: JSON.stringify({
             query: input,
             wallet_address: address,
+            integration: integrationFilter, // Filter to specific integration
             depth: 'comprehensive'
           })
         });
@@ -564,7 +572,8 @@ export function AIChat() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             message: input,
-            wallet_address: address
+            wallet_address: address,
+            integration: integrationFilter
           })
         });
         if (!response.ok) throw new Error(`AI request failed: ${response.statusText}`);
@@ -620,67 +629,126 @@ export function AIChat() {
     setMessages([]);
   };
 
-  // Integration-specific suggested questions
+  // Integration-specific suggested questions - mode aware
   const getIntegrationQuestions = () => {
-    const questions: { question: string; integration?: string }[] = [];
+    const questions: { question: string; integration?: string; category?: string; icon?: string }[] = [];
+
+    // Mode-specific base templates
+    if (aiMode === 'deep_research') {
+      questions.push(
+        { question: "Research industry trends affecting my business", category: "research", icon: "🔍" },
+        { question: "What are best practices for improving cash flow?", category: "research", icon: "📚" }
+      );
+    } else if (aiMode === 'analyze') {
+      questions.push(
+        { question: "Create a comprehensive business health report", category: "analysis", icon: "📊" },
+        { question: "Analyze my revenue trends and forecast next quarter", category: "analysis", icon: "📈" }
+      );
+    }
 
     // QuickBooks-specific questions
     if (installedTools.some(t => t.toLowerCase().includes('quickbooks'))) {
-      questions.push(
-        { question: "Show my overdue invoices from QuickBooks", integration: "quickbooks" },
-        { question: "What's my accounts receivable balance?", integration: "quickbooks" },
-        { question: "Who are my top 5 customers by revenue?", integration: "quickbooks" },
-        { question: "Show my P&L summary for this month", integration: "quickbooks" },
-        { question: "What expenses are due this week?", integration: "quickbooks" },
-        { question: "Compare my revenue vs expenses this quarter", integration: "quickbooks" }
-      );
+      if (aiMode === 'standard') {
+        questions.push(
+          { question: "Show my overdue invoices", integration: "quickbooks", icon: "📄" },
+          { question: "What's my accounts receivable balance?", integration: "quickbooks", icon: "💰" },
+          { question: "Who are my top 5 customers by revenue?", integration: "quickbooks", icon: "🏆" },
+          { question: "What expenses are due this week?", integration: "quickbooks", icon: "📅" }
+        );
+      } else if (aiMode === 'analyze') {
+        questions.push(
+          { question: "Create a P&L analysis with insights", integration: "quickbooks", icon: "📊" },
+          { question: "Analyze my cash flow patterns and predict shortfalls", integration: "quickbooks", icon: "💹" },
+          { question: "Generate an expense optimization report", integration: "quickbooks", icon: "✂️" }
+        );
+      } else if (aiMode === 'deep_research') {
+        questions.push(
+          { question: "Research tax strategies for my business type", integration: "quickbooks", icon: "🔍" },
+          { question: "How does my profit margin compare to industry average?", integration: "quickbooks", icon: "📊" }
+        );
+      }
     }
 
     // Google Workspace questions
     if (installedTools.some(t => t.toLowerCase().includes('google'))) {
       questions.push(
-        { question: "What meetings do I have today?", integration: "google" },
-        { question: "Show unread emails from this week", integration: "google" },
-        { question: "Find documents shared with me recently", integration: "google" }
+        { question: "What meetings do I have today?", integration: "google", icon: "📆" },
+        { question: "Show unread emails from this week", integration: "google", icon: "📧" },
+        { question: "Find documents shared with me recently", integration: "google", icon: "📁" }
+      );
+    }
+
+    // Microsoft 365 questions
+    if (installedTools.some(t => t.toLowerCase().includes('microsoft'))) {
+      questions.push(
+        { question: "Show my calendar for this week", integration: "microsoft", icon: "📅" },
+        { question: "What Teams messages need my attention?", integration: "microsoft", icon: "💬" },
+        { question: "List my recent OneDrive documents", integration: "microsoft", icon: "📂" }
       );
     }
 
     // Salesforce questions
     if (installedTools.some(t => t.toLowerCase().includes('salesforce'))) {
-      questions.push(
-        { question: "Show my open deals by stage", integration: "salesforce" },
-        { question: "What leads were created this week?", integration: "salesforce" },
-        { question: "Who are my hottest opportunities?", integration: "salesforce" }
-      );
+      if (aiMode === 'standard') {
+        questions.push(
+          { question: "Show my open deals by stage", integration: "salesforce", icon: "🎯" },
+          { question: "What leads were created this week?", integration: "salesforce", icon: "👤" },
+          { question: "Who are my hottest opportunities?", integration: "salesforce", icon: "🔥" }
+        );
+      } else if (aiMode === 'analyze') {
+        questions.push(
+          { question: "Analyze my sales pipeline health", integration: "salesforce", icon: "📊" },
+          { question: "Forecast my quota attainment this quarter", integration: "salesforce", icon: "📈" }
+        );
+      }
     }
 
     // Slack questions
     if (installedTools.some(t => t.toLowerCase().includes('slack'))) {
       questions.push(
-        { question: "Show recent important messages", integration: "slack" },
-        { question: "What channels am I most active in?", integration: "slack" }
+        { question: "Show recent important messages", integration: "slack", icon: "💬" },
+        { question: "What channels am I most active in?", integration: "slack", icon: "📊" },
+        { question: "Summarize key discussions from today", integration: "slack", icon: "📝" }
       );
     }
 
     // HubSpot questions
     if (installedTools.some(t => t.toLowerCase().includes('hubspot'))) {
-      questions.push(
-        { question: "Show my deal pipeline", integration: "hubspot" },
-        { question: "What contacts were added recently?", integration: "hubspot" }
-      );
+      if (aiMode === 'standard') {
+        questions.push(
+          { question: "Show my deal pipeline", integration: "hubspot", icon: "🎯" },
+          { question: "What contacts were added recently?", integration: "hubspot", icon: "👥" }
+        );
+      } else if (aiMode === 'analyze') {
+        questions.push(
+          { question: "Analyze my marketing campaign performance", integration: "hubspot", icon: "📊" },
+          { question: "Create a lead quality report", integration: "hubspot", icon: "📋" }
+        );
+      }
     }
 
-    // Default questions if no specific integrations or as fallback
+    // Default questions if no specific integrations
     if (questions.length === 0) {
-      questions.push(
-        { question: "What's my total revenue this month?" },
-        { question: "Show me recent expenses" },
-        { question: "Who are my top customers?" },
-        { question: "What's my profit margin?" }
-      );
+      if (aiMode === 'deep_research') {
+        questions.push(
+          { question: "Research strategies to improve my business efficiency", icon: "🔍" },
+          { question: "What industry trends should I be aware of?", icon: "📈" }
+        );
+      } else if (aiMode === 'analyze') {
+        questions.push(
+          { question: "What metrics should I track for business growth?", icon: "📊" },
+          { question: "Analyze common business performance indicators", icon: "📋" }
+        );
+      } else {
+        questions.push(
+          { question: "What can you help me with?", icon: "💡" },
+          { question: "How do I connect my business tools?", icon: "🔗" }
+        );
+      }
     }
 
-    return questions.slice(0, 6); // Return max 6 questions
+    // Shuffle and return max 6 questions, prioritizing mode-relevant ones
+    return questions.slice(0, 6);
   };
 
   const suggestedQuestions = getIntegrationQuestions();
@@ -1012,27 +1080,45 @@ export function AIChat() {
               </p>
               {installedTools.length > 0 && (
                 <div className="max-w-lg mx-auto">
-                  <p className="text-xs font-medium text-gray-700 mb-3">Try asking:</p>
+                  <p className="text-xs font-medium text-gray-700 mb-3">
+                    {aiMode === 'deep_research' ? 'Research prompts:' :
+                     aiMode === 'analyze' ? 'Analysis prompts:' :
+                     aiMode === 'document' ? 'Document prompts:' :
+                     'Try asking:'}
+                  </p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     {suggestedQuestions.map((item, i) => (
                       <button
                         key={i}
                         onClick={() => setInput(item.question)}
-                        className="text-left text-xs p-3 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 hover:border-blue-300 transition-colors group"
+                        className="text-left text-xs p-3 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 hover:border-blue-300 transition-colors group flex items-start gap-2"
                       >
-                        <span className="block">{item.question}</span>
-                        {item.integration && (
-                          <span className={`text-[10px] mt-1 inline-block px-1.5 py-0.5 rounded ${
-                            item.integration === 'quickbooks' ? 'bg-green-100 text-green-700' :
-                            item.integration === 'google' ? 'bg-red-100 text-red-700' :
-                            item.integration === 'salesforce' ? 'bg-blue-100 text-blue-700' :
-                            item.integration === 'slack' ? 'bg-purple-100 text-purple-700' :
-                            item.integration === 'hubspot' ? 'bg-orange-100 text-orange-700' :
-                            'bg-gray-100 text-gray-700'
-                          }`}>
-                            {item.integration}
-                          </span>
-                        )}
+                        {item.icon && <span className="text-base flex-shrink-0">{item.icon}</span>}
+                        <div className="flex-1">
+                          <span className="block leading-snug">{item.question}</span>
+                          {item.integration && (
+                            <span className={`text-[10px] mt-1 inline-block px-1.5 py-0.5 rounded ${
+                              item.integration === 'quickbooks' ? 'bg-green-100 text-green-700' :
+                              item.integration === 'google' ? 'bg-red-100 text-red-700' :
+                              item.integration === 'microsoft' ? 'bg-blue-100 text-blue-700' :
+                              item.integration === 'salesforce' ? 'bg-sky-100 text-sky-700' :
+                              item.integration === 'slack' ? 'bg-purple-100 text-purple-700' :
+                              item.integration === 'hubspot' ? 'bg-orange-100 text-orange-700' :
+                              'bg-gray-100 text-gray-700'
+                            }`}>
+                              {item.integration}
+                            </span>
+                          )}
+                          {item.category && !item.integration && (
+                            <span className={`text-[10px] mt-1 inline-block px-1.5 py-0.5 rounded ${
+                              item.category === 'research' ? 'bg-purple-100 text-purple-700' :
+                              item.category === 'analysis' ? 'bg-blue-100 text-blue-700' :
+                              'bg-gray-100 text-gray-700'
+                            }`}>
+                              {item.category}
+                            </span>
+                          )}
+                        </div>
                       </button>
                     ))}
                   </div>
@@ -1330,11 +1416,80 @@ export function AIChat() {
               </button>
             )}
 
+            {/* Integration Filter - for Standard, Deep Research, and Analyze modes */}
+            {aiMode !== 'document' && installedTools.length > 0 && (
+              <div className="relative">
+                <button
+                  onClick={() => setShowIntegrationFilter(!showIntegrationFilter)}
+                  className={`flex items-center gap-2 text-xs px-3 py-1.5 rounded-lg transition-colors ${
+                    selectedIntegration !== 'all'
+                      ? 'bg-orange-100 text-orange-700 hover:bg-orange-200'
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  }`}
+                >
+                  <Filter className="w-3.5 h-3.5" />
+                  <span>{selectedIntegration === 'all' ? 'All Data' : selectedIntegration}</span>
+                  <ChevronDown className="w-3 h-3" />
+                </button>
+
+                {showIntegrationFilter && (
+                  <div className="absolute bottom-full left-0 mb-2 w-56 bg-white border border-gray-200 rounded-lg shadow-lg z-10">
+                    <div className="p-2">
+                      <div className="px-3 py-1.5 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                        Filter by Integration
+                      </div>
+                      <button
+                        onClick={() => { setSelectedIntegration('all'); setShowIntegrationFilter(false); }}
+                        className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left text-sm transition-colors ${
+                          selectedIntegration === 'all' ? 'bg-orange-100' : 'hover:bg-gray-50'
+                        }`}
+                      >
+                        <Database className="w-4 h-4 text-gray-500" />
+                        <div>
+                          <p className="font-medium text-gray-900">All Data</p>
+                          <p className="text-xs text-gray-500">Search across all integrations</p>
+                        </div>
+                      </button>
+                      {installedTools.map((tool) => (
+                        <button
+                          key={tool}
+                          onClick={() => { setSelectedIntegration(tool); setShowIntegrationFilter(false); }}
+                          className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left text-sm transition-colors ${
+                            selectedIntegration === tool ? 'bg-orange-100' : 'hover:bg-gray-50'
+                          }`}
+                        >
+                          <div className="w-4 h-4 rounded bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center">
+                            <span className="text-[8px] font-bold text-white">{tool.charAt(0).toUpperCase()}</span>
+                          </div>
+                          <div>
+                            <p className="font-medium text-gray-900">{tool}</p>
+                            <p className="text-xs text-gray-500">Only {tool} data</p>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Mode description */}
             <span className="text-xs text-gray-500">
-              {aiMode === 'standard' && 'Quick answers from your connected integrations'}
-              {aiMode === 'deep_research' && (enableWebSearch ? 'Business data + web research' : 'Business data only (no web)')}
-              {aiMode === 'analyze' && 'Comprehensive business intelligence report'}
+              {aiMode === 'standard' && (
+                selectedIntegration !== 'all'
+                  ? `Querying ${selectedIntegration} data only`
+                  : 'Quick answers from your connected integrations'
+              )}
+              {aiMode === 'deep_research' && (
+                selectedIntegration !== 'all'
+                  ? `${selectedIntegration} data ${enableWebSearch ? '+ web research' : 'only'}`
+                  : enableWebSearch ? 'Business data + web research' : 'Business data only (no web)'
+              )}
+              {aiMode === 'analyze' && (
+                selectedIntegration !== 'all'
+                  ? `Deep analysis of ${selectedIntegration} data`
+                  : 'Comprehensive business intelligence report'
+              )}
               {aiMode === 'document' && 'Upload any document for AI analysis'}
             </span>
           </div>
