@@ -12,7 +12,7 @@ export function WelcomeStep({ trialDays, onNext }: WelcomeStepProps) {
     {
       icon: Zap,
       title: 'Connect Your Tools',
-      description: 'Link QuickBooks, Google, Slack, and 20+ business tools in one place',
+      description: 'Link QuickBooks, Google, Slack, and more business tools in one dashboard',
       iconBg: 'bg-amber-100',
       iconColor: 'text-amber-600'
     },

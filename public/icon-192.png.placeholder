@@ -1,0 +1,4 @@
+# Placeholder for 192x192 icon
+# In production, generate actual PNG from SVG or provide custom icon
+# Command to generate from SVG (requires ImageMagick):
+# convert -background none -resize 192x192 icon.svg icon-192.png

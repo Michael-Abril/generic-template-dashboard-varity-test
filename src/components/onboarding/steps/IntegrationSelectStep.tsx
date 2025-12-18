@@ -13,42 +13,33 @@ interface IntegrationSelectStepProps {
   onSkip: () => void;
 }
 
-// Industry to integration mapping
+// The 6 active integrations (others coming soon)
+const ACTIVE_INTEGRATIONS = ['quickbooks', 'google', 'microsoft', 'slack', 'salesforce', 'hubspot'];
+
+// Industry to integration mapping - only active integrations
 const INDUSTRY_INTEGRATIONS: Record<string, string[]> = {
-  'Technology / Software': ['google', 'slack', 'github', 'jira'],
-  'Finance / Accounting': ['quickbooks', 'xero', 'stripe', 'freshbooks'],
-  'Healthcare / Medical': ['google', 'slack', 'zoom', 'dropbox'],
-  'Retail / E-commerce': ['shopify', 'stripe', 'quickbooks', 'square'],
+  'Technology / Software': ['google', 'slack', 'microsoft', 'hubspot'],
+  'Finance / Accounting': ['quickbooks', 'google', 'microsoft', 'hubspot'],
+  'Healthcare / Medical': ['google', 'slack', 'microsoft', 'salesforce'],
+  'Retail / E-commerce': ['quickbooks', 'google', 'hubspot', 'salesforce'],
   'Professional Services': ['google', 'slack', 'salesforce', 'hubspot'],
-  'Manufacturing': ['quickbooks', 'slack', 'monday', 'google'],
-  'Construction': ['quickbooks', 'google', 'slack', 'dropbox'],
-  'Real Estate': ['salesforce', 'google', 'docusign', 'slack'],
-  'Food & Hospitality': ['square', 'quickbooks', 'slack', 'google'],
-  'Transportation / Logistics': ['quickbooks', 'slack', 'google', 'zoom'],
-  'Non-profit': ['quickbooks', 'google', 'slack', 'mailchimp'],
+  'Manufacturing': ['quickbooks', 'slack', 'google', 'microsoft'],
+  'Construction': ['quickbooks', 'google', 'slack', 'microsoft'],
+  'Real Estate': ['salesforce', 'google', 'hubspot', 'slack'],
+  'Food & Hospitality': ['quickbooks', 'slack', 'google', 'hubspot'],
+  'Transportation / Logistics': ['quickbooks', 'slack', 'google', 'microsoft'],
+  'Non-profit': ['quickbooks', 'google', 'slack', 'hubspot'],
   'Other': ['quickbooks', 'google', 'slack', 'hubspot'],
 };
 
-// Integration metadata
+// Integration metadata - only the 6 active integrations
 const INTEGRATIONS: Record<string, { name: string; description: string; category: string }> = {
   quickbooks: { name: 'QuickBooks', description: 'Accounting & Finances', category: 'Accounting' },
   google: { name: 'Google Workspace', description: 'Email, Calendar, Drive', category: 'Productivity' },
+  microsoft: { name: 'Microsoft 365', description: 'Office Suite', category: 'Productivity' },
   slack: { name: 'Slack', description: 'Team Communication', category: 'Communication' },
   salesforce: { name: 'Salesforce', description: 'CRM & Sales', category: 'CRM' },
   hubspot: { name: 'HubSpot', description: 'Marketing & CRM', category: 'Marketing' },
-  shopify: { name: 'Shopify', description: 'E-commerce Platform', category: 'E-commerce' },
-  stripe: { name: 'Stripe', description: 'Payments', category: 'Payments' },
-  xero: { name: 'Xero', description: 'Accounting', category: 'Accounting' },
-  freshbooks: { name: 'FreshBooks', description: 'Invoicing', category: 'Accounting' },
-  zoom: { name: 'Zoom', description: 'Video Meetings', category: 'Communication' },
-  dropbox: { name: 'Dropbox', description: 'File Storage', category: 'Storage' },
-  square: { name: 'Square', description: 'Point of Sale', category: 'Payments' },
-  monday: { name: 'Monday.com', description: 'Project Management', category: 'Productivity' },
-  github: { name: 'GitHub', description: 'Code Repository', category: 'Development' },
-  jira: { name: 'Jira', description: 'Issue Tracking', category: 'Development' },
-  docusign: { name: 'DocuSign', description: 'E-Signatures', category: 'Documents' },
-  mailchimp: { name: 'Mailchimp', description: 'Email Marketing', category: 'Marketing' },
-  microsoft: { name: 'Microsoft 365', description: 'Office Suite', category: 'Productivity' },
 };
 
 export function IntegrationSelectStep({
@@ -145,7 +136,7 @@ export function IntegrationSelectStep({
           rel="noopener noreferrer"
           className="text-blue-600 hover:text-blue-700 font-medium text-sm inline-flex items-center gap-1"
         >
-          View all integrations
+          View all 6 integrations
           <ExternalLink className="w-3.5 h-3.5" />
         </a>
       </div>

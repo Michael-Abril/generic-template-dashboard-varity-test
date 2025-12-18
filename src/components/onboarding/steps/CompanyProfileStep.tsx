@@ -185,7 +185,7 @@ export function CompanyProfileStep({
             value={companyName}
             onChange={(e) => onUpdate({ companyName: e.target.value })}
             placeholder="Acme Inc."
-            className="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+            className="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm text-gray-900 bg-white"
           />
         </div>
 
@@ -197,7 +197,7 @@ export function CompanyProfileStep({
           <select
             value={industry}
             onChange={(e) => onUpdate({ industry: e.target.value })}
-            className="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm bg-white"
+            className="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm text-gray-900 bg-white"
           >
             <option value="">Select your industry</option>
             {INDUSTRIES.map((ind) => (
@@ -216,7 +216,7 @@ export function CompanyProfileStep({
           <select
             value={companySize}
             onChange={(e) => onUpdate({ companySize: e.target.value })}
-            className="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm bg-white"
+            className="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm text-gray-900 bg-white"
           >
             <option value="">Select company size</option>
             {COMPANY_SIZES.map((size) => (
@@ -243,7 +243,7 @@ export function CompanyProfileStep({
             value={contactName}
             onChange={(e) => onUpdate({ contactName: e.target.value })}
             placeholder="John Smith"
-            className="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+            className="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm text-gray-900 bg-white"
           />
         </div>
 
@@ -264,10 +264,10 @@ export function CompanyProfileStep({
             placeholder="john@company.com"
             aria-describedby="email-error email-hint"
             aria-invalid={emailTouched && !isValidEmail(contactEmail)}
-            className={`w-full px-3.5 py-2.5 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm ${
+            className={`w-full px-3.5 py-2.5 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm text-gray-900 ${
               emailTouched && contactEmail && !isValidEmail(contactEmail)
                 ? 'border-red-300 bg-red-50'
-                : 'border-gray-300'
+                : 'border-gray-300 bg-white'
             }`}
           />
           {emailTouched && contactEmail && !isValidEmail(contactEmail) && (
@@ -288,7 +288,7 @@ export function CompanyProfileStep({
           <select
             value={referralSource}
             onChange={(e) => onUpdate({ referralSource: e.target.value })}
-            className="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm bg-white"
+            className="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm text-gray-900 bg-white"
           >
             <option value="">Select an option</option>
             {REFERRAL_SOURCES.map((source) => (

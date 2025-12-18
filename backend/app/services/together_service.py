@@ -451,43 +451,112 @@ If no business data is available, encourage users to:
 - Be concise but thorough"""
 
     def _get_rag_system_prompt(self, context_parts: List[str]) -> str:
-        """System prompt for RAG mode (with business data)"""
+        """System prompt for RAG mode (with business data) - ENHANCED"""
         context = "\n\n".join(context_parts)
-        return f"""You are an AI assistant for a specific business, with access to their actual data.
+        return f"""You are the **Varity Dashboard AI Assistant** with direct access to this business's actual data stored on Filecoin/IPFS.
 
-Answer questions based on the business data provided below. Be specific and reference
-the actual data when possible. If the answer is not in the provided data, say so clearly
-and offer to help with general guidance instead.
-
-BUSINESS DATA:
+## YOUR CONNECTED DATA
 {context}
 
-Guidelines:
-- Reference specific numbers, dates, and details from the data
-- Be accurate and don't make up information
-- If data seems incomplete, mention what additional information might be helpful
-- Provide actionable insights when relevant"""
+## INTEGRATION-SPECIFIC ANALYSIS
+
+**For Financial Data (QuickBooks, Xero, FreshBooks):**
+- Reference specific invoice numbers, amounts, due dates
+- Calculate totals, averages, trends
+- Identify overdue payments, cash flow concerns
+
+**For CRM Data (Salesforce, HubSpot):**
+- Reference specific deals, contacts, companies by name
+- Calculate pipeline values, win rates
+- Identify deals needing attention
+
+**For Communication Data (Slack, Microsoft 365, Google Workspace):**
+- Summarize key discussions and decisions
+- Identify action items and owners
+
+## RESPONSE FORMAT
+
+**Key Finding**: [1-2 sentence summary with specific data]
+
+**Details**:
+- [Data point with numbers/dates]
+- [Additional details]
+
+**Recommended Action**: [Clear next step]
+
+## RULES
+1. **Be Specific**: Reference actual data (names, numbers, dates)
+2. **Be Accurate**: Only state facts from data - never fabricate
+3. **Be Actionable**: End with clear recommendation
+4. **Be Honest**: If data incomplete, acknowledge it"""
 
     def _get_research_system_prompt(self, context_parts: List[str]) -> str:
-        """System prompt for deep research mode"""
+        """System prompt for deep research mode - ENHANCED"""
         context = "\n\n".join(context_parts) if context_parts else "No specific business data available."
-        return f"""You are an expert business analyst conducting deep research.
+        return f"""You are the **Varity Dashboard AI Assistant** in **Deep Research Mode** — providing comprehensive analysis like a senior management consultant.
 
-Your task is to provide comprehensive, well-researched analysis. Consider multiple angles,
-identify patterns, and provide actionable recommendations.
-
-AVAILABLE BUSINESS DATA:
+## AVAILABLE DATA
 {context}
 
-Research Guidelines:
-1. ANALYZE the data thoroughly - look for patterns, trends, and anomalies
-2. SYNTHESIZE information from multiple sources when available
-3. IDENTIFY key insights and their business implications
-4. RECOMMEND specific actions based on your analysis
-5. ACKNOWLEDGE limitations and suggest additional data that would help
-6. STRUCTURE your response clearly with sections when appropriate
+## RESEARCH METHODOLOGY
 
-Provide a thorough, executive-level analysis that would be valuable for decision-making."""
+**Phase 1: Data Analysis**
+- Examine data for patterns, trends, anomalies
+- Calculate key metrics and ratios
+
+**Phase 2: Insight Generation**
+- What story does the data tell?
+- What opportunities or risks are emerging?
+
+**Phase 3: Recommendations**
+- What specific actions should be taken?
+- What's the priority order?
+
+## RESPONSE FORMAT (Executive Report)
+
+**EXECUTIVE SUMMARY**
+[2-3 sentences with key finding and recommendation]
+
+---
+
+**KEY METRICS**
+| Metric | Value | Trend |
+|--------|-------|-------|
+| [Metric] | [Value] | [Up/Down/Stable] |
+
+---
+
+**DETAILED ANALYSIS**
+
+### Finding 1: [Title]
+[Analysis with data]
+
+### Finding 2: [Title]
+[Analysis with data]
+
+---
+
+**RISKS & OPPORTUNITIES**
+- Risks: [Risk with impact]
+- Opportunities: [Opportunity with value]
+
+---
+
+**RECOMMENDATIONS**
+
+**Immediate**: [Action this week]
+**Short-Term**: [Action this month]
+
+---
+
+**DATA LIMITATIONS**
+[What additional data would help]
+
+## GUIDELINES
+1. Be Thorough - comprehensive analysis
+2. Be Quantitative - use numbers and percentages
+3. Be Strategic - connect to business outcomes
+4. Be Actionable - support decision-making"""
 
     async def analyze_document(
         self,
@@ -496,37 +565,117 @@ Provide a thorough, executive-level analysis that would be valuable for decision
         analysis_type: str = "summary"
     ) -> Dict[str, Any]:
         """
-        Analyze a document with AI
+        Analyze a document with AI - ENHANCED
 
         Args:
             business_wallet: Business wallet address
             document_content: The document text to analyze
-            analysis_type: Type of analysis (summary, key_points, sentiment, extraction)
+            analysis_type: Type of analysis (summary, key_points, sentiment, extraction, action_items)
 
         Returns:
-            Analysis results
+            Analysis results with structured output
         """
-        analysis_prompts = {
-            "summary": "Provide a concise executive summary of this document, highlighting the key points and conclusions.",
-            "key_points": "Extract and list the key points from this document in bullet format.",
-            "sentiment": "Analyze the sentiment and tone of this document. Identify any concerns, positive aspects, or neutral observations.",
-            "extraction": "Extract all important data points, numbers, dates, names, and entities mentioned in this document.",
-            "action_items": "Identify any action items, next steps, or recommendations mentioned in this document."
+        # Enhanced analysis prompts with structured output
+        analysis_configs = {
+            "summary": {
+                "instruction": "Create an executive summary.",
+                "format": """**EXECUTIVE SUMMARY**
+
+**Purpose**: [Document purpose]
+
+**Key Points**:
+- [Point 1]
+- [Point 2]
+- [Point 3]
+
+**Conclusion**: [Main takeaway]
+
+**Business Relevance**: [Why this matters]"""
+            },
+            "key_points": {
+                "instruction": "Extract key points in structured format.",
+                "format": """**KEY POINTS**
+
+**Critical (Must Know)**:
+1. [Most important]
+2. [Second important]
+
+**Supporting Details**:
+- [Detail 1]
+- [Detail 2]
+
+**Implications**: [What this means]"""
+            },
+            "sentiment": {
+                "instruction": "Analyze sentiment and tone.",
+                "format": """**SENTIMENT ANALYSIS**
+
+**Overall Tone**: [Positive/Negative/Neutral/Mixed]
+
+**Positive Indicators**:
+- [Positive 1]
+
+**Concerns/Risks**:
+- [Concern 1]
+
+**Recommendation**: [How to respond]"""
+            },
+            "extraction": {
+                "instruction": "Extract all data points and entities.",
+                "format": """**DATA EXTRACTION**
+
+**Numbers & Metrics**:
+| Metric | Value | Context |
+|--------|-------|---------|
+| [Metric] | [Value] | [Context] |
+
+**Dates**: [Date]: [Event]
+
+**People/Orgs**: [Name]: [Role]
+
+**Key Terms**: [Term]: [Definition]"""
+            },
+            "action_items": {
+                "instruction": "Identify action items and next steps.",
+                "format": """**ACTION ITEMS**
+
+**Immediate (This Week)**:
+| Action | Owner | Priority |
+|--------|-------|----------|
+| [Task] | [Who] | [High/Med/Low] |
+
+**Follow-Up Required**:
+- [Item]
+
+**Decisions Needed**:
+- [Decision point]"""
+            }
         }
 
-        prompt_instruction = analysis_prompts.get(analysis_type, analysis_prompts["summary"])
+        config = analysis_configs.get(analysis_type, analysis_configs["summary"])
 
-        system_prompt = f"""You are a document analysis expert. {prompt_instruction}
+        system_prompt = f"""You are the **Varity Dashboard AI Assistant** in **Document Analysis Mode**.
 
-Be thorough but concise. Focus on information that would be valuable for business decision-making."""
+## TASK
+{config["instruction"]}
 
-        user_prompt = f"""Please analyze the following document:
+## OUTPUT FORMAT
+{config["format"]}
+
+## GUIDELINES
+1. Be thorough but concise
+2. Focus on business-relevant information
+3. Use exact format above
+4. If info not found, note "Not in document"
+5. Prioritize accuracy"""
+
+        user_prompt = f"""Analyze this document:
 
 ---
 {document_content}
 ---
 
-{prompt_instruction}"""
+Provide analysis in the specified format."""
 
         try:
             messages = [
@@ -974,51 +1123,73 @@ Business Data Source {idx} (Integration: {integration_name}, Type: {data_type_na
         rag_context_parts: List[str],
         web_search_context: str
     ) -> str:
-        """Build system prompt combining RAG and web search context"""
+        """Build system prompt combining RAG and web search context - ENHANCED"""
 
-        parts = [
-            "You are the Varity Dashboard AI Assistant - a powerful business intelligence tool.",
-            "",
-            "Varity Dashboard helps businesses connect their software (QuickBooks, Salesforce, Shopify, Slack, etc.) and get AI-powered insights.",
-            "",
+        has_business_data = bool(rag_context_parts)
+        has_web_search = bool(web_search_context)
+
+        prompt_parts = [
+            "You are the **Varity Dashboard AI Assistant** — providing comprehensive business intelligence.",
+            ""
         ]
 
-        # Add RAG context if available
-        if rag_context_parts:
+        # Add business data if available
+        if has_business_data:
             rag_context = "\n\n".join(rag_context_parts)
-            parts.append("YOUR BUSINESS DATA (from connected integrations):")
-            parts.append(rag_context)
-            parts.append("")
+            prompt_parts.extend([
+                "## YOUR BUSINESS DATA (from Filecoin/IPFS)",
+                rag_context,
+                ""
+            ])
 
-        # Add web search context if available
-        if web_search_context:
-            parts.append("WEB RESEARCH RESULTS:")
-            parts.append(web_search_context)
-            parts.append("")
+        # Add web search if available
+        if has_web_search:
+            prompt_parts.extend([
+                "## WEB RESEARCH RESULTS",
+                web_search_context,
+                ""
+            ])
 
-        # Add instructions based on context
-        parts.append("Guidelines:")
-        if rag_context_parts and web_search_context:
-            parts.append("- You have access to both the user's business data AND web research")
-            parts.append("- Prioritize their actual business data for company-specific questions")
-            parts.append("- Use web research for market trends, industry benchmarks, or external information")
-            parts.append("- Clearly indicate which source you're referencing")
-        elif rag_context_parts:
-            parts.append("- Answer based on the user's actual business data")
-            parts.append("- Reference specific numbers, dates, and details from the data")
-            parts.append("- Provide actionable insights based on their data")
-        elif web_search_context:
-            parts.append("- Use the web research to answer accurately")
-            parts.append("- Cite sources when providing information")
-            parts.append("- Note: The user hasn't connected their business software yet")
-            parts.append("- Suggest they visit the Integrations page to connect tools for personalized insights")
+        # Add mode-specific instructions
+        prompt_parts.append("## RESPONSE GUIDELINES")
+
+        if has_business_data and has_web_search:
+            prompt_parts.extend([
+                "",
+                "**Combined Mode** — You have BOTH business data AND web research.",
+                "- For company questions → Use business data",
+                "- For market context → Use web research",
+                "- Always indicate which source",
+                "",
+                "**Format:**",
+                "**Your Data Shows**: [business insight]",
+                "**Market Context**: [web research]",
+                "**Recommendation**: [action combining both]"
+            ])
+        elif has_business_data:
+            prompt_parts.extend([
+                "",
+                "**Business Data Mode** — Analyze their actual data:",
+                "- Reference specific numbers, dates, names",
+                "- Provide actionable insights",
+                "- End with recommendation"
+            ])
+        elif has_web_search:
+            prompt_parts.extend([
+                "",
+                "**Web Research Mode** — No integrations connected:",
+                "- Provide accurate web research",
+                "- Cite sources",
+                "- Suggest connecting integrations for personalized insights"
+            ])
         else:
-            parts.append("- The user hasn't connected any business software integrations yet")
-            parts.append("- Encourage them to visit the **Integrations** page to connect tools like QuickBooks, Salesforce, etc.")
-            parts.append("- Once connected, you can provide personalized insights from their actual data")
-            parts.append("- For now, provide helpful general guidance")
+            prompt_parts.extend([
+                "",
+                "**General Mode** — No integrations connected:",
+                "- Provide helpful business guidance",
+                "- Encourage connecting integrations",
+                "",
+                "Go to **Integrations** → Connect QuickBooks, Salesforce, Slack → Get AI insights from your data."
+            ])
 
-        parts.append("- Be concise, professional, and actionable")
-        parts.append("- Reference Varity Dashboard features when relevant")
-
-        return "\n".join(parts)
+        return "\n".join(prompt_parts)

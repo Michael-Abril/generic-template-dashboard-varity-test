@@ -1,0 +1,189 @@
+# Generic Template Dashboard - Isolated Docker Stack
+# This stack is completely isolated from proprietary Varity services
+name: generic-template-dashboard
+
+services:
+  # PostgreSQL Database - Isolated for Generic Template
+  postgres:
+    image: postgres:15-alpine
+    container_name: generic-template-postgres
+    environment:
+      POSTGRES_DB: generic_template
+      POSTGRES_USER: generic_template
+      POSTGRES_PASSWORD: generic_template_secure_password
+      POSTGRES_HOST_AUTH_METHOD: trust
+    ports:
+      - "5433:5432"  # Different port to avoid conflicts
+    volumes:
+      - generic_template_postgres_data:/var/lib/postgresql/data
+      - ./backend/init-db.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U generic_template"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - generic-template-network
+    labels:
+      - "com.docker.compose.project=generic-template"
+      - "varity.template=generic"
+      - "varity.component=database"
+      - "varity.group=Generic Template Dashboard"
+
+  # Redis Cache - Isolated for Generic Template
+  redis:
+    image: redis:7-alpine
+    container_name: generic-template-redis
+    ports:
+      - "6380:6379"  # Different port to avoid conflicts
+    volumes:
+      - generic_template_redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - generic-template-network
+    labels:
+      - "com.docker.compose.project=generic-template"
+      - "varity.template=generic"
+      - "varity.component=cache"
+      - "varity.group=Generic Template Dashboard"
+
+  # Ollama - Mistral LLM for Generic Template (NOT Code Llama)
+  ollama:
+    image: ollama/ollama:latest
+    container_name: generic-template-ollama
+    ports:
+      - "11435:11434"  # Different port to avoid conflicts with proprietary LLM
+    volumes:
+      - generic_template_ollama_data:/root/.ollama
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+      - OLLAMA_MODELS=mistral  # Explicitly NOT codellama
+    # Healthcheck disabled: base image does not ship curl by default, causing perpetual "unhealthy"
+    # The service itself logs readiness once the model is loaded.
+    #healthcheck:
+    #  test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+    #  interval: 30s
+    #  timeout: 10s
+    #  retries: 5
+    networks:
+      - generic-template-network
+    labels:
+      - "com.docker.compose.project=generic-template"
+      - "varity.template=generic"
+      - "varity.component=llm"
+      - "varity.model=mistral"
+      - "varity.group=Generic Template Dashboard"
+
+  # Qdrant - Vector Database for Generic Template RAG
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: generic-template-qdrant
+    ports:
+      - "6334:6333"  # HTTP API - Different port
+      - "6335:6334"  # gRPC API - Different port
+    volumes:
+      - generic_template_qdrant_data:/qdrant/storage
+    environment:
+      - QDRANT__SERVICE__HTTP_PORT=6333
+      - QDRANT__SERVICE__GRPC_PORT=6334
+    # Healthcheck disabled: base image does not ship curl by default, causing perpetual "unhealthy"
+    #healthcheck:
+    #  test: ["CMD", "curl", "-f", "http://localhost:6333/"]
+    #  interval: 30s
+    #  timeout: 10s
+    #  retries: 5
+    networks:
+      - generic-template-network
+    labels:
+      - "com.docker.compose.project=generic-template"
+      - "varity.template=generic"
+      - "varity.component=vector-db"
+      - "varity.group=Generic Template Dashboard"
+
+  # Backend FastAPI service - Isolated for Generic Template
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: generic-template-backend
+    ports:
+      - "8002:8000"  # External port 8002 for Generic Template Dashboard
+    environment:
+      # Updated connection strings for isolated containers
+      - DATABASE_URL=postgresql+asyncpg://generic_template:generic_template_secure_password@generic-template-postgres:5432/generic_template
+      - REDIS_URL=redis://generic-template-redis:6379
+      - OLLAMA_URL=http://generic-template-ollama:11434
+      - QDRANT_URL=http://generic-template-qdrant:6333
+      # Pinata/Filecoin credentials
+      - PINATA_API_KEY=${PINATA_API_KEY}
+      - PINATA_SECRET_KEY=${PINATA_SECRET_KEY}
+      - PINATA_JWT=${PINATA_JWT}
+      # Lit Protocol
+      - LIT_NETWORK=${LIT_NETWORK:-cayenne}
+      # Blockchain
+      - BLOCKCHAIN_RPC_URL=${BLOCKCHAIN_RPC_URL}
+      - VARITY_RPC_URL=https://rpc-varity-testnet-rroe52pwjp.t.conduit.xyz
+      # Service identification
+      - SERVICE_NAME=generic-template-backend
+      - TEMPLATE_TYPE=generic
+      # Development mode (disables wallet auth for testing)
+      - DEV_MODE=true
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      ollama:
+        condition: service_started
+      qdrant:
+        condition: service_started
+    volumes:
+      - ./backend:/app
+    networks:
+      - generic-template-network
+    labels:
+      - "com.docker.compose.project=generic-template"
+      - "varity.template=generic"
+      - "varity.component=api"
+      - "varity.group=Generic Template Dashboard"
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+# Named volumes with generic-template prefix for isolation
+volumes:
+  generic_template_postgres_data:
+    name: generic-template-postgres-data
+    labels:
+      - "varity.template=generic"
+      - "varity.component=database-storage"
+
+  generic_template_redis_data:
+    name: generic-template-redis-data
+    labels:
+      - "varity.template=generic"
+      - "varity.component=cache-storage"
+
+  generic_template_ollama_data:
+    name: generic-template-ollama-data
+    labels:
+      - "varity.template=generic"
+      - "varity.component=llm-storage"
+
+  generic_template_qdrant_data:
+    name: generic-template-qdrant-data
+    labels:
+      - "varity.template=generic"
+      - "varity.component=vector-storage"
+
+# Isolated network for Generic Template
+networks:
+  generic-template-network:
+    name: generic-template-network
+    driver: bridge
+    labels:
+      - "varity.template=generic"
+      - "varity.network=isolated"
