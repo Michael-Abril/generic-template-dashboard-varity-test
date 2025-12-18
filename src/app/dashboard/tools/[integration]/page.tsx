@@ -2155,11 +2155,13 @@ export default function IntegrationToolPage() {
     }, {} as Record<string, any>);
 
     return (
-      <SalesforcePage
-        walletAddress={address}
-        data={salesforceData}
-        onRefresh={fetchData}
-      />
+      <Layout>
+        <SalesforcePage
+          walletAddress={address}
+          data={salesforceData}
+          onRefresh={fetchData}
+        />
+      </Layout>
     );
   }
 
@@ -2174,10 +2176,12 @@ export default function IntegrationToolPage() {
     };
 
     return (
-      <SlackPage
-        walletAddress={address}
-        data={slackData}
-      />
+      <Layout>
+        <SlackPage
+          walletAddress={address}
+          data={slackData}
+        />
+      </Layout>
     );
   }
 
@@ -2190,13 +2194,15 @@ export default function IntegrationToolPage() {
     }, {} as Record<string, any>);
 
     return (
-      <GoogleWorkspacePage
-        walletAddress={address}
-        data={googleData}
-        onSync={syncData}
-        onRefresh={fetchData}
-        loading={loading}
-      />
+      <Layout>
+        <GoogleWorkspacePage
+          walletAddress={address}
+          data={googleData}
+          onSync={syncData}
+          onRefresh={fetchData}
+          loading={loading}
+        />
+      </Layout>
     );
   }
 
@@ -2209,11 +2215,13 @@ export default function IntegrationToolPage() {
     }, {} as Record<string, any>);
 
     return (
-      <Microsoft365Page
-        walletAddress={address}
-        data={microsoftData}
-        onSync={syncData}
-      />
+      <Layout>
+        <Microsoft365Page
+          walletAddress={address}
+          data={microsoftData}
+          onSync={syncData}
+        />
+      </Layout>
     );
   }
 
