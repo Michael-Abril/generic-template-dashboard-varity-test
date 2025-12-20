@@ -78,47 +78,61 @@ class GoogleWorkspaceSync:
 
     async def sync_gmail(self) -> Dict[str, Any]:
         """
-        Sync Gmail emails and labels
+        Sync Gmail emails and labels with FULL email content
 
         Returns:
-            Dictionary containing Gmail data
+            Dictionary containing Gmail data with full message bodies
         """
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=60.0) as client:
             try:
-                # Get user's Gmail messages (last 100)
+                # Get user's Gmail messages - ALL recent emails (not just unread/starred)
                 response = await client.get(
                     "https://gmail.googleapis.com/gmail/v1/users/me/messages",
                     headers=self.base_headers,
-                    params={"maxResults": 100, "q": "is:unread OR is:starred"}
+                    params={"maxResults": 100}  # Get up to 100 emails
                 )
                 response.raise_for_status()
                 messages_list = response.json().get("messages", [])
 
-                # Fetch details for each message
+                # Fetch FULL details for each message (including body)
                 messages = []
-                for msg in messages_list[:20]:  # Limit to 20 for initial sync
+                for msg in messages_list[:50]:  # Sync up to 50 emails with full content
                     msg_response = await client.get(
                         f"https://gmail.googleapis.com/gmail/v1/users/me/messages/{msg['id']}",
                         headers=self.base_headers,
-                        params={"format": "metadata", "metadataHeaders": ["From", "To", "Subject", "Date"]}
+                        params={"format": "full"}  # FULL format includes body content
                     )
                     msg_response.raise_for_status()
                     msg_data = msg_response.json()
 
                     # Extract headers
-                    headers = {h["name"]: h["value"] for h in msg_data.get("payload", {}).get("headers", [])}
+                    payload = msg_data.get("payload", {})
+                    headers = {h["name"]: h["value"] for h in payload.get("headers", [])}
+
+                    # Check for attachments
+                    has_attachment = False
+                    if payload.get("parts"):
+                        for part in payload.get("parts", []):
+                            if part.get("filename"):
+                                has_attachment = True
+                                break
 
                     messages.append({
                         "id": msg_data["id"],
                         "threadId": msg_data.get("threadId"),
                         "from": headers.get("From", ""),
                         "to": headers.get("To", ""),
-                        "subject": headers.get("Subject", ""),
+                        "subject": headers.get("Subject", "(No Subject)"),
                         "date": headers.get("Date", ""),
-                        "snippet": msg_data.get("snippet", "")
+                        "snippet": msg_data.get("snippet", ""),
+                        "labels": msg_data.get("labelIds", []),
+                        "starred": "STARRED" in msg_data.get("labelIds", []),
+                        "unread": "UNREAD" in msg_data.get("labelIds", []),
+                        "hasAttachment": has_attachment,
+                        "payload": payload  # Include full payload for body decoding on frontend
                     })
 
-                logger.info(f"Synced {len(messages)} Gmail messages")
+                logger.info(f"Synced {len(messages)} Gmail messages with full content")
                 return {
                     "messages": messages,
                     "total_count": len(messages_list),
@@ -131,16 +145,16 @@ class GoogleWorkspaceSync:
 
     async def sync_calendar(self) -> Dict[str, Any]:
         """
-        Sync Google Calendar events
+        Sync Google Calendar events (past 30 days + next 60 days)
 
         Returns:
             Dictionary containing calendar data
         """
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=60.0) as client:
             try:
-                # Get events from primary calendar (next 30 days)
-                time_min = datetime.utcnow().isoformat() + "Z"
-                time_max = (datetime.utcnow() + timedelta(days=30)).isoformat() + "Z"
+                # Get events from primary calendar (past 30 days + next 60 days)
+                time_min = (datetime.utcnow() - timedelta(days=30)).isoformat() + "Z"
+                time_max = (datetime.utcnow() + timedelta(days=60)).isoformat() + "Z"
 
                 response = await client.get(
                     "https://www.googleapis.com/calendar/v3/calendars/primary/events",
@@ -148,7 +162,7 @@ class GoogleWorkspaceSync:
                     params={
                         "timeMin": time_min,
                         "timeMax": time_max,
-                        "maxResults": 50,
+                        "maxResults": 100,
                         "singleEvents": True,
                         "orderBy": "startTime"
                     }
@@ -158,15 +172,26 @@ class GoogleWorkspaceSync:
 
                 events = []
                 for event in data.get("items", []):
+                    # Get start/end times (handle both dateTime and date formats)
+                    start_dt = event.get("start", {}).get("dateTime") or event.get("start", {}).get("date")
+                    end_dt = event.get("end", {}).get("dateTime") or event.get("end", {}).get("date")
+
                     events.append({
                         "id": event["id"],
                         "summary": event.get("summary", "No title"),
                         "description": event.get("description", ""),
-                        "start": event.get("start", {}).get("dateTime") or event.get("start", {}).get("date"),
-                        "end": event.get("end", {}).get("dateTime") or event.get("end", {}).get("date"),
+                        "start": start_dt,
+                        "end": end_dt,
                         "attendees": [a.get("email") for a in event.get("attendees", [])],
                         "location": event.get("location", ""),
-                        "status": event.get("status", "")
+                        "status": event.get("status", "confirmed"),
+                        "colorId": event.get("colorId"),
+                        "hangoutLink": event.get("hangoutLink"),
+                        "htmlLink": event.get("htmlLink"),
+                        "creator": event.get("creator", {}).get("email"),
+                        "organizer": event.get("organizer", {}).get("email"),
+                        "recurringEventId": event.get("recurringEventId"),
+                        "isAllDay": "date" in event.get("start", {})
                     })
 
                 logger.info(f"Synced {len(events)} Calendar events")
@@ -181,20 +206,20 @@ class GoogleWorkspaceSync:
 
     async def sync_drive(self) -> Dict[str, Any]:
         """
-        Sync Google Drive files metadata
+        Sync Google Drive files metadata with full details
 
         Returns:
             Dictionary containing Drive files data
         """
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=60.0) as client:
             try:
-                # Get Drive files (most recent 50)
+                # Get Drive files (most recent 100)
                 response = await client.get(
                     "https://www.googleapis.com/drive/v3/files",
                     headers=self.base_headers,
                     params={
-                        "pageSize": 50,
-                        "fields": "files(id,name,mimeType,size,createdTime,modifiedTime,webViewLink,owners)",
+                        "pageSize": 100,
+                        "fields": "files(id,name,mimeType,size,createdTime,modifiedTime,webViewLink,owners,starred,shared,parents,iconLink,thumbnailLink)",
                         "orderBy": "modifiedTime desc"
                     }
                 )
@@ -211,7 +236,12 @@ class GoogleWorkspaceSync:
                         "createdTime": file.get("createdTime", ""),
                         "modifiedTime": file.get("modifiedTime", ""),
                         "webViewLink": file.get("webViewLink", ""),
-                        "owners": [o.get("emailAddress") for o in file.get("owners", [])]
+                        "owners": [o.get("emailAddress") for o in file.get("owners", [])],
+                        "starred": file.get("starred", False),
+                        "shared": file.get("shared", False),
+                        "parents": file.get("parents", []),
+                        "iconLink": file.get("iconLink", ""),
+                        "thumbnailLink": file.get("thumbnailLink", "")
                     })
 
                 logger.info(f"Synced {len(files)} Drive files")

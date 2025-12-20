@@ -188,7 +188,7 @@ OAUTH_CONFIGS = {
         "client_id": settings.google_client_id if hasattr(settings, 'google_client_id') else "",
         "client_secret": settings.google_client_secret if hasattr(settings, 'google_client_secret') else "",
         "redirect_uri": get_redirect_uri("google"),
-        "scope": "openid email profile https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/contacts.readonly https://www.googleapis.com/auth/tasks.readonly"
+        "scope": "openid email profile https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/contacts https://www.googleapis.com/auth/tasks"
     },
     "microsoft": {
         "authorize_url": "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
@@ -245,7 +245,7 @@ OAUTH_CONFIGS = {
         "client_id": settings.google_client_id if hasattr(settings, 'google_client_id') else "",
         "client_secret": settings.google_client_secret if hasattr(settings, 'google_client_secret') else "",
         "redirect_uri": get_redirect_uri("google_workspace"),
-        "scope": "openid email profile https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/contacts.readonly https://www.googleapis.com/auth/tasks.readonly"
+        "scope": "openid email profile https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/contacts https://www.googleapis.com/auth/tasks"
     }
 }
 
