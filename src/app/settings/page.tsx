@@ -276,6 +276,7 @@ export default function SettingsPage() {
           timezone: timezone,
           company_size: companySize || null,
           contact_name: contactName || null,
+          referral_source: referralSource || null,
         }),
       });
 
@@ -719,20 +720,18 @@ export default function SettingsPage() {
                         />
                       </div>
 
-                      {referralSource && (
-                        <div>
-                          <label className="block text-sm font-semibold text-gray-700 mb-2">
-                            Referral Source
-                          </label>
-                          <input
-                            type="text"
-                            value={referralSource}
-                            disabled
-                            className="w-full px-4 py-3 border border-gray-300 rounded-lg bg-gray-50 text-gray-500 cursor-not-allowed"
-                          />
-                          <p className="text-xs text-gray-500 mt-1">Collected during onboarding</p>
-                        </div>
-                      )}
+                      <div>
+                        <label className="block text-sm font-semibold text-gray-700 mb-2">
+                          Referral Source
+                        </label>
+                        <input
+                          type="text"
+                          value={referralSource || 'Not set'}
+                          disabled
+                          className="w-full px-4 py-3 border border-gray-300 rounded-lg bg-gray-50 text-gray-500 cursor-not-allowed"
+                        />
+                        <p className="text-xs text-gray-500 mt-1">Collected during onboarding</p>
+                      </div>
 
                       <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
                         <p className="text-sm text-gray-600 mb-1">Account ID (Wallet Address)</p>

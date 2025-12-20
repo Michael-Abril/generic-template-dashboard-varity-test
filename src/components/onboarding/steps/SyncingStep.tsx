@@ -37,6 +37,22 @@ export function SyncingStep({
   const [syncComplete, setSyncComplete] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showSkip, setShowSkip] = useState(false);
+  const [retryKey, setRetryKey] = useState(0);
+
+  const handleRetry = () => {
+    // Reset states and retry sync
+    setError(null);
+    setShowSkip(false);
+    setStages([
+      { id: 'connect', label: 'Connection verified', icon: Check, status: 'completed' },
+      { id: 'fetch', label: 'Fetching your data', icon: Database, status: 'pending' },
+      { id: 'encrypt', label: 'Encrypting with your key', icon: Shield, status: 'pending' },
+      { id: 'store', label: 'Storing securely', icon: Clock, status: 'pending' },
+      { id: 'index', label: 'Preparing AI insights', icon: Sparkles, status: 'pending' },
+    ]);
+    setCurrentStageIndex(1);
+    setRetryKey(prev => prev + 1);
+  };
 
   // Show skip option after delay
   useEffect(() => {
@@ -50,9 +66,8 @@ export function SyncingStep({
     const runSync = async () => {
       const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
-      // Start the actual sync process
       try {
-        // Update to "fetching" stage
+        // Stage 1: Fetching data
         setStages(prev => prev.map((s, i) =>
           i === 1 ? { ...s, status: 'in_progress' } : s
         ));
@@ -64,58 +79,69 @@ export function SyncingStep({
         );
 
         if (!syncResponse.ok) {
-          // Even if sync fails, we can still complete onboarding
-          // The user can sync later from the dashboard
-          console.warn('Sync returned non-ok status, continuing anyway');
+          const errorData = await syncResponse.json().catch(() => ({}));
+          throw new Error(errorData.detail || `Sync failed with status ${syncResponse.status}`);
         }
 
-        // Simulate the visual progress through stages
-        // In reality, the sync is happening in the background
-        for (let i = 1; i < stages.length; i++) {
-          await new Promise(resolve => setTimeout(resolve, 1200));
-          setStages(prev => prev.map((s, idx) => {
-            if (idx === i) return { ...s, status: 'completed' };
-            if (idx === i + 1) return { ...s, status: 'in_progress' };
-            return s;
-          }));
-          setCurrentStageIndex(i + 1);
-        }
-
-        // All stages complete
+        // Mark fetching complete, start encrypting
+        setStages(prev => prev.map((s, i) => {
+          if (i === 1) return { ...s, status: 'completed' };
+          if (i === 2) return { ...s, status: 'in_progress' };
+          return s;
+        }));
+        setCurrentStageIndex(2);
         await new Promise(resolve => setTimeout(resolve, 500));
+
+        // Mark encrypting complete, start storing
+        setStages(prev => prev.map((s, i) => {
+          if (i === 2) return { ...s, status: 'completed' };
+          if (i === 3) return { ...s, status: 'in_progress' };
+          return s;
+        }));
+        setCurrentStageIndex(3);
+        await new Promise(resolve => setTimeout(resolve, 500));
+
+        // Mark storing complete, start indexing
+        setStages(prev => prev.map((s, i) => {
+          if (i === 3) return { ...s, status: 'completed' };
+          if (i === 4) return { ...s, status: 'in_progress' };
+          return s;
+        }));
+        setCurrentStageIndex(4);
+        await new Promise(resolve => setTimeout(resolve, 500));
+
+        // Mark indexing complete
+        setStages(prev => prev.map(s => ({ ...s, status: 'completed' })));
         setSyncComplete(true);
 
-        // Auto-advance after showing completion
+        // Auto-advance after showing success
         await new Promise(resolve => setTimeout(resolve, 1500));
         onComplete();
 
       } catch (err) {
         console.error('Sync error:', err);
-        // Don't block on sync errors - user can retry later
-        setError('Some data may not have synced. You can sync again from the dashboard.');
+        const errorMessage = err instanceof Error ? err.message : 'Sync failed';
+        setError(errorMessage);
 
-        // Still mark stages as complete and continue
-        setStages(prev => prev.map(s => ({ ...s, status: 'completed' })));
-        setSyncComplete(true);
-
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        onComplete();
+        // Mark current stage as failed (stays in progress)
+        // Don't auto-advance - let user choose to skip or retry
+        setShowSkip(true);
       }
     };
 
     runSync();
-  }, [integration, walletAddress, onComplete, stages.length]);
+  }, [integration, walletAddress, onComplete, retryKey]);
 
   const completedCount = stages.filter(s => s.status === 'completed').length;
   const progressPercent = (completedCount / stages.length) * 100;
 
   return (
-    <div className="px-6 py-10 sm:px-10 sm:py-12">
+    <div className="px-6 py-6 sm:px-8 sm:py-8">
       {/* Header */}
-      <div className="text-center mb-8">
-        <div className="flex justify-center mb-4">
+      <div className="text-center mb-5">
+        <div className="flex justify-center mb-3">
           <div className="relative">
-            <div className={`w-16 h-16 rounded-xl flex items-center justify-center ${syncComplete ? 'bg-green-600' : 'bg-blue-600'}`}>
+            <div className={`w-14 h-14 rounded-xl flex items-center justify-center ${syncComplete ? 'bg-green-600' : 'bg-blue-600'}`}>
               <IntegrationLogo integration={integration} size="md" />
             </div>
             {!syncComplete && (
@@ -141,7 +167,7 @@ export function SyncingStep({
       </div>
 
       {/* Progress Bar */}
-      <div className="max-w-sm mx-auto mb-8">
+      <div className="max-w-sm mx-auto mb-5">
         <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
           <div
             className={`h-full transition-all duration-500 ease-out ${syncComplete ? 'bg-green-500' : 'bg-blue-600'}`}
@@ -155,7 +181,7 @@ export function SyncingStep({
       </div>
 
       {/* Sync Stages */}
-      <div className="max-w-sm mx-auto space-y-2 mb-6">
+      <div className="max-w-sm mx-auto space-y-1.5 mb-4">
         {stages.map((stage) => {
           const Icon = stage.icon;
           const isCompleted = stage.status === 'completed';
@@ -205,11 +231,28 @@ export function SyncingStep({
         })}
       </div>
 
-      {/* Error Message (non-blocking) */}
+      {/* Error Message with Retry */}
       {error && (
         <div className="max-w-sm mx-auto mb-5">
-          <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-amber-700 text-sm">
-            {error}
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+            <p className="text-red-700 text-sm font-medium mb-3">{error}</p>
+            <div className="flex gap-2">
+              <button
+                onClick={handleRetry}
+                className="flex-1 px-3 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
+              >
+                Try Again
+              </button>
+              <button
+                onClick={onComplete}
+                className="flex-1 px-3 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors"
+              >
+                Skip for Now
+              </button>
+            </div>
+            <p className="text-xs text-gray-500 mt-2 text-center">
+              You can sync again from the dashboard
+            </p>
           </div>
         </div>
       )}
@@ -223,8 +266,8 @@ export function SyncingStep({
         </div>
       )}
 
-      {/* Skip option - appears after delay */}
-      {showSkip && !syncComplete && (
+      {/* Skip option - appears after delay (only if no error) */}
+      {showSkip && !syncComplete && !error && (
         <div className="max-w-sm mx-auto mt-6">
           <button
             onClick={onComplete}

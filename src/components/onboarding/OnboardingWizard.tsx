@@ -320,7 +320,8 @@ export function OnboardingWizard({
       );
 
       if (!response.ok) {
-        console.error('Failed to mark onboarding complete');
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || 'Failed to complete onboarding');
       }
 
       // Track onboarding completion
@@ -336,6 +337,7 @@ export function OnboardingWizard({
     } catch (err) {
       console.error('Error completing onboarding:', err);
       onboardingAnalytics.error('complete', 'api_error');
+      throw err; // Re-throw so CompleteStep can handle
     }
   }, [address, state.selectedIntegration, state.trialTier]);
 

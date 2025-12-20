@@ -188,6 +188,26 @@ export function CompanyProfileStep({
           )}
         </div>
 
+        {/* Company Size - Optional */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Company Size
+          </label>
+          <select
+            value={companySize}
+            onChange={(e) => onUpdate({ companySize: e.target.value })}
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm text-gray-900 bg-white"
+          >
+            <option value="">Select size (optional)</option>
+            <option value="1">Just me</option>
+            <option value="2-10">2-10 employees</option>
+            <option value="11-50">11-50 employees</option>
+            <option value="51-200">51-200 employees</option>
+            <option value="201-500">201-500 employees</option>
+            <option value="500+">500+ employees</option>
+          </select>
+        </div>
+
         {/* How did you hear about us - Optional */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">

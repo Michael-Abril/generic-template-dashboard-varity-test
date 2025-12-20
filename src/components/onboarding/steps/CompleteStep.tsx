@@ -30,6 +30,8 @@ export function CompleteStep({
   const router = useRouter();
   const [showCelebration, setShowCelebration] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
   // Generate referral link using wallet address prefix
   const referralCode = walletAddress?.slice(0, 8) || 'VARITY';
@@ -51,13 +53,29 @@ export function CompleteStep({
   };
 
   const handleGoToDashboard = async () => {
-    await onComplete();
-    router.push('/dashboard');
+    setSaving(true);
+    setError(null);
+    try {
+      await onComplete();
+      router.push('/dashboard');
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to complete setup';
+      setError(errorMessage);
+      setSaving(false);
+    }
   };
 
   const handleNavigate = async (href: string) => {
-    await onComplete();
-    router.push(href);
+    setSaving(true);
+    setError(null);
+    try {
+      await onComplete();
+      router.push(href);
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to complete setup';
+      setError(errorMessage);
+      setSaving(false);
+    }
   };
 
   return (
@@ -80,19 +98,33 @@ export function CompleteStep({
         </p>
       </div>
 
+      {/* Error Message */}
+      {error && (
+        <div className="max-w-sm mx-auto mb-4">
+          <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-red-700 text-sm">
+            {error}
+          </div>
+        </div>
+      )}
+
       {/* Quick Start Options */}
       <div className="max-w-sm mx-auto mb-6">
         <p className="text-center text-xs text-gray-500 mb-3">Where would you like to start?</p>
         <div className="space-y-2">
           <button
             onClick={handleGoToDashboard}
-            className="w-full flex items-center gap-3 p-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            disabled={saving}
+            className={`w-full flex items-center gap-3 p-3 rounded-lg transition-colors ${
+              saving
+                ? 'bg-gray-400 cursor-not-allowed'
+                : 'bg-blue-600 hover:bg-blue-700'
+            } text-white`}
           >
-            <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center">
+            <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${saving ? 'bg-gray-500' : 'bg-blue-500'}`}>
               <BarChart3 className="w-4 h-4" />
             </div>
             <div className="text-left flex-1">
-              <p className="font-medium text-sm">View Dashboard</p>
+              <p className="font-medium text-sm">{saving ? 'Setting up...' : 'View Dashboard'}</p>
               <p className="text-xs text-blue-200">See your business overview</p>
             </div>
             <ArrowRight className="w-4 h-4" />
@@ -100,7 +132,10 @@ export function CompleteStep({
 
           <button
             onClick={() => handleNavigate('/ai-assistant')}
-            className="w-full flex items-center gap-3 p-3 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+            disabled={saving}
+            className={`w-full flex items-center gap-3 p-3 bg-white border border-gray-200 rounded-lg transition-colors ${
+              saving ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-50'
+            }`}
           >
             <div className="w-8 h-8 bg-indigo-100 rounded-lg flex items-center justify-center">
               <Sparkles className="w-4 h-4 text-indigo-600" />
@@ -113,7 +148,10 @@ export function CompleteStep({
 
           <button
             onClick={() => handleNavigate('/marketplace')}
-            className="w-full flex items-center gap-3 p-3 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+            disabled={saving}
+            className={`w-full flex items-center gap-3 p-3 bg-white border border-gray-200 rounded-lg transition-colors ${
+              saving ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-50'
+            }`}
           >
             <div className="w-8 h-8 bg-gray-100 rounded-lg flex items-center justify-center">
               <Plus className="w-4 h-4 text-gray-600" />
