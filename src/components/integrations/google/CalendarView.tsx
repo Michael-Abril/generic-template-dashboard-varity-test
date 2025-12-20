@@ -38,6 +38,23 @@ type ViewMode = 'day' | 'week' | 'month' | 'schedule';
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
+const HOUR_HEIGHT = 80; // 80px per hour (h-20 = 5rem = 80px)
+
+// Google Calendar event colors
+const EVENT_COLORS: Record<string, string> = {
+  '1': 'bg-blue-400',    // Lavender
+  '2': 'bg-green-500',   // Sage
+  '3': 'bg-purple-500',  // Grape
+  '4': 'bg-pink-500',    // Flamingo
+  '5': 'bg-yellow-500',  // Banana
+  '6': 'bg-orange-500',  // Tangerine
+  '7': 'bg-cyan-500',    // Peacock
+  '8': 'bg-gray-500',    // Graphite
+  '9': 'bg-blue-600',    // Blueberry
+  '10': 'bg-green-600',  // Basil
+  '11': 'bg-red-500',    // Tomato
+  default: 'bg-blue-500'
+};
 
 export function CalendarView({ walletAddress, data }: CalendarViewProps) {
   const [viewMode, setViewMode] = useState<ViewMode>('week');
@@ -185,80 +202,236 @@ export function CalendarView({ walletAddress, data }: CalendarViewProps) {
     return days;
   };
 
-  const renderDayView = () => (
-    <div className="flex-1 overflow-auto">
-      <div className="grid grid-cols-[60px_1fr]">
-        {/* Time column */}
-        <div className="border-r bg-gray-50">
-          {HOURS.map((hour) => (
-            <div key={hour} className="h-20 border-b px-2 py-1 text-xs text-gray-500">
-              {hour === 0 ? '12 AM' : hour < 12 ? `${hour} AM` : hour === 12 ? '12 PM' : `${hour - 12} PM`}
+  // Helper: Calculate event position based on actual time
+  const getEventPosition = (event: CalendarEvent) => {
+    const startDate = new Date(event.start);
+    const endDate = new Date(event.end);
+    const startHour = startDate.getHours() + startDate.getMinutes() / 60;
+    const endHour = endDate.getHours() + endDate.getMinutes() / 60;
+    const duration = endHour - startHour;
+
+    return {
+      top: startHour * HOUR_HEIGHT,
+      height: Math.max(duration * HOUR_HEIGHT, 24) // Minimum 24px height for visibility
+    };
+  };
+
+  // Helper: Get events for a specific day
+  const getEventsForDay = (date: Date) => {
+    return events.filter(event => {
+      const eventDate = new Date(event.start);
+      return eventDate.getFullYear() === date.getFullYear() &&
+             eventDate.getMonth() === date.getMonth() &&
+             eventDate.getDate() === date.getDate();
+    });
+  };
+
+  // Helper: Check if an event is on the current day (for day view)
+  const isEventOnCurrentDay = (event: CalendarEvent) => {
+    const eventDate = new Date(event.start);
+    return eventDate.getFullYear() === currentDate.getFullYear() &&
+           eventDate.getMonth() === currentDate.getMonth() &&
+           eventDate.getDate() === currentDate.getDate();
+  };
+
+  // Helper: Get event color
+  const getEventColor = (colorId?: string) => {
+    return EVENT_COLORS[colorId || 'default'] || EVENT_COLORS.default;
+  };
+
+  // Helper: Get current time position for red line indicator
+  const getCurrentTimePosition = () => {
+    const now = new Date();
+    const hours = now.getHours() + now.getMinutes() / 60;
+    return hours * HOUR_HEIGHT;
+  };
+
+  // Check if current date is today
+  const isToday = (date: Date) => {
+    const today = new Date();
+    return date.getFullYear() === today.getFullYear() &&
+           date.getMonth() === today.getMonth() &&
+           date.getDate() === today.getDate();
+  };
+
+  const renderDayView = () => {
+    const dayEvents = getEventsForDay(currentDate);
+    const showCurrentTime = isToday(currentDate);
+
+    return (
+      <div className="flex-1 overflow-auto">
+        {/* Day header */}
+        <div className="grid grid-cols-[60px_1fr] border-b bg-gray-50">
+          <div className="p-2" />
+          <div className="p-2 text-center">
+            <div className="text-xs text-gray-600">{DAYS[currentDate.getDay()]}</div>
+            <div className={`text-2xl font-semibold ${isToday(currentDate) ? 'bg-blue-600 text-white w-10 h-10 rounded-full flex items-center justify-center mx-auto' : 'text-gray-900'}`}>
+              {currentDate.getDate()}
             </div>
-          ))}
+          </div>
         </div>
 
-        {/* Events column */}
-        <div className="relative">
-          {HOURS.map((hour) => (
-            <div key={hour} className="h-20 border-b border-l hover:bg-blue-50 cursor-pointer" />
-          ))}
+        <div className="grid grid-cols-[60px_1fr]">
+          {/* Time column */}
+          <div className="border-r bg-gray-50">
+            {HOURS.map((hour) => (
+              <div key={hour} className="h-20 border-b px-2 py-1 text-xs text-gray-500">
+                {hour === 0 ? '12 AM' : hour < 12 ? `${hour} AM` : hour === 12 ? '12 PM' : `${hour - 12} PM`}
+              </div>
+            ))}
+          </div>
 
-          {/* Events overlay */}
-          {events.map((event, index) => (
-            <div
-              key={event.id}
-              className="absolute left-1 right-1 bg-blue-500 text-white rounded p-2 cursor-pointer hover:bg-blue-600"
-              style={{
-                top: `${index * 100}px`,
-                height: '80px'
-              }}
-              onClick={() => {
-                setSelectedEvent(event);
-                setShowEventDetail(true);
-              }}
-            >
-              <p className="font-semibold text-sm truncate">{event.summary}</p>
-              <p className="text-xs opacity-90 truncate">{event.location}</p>
-            </div>
-          ))}
+          {/* Events column */}
+          <div className="relative">
+            {HOURS.map((hour) => (
+              <div
+                key={hour}
+                className="h-20 border-b border-l hover:bg-blue-50/50 cursor-pointer"
+                onClick={() => {
+                  // Click to create event at this hour
+                  const newDate = new Date(currentDate);
+                  newDate.setHours(hour, 0, 0, 0);
+                  setShowEventForm(true);
+                }}
+              />
+            ))}
+
+            {/* Current time indicator (red line) */}
+            {showCurrentTime && (
+              <div
+                className="absolute left-0 right-0 flex items-center z-20 pointer-events-none"
+                style={{ top: `${getCurrentTimePosition()}px` }}
+              >
+                <div className="w-3 h-3 rounded-full bg-red-500 -ml-1.5" />
+                <div className="flex-1 h-0.5 bg-red-500" />
+              </div>
+            )}
+
+            {/* Events overlay - positioned by actual time */}
+            {dayEvents.map((event) => {
+              const position = getEventPosition(event);
+              const eventColor = getEventColor(event.colorId);
+              return (
+                <div
+                  key={event.id}
+                  className={`absolute left-1 right-1 ${eventColor} text-white rounded-lg px-3 py-2 cursor-pointer hover:brightness-90 shadow-sm transition-all z-10`}
+                  style={{
+                    top: `${position.top}px`,
+                    height: `${position.height}px`
+                  }}
+                  onClick={() => {
+                    setSelectedEvent(event);
+                    setShowEventDetail(true);
+                  }}
+                >
+                  <p className="font-semibold text-sm truncate">{event.summary}</p>
+                  <p className="text-xs opacity-90 truncate">
+                    {new Date(event.start).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                    {event.location && ` - ${event.location}`}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
         </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   const renderWeekView = () => {
     const weekDays = getWeekDays();
 
     return (
       <div className="flex-1 overflow-auto">
-        <div className="grid grid-cols-[60px_repeat(7,1fr)]">
-          {/* Header */}
+        {/* Header row */}
+        <div className="grid grid-cols-[60px_repeat(7,1fr)] sticky top-0 z-30 bg-white">
           <div className="border-b border-r bg-gray-50" />
           {weekDays.map((day, index) => (
             <div key={index} className="border-b border-r bg-gray-50 p-2 text-center">
               <div className="text-xs text-gray-600">{DAYS[day.getDay()]}</div>
               <div className={`text-lg font-semibold ${
-                day.toDateString() === new Date().toDateString() ? 'text-blue-600' : 'text-gray-900'
+                isToday(day)
+                  ? 'bg-blue-600 text-white w-8 h-8 rounded-full flex items-center justify-center mx-auto'
+                  : 'text-gray-900'
               }`}>
                 {day.getDate()}
               </div>
             </div>
           ))}
+        </div>
 
-          {/* Time grid */}
-          {HOURS.map((hour) => (
-            <>
-              <div key={`time-${hour}`} className="border-b border-r bg-gray-50 px-2 py-1 text-xs text-gray-500">
+        {/* Time grid with events */}
+        <div className="grid grid-cols-[60px_repeat(7,1fr)]">
+          {/* Time column */}
+          <div className="border-r bg-gray-50">
+            {HOURS.map((hour) => (
+              <div key={hour} className="h-20 border-b px-2 py-1 text-xs text-gray-500">
                 {hour === 0 ? '12 AM' : hour < 12 ? `${hour} AM` : hour === 12 ? '12 PM' : `${hour - 12} PM`}
               </div>
-              {weekDays.map((day, dayIndex) => (
-                <div
-                  key={`${hour}-${dayIndex}`}
-                  className="h-20 border-b border-r hover:bg-blue-50 cursor-pointer"
-                />
-              ))}
-            </>
-          ))}
+            ))}
+          </div>
+
+          {/* Day columns with events */}
+          {weekDays.map((day, dayIndex) => {
+            const dayEvents = getEventsForDay(day);
+            const showCurrentTime = isToday(day);
+
+            return (
+              <div key={dayIndex} className="relative border-r">
+                {/* Hour cells */}
+                {HOURS.map((hour) => (
+                  <div
+                    key={hour}
+                    className="h-20 border-b hover:bg-blue-50/50 cursor-pointer"
+                    onClick={() => {
+                      const newDate = new Date(day);
+                      newDate.setHours(hour, 0, 0, 0);
+                      setCurrentDate(newDate);
+                      setShowEventForm(true);
+                    }}
+                  />
+                ))}
+
+                {/* Current time indicator */}
+                {showCurrentTime && (
+                  <div
+                    className="absolute left-0 right-0 flex items-center z-20 pointer-events-none"
+                    style={{ top: `${getCurrentTimePosition()}px` }}
+                  >
+                    <div className="w-2.5 h-2.5 rounded-full bg-red-500 -ml-1" />
+                    <div className="flex-1 h-0.5 bg-red-500" />
+                  </div>
+                )}
+
+                {/* Events for this day */}
+                {dayEvents.map((event) => {
+                  const position = getEventPosition(event);
+                  const eventColor = getEventColor(event.colorId);
+                  return (
+                    <div
+                      key={event.id}
+                      className={`absolute left-0.5 right-0.5 ${eventColor} text-white rounded px-1.5 py-1 cursor-pointer hover:brightness-90 shadow-sm transition-all z-10 overflow-hidden`}
+                      style={{
+                        top: `${position.top}px`,
+                        height: `${position.height}px`
+                      }}
+                      onClick={() => {
+                        setSelectedEvent(event);
+                        setShowEventDetail(true);
+                      }}
+                    >
+                      <p className="font-medium text-xs truncate">{event.summary}</p>
+                      {position.height >= 40 && (
+                        <p className="text-[10px] opacity-90 truncate">
+                          {new Date(event.start).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })}
         </div>
       </div>
     );
@@ -270,17 +443,18 @@ export function CalendarView({ walletAddress, data }: CalendarViewProps) {
     const daysInMonth = lastDay.getDate();
     const startingDayOfWeek = firstDay.getDay();
 
-    const days = [];
+    // Build array of dates (null for empty cells, Date objects for actual days)
+    const days: (Date | null)[] = [];
     for (let i = 0; i < startingDayOfWeek; i++) {
       days.push(null);
     }
     for (let i = 1; i <= daysInMonth; i++) {
-      days.push(i);
+      days.push(new Date(currentDate.getFullYear(), currentDate.getMonth(), i));
     }
 
     return (
       <div className="flex-1">
-        <div className="grid grid-cols-7 border-b">
+        <div className="grid grid-cols-7 border-b bg-gray-50">
           {DAYS.map((day) => (
             <div key={day} className="p-2 text-center text-sm font-semibold text-gray-700 border-r">
               {day}
@@ -288,109 +462,177 @@ export function CalendarView({ walletAddress, data }: CalendarViewProps) {
           ))}
         </div>
         <div className="grid grid-cols-7 auto-rows-fr" style={{ gridTemplateRows: 'repeat(6, minmax(100px, 1fr))' }}>
-          {days.map((day, index) => (
-            <div
-              key={index}
-              className={`border-r border-b p-2 min-h-[100px] hover:bg-blue-50 cursor-pointer ${
-                day === null ? 'bg-gray-50' : ''
-              } ${
-                day === new Date().getDate() &&
-                currentDate.getMonth() === new Date().getMonth() &&
-                currentDate.getFullYear() === new Date().getFullYear()
-                  ? 'bg-blue-50'
-                  : ''
-              }`}
-            >
-              {day && (
-                <>
-                  <div className={`text-sm font-semibold mb-1 ${
-                    day === new Date().getDate() &&
-                    currentDate.getMonth() === new Date().getMonth() &&
-                    currentDate.getFullYear() === new Date().getFullYear()
-                      ? 'text-blue-600'
-                      : 'text-gray-900'
-                  }`}>
-                    {day}
-                  </div>
-                  <div className="space-y-1">
-                    {events.slice(0, 3).map((event) => (
-                      <div
-                        key={event.id}
-                        className="text-xs bg-blue-500 text-white rounded px-2 py-1 truncate cursor-pointer hover:bg-blue-600"
-                        onClick={() => {
-                          setSelectedEvent(event);
-                          setShowEventDetail(true);
-                        }}
-                      >
-                        {event.summary}
-                      </div>
-                    ))}
-                  </div>
-                </>
-              )}
-            </div>
-          ))}
+          {days.map((day, index) => {
+            // Get events for this specific day
+            const dayEvents = day ? getEventsForDay(day) : [];
+            const isTodayCell = day && isToday(day);
+
+            return (
+              <div
+                key={index}
+                className={`border-r border-b p-2 min-h-[100px] hover:bg-blue-50/50 cursor-pointer transition-colors ${
+                  day === null ? 'bg-gray-50' : ''
+                } ${isTodayCell ? 'bg-blue-50/70' : ''}`}
+                onClick={() => {
+                  if (day) {
+                    setCurrentDate(day);
+                    setViewMode('day');
+                  }
+                }}
+              >
+                {day && (
+                  <>
+                    <div className={`text-sm font-semibold mb-1 inline-flex items-center justify-center ${
+                      isTodayCell
+                        ? 'bg-blue-600 text-white w-7 h-7 rounded-full'
+                        : 'text-gray-900'
+                    }`}>
+                      {day.getDate()}
+                    </div>
+                    <div className="space-y-1">
+                      {dayEvents.slice(0, 3).map((event) => {
+                        const eventColor = getEventColor(event.colorId);
+                        return (
+                          <div
+                            key={event.id}
+                            className={`text-xs ${eventColor} text-white rounded px-2 py-0.5 truncate cursor-pointer hover:brightness-90`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedEvent(event);
+                              setShowEventDetail(true);
+                            }}
+                          >
+                            <span className="font-medium">
+                              {new Date(event.start).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                            </span>
+                            {' '}{event.summary}
+                          </div>
+                        );
+                      })}
+                      {dayEvents.length > 3 && (
+                        <div className="text-xs text-gray-500 font-medium pl-2">
+                          +{dayEvents.length - 3} more
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
+            );
+          })}
         </div>
       </div>
     );
   };
 
-  const renderScheduleView = () => (
-    <div className="flex-1 overflow-auto">
-      <div className="divide-y">
-        {events.map((event) => (
-          <div
-            key={event.id}
-            className="p-4 hover:bg-gray-50 cursor-pointer"
-            onClick={() => {
-              setSelectedEvent(event);
-              setShowEventDetail(true);
-            }}
-          >
-            <div className="flex items-start gap-4">
-              <div className="text-center">
-                <div className="text-sm font-semibold text-gray-900">
-                  {new Date(event.start).toLocaleDateString('en-US', { month: 'short' })}
-                </div>
-                <div className="text-2xl font-bold text-gray-900">
-                  {new Date(event.start).getDate()}
-                </div>
-                <div className="text-xs text-gray-500">
-                  {new Date(event.start).toLocaleDateString('en-US', { weekday: 'short' })}
-                </div>
-              </div>
-              <div className="flex-1">
-                <h3 className="font-semibold text-gray-900 mb-1">{event.summary}</h3>
-                {event.description && (
-                  <p className="text-sm text-gray-600 mb-2">{event.description}</p>
-                )}
-                <div className="flex flex-wrap gap-4 text-sm text-gray-500">
-                  <div className="flex items-center gap-1">
-                    <Clock className="h-4 w-4" />
-                    {new Date(event.start).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
-                    {' - '}
-                    {new Date(event.end).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
-                  </div>
-                  {event.location && (
-                    <div className="flex items-center gap-1">
-                      <MapPin className="h-4 w-4" />
-                      {event.location}
-                    </div>
-                  )}
-                  {event.attendees && event.attendees.length > 0 && (
-                    <div className="flex items-center gap-1">
-                      <Users className="h-4 w-4" />
-                      {event.attendees.length} attendees
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
+  const renderScheduleView = () => {
+    // Sort events by date
+    const sortedEvents = [...events].sort((a, b) =>
+      new Date(a.start).getTime() - new Date(b.start).getTime()
+    );
+
+    // Group events by date
+    const groupedEvents: { [key: string]: CalendarEvent[] } = {};
+    sortedEvents.forEach(event => {
+      const dateKey = new Date(event.start).toDateString();
+      if (!groupedEvents[dateKey]) {
+        groupedEvents[dateKey] = [];
+      }
+      groupedEvents[dateKey].push(event);
+    });
+
+    if (events.length === 0) {
+      return (
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-center">
+            <CalendarIcon className="h-16 w-16 text-gray-300 mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-gray-900 mb-1">No upcoming events</h3>
+            <p className="text-gray-500 mb-4">Get started by creating your first event</p>
+            <button
+              onClick={() => setShowEventForm(true)}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+            >
+              <Plus className="h-4 w-4" />
+              Create Event
+            </button>
           </div>
-        ))}
+        </div>
+      );
+    }
+
+    return (
+      <div className="flex-1 overflow-auto">
+        {Object.entries(groupedEvents).map(([dateKey, dayEvents]) => {
+          const date = new Date(dateKey);
+          const isEventToday = isToday(date);
+
+          return (
+            <div key={dateKey} className="border-b last:border-b-0">
+              {/* Date header */}
+              <div className={`sticky top-0 px-4 py-2 bg-gray-50 border-b ${isEventToday ? 'bg-blue-50' : ''}`}>
+                <span className={`font-semibold ${isEventToday ? 'text-blue-600' : 'text-gray-900'}`}>
+                  {isEventToday ? 'Today' : date.toLocaleDateString('en-US', { weekday: 'long' })}
+                </span>
+                <span className="text-gray-500 ml-2">
+                  {date.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+                </span>
+              </div>
+
+              {/* Events for this date */}
+              {dayEvents.map((event) => {
+                const eventColor = getEventColor(event.colorId);
+                return (
+                  <div
+                    key={event.id}
+                    className="flex items-start gap-4 p-4 hover:bg-gray-50 cursor-pointer transition-colors"
+                    onClick={() => {
+                      setSelectedEvent(event);
+                      setShowEventDetail(true);
+                    }}
+                  >
+                    {/* Color indicator */}
+                    <div className={`w-1 self-stretch ${eventColor} rounded-full`} />
+
+                    {/* Time */}
+                    <div className="w-24 flex-shrink-0">
+                      <div className="text-sm font-medium text-gray-900">
+                        {new Date(event.start).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                      </div>
+                      <div className="text-xs text-gray-500">
+                        {new Date(event.end).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                      </div>
+                    </div>
+
+                    {/* Event details */}
+                    <div className="flex-1 min-w-0">
+                      <h3 className="font-semibold text-gray-900 truncate">{event.summary}</h3>
+                      {event.description && (
+                        <p className="text-sm text-gray-600 truncate">{event.description}</p>
+                      )}
+                      <div className="flex flex-wrap gap-3 mt-1 text-sm text-gray-500">
+                        {event.location && (
+                          <div className="flex items-center gap-1">
+                            <MapPin className="h-3.5 w-3.5" />
+                            <span className="truncate">{event.location}</span>
+                          </div>
+                        )}
+                        {event.attendees && event.attendees.length > 0 && (
+                          <div className="flex items-center gap-1">
+                            <Users className="h-3.5 w-3.5" />
+                            {event.attendees.length} attendees
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })}
       </div>
-    </div>
-  );
+    );
+  };
 
   const renderView = () => {
     switch (viewMode) {
