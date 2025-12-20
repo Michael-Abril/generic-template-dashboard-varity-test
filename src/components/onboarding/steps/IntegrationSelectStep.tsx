@@ -65,12 +65,12 @@ export function IntegrationSelectStep({
   };
 
   return (
-    <div className="px-6 py-10 sm:px-10 sm:py-12">
+    <div className="px-6 py-6 sm:px-8 sm:py-8">
       {/* Header */}
-      <div className="text-center mb-8">
-        <div className="flex justify-center mb-4">
-          <div className="w-14 h-14 bg-blue-600 rounded-xl flex items-center justify-center">
-            <Link2 className="w-7 h-7 text-white" />
+      <div className="text-center mb-5">
+        <div className="flex justify-center mb-3">
+          <div className="w-12 h-12 bg-blue-600 rounded-xl flex items-center justify-center">
+            <Link2 className="w-6 h-6 text-white" />
           </div>
         </div>
         <h2 className="text-xl sm:text-2xl font-semibold text-gray-900 mb-2">

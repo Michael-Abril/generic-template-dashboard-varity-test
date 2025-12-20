@@ -54,6 +54,8 @@ export function OAuthConnectStep({
         localStorage.setItem('onboarding_integration', integration);
         localStorage.setItem('onboarding_step', 'oauth');
         localStorage.setItem('onboarding_return', 'true');
+        // Store wallet address as fallback for OAuth callback
+        localStorage.setItem('varity_oauth_wallet_address', walletAddress);
 
         // Redirect to the OAuth provider
         window.location.href = data.authorization_url;
@@ -171,9 +173,9 @@ export function OAuthConnectStep({
       </div>
 
       {/* Security Note */}
-      <div className="max-w-sm mx-auto mt-6">
-        <div className="flex items-center justify-center gap-2 text-xs text-gray-500">
-          <Shield className="w-3.5 h-3.5" />
+      <div className="max-w-sm mx-auto mt-4">
+        <div className="flex items-center justify-center gap-2 text-xs text-gray-400">
+          <Shield className="w-3 h-3" />
           <span>Your credentials are encrypted and secure</span>
         </div>
       </div>
