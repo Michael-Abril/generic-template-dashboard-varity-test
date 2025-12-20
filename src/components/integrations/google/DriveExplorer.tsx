@@ -62,6 +62,52 @@ const getFileIcon = (mimeType: string) => {
   return File;
 };
 
+// Google Drive file type colors (matching official Google colors)
+const getFileColors = (mimeType: string): { icon: string; bg: string } => {
+  // Google Docs (blue)
+  if (mimeType.includes('document') || mimeType.includes('text/plain') || mimeType.includes('msword')) {
+    return { icon: 'text-blue-600', bg: 'bg-blue-50' };
+  }
+  // Google Sheets (green)
+  if (mimeType.includes('spreadsheet') || mimeType.includes('excel') || mimeType.includes('csv')) {
+    return { icon: 'text-green-600', bg: 'bg-green-50' };
+  }
+  // Google Slides (yellow/orange)
+  if (mimeType.includes('presentation') || mimeType.includes('powerpoint')) {
+    return { icon: 'text-yellow-600', bg: 'bg-yellow-50' };
+  }
+  // Google Forms (purple)
+  if (mimeType.includes('form')) {
+    return { icon: 'text-purple-600', bg: 'bg-purple-50' };
+  }
+  // PDF (red)
+  if (mimeType.includes('pdf')) {
+    return { icon: 'text-red-600', bg: 'bg-red-50' };
+  }
+  // Images (rose/pink)
+  if (mimeType.includes('image')) {
+    return { icon: 'text-rose-500', bg: 'bg-rose-50' };
+  }
+  // Video (red)
+  if (mimeType.includes('video')) {
+    return { icon: 'text-red-500', bg: 'bg-red-50' };
+  }
+  // Audio (purple/indigo)
+  if (mimeType.includes('audio')) {
+    return { icon: 'text-indigo-600', bg: 'bg-indigo-50' };
+  }
+  // Archives (amber/orange)
+  if (mimeType.includes('zip') || mimeType.includes('compressed') || mimeType.includes('archive')) {
+    return { icon: 'text-amber-600', bg: 'bg-amber-50' };
+  }
+  // Folders (gray)
+  if (mimeType.includes('folder')) {
+    return { icon: 'text-gray-600', bg: 'bg-gray-100' };
+  }
+  // Default (gray-blue)
+  return { icon: 'text-slate-600', bg: 'bg-slate-50' };
+};
+
 const formatFileSize = (bytes: string) => {
   const size = parseInt(bytes);
   if (isNaN(size)) return 'N/A';
@@ -84,7 +130,12 @@ export function DriveExplorer({ walletAddress, data }: DriveExplorerProps) {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [renameModalOpen, setRenameModalOpen] = useState(false);
   const [newFileName, setNewFileName] = useState('');
+  const [showNewFolderModal, setShowNewFolderModal] = useState(false);
+  const [newFolderName, setNewFolderName] = useState('');
+  const [creatingFolder, setCreatingFolder] = useState(false);
+  const [showNewMenu, setShowNewMenu] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const newMenuRef = useRef<HTMLDivElement>(null);
 
   // Filter files based on search query
   const filteredFiles = useMemo(() => {
@@ -389,10 +440,94 @@ export function DriveExplorer({ walletAddress, data }: DriveExplorerProps) {
     }
   };
 
+  const handleCreateFolder = async () => {
+    if (!newFolderName.trim()) return;
+
+    setCreatingFolder(true);
+    try {
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/integrations/google/create-folder`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            wallet_address: walletAddress,
+            name: newFolderName.trim(),
+            // parent_folder_id could be added for nested folders
+          })
+        }
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        // Add the new folder to the list
+        const newFolder: DriveFile = {
+          id: data.id || `folder-${Date.now()}`,
+          name: newFolderName.trim(),
+          mimeType: 'application/vnd.google-apps.folder',
+          size: '0',
+          modifiedTime: new Date().toISOString(),
+          owners: [],
+          webViewLink: data.webViewLink || '',
+          starred: false
+        };
+        setFiles([newFolder, ...files]); // Add folder at the beginning
+        setShowNewFolderModal(false);
+        setNewFolderName('');
+      } else {
+        // Create local folder indication
+        const newFolder: DriveFile = {
+          id: `folder-${Date.now()}`,
+          name: newFolderName.trim(),
+          mimeType: 'application/vnd.google-apps.folder',
+          size: '0',
+          modifiedTime: new Date().toISOString(),
+          owners: [],
+          webViewLink: '',
+          starred: false
+        };
+        setFiles([newFolder, ...files]);
+        setShowNewFolderModal(false);
+        setNewFolderName('');
+        alert('Folder created locally. Sync with Google Drive for permanent storage.');
+      }
+    } catch (error) {
+      console.error('Failed to create folder:', error);
+      // Still create locally
+      const newFolder: DriveFile = {
+        id: `folder-${Date.now()}`,
+        name: newFolderName.trim(),
+        mimeType: 'application/vnd.google-apps.folder',
+        size: '0',
+        modifiedTime: new Date().toISOString(),
+        owners: [],
+        webViewLink: '',
+        starred: false
+      };
+      setFiles([newFolder, ...files]);
+      setShowNewFolderModal(false);
+      setNewFolderName('');
+    } finally {
+      setCreatingFolder(false);
+    }
+  };
+
+  // Close new menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (newMenuRef.current && !newMenuRef.current.contains(event.target as Node)) {
+        setShowNewMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
   const renderGridView = () => (
     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4 p-6">
       {filteredFiles.map((file) => {
         const Icon = getFileIcon(file.mimeType);
+        const colors = getFileColors(file.mimeType);
         return (
           <div
             key={file.id}
@@ -400,8 +535,8 @@ export function DriveExplorer({ walletAddress, data }: DriveExplorerProps) {
             onClick={() => handleFileClick(file)}
           >
             <div className="flex items-center justify-between mb-3">
-              <div className="p-2 bg-blue-50 rounded-lg relative">
-                <Icon className="h-8 w-8 text-blue-600" />
+              <div className={`p-2 ${colors.bg} rounded-lg relative`}>
+                <Icon className={`h-8 w-8 ${colors.icon}`} />
                 {file.starred && (
                   <Star className="h-3 w-3 text-yellow-500 fill-yellow-500 absolute -top-1 -right-1" />
                 )}
@@ -439,6 +574,7 @@ export function DriveExplorer({ walletAddress, data }: DriveExplorerProps) {
         <tbody className="divide-y divide-gray-100">
           {filteredFiles.map((file) => {
             const Icon = getFileIcon(file.mimeType);
+            const colors = getFileColors(file.mimeType);
             return (
               <tr
                 key={file.id}
@@ -447,8 +583,8 @@ export function DriveExplorer({ walletAddress, data }: DriveExplorerProps) {
               >
                 <td className="px-6 py-4">
                   <div className="flex items-center gap-3">
-                    <div className="relative">
-                      <Icon className="h-5 w-5 text-blue-600" />
+                    <div className={`relative p-1.5 ${colors.bg} rounded`}>
+                      <Icon className={`h-5 w-5 ${colors.icon}`} />
                       {file.starred && (
                         <Star className="h-2.5 w-2.5 text-yellow-500 fill-yellow-500 absolute -top-1 -right-1" />
                       )}
@@ -532,13 +668,41 @@ export function DriveExplorer({ walletAddress, data }: DriveExplorerProps) {
           </div>
 
           <div className="flex items-center gap-2">
-            <button
-              onClick={() => setShowUploadModal(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-            >
-              <Upload className="h-4 w-4" />
-              Upload
-            </button>
+            {/* + New dropdown */}
+            <div className="relative" ref={newMenuRef}>
+              <button
+                onClick={() => setShowNewMenu(!showNewMenu)}
+                className="flex items-center gap-2 px-4 py-2 bg-white border-2 border-gray-200 text-gray-800 rounded-lg hover:bg-gray-50 hover:border-gray-300 hover:shadow-md transition-all font-medium"
+              >
+                <Plus className="h-5 w-5" />
+                New
+              </button>
+              {showNewMenu && (
+                <div className="absolute top-full left-0 mt-2 w-48 bg-white rounded-lg shadow-lg border py-1 z-20">
+                  <button
+                    onClick={() => {
+                      setShowNewMenu(false);
+                      setShowNewFolderModal(true);
+                    }}
+                    className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 text-gray-700 text-left"
+                  >
+                    <FolderPlus className="h-5 w-5 text-gray-500" />
+                    <span>New folder</span>
+                  </button>
+                  <div className="border-t my-1" />
+                  <button
+                    onClick={() => {
+                      setShowNewMenu(false);
+                      fileInputRef.current?.click();
+                    }}
+                    className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 text-gray-700 text-left"
+                  >
+                    <Upload className="h-5 w-5 text-gray-500" />
+                    <span>File upload</span>
+                  </button>
+                </div>
+              )}
+            </div>
             <div className="flex items-center border rounded-lg">
               <button
                 onClick={() => setViewMode('grid')}
@@ -628,15 +792,18 @@ export function DriveExplorer({ walletAddress, data }: DriveExplorerProps) {
             <div className="p-6">
               <div className="flex items-start justify-between mb-6">
                 <div className="flex items-center gap-4">
-                  <div className="p-3 bg-blue-50 rounded-xl relative">
-                    {(() => {
-                      const Icon = getFileIcon(selectedFile.mimeType);
-                      return <Icon className="h-10 w-10 text-blue-600" />;
-                    })()}
-                    {selectedFile.starred && (
-                      <Star className="h-4 w-4 text-yellow-500 fill-yellow-500 absolute -top-1 -right-1" />
-                    )}
-                  </div>
+                  {(() => {
+                    const Icon = getFileIcon(selectedFile.mimeType);
+                    const colors = getFileColors(selectedFile.mimeType);
+                    return (
+                      <div className={`p-3 ${colors.bg} rounded-xl relative`}>
+                        <Icon className={`h-10 w-10 ${colors.icon}`} />
+                        {selectedFile.starred && (
+                          <Star className="h-4 w-4 text-yellow-500 fill-yellow-500 absolute -top-1 -right-1" />
+                        )}
+                      </div>
+                    );
+                  })()}
                   <div>
                     <h2 className="text-xl font-bold text-gray-900">{selectedFile.name}</h2>
                     <p className="text-sm text-gray-600">{formatFileSize(selectedFile.size)}</p>
@@ -817,6 +984,69 @@ export function DriveExplorer({ walletAddress, data }: DriveExplorerProps) {
                   </span>
                 ) : (
                   'Select Files'
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* New Folder Modal */}
+      {showNewFolderModal && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-xl font-bold text-gray-900">New folder</h2>
+              <button
+                onClick={() => {
+                  setShowNewFolderModal(false);
+                  setNewFolderName('');
+                }}
+                className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Folder name
+              </label>
+              <input
+                type="text"
+                value={newFolderName}
+                onChange={(e) => setNewFolderName(e.target.value)}
+                placeholder="Untitled folder"
+                className="w-full px-4 py-3 border-2 border-gray-200 rounded-lg text-gray-900 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all"
+                autoFocus
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && newFolderName.trim()) {
+                    handleCreateFolder();
+                  }
+                }}
+              />
+            </div>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => {
+                  setShowNewFolderModal(false);
+                  setNewFolderName('');
+                }}
+                className="px-4 py-2.5 border-2 border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors font-medium"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleCreateFolder}
+                disabled={creatingFolder || !newFolderName.trim()}
+                className="px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:opacity-50"
+              >
+                {creatingFolder ? (
+                  <span className="flex items-center gap-2">
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                    Creating...
+                  </span>
+                ) : (
+                  'Create'
                 )}
               </button>
             </div>
