@@ -30,14 +30,19 @@ export function EventForm({ walletAddress, onClose, event }: EventFormProps) {
 
     setSaving(true);
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/integrations/google/create-event`, {
-        method: 'POST',
+      const isEditing = !!event?.id;
+      const endpoint = isEditing
+        ? `${process.env.NEXT_PUBLIC_API_URL}/api/v1/integrations/google/events/${event.id}`
+        : `${process.env.NEXT_PUBLIC_API_URL}/api/v1/integrations/google/create-event`;
+
+      const response = await fetch(endpoint, {
+        method: isEditing ? 'PATCH' : 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           wallet_address: walletAddress,
           summary: title,
           start: `${startDate}T${startTime}`,
-          end: `${endDate}T${endTime}`,
+          end: endDate && endTime ? `${endDate}T${endTime}` : `${startDate}T${startTime}`,
           location,
           description,
           attendees: attendees.split(',').map((email: string) => email.trim()).filter(Boolean),
@@ -47,14 +52,13 @@ export function EventForm({ walletAddress, onClose, event }: EventFormProps) {
       });
 
       if (response.ok) {
-        alert('Event created successfully!');
         onClose();
       } else {
-        throw new Error('Failed to create event');
+        throw new Error(isEditing ? 'Failed to update event' : 'Failed to create event');
       }
     } catch (error) {
-      console.error('Create event error:', error);
-      alert('Failed to create event. Please try again.');
+      console.error('Save event error:', error);
+      alert(event?.id ? 'Failed to update event. Please try again.' : 'Failed to create event. Please try again.');
     } finally {
       setSaving(false);
     }

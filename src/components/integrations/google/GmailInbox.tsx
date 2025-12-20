@@ -70,18 +70,50 @@ export function GmailInbox({ walletAddress, data }: GmailInboxProps) {
   const [refreshing, setRefreshing] = useState(false);
   const [replyContext, setReplyContext] = useState<{ to: string; subject: string; type: 'reply' | 'replyAll' | 'forward' } | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState(0);
+  const EMAILS_PER_PAGE = 25;
 
-  // Filter emails based on search query
+  // Filter emails based on search query and selected label
   const filteredEmails = useMemo(() => {
-    if (!searchQuery.trim()) return emails;
-    const query = searchQuery.toLowerCase();
-    return emails.filter(email =>
-      email.from.toLowerCase().includes(query) ||
-      email.to.toLowerCase().includes(query) ||
-      email.subject.toLowerCase().includes(query) ||
-      email.snippet.toLowerCase().includes(query)
-    );
-  }, [emails, searchQuery]);
+    let filtered = emails;
+
+    // Filter by label
+    if (selectedLabel !== 'INBOX') {
+      filtered = filtered.filter(email => {
+        if (selectedLabel === 'STARRED') return email.starred;
+        if (selectedLabel === 'SENT') return email.labels?.includes('SENT');
+        if (selectedLabel === 'DRAFTS') return email.labels?.includes('DRAFT');
+        if (selectedLabel === 'TRASH') return email.labels?.includes('TRASH');
+        if (selectedLabel === 'ARCHIVE') return !email.labels?.includes('INBOX');
+        return true;
+      });
+    }
+
+    // Filter by search query
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(email =>
+        email.from.toLowerCase().includes(query) ||
+        email.to.toLowerCase().includes(query) ||
+        email.subject.toLowerCase().includes(query) ||
+        email.snippet.toLowerCase().includes(query)
+      );
+    }
+
+    return filtered;
+  }, [emails, searchQuery, selectedLabel]);
+
+  // Paginate emails
+  const totalPages = Math.ceil(filteredEmails.length / EMAILS_PER_PAGE);
+  const paginatedEmails = useMemo(() => {
+    const start = currentPage * EMAILS_PER_PAGE;
+    return filteredEmails.slice(start, start + EMAILS_PER_PAGE);
+  }, [filteredEmails, currentPage]);
+
+  // Reset page when filter changes
+  useEffect(() => {
+    setCurrentPage(0);
+  }, [searchQuery, selectedLabel]);
 
   // Load emails from data prop (already fetched by parent)
   useEffect(() => {
@@ -428,14 +460,22 @@ export function GmailInbox({ walletAddress, data }: GmailInboxProps) {
           </div>
           <div className="flex items-center gap-1 text-sm text-gray-600">
             <span>
-              {searchQuery
-                ? `${filteredEmails.length} results`
-                : `1-${filteredEmails.length} of ${filteredEmails.length}`}
+              {filteredEmails.length === 0
+                ? '0 results'
+                : `${currentPage * EMAILS_PER_PAGE + 1}-${Math.min((currentPage + 1) * EMAILS_PER_PAGE, filteredEmails.length)} of ${filteredEmails.length}`}
             </span>
-            <button className="p-1.5 hover:bg-gray-100 rounded-full text-gray-500 hover:text-gray-700">
+            <button
+              onClick={() => setCurrentPage(p => Math.max(0, p - 1))}
+              disabled={currentPage === 0}
+              className="p-1.5 hover:bg-gray-100 rounded-full text-gray-500 hover:text-gray-700 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
               <ChevronLeft className="h-4 w-4" />
             </button>
-            <button className="p-1.5 hover:bg-gray-100 rounded-full text-gray-500 hover:text-gray-700">
+            <button
+              onClick={() => setCurrentPage(p => Math.min(totalPages - 1, p + 1))}
+              disabled={currentPage >= totalPages - 1}
+              className="p-1.5 hover:bg-gray-100 rounded-full text-gray-500 hover:text-gray-700 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
               <ChevronRight className="h-4 w-4" />
             </button>
           </div>
@@ -443,7 +483,7 @@ export function GmailInbox({ walletAddress, data }: GmailInboxProps) {
       </div>
 
       {/* Email List */}
-      {filteredEmails.length === 0 ? (
+      {paginatedEmails.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16">
           <div className="p-4 bg-gray-100 rounded-full mb-4">
             {searchQuery ? (
@@ -453,7 +493,7 @@ export function GmailInbox({ walletAddress, data }: GmailInboxProps) {
             )}
           </div>
           <h3 className="text-lg font-semibold text-gray-900 mb-2">
-            {searchQuery ? 'No emails found' : 'No emails yet'}
+            {searchQuery ? 'No emails found' : selectedLabel !== 'INBOX' ? `No ${selectedLabel.toLowerCase()} emails` : 'No emails yet'}
           </h3>
           <p className="text-gray-600 text-center max-w-sm">
             {searchQuery
@@ -463,7 +503,7 @@ export function GmailInbox({ walletAddress, data }: GmailInboxProps) {
         </div>
       ) : (
         <div className="divide-y divide-gray-100">
-          {filteredEmails.map((email) => (
+          {paginatedEmails.map((email) => (
             <div
               key={email.id}
               className={`
@@ -566,11 +606,17 @@ export function GmailInbox({ walletAddress, data }: GmailInboxProps) {
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      // Snooze functionality - for now just show a message
-                      alert('Snooze functionality coming soon');
+                      // Snooze - hide from view for now (simple implementation)
+                      const snoozedEmails = JSON.parse(localStorage.getItem('snoozedEmails') || '[]');
+                      snoozedEmails.push({
+                        id: email.id,
+                        snoozeUntil: new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString() // 3 hours
+                      });
+                      localStorage.setItem('snoozedEmails', JSON.stringify(snoozedEmails));
+                      setEmails(emails.filter(e => e.id !== email.id));
                     }}
                     className="p-1.5 hover:bg-gray-100 rounded-full text-gray-500 hover:text-gray-700 transition-colors"
-                    title="Snooze"
+                    title="Snooze for 3 hours"
                   >
                     <Clock className="h-4 w-4" />
                   </button>
@@ -740,7 +786,15 @@ export function GmailInbox({ walletAddress, data }: GmailInboxProps) {
       {showComposer && (
         <EmailComposer
           walletAddress={walletAddress}
-          onClose={() => setShowComposer(false)}
+          onClose={() => {
+            setShowComposer(false);
+            setReplyContext(null);
+          }}
+          replyTo={replyContext ? {
+            to: replyContext.to,
+            subject: replyContext.subject,
+            threadId: selectedEmail?.threadId
+          } : undefined}
         />
       )}
     </div>

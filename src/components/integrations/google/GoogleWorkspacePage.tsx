@@ -21,7 +21,8 @@ import {
   CheckCircle,
   StickyNote,
   CloudDownload,
-  AlertCircle
+  AlertCircle,
+  X
 } from 'lucide-react';
 import { GmailInbox } from './GmailInbox';
 import { CalendarView } from './CalendarView';
@@ -58,6 +59,50 @@ export function GoogleWorkspacePage({
   const [activeTab, setActiveTab] = useState<TabType>('home');
   const [searchQuery, setSearchQuery] = useState('');
   const [syncing, setSyncing] = useState(false);
+  const [showSettingsPanel, setShowSettingsPanel] = useState(false);
+  const [showNotifications, setShowNotifications] = useState(false);
+
+  // Handle global search - navigate to appropriate tab based on results
+  const handleGlobalSearch = () => {
+    if (!searchQuery.trim()) return;
+
+    // Check which tab has matching content and navigate there
+    const query = searchQuery.toLowerCase();
+
+    // Check Gmail
+    const gmailMatch = data?.gmail?.messages?.some((msg: any) =>
+      msg.subject?.toLowerCase().includes(query) ||
+      msg.from?.toLowerCase().includes(query) ||
+      msg.snippet?.toLowerCase().includes(query)
+    );
+    if (gmailMatch) {
+      setActiveTab('gmail');
+      return;
+    }
+
+    // Check Calendar
+    const calendarMatch = data?.calendar?.events?.some((evt: any) =>
+      evt.summary?.toLowerCase().includes(query) ||
+      evt.description?.toLowerCase().includes(query) ||
+      evt.location?.toLowerCase().includes(query)
+    );
+    if (calendarMatch) {
+      setActiveTab('calendar');
+      return;
+    }
+
+    // Check Drive
+    const driveMatch = data?.drive?.files?.some((file: any) =>
+      file.name?.toLowerCase().includes(query)
+    );
+    if (driveMatch) {
+      setActiveTab('drive');
+      return;
+    }
+
+    // Default to Gmail for email search
+    setActiveTab('gmail');
+  };
 
   // Check if we have any data synced
   const hasData = data && (
@@ -259,7 +304,20 @@ export function GoogleWorkspacePage({
                   className="bg-transparent border-none outline-none text-sm w-full text-gray-900 placeholder:text-gray-500"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      handleGlobalSearch();
+                    }
+                  }}
                 />
+                {searchQuery && (
+                  <button
+                    onClick={() => setSearchQuery('')}
+                    className="p-1 hover:bg-gray-200 rounded"
+                  >
+                    <X className="h-3 w-3 text-gray-500" />
+                  </button>
+                )}
               </div>
             </div>
 
@@ -281,18 +339,83 @@ export function GoogleWorkspacePage({
               >
                 <RefreshCw className={`h-5 w-5 text-gray-600 ${loading ? 'animate-spin' : ''}`} />
               </button>
-              <button
-                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                title="Notifications"
-              >
-                <Bell className="h-5 w-5 text-gray-600" />
-              </button>
-              <button
-                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                title="Settings"
-              >
-                <Settings className="h-5 w-5 text-gray-600" />
-              </button>
+              <div className="relative">
+                <button
+                  onClick={() => setShowNotifications(!showNotifications)}
+                  className={`p-2 hover:bg-gray-100 rounded-lg transition-colors ${showNotifications ? 'bg-gray-100' : ''}`}
+                  title="Notifications"
+                >
+                  <Bell className="h-5 w-5 text-gray-600" />
+                </button>
+                {/* Notifications Dropdown */}
+                {showNotifications && (
+                  <div className="absolute right-0 top-full mt-2 w-80 bg-white rounded-lg shadow-lg border z-50">
+                    <div className="px-4 py-3 border-b flex items-center justify-between">
+                      <h3 className="font-semibold text-gray-900">Notifications</h3>
+                      <button
+                        onClick={() => setShowNotifications(false)}
+                        className="p-1 hover:bg-gray-100 rounded"
+                      >
+                        <X className="h-4 w-4 text-gray-500" />
+                      </button>
+                    </div>
+                    <div className="p-4 text-center">
+                      <Bell className="h-8 w-8 text-gray-300 mx-auto mb-2" />
+                      <p className="text-sm text-gray-500">No new notifications</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+              <div className="relative">
+                <button
+                  onClick={() => setShowSettingsPanel(!showSettingsPanel)}
+                  className={`p-2 hover:bg-gray-100 rounded-lg transition-colors ${showSettingsPanel ? 'bg-gray-100' : ''}`}
+                  title="Settings"
+                >
+                  <Settings className="h-5 w-5 text-gray-600" />
+                </button>
+                {/* Settings Dropdown */}
+                {showSettingsPanel && (
+                  <div className="absolute right-0 top-full mt-2 w-64 bg-white rounded-lg shadow-lg border z-50">
+                    <div className="px-4 py-3 border-b flex items-center justify-between">
+                      <h3 className="font-semibold text-gray-900">Settings</h3>
+                      <button
+                        onClick={() => setShowSettingsPanel(false)}
+                        className="p-1 hover:bg-gray-100 rounded"
+                      >
+                        <X className="h-4 w-4 text-gray-500" />
+                      </button>
+                    </div>
+                    <div className="py-2">
+                      <button
+                        onClick={() => {
+                          setShowSettingsPanel(false);
+                          window.location.href = '/settings';
+                        }}
+                        className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
+                      >
+                        Account Settings
+                      </button>
+                      <button
+                        onClick={() => {
+                          setShowSettingsPanel(false);
+                          window.location.href = '/integrations';
+                        }}
+                        className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
+                      >
+                        Manage Integrations
+                      </button>
+                      <div className="border-t my-1" />
+                      <button
+                        onClick={handleSync}
+                        className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
+                      >
+                        Re-sync Google Data
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
