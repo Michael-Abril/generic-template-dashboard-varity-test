@@ -43,8 +43,18 @@ export function EmailComposer({ walletAddress, onClose, replyTo }: EmailComposer
   const [showBcc, setShowBcc] = useState(false);
   const [sending, setSending] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const bodyEditorRef = useRef<HTMLDivElement>(null);
+
+  // Formatting command helper
+  const execFormatCommand = (command: string, value?: string) => {
+    document.execCommand(command, false, value);
+    bodyEditorRef.current?.focus();
+  };
 
   const handleSend = async () => {
+    // Get body content from contentEditable div
+    const bodyContent = bodyEditorRef.current?.innerHTML || body;
+
     if (!to || !subject) {
       alert('Please fill in recipient and subject');
       return;
@@ -62,7 +72,7 @@ export function EmailComposer({ walletAddress, onClose, replyTo }: EmailComposer
           cc: cc ? cc.split(',').map(email => email.trim()) : [],
           bcc: bcc ? bcc.split(',').map(email => email.trim()) : [],
           subject,
-          body,
+          body: bodyContent,
           threadId: replyTo?.threadId
         })
       });
@@ -192,43 +202,85 @@ export function EmailComposer({ walletAddress, onClose, replyTo }: EmailComposer
 
         {/* Formatting Toolbar */}
         <div className="border-b px-4 py-2 flex items-center gap-1">
-          <button className="p-2 hover:bg-gray-100 rounded" title="Bold">
+          <button
+            onClick={() => execFormatCommand('bold')}
+            className="p-2 hover:bg-gray-100 rounded text-gray-600 hover:text-gray-900"
+            title="Bold (Ctrl+B)"
+          >
             <Bold className="h-4 w-4" />
           </button>
-          <button className="p-2 hover:bg-gray-100 rounded" title="Italic">
+          <button
+            onClick={() => execFormatCommand('italic')}
+            className="p-2 hover:bg-gray-100 rounded text-gray-600 hover:text-gray-900"
+            title="Italic (Ctrl+I)"
+          >
             <Italic className="h-4 w-4" />
           </button>
-          <button className="p-2 hover:bg-gray-100 rounded" title="Underline">
+          <button
+            onClick={() => execFormatCommand('underline')}
+            className="p-2 hover:bg-gray-100 rounded text-gray-600 hover:text-gray-900"
+            title="Underline (Ctrl+U)"
+          >
             <Underline className="h-4 w-4" />
           </button>
           <div className="w-px h-6 bg-gray-300 mx-2" />
-          <button className="p-2 hover:bg-gray-100 rounded" title="Align Left">
+          <button
+            onClick={() => execFormatCommand('justifyLeft')}
+            className="p-2 hover:bg-gray-100 rounded text-gray-600 hover:text-gray-900"
+            title="Align Left"
+          >
             <AlignLeft className="h-4 w-4" />
           </button>
-          <button className="p-2 hover:bg-gray-100 rounded" title="Align Center">
+          <button
+            onClick={() => execFormatCommand('justifyCenter')}
+            className="p-2 hover:bg-gray-100 rounded text-gray-600 hover:text-gray-900"
+            title="Align Center"
+          >
             <AlignCenter className="h-4 w-4" />
           </button>
-          <button className="p-2 hover:bg-gray-100 rounded" title="Align Right">
+          <button
+            onClick={() => execFormatCommand('justifyRight')}
+            className="p-2 hover:bg-gray-100 rounded text-gray-600 hover:text-gray-900"
+            title="Align Right"
+          >
             <AlignRight className="h-4 w-4" />
           </button>
           <div className="w-px h-6 bg-gray-300 mx-2" />
-          <button className="p-2 hover:bg-gray-100 rounded" title="Bullet List">
+          <button
+            onClick={() => execFormatCommand('insertUnorderedList')}
+            className="p-2 hover:bg-gray-100 rounded text-gray-600 hover:text-gray-900"
+            title="Bullet List"
+          >
             <List className="h-4 w-4" />
           </button>
-          <button className="p-2 hover:bg-gray-100 rounded" title="Numbered List">
+          <button
+            onClick={() => execFormatCommand('insertOrderedList')}
+            className="p-2 hover:bg-gray-100 rounded text-gray-600 hover:text-gray-900"
+            title="Numbered List"
+          >
             <ListOrdered className="h-4 w-4" />
           </button>
         </div>
 
-        {/* Body */}
+        {/* Rich Text Body Editor */}
         <div className="flex-1 overflow-auto">
-          <textarea
-            value={body}
-            onChange={(e) => setBody(e.target.value)}
-            placeholder="Compose your message..."
-            className="w-full h-full px-4 py-3 outline-none resize-none"
+          <div
+            ref={bodyEditorRef}
+            contentEditable
+            className="w-full min-h-[200px] px-4 py-3 outline-none focus:bg-gray-50 transition-colors"
+            style={{ lineHeight: '1.6' }}
+            onInput={(e) => setBody(e.currentTarget.innerHTML)}
+            data-placeholder="Compose your message..."
+            suppressContentEditableWarning
           />
         </div>
+        <style jsx>{`
+          [data-placeholder]:empty:before {
+            content: attr(data-placeholder);
+            color: #9ca3af;
+            pointer-events: none;
+          }
+        `}</style>
 
         {/* Attachments */}
         {attachments.length > 0 && (

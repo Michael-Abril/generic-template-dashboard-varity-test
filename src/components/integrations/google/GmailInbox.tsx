@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Mail,
   Star,
@@ -22,7 +22,11 @@ import {
   Download,
   X,
   MailOpen,
-  MailWarning
+  MailWarning,
+  Clock,
+  Pencil,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 import { EmailComposer } from './EmailComposer';
 
@@ -112,6 +116,106 @@ export function GmailInbox({ walletAddress, data }: GmailInboxProps) {
     setRefreshing(true);
     setTimeout(() => setRefreshing(false), 500);
   };
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't trigger if typing in an input
+      const target = e.target as HTMLElement;
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
+        return;
+      }
+
+      // Don't trigger if composer is open
+      if (showComposer) return;
+
+      switch (e.key.toLowerCase()) {
+        case 'c':
+          // Compose new email
+          e.preventDefault();
+          setReplyContext(null);
+          setShowComposer(true);
+          break;
+        case 'e':
+          // Archive selected or current email
+          if (selectedEmail) {
+            handleArchiveEmail(selectedEmail.id);
+          } else if (selectedEmails.size > 0) {
+            selectedEmails.forEach(id => handleArchiveEmail(id));
+            setSelectedEmails(new Set());
+          }
+          break;
+        case '#':
+          // Delete selected or current email
+          if (selectedEmail) {
+            handleDeleteEmail(selectedEmail.id);
+          }
+          break;
+        case 's':
+          // Star/unstar selected email
+          if (selectedEmail) {
+            handleStarEmail(selectedEmail.id, selectedEmail.starred || false);
+          }
+          break;
+        case 'j':
+          // Move to next email in list
+          if (filteredEmails.length > 0) {
+            const currentIndex = selectedEmail
+              ? filteredEmails.findIndex(e => e.id === selectedEmail.id)
+              : -1;
+            const nextIndex = Math.min(currentIndex + 1, filteredEmails.length - 1);
+            setSelectedEmail(filteredEmails[nextIndex]);
+          }
+          break;
+        case 'k':
+          // Move to previous email in list
+          if (filteredEmails.length > 0) {
+            const currentIndex = selectedEmail
+              ? filteredEmails.findIndex(e => e.id === selectedEmail.id)
+              : filteredEmails.length;
+            const prevIndex = Math.max(currentIndex - 1, 0);
+            setSelectedEmail(filteredEmails[prevIndex]);
+          }
+          break;
+        case 'escape':
+          // Close email detail view
+          setSelectedEmail(null);
+          break;
+        case '/':
+          // Focus search
+          e.preventDefault();
+          const searchInput = document.querySelector('input[placeholder*="Search"]') as HTMLInputElement;
+          if (searchInput) {
+            searchInput.focus();
+          }
+          break;
+        case 'r':
+          // Reply to email
+          if (selectedEmail) {
+            e.preventDefault();
+            handleReply(selectedEmail, 'reply');
+          }
+          break;
+        case 'a':
+          // Reply all
+          if (e.shiftKey && selectedEmail) {
+            e.preventDefault();
+            handleReply(selectedEmail, 'replyAll');
+          }
+          break;
+        case 'f':
+          // Forward
+          if (selectedEmail) {
+            e.preventDefault();
+            handleReply(selectedEmail, 'forward');
+          }
+          break;
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedEmail, selectedEmails, filteredEmails, showComposer]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -275,7 +379,7 @@ export function GmailInbox({ walletAddress, data }: GmailInboxProps) {
           <div className="flex items-center gap-2">
             <input
               type="checkbox"
-              className="rounded border-gray-300"
+              className="rounded border-gray-300 w-4 h-4"
               checked={selectedEmails.size > 0 && selectedEmails.size === filteredEmails.length}
               onChange={(e) => {
                 if (e.target.checked) {
@@ -286,31 +390,22 @@ export function GmailInbox({ walletAddress, data }: GmailInboxProps) {
               }}
             />
             <button
-              onClick={() => {
-                setReplyContext(null);
-                setShowComposer(true);
-              }}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
-            >
-              <Mail className="h-4 w-4" />
-              <span className="hidden md:inline">Compose</span>
-            </button>
-            <button
               onClick={handleRefresh}
               disabled={refreshing}
-              className="p-2 hover:bg-gray-100 rounded-lg disabled:opacity-50 text-gray-600 hover:text-gray-900 transition-colors"
+              className="p-2 hover:bg-gray-100 rounded-full disabled:opacity-50 text-gray-600 hover:text-gray-900 transition-colors"
               title="Refresh"
             >
               <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
             </button>
             {selectedEmails.size > 0 && (
               <>
+                <div className="w-px h-5 bg-gray-300 mx-1"></div>
                 <button
                   onClick={() => {
                     selectedEmails.forEach(id => handleArchiveEmail(id));
                     setSelectedEmails(new Set());
                   }}
-                  className="p-2 hover:bg-gray-100 rounded-lg text-gray-600 hover:text-gray-900 transition-colors"
+                  className="p-2 hover:bg-gray-100 rounded-full text-gray-600 hover:text-gray-900 transition-colors"
                   title="Archive selected"
                 >
                   <Archive className="h-4 w-4" />
@@ -322,24 +417,25 @@ export function GmailInbox({ walletAddress, data }: GmailInboxProps) {
                       setSelectedEmails(new Set());
                     }
                   }}
-                  className="p-2 hover:bg-red-50 rounded-lg text-gray-600 hover:text-red-600 transition-colors"
+                  className="p-2 hover:bg-gray-100 rounded-full text-gray-600 hover:text-red-600 transition-colors"
                   title="Delete selected"
                 >
                   <Trash2 className="h-4 w-4" />
                 </button>
+                <span className="text-sm text-gray-500 ml-2">{selectedEmails.size} selected</span>
               </>
             )}
           </div>
-          <div className="flex items-center gap-2 text-sm text-gray-700">
-            <span className="font-medium">
+          <div className="flex items-center gap-1 text-sm text-gray-600">
+            <span>
               {searchQuery
                 ? `${filteredEmails.length} results`
                 : `1-${filteredEmails.length} of ${filteredEmails.length}`}
             </span>
-            <button className="p-2 hover:bg-gray-100 rounded-lg text-gray-600">
+            <button className="p-1.5 hover:bg-gray-100 rounded-full text-gray-500 hover:text-gray-700">
               <ChevronLeft className="h-4 w-4" />
             </button>
-            <button className="p-2 hover:bg-gray-100 rounded-lg text-gray-600">
+            <button className="p-1.5 hover:bg-gray-100 rounded-full text-gray-500 hover:text-gray-700">
               <ChevronRight className="h-4 w-4" />
             </button>
           </div>
@@ -371,9 +467,11 @@ export function GmailInbox({ walletAddress, data }: GmailInboxProps) {
             <div
               key={email.id}
               className={`
-                flex items-center gap-3 px-4 py-3 cursor-pointer transition-colors
-                ${email.unread ? 'bg-blue-50 hover:bg-blue-100' : 'bg-white hover:bg-gray-50'}
-                ${selectedEmails.has(email.id) ? 'bg-blue-100' : ''}
+                group flex items-center gap-2 px-4 py-2.5 cursor-pointer transition-all border-l-4
+                ${email.unread
+                  ? 'bg-white border-l-blue-500 hover:shadow-[0_1px_3px_rgba(0,0,0,0.12)]'
+                  : 'bg-white border-l-transparent hover:shadow-[0_1px_3px_rgba(0,0,0,0.08)]'}
+                ${selectedEmails.has(email.id) ? 'bg-blue-50' : ''}
               `}
               onClick={() => {
                 setSelectedEmail(email);
@@ -382,51 +480,102 @@ export function GmailInbox({ walletAddress, data }: GmailInboxProps) {
                 }
               }}
             >
+              {/* Checkbox */}
               <input
                 type="checkbox"
-                className="rounded border-gray-300"
+                className="rounded border-gray-300 w-4 h-4"
                 checked={selectedEmails.has(email.id)}
                 onChange={(e) => {
                   e.stopPropagation();
                   toggleEmailSelection(email.id);
                 }}
               />
+
+              {/* Star */}
               <button
                 onClick={(e) => {
                   e.stopPropagation();
                   handleStarEmail(email.id, email.starred || false);
                 }}
-                className="p-1 hover:bg-gray-200 rounded transition-colors"
+                className="p-1 hover:bg-gray-100 rounded transition-colors"
               >
-                <Star className={`h-4 w-4 ${email.starred ? 'fill-yellow-500 text-yellow-500' : 'text-gray-400 hover:text-yellow-500'}`} />
+                <Star className={`h-4 w-4 transition-all ${email.starred ? 'fill-yellow-400 text-yellow-400' : 'text-gray-300 hover:text-yellow-400'}`} />
               </button>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className={`truncate ${email.unread ? 'font-bold text-gray-900' : 'font-semibold text-gray-800'}`}>
-                        {email.from}
-                      </span>
-                      {email.hasAttachment && <Paperclip className="h-3.5 w-3.5 text-gray-500" />}
-                    </div>
-                    <p className={`truncate ${email.unread ? 'font-semibold text-gray-900' : 'text-gray-800'}`}>
-                      {email.subject}
-                    </p>
-                    <p className="text-sm text-gray-600 truncate">{email.snippet}</p>
-                  </div>
-                  <span className="text-xs font-medium text-gray-600 whitespace-nowrap">{email.date}</span>
+
+              {/* Email Content */}
+              <div className="flex-1 min-w-0 flex items-center gap-3">
+                {/* Sender */}
+                <span className={`w-48 truncate text-sm ${email.unread ? 'font-semibold text-gray-900' : 'text-gray-600'}`}>
+                  {email.from.split('<')[0].trim()}
+                </span>
+
+                {/* Subject & Snippet */}
+                <div className="flex-1 min-w-0 flex items-center gap-2">
+                  <span className={`truncate text-sm ${email.unread ? 'font-semibold text-gray-900' : 'text-gray-800'}`}>
+                    {email.subject}
+                  </span>
+                  <span className="text-gray-400 text-sm">-</span>
+                  <span className="text-sm text-gray-500 truncate flex-1">{email.snippet}</span>
+                </div>
+
+                {/* Attachment indicator */}
+                {email.hasAttachment && (
+                  <Paperclip className="h-4 w-4 text-gray-400 flex-shrink-0" />
+                )}
+              </div>
+
+              {/* Date (hidden on hover) / Hover Actions (shown on hover) */}
+              <div className="flex items-center gap-1 min-w-[140px] justify-end">
+                {/* Date - visible by default, hidden on hover */}
+                <span className="text-xs text-gray-500 whitespace-nowrap group-hover:hidden">
+                  {email.date}
+                </span>
+
+                {/* Hover Actions - hidden by default, shown on hover */}
+                <div className="hidden group-hover:flex items-center gap-0.5">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleArchiveEmail(email.id);
+                    }}
+                    className="p-1.5 hover:bg-gray-100 rounded-full text-gray-500 hover:text-gray-700 transition-colors"
+                    title="Archive"
+                  >
+                    <Archive className="h-4 w-4" />
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDeleteEmail(email.id);
+                    }}
+                    className="p-1.5 hover:bg-gray-100 rounded-full text-gray-500 hover:text-gray-700 transition-colors"
+                    title="Delete"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleMarkAsRead(email.id, email.unread || false);
+                    }}
+                    className="p-1.5 hover:bg-gray-100 rounded-full text-gray-500 hover:text-gray-700 transition-colors"
+                    title={email.unread ? 'Mark as read' : 'Mark as unread'}
+                  >
+                    {email.unread ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      // Snooze functionality - for now just show a message
+                      alert('Snooze functionality coming soon');
+                    }}
+                    className="p-1.5 hover:bg-gray-100 rounded-full text-gray-500 hover:text-gray-700 transition-colors"
+                    title="Snooze"
+                  >
+                    <Clock className="h-4 w-4" />
+                  </button>
                 </div>
               </div>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleArchiveEmail(email.id);
-                }}
-                className="p-2 hover:bg-gray-200 rounded-lg text-gray-500 hover:text-gray-700 transition-colors opacity-0 group-hover:opacity-100"
-                title="Archive"
-              >
-                <Archive className="h-4 w-4" />
-              </button>
             </div>
           ))}
         </div>
@@ -521,42 +670,65 @@ export function GmailInbox({ walletAddress, data }: GmailInboxProps) {
   return (
     <div className="flex h-[calc(100vh-200px)] bg-white rounded-lg border border-gray-200 overflow-hidden">
       {/* Sidebar */}
-      <div className="w-64 border-r border-gray-200 bg-gray-50 p-4">
-        <div className="space-y-1">
-          {LABELS.map((label) => {
-            const Icon = label.icon;
-            const isActive = selectedLabel === label.id;
-            return (
-              <button
-                key={label.id}
-                onClick={() => setSelectedLabel(label.id)}
-                className={`
-                  w-full flex items-center gap-3 px-4 py-2.5 rounded-lg transition-colors
-                  ${isActive
-                    ? 'bg-blue-100 text-blue-700 font-semibold'
-                    : 'hover:bg-gray-100 text-gray-800 font-medium'
-                  }
-                `}
-              >
-                <Icon className={`h-4 w-4 ${isActive ? 'text-blue-700' : label.color}`} />
-                <span>{label.label}</span>
-              </button>
-            );
-          })}
+      <div className="w-64 border-r border-gray-200 bg-white flex flex-col">
+        {/* Gmail-style Compose FAB Button */}
+        <div className="p-4">
+          <button
+            onClick={() => {
+              setReplyContext(null);
+              setShowComposer(true);
+            }}
+            className="flex items-center gap-3 w-full px-6 py-3.5 bg-white border border-gray-200 rounded-2xl shadow-md hover:shadow-lg hover:bg-gray-50 transition-all group"
+          >
+            <div className="relative">
+              <Pencil className="h-5 w-5 text-gray-700 group-hover:text-blue-600 transition-colors" />
+            </div>
+            <span className="text-gray-800 font-medium text-[15px]">Compose</span>
+          </button>
         </div>
 
-        {/* Labels Section */}
-        <div className="mt-6">
-          <div className="px-4 py-2 text-xs font-bold text-gray-600 uppercase tracking-wide">Labels</div>
-          <div className="space-y-1">
-            <button className="w-full flex items-center gap-3 px-4 py-2.5 rounded-lg hover:bg-gray-100 text-gray-800 font-medium transition-colors">
-              <Tag className="h-4 w-4 text-green-600" />
-              <span>Personal</span>
-            </button>
-            <button className="w-full flex items-center gap-3 px-4 py-2.5 rounded-lg hover:bg-gray-100 text-gray-800 font-medium transition-colors">
-              <Tag className="h-4 w-4 text-purple-600" />
-              <span>Work</span>
-            </button>
+        {/* Labels Navigation */}
+        <div className="flex-1 overflow-auto px-2">
+          <div className="space-y-0.5">
+            {LABELS.map((label) => {
+              const Icon = label.icon;
+              const isActive = selectedLabel === label.id;
+              const unreadCount = label.id === 'INBOX' ? emails.filter(e => e.unread).length : 0;
+              return (
+                <button
+                  key={label.id}
+                  onClick={() => setSelectedLabel(label.id)}
+                  className={`
+                    w-full flex items-center gap-3 px-4 py-2 rounded-r-full transition-all
+                    ${isActive
+                      ? 'bg-blue-100 text-blue-800 font-semibold'
+                      : 'hover:bg-gray-100 text-gray-700 font-medium'
+                    }
+                  `}
+                >
+                  <Icon className={`h-5 w-5 ${isActive ? 'text-blue-700' : label.color}`} />
+                  <span className="flex-1 text-left text-[14px]">{label.label}</span>
+                  {unreadCount > 0 && label.id === 'INBOX' && (
+                    <span className="text-xs font-bold text-blue-600">{unreadCount}</span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Labels Section */}
+          <div className="mt-4 pt-4 border-t border-gray-200">
+            <div className="px-4 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">Labels</div>
+            <div className="space-y-0.5">
+              <button className="w-full flex items-center gap-3 px-4 py-2 rounded-r-full hover:bg-gray-100 text-gray-700 font-medium transition-all">
+                <div className="w-3 h-3 rounded-full bg-green-500"></div>
+                <span className="text-[14px]">Personal</span>
+              </button>
+              <button className="w-full flex items-center gap-3 px-4 py-2 rounded-r-full hover:bg-gray-100 text-gray-700 font-medium transition-all">
+                <div className="w-3 h-3 rounded-full bg-purple-500"></div>
+                <span className="text-[14px]">Work</span>
+              </button>
+            </div>
           </div>
         </div>
       </div>

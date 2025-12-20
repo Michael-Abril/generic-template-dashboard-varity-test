@@ -92,6 +92,7 @@ export function OnboardingWizard({
   // Get integration from URL or props
   const integrationSlug = searchParams.get('integration') || initialIntegration || '';
   const urlStep = searchParams.get('step') as OnboardingStep | null;
+  const referralCode = searchParams.get('ref');
 
   // Initialize state with localStorage draft if available
   const getInitialState = (): OnboardingState => {
@@ -103,7 +104,7 @@ export function OnboardingWizard({
       primaryGoal: '',
       contactEmail: '',
       contactName: '',
-      referralSource: '',
+      referralSource: referralCode ? `Referral: ${referralCode}` : '',
       selectedIntegration: integrationSlug || null,
       trialTier: null,
       trialDays: 30,

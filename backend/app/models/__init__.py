@@ -40,6 +40,13 @@ from app.models.feedback import (
     FeedbackSummary,
     FeedbackType
 )
+from app.models.team import (
+    Team,
+    TeamMember,
+    TeamInvitation,
+    TeamRole,
+    InvitationStatus
+)
 
 __all__ = [
     "Category",
@@ -71,5 +78,10 @@ __all__ = [
     "ConversationWithMessages",
     "Feedback",
     "FeedbackSummary",
-    "FeedbackType"
+    "FeedbackType",
+    "Team",
+    "TeamMember",
+    "TeamInvitation",
+    "TeamRole",
+    "InvitationStatus"
 ]

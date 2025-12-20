@@ -124,8 +124,11 @@ export default function SettingsPage() {
   // Account settings state
   const [companyName, setCompanyName] = useState('');
   const [contactEmail, setContactEmail] = useState('');
-  const [industry, setIndustry] = useState('Technology');
+  const [industry, setIndustry] = useState('Technology / Software');
   const [timezone, setTimezone] = useState('America/New_York');
+  const [companySize, setCompanySize] = useState('');
+  const [contactName, setContactName] = useState('');
+  const [referralSource, setReferralSource] = useState('');
 
   // Notification settings state
   const [emailNotifications, setEmailNotifications] = useState({
@@ -171,8 +174,11 @@ export default function SettingsPage() {
           const data = await response.json();
           // Populate account settings
           setCompanyName(data.company_name || '');
-          setIndustry(data.industry || 'Technology');
+          setIndustry(data.industry || 'Technology / Software');
           setTimezone(data.timezone || 'America/New_York');
+          setCompanySize(data.company_size || '');
+          setContactName(data.contact_name || '');
+          setReferralSource(data.referral_source || '');
           // Populate notification settings
           if (data.notification_preferences) {
             setEmailNotifications({
@@ -268,6 +274,8 @@ export default function SettingsPage() {
           company_name: companyName,
           industry: industry,
           timezone: timezone,
+          company_size: companySize || null,
+          contact_name: contactName || null,
         }),
       });
 
@@ -645,13 +653,18 @@ export default function SettingsPage() {
                           onChange={(e) => setIndustry(e.target.value)}
                           className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-600 focus:border-transparent bg-white"
                         >
-                          <option>Technology</option>
-                          <option>Finance</option>
-                          <option>Healthcare</option>
-                          <option>Retail</option>
-                          <option>Manufacturing</option>
-                          <option>Professional Services</option>
-                          <option>Other</option>
+                          <option value="Technology / Software">Technology / Software</option>
+                          <option value="Finance / Accounting">Finance / Accounting</option>
+                          <option value="Healthcare / Medical">Healthcare / Medical</option>
+                          <option value="Retail / E-commerce">Retail / E-commerce</option>
+                          <option value="Professional Services">Professional Services</option>
+                          <option value="Manufacturing">Manufacturing</option>
+                          <option value="Construction">Construction</option>
+                          <option value="Real Estate">Real Estate</option>
+                          <option value="Food & Hospitality">Food & Hospitality</option>
+                          <option value="Transportation / Logistics">Transportation / Logistics</option>
+                          <option value="Non-profit">Non-profit</option>
+                          <option value="Other">Other</option>
                         </select>
                       </div>
 
@@ -673,6 +686,53 @@ export default function SettingsPage() {
                           <option value="Asia/Tokyo">Tokyo (JST)</option>
                         </select>
                       </div>
+
+                      <div>
+                        <label className="block text-sm font-semibold text-gray-700 mb-2">
+                          Company Size
+                        </label>
+                        <select
+                          value={companySize}
+                          onChange={(e) => setCompanySize(e.target.value)}
+                          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-600 focus:border-transparent bg-white"
+                        >
+                          <option value="">Not specified</option>
+                          <option value="1">Just me</option>
+                          <option value="2-10">2-10 employees</option>
+                          <option value="11-50">11-50 employees</option>
+                          <option value="51-200">51-200 employees</option>
+                          <option value="201-500">201-500 employees</option>
+                          <option value="500+">500+ employees</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-semibold text-gray-700 mb-2">
+                          Contact Name
+                        </label>
+                        <input
+                          type="text"
+                          value={contactName}
+                          onChange={(e) => setContactName(e.target.value)}
+                          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-600 focus:border-transparent"
+                          placeholder="Your name"
+                        />
+                      </div>
+
+                      {referralSource && (
+                        <div>
+                          <label className="block text-sm font-semibold text-gray-700 mb-2">
+                            Referral Source
+                          </label>
+                          <input
+                            type="text"
+                            value={referralSource}
+                            disabled
+                            className="w-full px-4 py-3 border border-gray-300 rounded-lg bg-gray-50 text-gray-500 cursor-not-allowed"
+                          />
+                          <p className="text-xs text-gray-500 mt-1">Collected during onboarding</p>
+                        </div>
+                      )}
 
                       <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
                         <p className="text-sm text-gray-600 mb-1">Account ID (Wallet Address)</p>
