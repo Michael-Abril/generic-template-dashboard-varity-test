@@ -35,6 +35,10 @@ from app.services.ollama_service import OllamaBusinessService
 from app.services.together_service import TogetherBusinessService, TogetherService
 from app.services.rag_service import BusinessRAGService
 from app.services.web_search_service import web_search_service
+from app.services.settings_service import SettingsService
+
+# Initialize settings service for fetching industry context
+settings_service = SettingsService()
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +65,28 @@ def get_business_ai_service():
     if provider == "together" and os.getenv("TOGETHER_API_KEY"):
         return together_business_service
     return ollama_business_service
+
+
+async def get_user_context(wallet_address: str, db: AsyncSession) -> Dict[str, Any]:
+    """
+    Fetch user's industry and company context for AI personalization
+
+    Args:
+        wallet_address: User's wallet address
+        db: Database session
+
+    Returns:
+        Dict with industry and company_name (or None values if not set)
+    """
+    try:
+        user_settings = await settings_service.get_user_settings(db, wallet_address)
+        return {
+            "industry": getattr(user_settings, 'industry', None),
+            "company_name": getattr(user_settings, 'company_name', None)
+        }
+    except Exception as e:
+        logger.warning(f"Failed to fetch user context for {wallet_address[:10]}...: {e}")
+        return {"industry": None, "company_name": None}
 
 
 # Pydantic models
@@ -662,7 +688,7 @@ async def ai_health_check():
 # ==================== General LLM Chat (Works Without Integrations) ====================
 
 @router.post("/chat/general", response_model=GeneralChatResponse)
-async def general_chat(request: GeneralChatRequest):
+async def general_chat(request: GeneralChatRequest, db: AsyncSession = Depends(get_db)):
     """
     General LLM chat that works WITHOUT any software integrations
 
@@ -674,12 +700,14 @@ async def general_chat(request: GeneralChatRequest):
     - Planning and strategy discussions
 
     No data from integrations is used - this is pure LLM capability.
+    Industry context from user settings is used to personalize responses.
 
     Args:
         request: Chat request with message
+        db: Database session for fetching user context
 
     Returns:
-        AI-generated response
+        AI-generated response with industry-specific expertise
     """
     try:
         logger.info(
@@ -687,14 +715,21 @@ async def general_chat(request: GeneralChatRequest):
             f"'{request.message[:100]}...'"
         )
 
+        # Fetch user's industry context for personalized responses
+        user_context = await get_user_context(request.wallet_address, db)
+        industry = user_context.get("industry")
+        company_name = user_context.get("company_name")
+
         provider = get_llm_provider()
 
         if provider == "together" and os.getenv("TOGETHER_API_KEY"):
-            # Use Together.ai
+            # Use Together.ai with industry context
             response = await together_service.query(
                 prompt=request.message,
                 temperature=request.temperature,
-                max_tokens=request.max_tokens
+                max_tokens=request.max_tokens,
+                industry=industry,
+                company_name=company_name
             )
             model_used = os.getenv("TOGETHER_MODEL", "meta-llama/Llama-3.3-70B-Instruct-Turbo")
         else:
@@ -804,7 +839,7 @@ async def analyze_document(request: DocumentAnalysisRequest):
 # ==================== Deep Research Mode ====================
 
 @router.post("/research", response_model=ResearchQueryResponse)
-async def deep_research(request: ResearchQueryRequest):
+async def deep_research(request: ResearchQueryRequest, db: AsyncSession = Depends(get_db)):
     """
     Deep research mode for complex business intelligence queries
 
@@ -814,21 +849,28 @@ async def deep_research(request: ResearchQueryRequest):
     - Synthesizes information from multiple sources
     - Provides actionable recommendations
     - Executive-level analysis for decision-making
+    - Industry-specific expertise based on user's business profile
 
     If integrations are connected, uses business-specific data.
     If no integrations, provides general research and analysis.
 
     Args:
         request: Research query request
+        db: Database session for fetching user context
 
     Returns:
-        Comprehensive research analysis
+        Comprehensive research analysis with industry expertise
     """
     try:
         logger.info(
             f"Deep research request from {request.wallet_address}: "
             f"'{request.query[:100]}...' depth={request.depth}"
         )
+
+        # Fetch user's industry context for personalized research
+        user_context = await get_user_context(request.wallet_address, db)
+        industry = user_context.get("industry")
+        company_name = user_context.get("company_name")
 
         ai_service = get_business_ai_service()
 
@@ -840,14 +882,16 @@ async def deep_research(request: ResearchQueryRequest):
         }
         max_context = depth_mapping.get(request.depth, 5)
 
-        # Query with research mode
+        # Query with research mode and industry context
         result = await ai_service.query_business_ai(
             business_wallet=request.wallet_address,
             user_query=request.query,
             integration=request.integration,
             data_type=request.data_type,
             max_context_items=max_context,
-            mode="research"
+            mode="research",
+            industry=industry,
+            company_name=company_name
         )
 
         return ResearchQueryResponse(
@@ -961,13 +1005,14 @@ async def web_search_query(request: WebSearchRequest):
 
 
 @router.post("/query/combined", response_model=CombinedQueryResponse)
-async def combined_query(request: CombinedQueryRequest):
+async def combined_query(request: CombinedQueryRequest, db: AsyncSession = Depends(get_db)):
     """
     Combined AI query with both RAG and Web Search
 
     This is the most powerful query mode - combines:
     1. Business-specific RAG data (from connected integrations)
     2. Real-time web search results (for external information)
+    3. Industry-specific expertise based on user's business profile
 
     Use this for questions that need both your business data AND
     external context, like:
@@ -977,9 +1022,10 @@ async def combined_query(request: CombinedQueryRequest):
 
     Args:
         request: Combined query request
+        db: Database session for fetching user context
 
     Returns:
-        AI response with both RAG and web sources
+        AI response with both RAG and web sources, personalized for industry
     """
     try:
         logger.info(
@@ -987,10 +1033,15 @@ async def combined_query(request: CombinedQueryRequest):
             f"'{request.query[:100]}...' (web_search={request.enable_web_search})"
         )
 
+        # Fetch user's industry context for personalized responses
+        user_context = await get_user_context(request.wallet_address, db)
+        industry = user_context.get("industry")
+        company_name = user_context.get("company_name")
+
         provider = get_llm_provider()
 
         if provider == "together" and os.getenv("TOGETHER_API_KEY"):
-            # Use Together.ai combined query
+            # Use Together.ai combined query with industry context
             result = await together_business_service.query_with_web_search(
                 business_wallet=request.wallet_address,
                 user_query=request.query,
@@ -998,7 +1049,9 @@ async def combined_query(request: CombinedQueryRequest):
                 data_type=request.data_type,
                 enable_web_search=request.enable_web_search,
                 max_context_items=request.max_rag_results,
-                max_search_results=request.max_search_results
+                max_search_results=request.max_search_results,
+                industry=industry,
+                company_name=company_name
             )
         else:
             # Fallback: Use Ollama for RAG only (no web search in fallback)

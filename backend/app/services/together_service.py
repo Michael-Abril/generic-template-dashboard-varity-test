@@ -73,6 +73,156 @@ If no integrations are connected yet, I can still help with:
 
 I'm here to be your intelligent business partner. How can I help you today?"""
 
+    # Industry-specific knowledge to enhance AI responses
+    INDUSTRY_CONTEXT = {
+        "Technology / Software": """
+## INDUSTRY EXPERTISE: TECHNOLOGY / SOFTWARE
+You are advising a technology/software company. Key considerations:
+- SaaS metrics: MRR, ARR, churn rate, LTV, CAC, NRR
+- Product development cycles and sprint planning
+- Technical debt and infrastructure costs
+- Subscription revenue recognition (ASC 606)
+- R&D tax credits and capitalization
+- Burn rate and runway analysis
+- Customer acquisition and retention strategies""",
+
+        "Finance / Accounting": """
+## INDUSTRY EXPERTISE: FINANCE / ACCOUNTING
+You are advising a finance/accounting firm. Key considerations:
+- Billable hours and utilization rates
+- Client engagement profitability
+- Regulatory compliance (SOX, GAAP, IFRS)
+- Cash flow management and working capital
+- Partner compensation structures
+- Audit cycles and busy season planning
+- Practice management and capacity planning""",
+
+        "Healthcare / Medical": """
+## INDUSTRY EXPERTISE: HEALTHCARE / MEDICAL
+You are advising a healthcare/medical organization. Key considerations:
+- HIPAA compliance and patient data privacy
+- Revenue cycle management and claims processing
+- Payer mix analysis and reimbursement rates
+- Patient volume and appointment utilization
+- Medical equipment depreciation
+- Staffing ratios and labor costs
+- Insurance credentialing and contracting""",
+
+        "Retail / E-commerce": """
+## INDUSTRY EXPERTISE: RETAIL / E-COMMERCE
+You are advising a retail/e-commerce business. Key considerations:
+- Inventory turnover and days on hand
+- Gross margin and markup analysis
+- Customer lifetime value and repeat purchase rates
+- Seasonal trends and demand forecasting
+- Fulfillment costs and shipping optimization
+- Cart abandonment and conversion rates
+- Omnichannel strategy and channel profitability""",
+
+        "Professional Services": """
+## INDUSTRY EXPERTISE: PROFESSIONAL SERVICES
+You are advising a professional services firm. Key considerations:
+- Billable utilization and realization rates
+- Project profitability and scope management
+- Resource allocation and capacity planning
+- Client retention and pipeline management
+- Partner/employee leverage ratios
+- Fixed-fee vs hourly engagement structures
+- Accounts receivable aging and collections""",
+
+        "Manufacturing": """
+## INDUSTRY EXPERTISE: MANUFACTURING
+You are advising a manufacturing company. Key considerations:
+- Cost of goods sold and manufacturing overhead
+- Inventory management (raw materials, WIP, finished goods)
+- Production efficiency and OEE metrics
+- Supply chain optimization and vendor management
+- Quality control and defect rates
+- Equipment maintenance and CapEx planning
+- Labor costs and shift productivity""",
+
+        "Construction": """
+## INDUSTRY EXPERTISE: CONSTRUCTION
+You are advising a construction company. Key considerations:
+- Job costing and work-in-progress (WIP) schedules
+- Percentage of completion revenue recognition
+- Bid analysis and project profitability
+- Subcontractor management and lien waivers
+- Equipment utilization and fleet management
+- Bonding capacity and insurance requirements
+- Change order management and claims""",
+
+        "Real Estate": """
+## INDUSTRY EXPERTISE: REAL ESTATE
+You are advising a real estate company. Key considerations:
+- Property NOI and cap rate analysis
+- Occupancy rates and tenant retention
+- Lease administration and CAM reconciliation
+- Property maintenance and CapEx reserves
+- Debt service coverage ratios
+- 1031 exchanges and tax strategies
+- Market comparables and valuation methods""",
+
+        "Food & Hospitality": """
+## INDUSTRY EXPERTISE: FOOD & HOSPITALITY
+You are advising a food/hospitality business. Key considerations:
+- Food cost percentage and menu engineering
+- Labor cost as percentage of revenue
+- Seat turnover and RevPASH (revenue per available seat hour)
+- Inventory management and waste reduction
+- Health and safety compliance
+- Seasonal demand and staffing optimization
+- Tip reporting and payroll compliance""",
+
+        "Transportation / Logistics": """
+## INDUSTRY EXPERTISE: TRANSPORTATION / LOGISTICS
+You are advising a transportation/logistics company. Key considerations:
+- Revenue per mile/load and operating ratio
+- Fleet maintenance and replacement cycles
+- Fuel cost management and efficiency
+- Driver retention and DOT compliance
+- Route optimization and capacity utilization
+- Freight claims and insurance
+- IFTA fuel tax and HOS regulations""",
+
+        "Non-profit": """
+## INDUSTRY EXPERTISE: NON-PROFIT
+You are advising a non-profit organization. Key considerations:
+- Fund accounting and restricted vs unrestricted funds
+- Grant compliance and reporting requirements
+- Donor retention and fundraising efficiency
+- Program expense ratios
+- Form 990 preparation and transparency
+- Board governance and fiduciary duties
+- Impact measurement and outcome reporting"""
+    }
+
+    def build_system_prompt(self, industry: str = None, company_name: str = None) -> str:
+        """
+        Build a system prompt with industry-specific context
+
+        Args:
+            industry: User's business industry
+            company_name: User's company name
+
+        Returns:
+            Enhanced system prompt with industry expertise
+        """
+        prompt = self.VARITY_SYSTEM_PROMPT
+
+        # Add company personalization
+        if company_name:
+            prompt += f"\n\n## YOUR CLIENT\nYou are the AI assistant for **{company_name}**. Personalize your responses to their specific business context."
+
+        # Add industry-specific expertise
+        if industry and industry in self.INDUSTRY_CONTEXT:
+            prompt += self.INDUSTRY_CONTEXT[industry]
+        elif industry:
+            # Generic industry mention for unlisted industries
+            prompt += f"\n\n## INDUSTRY CONTEXT\nYou are advising a business in the **{industry}** industry. Apply relevant industry best practices and terminology in your responses."
+
+        return prompt
+
     async def query(
         self,
         prompt: str,
@@ -80,7 +230,9 @@ I'm here to be your intelligent business partner. How can I help you today?"""
         system_prompt: str = "",
         stream: bool = False,
         temperature: float = 0.7,
-        max_tokens: int = 2048
+        max_tokens: int = 2048,
+        industry: str = None,
+        company_name: str = None
     ) -> str:
         """
         Query Together.ai LLM with optional context
@@ -92,12 +244,17 @@ I'm here to be your intelligent business partner. How can I help you today?"""
             stream: Enable streaming response (not used in this method)
             temperature: Response creativity (0.0-1.0)
             max_tokens: Maximum response length
+            industry: User's business industry for context-specific responses
+            company_name: User's company name for personalization
 
         Returns:
             LLM response
         """
-        # Use Varity default prompt if none provided
-        effective_prompt = system_prompt if system_prompt else self.VARITY_SYSTEM_PROMPT
+        # Build system prompt with industry context if no custom prompt provided
+        if system_prompt:
+            effective_prompt = system_prompt
+        else:
+            effective_prompt = self.build_system_prompt(industry=industry, company_name=company_name)
         messages = [{"role": "system", "content": effective_prompt}]
 
         if context:
@@ -280,6 +437,31 @@ class TogetherBusinessService:
             f"model={self.model}"
         )
 
+    # Industry-specific knowledge (shared with TogetherService)
+    INDUSTRY_CONTEXT = {
+        "Technology / Software": "SaaS metrics (MRR, ARR, churn, LTV, CAC), sprint planning, R&D capitalization, subscription revenue recognition",
+        "Finance / Accounting": "Billable hours, utilization rates, client profitability, regulatory compliance (SOX, GAAP), audit cycles",
+        "Healthcare / Medical": "HIPAA compliance, revenue cycle management, payer mix, patient volume, medical equipment depreciation",
+        "Retail / E-commerce": "Inventory turnover, gross margin, customer LTV, seasonal trends, fulfillment costs, conversion rates",
+        "Professional Services": "Billable utilization, project profitability, resource allocation, accounts receivable aging",
+        "Manufacturing": "COGS, inventory (raw/WIP/finished), production efficiency, supply chain, equipment maintenance",
+        "Construction": "Job costing, WIP schedules, percentage of completion, subcontractor management, bonding capacity",
+        "Real Estate": "Property NOI, cap rates, occupancy, lease administration, debt service coverage, 1031 exchanges",
+        "Food & Hospitality": "Food cost %, labor cost %, seat turnover, RevPASH, waste reduction, tip reporting",
+        "Transportation / Logistics": "Revenue per mile, operating ratio, fleet maintenance, fuel efficiency, DOT compliance",
+        "Non-profit": "Fund accounting, grant compliance, donor retention, program expense ratios, Form 990"
+    }
+
+    def _get_industry_context(self, industry: str = None, company_name: str = None) -> str:
+        """Build industry-specific context string"""
+        context = ""
+        if company_name:
+            context += f"\n\n## CLIENT: {company_name}"
+        if industry:
+            expertise = self.INDUSTRY_CONTEXT.get(industry, f"Apply {industry} industry best practices")
+            context += f"\n\n## INDUSTRY EXPERTISE: {industry.upper()}\nKey considerations: {expertise}"
+        return context
+
     async def query_business_ai(
         self,
         business_wallet: str,
@@ -287,7 +469,9 @@ class TogetherBusinessService:
         integration: Optional[str] = None,
         data_type: Optional[str] = None,
         max_context_items: int = 5,
-        mode: str = "auto"
+        mode: str = "auto",
+        industry: str = None,
+        company_name: str = None
     ) -> Dict[str, Any]:
         """
         Query AI with business-specific RAG context
@@ -308,6 +492,8 @@ class TogetherBusinessService:
             data_type: Optional filter by data type
             max_context_items: Maximum RAG results to include
             mode: Query mode ("auto", "general", "rag", "research")
+            industry: User's business industry for context-specific responses
+            company_name: User's company name for personalization
 
         Returns:
             {
@@ -359,13 +545,14 @@ Source {idx} (Integration: {integration_name}, Type: {data_type_name}):
         else:
             actual_mode = "general"
 
-        # Build system prompt based on mode
+        # Build system prompt based on mode, with industry context
+        industry_context = self._get_industry_context(industry, company_name)
         if actual_mode == "research":
-            system_prompt = self._get_research_system_prompt(context_parts)
+            system_prompt = self._get_research_system_prompt(context_parts) + industry_context
         elif actual_mode == "rag":
-            system_prompt = self._get_rag_system_prompt(context_parts)
+            system_prompt = self._get_rag_system_prompt(context_parts) + industry_context
         else:
-            system_prompt = self._get_general_system_prompt()
+            system_prompt = self._get_general_system_prompt() + industry_context
 
         # Query Together.ai
         try:
@@ -988,7 +1175,9 @@ Guidelines:
         data_type: Optional[str] = None,
         enable_web_search: bool = True,
         max_context_items: int = 5,
-        max_search_results: int = 3
+        max_search_results: int = 3,
+        industry: str = None,
+        company_name: str = None
     ) -> Dict[str, Any]:
         """
         Query AI with both RAG context AND web search results.
@@ -1060,11 +1249,12 @@ Business Data Source {idx} (Integration: {integration_name}, Type: {data_type_na
             except Exception as e:
                 logger.warning(f"Web search failed: {e}")
 
-        # 3. Build comprehensive system prompt
+        # 3. Build comprehensive system prompt with industry context
+        industry_context = self._get_industry_context(industry, company_name)
         system_prompt = self._get_combined_system_prompt(
             context_parts,
             web_search_context
-        )
+        ) + industry_context
 
         # 4. Query Together.ai
         try:
