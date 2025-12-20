@@ -29,7 +29,11 @@ import {
   Copy,
   Move,
   ExternalLink,
-  FolderPlus
+  FolderPlus,
+  HardDrive,
+  Users,
+  Clock,
+  Cloud
 } from 'lucide-react';
 
 interface DriveExplorerProps {
@@ -49,6 +53,7 @@ interface DriveFile {
 }
 
 type ViewMode = 'grid' | 'list';
+type SidebarSection = 'my-drive' | 'shared' | 'recent' | 'starred' | 'trash';
 
 const getFileIcon = (mimeType: string) => {
   if (mimeType.includes('folder')) return FolderOpen;
@@ -134,18 +139,56 @@ export function DriveExplorer({ walletAddress, data }: DriveExplorerProps) {
   const [newFolderName, setNewFolderName] = useState('');
   const [creatingFolder, setCreatingFolder] = useState(false);
   const [showNewMenu, setShowNewMenu] = useState(false);
+  const [sidebarSection, setSidebarSection] = useState<SidebarSection>('my-drive');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const newMenuRef = useRef<HTMLDivElement>(null);
 
-  // Filter files based on search query
+  // Get storage usage (mock for now)
+  const storageUsed = useMemo(() => {
+    const totalBytes = files.reduce((acc, file) => acc + parseInt(file.size || '0'), 0);
+    return formatFileSize(String(totalBytes));
+  }, [files]);
+
+  // Filter files based on search query and sidebar section
   const filteredFiles = useMemo(() => {
-    if (!searchQuery.trim()) return files;
-    const query = searchQuery.toLowerCase();
-    return files.filter(file =>
-      file.name.toLowerCase().includes(query) ||
-      file.mimeType.toLowerCase().includes(query)
-    );
-  }, [files, searchQuery]);
+    let result = files;
+
+    // Filter by sidebar section
+    switch (sidebarSection) {
+      case 'starred':
+        result = result.filter(file => file.starred);
+        break;
+      case 'recent':
+        // Sort by modified time, most recent first
+        result = [...result].sort((a, b) =>
+          new Date(b.modifiedTime).getTime() - new Date(a.modifiedTime).getTime()
+        ).slice(0, 20); // Show 20 most recent
+        break;
+      case 'trash':
+        // In real Drive, trash would be a separate API call
+        // For now, show empty (we don't track deleted files)
+        result = [];
+        break;
+      case 'shared':
+        // Filter files that have other owners
+        result = result.filter(file =>
+          file.owners && file.owners.length > 0 && file.owners[0] !== 'me'
+        );
+        break;
+      // 'my-drive' shows all files
+    }
+
+    // Then filter by search query
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      result = result.filter(file =>
+        file.name.toLowerCase().includes(query) ||
+        file.mimeType.toLowerCase().includes(query)
+      );
+    }
+
+    return result;
+  }, [files, searchQuery, sidebarSection]);
 
   // Load files from data prop (already fetched by parent)
   useEffect(() => {
@@ -643,111 +686,231 @@ export function DriveExplorer({ walletAddress, data }: DriveExplorerProps) {
     </div>
   );
 
+  // Get section title based on current sidebar selection
+  const getSectionTitle = () => {
+    switch (sidebarSection) {
+      case 'my-drive': return 'My Drive';
+      case 'shared': return 'Shared with me';
+      case 'recent': return 'Recent';
+      case 'starred': return 'Starred';
+      case 'trash': return 'Trash';
+      default: return 'My Drive';
+    }
+  };
+
   return (
-    <div className="bg-white rounded-lg border flex flex-col h-[calc(100vh-200px)]">
-      {/* Header */}
-      <div className="border-b px-6 py-4">
-        <div className="flex items-center justify-between mb-4">
-          {/* Breadcrumb */}
-          <div className="flex items-center gap-2">
-            {currentPath.map((path, index) => (
-              <div key={index} className="flex items-center gap-2">
-                {index > 0 && <ChevronRight className="h-4 w-4 text-gray-400" />}
+    <div className="bg-white rounded-lg border flex h-[calc(100vh-200px)]">
+      {/* Left Sidebar - Google Drive Style */}
+      <div className="w-56 border-r bg-white flex flex-col">
+        {/* New Button */}
+        <div className="p-3">
+          <div className="relative" ref={newMenuRef}>
+            <button
+              onClick={() => setShowNewMenu(!showNewMenu)}
+              className="flex items-center gap-3 w-full px-6 py-3.5 bg-white border border-gray-200 rounded-2xl shadow-md hover:shadow-lg hover:bg-gray-50 transition-all"
+            >
+              <Plus className="h-6 w-6 text-gray-700" />
+              <span className="text-gray-800 font-medium text-sm">New</span>
+            </button>
+            {showNewMenu && (
+              <div className="absolute top-full left-0 mt-2 w-48 bg-white rounded-lg shadow-xl border py-2 z-20">
                 <button
-                  onClick={() => setCurrentPath(currentPath.slice(0, index + 1))}
-                  className={`font-medium ${
-                    index === currentPath.length - 1
-                      ? 'text-gray-900'
-                      : 'text-gray-600 hover:text-gray-900'
-                  }`}
+                  onClick={() => {
+                    setShowNewMenu(false);
+                    setShowNewFolderModal(true);
+                  }}
+                  className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-gray-100 text-gray-700 text-left"
                 >
-                  {path}
+                  <FolderPlus className="h-5 w-5 text-gray-500" />
+                  <span>New folder</span>
+                </button>
+                <div className="border-t my-1" />
+                <button
+                  onClick={() => {
+                    setShowNewMenu(false);
+                    fileInputRef.current?.click();
+                  }}
+                  className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-gray-100 text-gray-700 text-left"
+                >
+                  <Upload className="h-5 w-5 text-gray-500" />
+                  <span>File upload</span>
+                </button>
+                <button
+                  onClick={() => {
+                    setShowNewMenu(false);
+                    setShowNewFolderModal(true);
+                  }}
+                  className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-gray-100 text-gray-700 text-left"
+                >
+                  <FolderPlus className="h-5 w-5 text-gray-500" />
+                  <span>Folder upload</span>
                 </button>
               </div>
-            ))}
-          </div>
-
-          <div className="flex items-center gap-2">
-            {/* + New dropdown */}
-            <div className="relative" ref={newMenuRef}>
-              <button
-                onClick={() => setShowNewMenu(!showNewMenu)}
-                className="flex items-center gap-2 px-4 py-2 bg-white border-2 border-gray-200 text-gray-800 rounded-lg hover:bg-gray-50 hover:border-gray-300 hover:shadow-md transition-all font-medium"
-              >
-                <Plus className="h-5 w-5" />
-                New
-              </button>
-              {showNewMenu && (
-                <div className="absolute top-full left-0 mt-2 w-48 bg-white rounded-lg shadow-lg border py-1 z-20">
-                  <button
-                    onClick={() => {
-                      setShowNewMenu(false);
-                      setShowNewFolderModal(true);
-                    }}
-                    className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 text-gray-700 text-left"
-                  >
-                    <FolderPlus className="h-5 w-5 text-gray-500" />
-                    <span>New folder</span>
-                  </button>
-                  <div className="border-t my-1" />
-                  <button
-                    onClick={() => {
-                      setShowNewMenu(false);
-                      fileInputRef.current?.click();
-                    }}
-                    className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 text-gray-700 text-left"
-                  >
-                    <Upload className="h-5 w-5 text-gray-500" />
-                    <span>File upload</span>
-                  </button>
-                </div>
-              )}
-            </div>
-            <div className="flex items-center border rounded-lg">
-              <button
-                onClick={() => setViewMode('grid')}
-                className={`p-2 ${viewMode === 'grid' ? 'bg-gray-100' : 'hover:bg-gray-50'}`}
-              >
-                <Grid3X3 className="h-4 w-4" />
-              </button>
-              <button
-                onClick={() => setViewMode('list')}
-                className={`p-2 ${viewMode === 'list' ? 'bg-gray-100' : 'hover:bg-gray-50'}`}
-              >
-                <List className="h-4 w-4" />
-              </button>
-            </div>
+            )}
           </div>
         </div>
 
-        {/* Search */}
-        <div className="flex items-center gap-2 bg-gray-100 rounded-lg px-4 py-2 border border-gray-200 focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-100 transition-all">
-          <Search className="h-4 w-4 text-gray-500" />
-          <input
-            type="text"
-            placeholder="Search files by name..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="bg-transparent border-none outline-none text-sm w-full text-gray-900 placeholder:text-gray-500"
-          />
-          {searchQuery && (
-            <button
-              onClick={() => setSearchQuery('')}
-              className="p-1 hover:bg-gray-200 rounded"
-            >
-              <X className="h-3 w-3 text-gray-500" />
-            </button>
-          )}
+        {/* Navigation Items */}
+        <nav className="flex-1 px-2 py-2">
+          <button
+            onClick={() => {
+              setSidebarSection('my-drive');
+              setCurrentPath(['My Drive']);
+            }}
+            className={`w-full flex items-center gap-3 px-3 py-2 rounded-full text-sm transition-colors ${
+              sidebarSection === 'my-drive'
+                ? 'bg-blue-100 text-blue-700 font-medium'
+                : 'text-gray-700 hover:bg-gray-100'
+            }`}
+          >
+            <HardDrive className="h-5 w-5" />
+            My Drive
+          </button>
+          <button
+            onClick={() => {
+              setSidebarSection('shared');
+              setCurrentPath(['Shared with me']);
+            }}
+            className={`w-full flex items-center gap-3 px-3 py-2 rounded-full text-sm transition-colors ${
+              sidebarSection === 'shared'
+                ? 'bg-blue-100 text-blue-700 font-medium'
+                : 'text-gray-700 hover:bg-gray-100'
+            }`}
+          >
+            <Users className="h-5 w-5" />
+            Shared with me
+          </button>
+          <button
+            onClick={() => {
+              setSidebarSection('recent');
+              setCurrentPath(['Recent']);
+            }}
+            className={`w-full flex items-center gap-3 px-3 py-2 rounded-full text-sm transition-colors ${
+              sidebarSection === 'recent'
+                ? 'bg-blue-100 text-blue-700 font-medium'
+                : 'text-gray-700 hover:bg-gray-100'
+            }`}
+          >
+            <Clock className="h-5 w-5" />
+            Recent
+          </button>
+          <button
+            onClick={() => {
+              setSidebarSection('starred');
+              setCurrentPath(['Starred']);
+            }}
+            className={`w-full flex items-center gap-3 px-3 py-2 rounded-full text-sm transition-colors ${
+              sidebarSection === 'starred'
+                ? 'bg-blue-100 text-blue-700 font-medium'
+                : 'text-gray-700 hover:bg-gray-100'
+            }`}
+          >
+            <Star className="h-5 w-5" />
+            Starred
+          </button>
+          <button
+            onClick={() => {
+              setSidebarSection('trash');
+              setCurrentPath(['Trash']);
+            }}
+            className={`w-full flex items-center gap-3 px-3 py-2 rounded-full text-sm transition-colors ${
+              sidebarSection === 'trash'
+                ? 'bg-blue-100 text-blue-700 font-medium'
+                : 'text-gray-700 hover:bg-gray-100'
+            }`}
+          >
+            <Trash2 className="h-5 w-5" />
+            Trash
+          </button>
+        </nav>
+
+        {/* Storage */}
+        <div className="p-4 border-t">
+          <div className="flex items-center gap-2 mb-2">
+            <Cloud className="h-4 w-4 text-gray-500" />
+            <span className="text-sm text-gray-600">Storage</span>
+          </div>
+          <div className="w-full bg-gray-200 rounded-full h-1.5 mb-1">
+            <div className="bg-blue-600 h-1.5 rounded-full" style={{ width: '5%' }} />
+          </div>
+          <p className="text-xs text-gray-500">{storageUsed} of 15 GB used</p>
         </div>
-        {searchQuery && (
-          <p className="text-sm text-gray-600 mt-2">
-            Found {filteredFiles.length} {filteredFiles.length === 1 ? 'file' : 'files'} matching &quot;{searchQuery}&quot;
-          </p>
-        )}
       </div>
 
-      {/* Content */}
-      <div className="flex-1 overflow-auto">
+      {/* Main Content */}
+      <div className="flex-1 flex flex-col">
+        {/* Header */}
+        <div className="border-b px-6 py-4">
+          <div className="flex items-center justify-between mb-4">
+            {/* Section Title / Breadcrumb */}
+            <div className="flex items-center gap-2">
+              {sidebarSection === 'my-drive' ? (
+                currentPath.map((path, index) => (
+                  <div key={index} className="flex items-center gap-2">
+                    {index > 0 && <ChevronRight className="h-4 w-4 text-gray-400" />}
+                    <button
+                      onClick={() => setCurrentPath(currentPath.slice(0, index + 1))}
+                      className={`font-medium text-lg ${
+                        index === currentPath.length - 1
+                          ? 'text-gray-900'
+                          : 'text-gray-600 hover:text-gray-900'
+                      }`}
+                    >
+                      {path}
+                    </button>
+                  </div>
+                ))
+              ) : (
+                <h1 className="text-lg font-medium text-gray-900">{getSectionTitle()}</h1>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2">
+              <div className="flex items-center border rounded-lg">
+                <button
+                  onClick={() => setViewMode('grid')}
+                  className={`p-2 ${viewMode === 'grid' ? 'bg-gray-100' : 'hover:bg-gray-50'}`}
+                >
+                  <Grid3X3 className="h-4 w-4" />
+                </button>
+                <button
+                  onClick={() => setViewMode('list')}
+                  className={`p-2 ${viewMode === 'list' ? 'bg-gray-100' : 'hover:bg-gray-50'}`}
+                >
+                  <List className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Search */}
+          <div className="flex items-center gap-2 bg-gray-100 rounded-full px-4 py-2.5 max-w-2xl focus-within:bg-white focus-within:shadow-md focus-within:ring-1 focus-within:ring-gray-300 transition-all">
+            <Search className="h-5 w-5 text-gray-500" />
+            <input
+              type="text"
+              placeholder="Search in Drive"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="bg-transparent border-none outline-none text-sm w-full text-gray-900 placeholder:text-gray-500"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="p-1 hover:bg-gray-200 rounded-full"
+              >
+                <X className="h-4 w-4 text-gray-500" />
+              </button>
+            )}
+          </div>
+          {searchQuery && (
+            <p className="text-sm text-gray-600 mt-2">
+              Found {filteredFiles.length} {filteredFiles.length === 1 ? 'file' : 'files'} matching &quot;{searchQuery}&quot;
+            </p>
+          )}
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 overflow-auto">
         {loading ? (
           <div className="flex flex-col items-center justify-center h-full py-12">
             <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600 mb-4"></div>
@@ -758,19 +921,36 @@ export function DriveExplorer({ walletAddress, data }: DriveExplorerProps) {
             <div className="p-4 bg-gray-100 rounded-full mb-4">
               {searchQuery ? (
                 <Search className="h-12 w-12 text-gray-400" />
+              ) : sidebarSection === 'starred' ? (
+                <Star className="h-12 w-12 text-gray-400" />
+              ) : sidebarSection === 'trash' ? (
+                <Trash2 className="h-12 w-12 text-gray-400" />
+              ) : sidebarSection === 'shared' ? (
+                <Users className="h-12 w-12 text-gray-400" />
+              ) : sidebarSection === 'recent' ? (
+                <Clock className="h-12 w-12 text-gray-400" />
               ) : (
                 <FolderPlus className="h-12 w-12 text-gray-400" />
               )}
             </div>
             <h3 className="text-lg font-semibold text-gray-900 mb-2">
-              {searchQuery ? 'No files found' : 'No files yet'}
+              {searchQuery ? 'No files found' :
+               sidebarSection === 'starred' ? 'No starred files' :
+               sidebarSection === 'trash' ? 'Trash is empty' :
+               sidebarSection === 'shared' ? 'Nothing shared with you yet' :
+               sidebarSection === 'recent' ? 'No recent files' :
+               'No files yet'}
             </h3>
             <p className="text-gray-600 mb-4 text-center max-w-sm">
               {searchQuery
                 ? `No files match "${searchQuery}". Try a different search term.`
+                : sidebarSection === 'starred' ? 'Add stars to files you want to easily find later.'
+                : sidebarSection === 'trash' ? 'Items you delete will appear here.'
+                : sidebarSection === 'shared' ? 'Files shared with you by others will appear here.'
+                : sidebarSection === 'recent' ? 'Files you recently opened will appear here.'
                 : 'Your Google Drive files will appear here after syncing.'}
             </p>
-            {!searchQuery && (
+            {!searchQuery && sidebarSection === 'my-drive' && (
               <button
                 onClick={() => setShowUploadModal(true)}
                 className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
@@ -783,6 +963,7 @@ export function DriveExplorer({ walletAddress, data }: DriveExplorerProps) {
         ) : (
           viewMode === 'grid' ? renderGridView() : renderListView()
         )}
+        </div>
       </div>
 
       {/* File Detail Modal */}

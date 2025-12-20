@@ -649,58 +649,173 @@ export function CalendarView({ walletAddress, data }: CalendarViewProps) {
     }
   };
 
-  return (
-    <div className="bg-white rounded-lg border flex flex-col h-[calc(100vh-200px)]">
-      {/* Header */}
-      <div className="border-b px-6 py-4">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-4">
-            <h2 className="text-2xl font-bold text-gray-900">{formatDate(currentDate)}</h2>
-            <div className="flex items-center gap-2">
-              <button onClick={goToPrevious} className="p-2 hover:bg-gray-100 rounded">
-                <ChevronLeft className="h-5 w-5" />
+  // Mini calendar helper
+  const renderMiniCalendar = () => {
+    const miniDate = new Date(currentDate);
+    const firstDay = new Date(miniDate.getFullYear(), miniDate.getMonth(), 1);
+    const lastDay = new Date(miniDate.getFullYear(), miniDate.getMonth() + 1, 0);
+    const daysInMonth = lastDay.getDate();
+    const startingDay = firstDay.getDay();
+
+    const miniDays: (number | null)[] = [];
+    for (let i = 0; i < startingDay; i++) miniDays.push(null);
+    for (let i = 1; i <= daysInMonth; i++) miniDays.push(i);
+
+    return (
+      <div className="p-3">
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-sm font-semibold text-gray-700">
+            {miniDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+          </span>
+          <div className="flex gap-1">
+            <button
+              onClick={() => {
+                const newDate = new Date(currentDate);
+                newDate.setMonth(newDate.getMonth() - 1);
+                setCurrentDate(newDate);
+              }}
+              className="p-0.5 hover:bg-gray-100 rounded"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+            <button
+              onClick={() => {
+                const newDate = new Date(currentDate);
+                newDate.setMonth(newDate.getMonth() + 1);
+                setCurrentDate(newDate);
+              }}
+              className="p-0.5 hover:bg-gray-100 rounded"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+        <div className="grid grid-cols-7 gap-0.5 text-xs">
+          {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d, i) => (
+            <div key={i} className="text-center text-gray-500 font-medium py-1">{d}</div>
+          ))}
+          {miniDays.map((day, i) => {
+            const dayDate = day ? new Date(miniDate.getFullYear(), miniDate.getMonth(), day) : null;
+            const isCurrentDay = dayDate && isToday(dayDate);
+            const isSelected = dayDate && dayDate.getDate() === currentDate.getDate() &&
+              dayDate.getMonth() === currentDate.getMonth();
+            return (
+              <button
+                key={i}
+                onClick={() => day && setCurrentDate(new Date(miniDate.getFullYear(), miniDate.getMonth(), day))}
+                disabled={!day}
+                className={`text-center py-1 text-xs rounded-full ${
+                  isCurrentDay ? 'bg-blue-600 text-white' :
+                  isSelected ? 'bg-blue-100 text-blue-700' :
+                  day ? 'hover:bg-gray-100 text-gray-700' : ''
+                }`}
+              >
+                {day || ''}
               </button>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div className="bg-white rounded-lg border flex h-[calc(100vh-200px)]">
+      {/* Left Sidebar - Google Calendar Style */}
+      <div className="w-64 border-r bg-white flex flex-col">
+        {/* Create Button */}
+        <div className="p-4">
+          <button
+            onClick={() => setShowEventForm(true)}
+            className="flex items-center gap-3 w-full px-6 py-3.5 bg-white border border-gray-200 rounded-2xl shadow-md hover:shadow-lg hover:bg-gray-50 transition-all"
+          >
+            <Plus className="h-5 w-5 text-gray-700" />
+            <span className="text-gray-800 font-medium">Create</span>
+          </button>
+        </div>
+
+        {/* Mini Calendar */}
+        {renderMiniCalendar()}
+
+        {/* My Calendars */}
+        <div className="px-3 mt-4">
+          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2 px-2">My calendars</div>
+          <div className="space-y-1">
+            <label className="flex items-center gap-2 px-2 py-1.5 hover:bg-gray-100 rounded cursor-pointer">
+              <input type="checkbox" defaultChecked className="rounded text-blue-600" />
+              <div className="w-2.5 h-2.5 rounded-sm bg-blue-500" />
+              <span className="text-sm text-gray-700">My Calendar</span>
+            </label>
+            <label className="flex items-center gap-2 px-2 py-1.5 hover:bg-gray-100 rounded cursor-pointer">
+              <input type="checkbox" defaultChecked className="rounded text-green-600" />
+              <div className="w-2.5 h-2.5 rounded-sm bg-green-500" />
+              <span className="text-sm text-gray-700">Work</span>
+            </label>
+            <label className="flex items-center gap-2 px-2 py-1.5 hover:bg-gray-100 rounded cursor-pointer">
+              <input type="checkbox" defaultChecked className="rounded text-purple-600" />
+              <div className="w-2.5 h-2.5 rounded-sm bg-purple-500" />
+              <span className="text-sm text-gray-700">Personal</span>
+            </label>
+          </div>
+        </div>
+
+        {/* Other Calendars */}
+        <div className="px-3 mt-4">
+          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2 px-2">Other calendars</div>
+          <div className="space-y-1">
+            <label className="flex items-center gap-2 px-2 py-1.5 hover:bg-gray-100 rounded cursor-pointer">
+              <input type="checkbox" defaultChecked className="rounded" />
+              <div className="w-2.5 h-2.5 rounded-sm bg-gray-400" />
+              <span className="text-sm text-gray-700">Holidays</span>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      {/* Main Content */}
+      <div className="flex-1 flex flex-col">
+        {/* Header */}
+        <div className="border-b px-6 py-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2">
+                <button onClick={goToPrevious} className="p-2 hover:bg-gray-100 rounded-full">
+                  <ChevronLeft className="h-5 w-5" />
+                </button>
+                <button onClick={goToNext} className="p-2 hover:bg-gray-100 rounded-full">
+                  <ChevronRight className="h-5 w-5" />
+                </button>
+              </div>
               <button
                 onClick={goToToday}
-                className="px-4 py-2 border rounded-lg hover:bg-gray-50 font-medium"
+                className="px-4 py-1.5 border rounded-md hover:bg-gray-50 font-medium text-sm"
               >
                 Today
               </button>
-              <button onClick={goToNext} className="p-2 hover:bg-gray-100 rounded">
-                <ChevronRight className="h-5 w-5" />
-              </button>
+              <h2 className="text-xl font-normal text-gray-800">{formatDate(currentDate)}</h2>
             </div>
-          </div>
 
-          <div className="flex items-center gap-2">
-            <div className="flex items-center border rounded-lg">
-              {(['day', 'week', 'month', 'schedule'] as ViewMode[]).map((mode) => (
+            <div className="flex items-center border rounded-lg overflow-hidden">
+              {(['day', 'week', 'month', 'schedule'] as ViewMode[]).map((mode, i) => (
                 <button
                   key={mode}
                   onClick={() => setViewMode(mode)}
-                  className={`px-4 py-2 capitalize ${
+                  className={`px-4 py-1.5 text-sm capitalize border-l first:border-l-0 ${
                     viewMode === mode
-                      ? 'bg-blue-600 text-white'
-                      : 'hover:bg-gray-100'
-                  } ${mode === 'day' ? 'rounded-l-lg' : mode === 'schedule' ? 'rounded-r-lg' : ''}`}
+                      ? 'bg-blue-100 text-blue-700 font-medium'
+                      : 'hover:bg-gray-50 text-gray-700'
+                  }`}
                 >
                   {mode}
                 </button>
               ))}
             </div>
-            <button
-              onClick={() => setShowEventForm(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-            >
-              <Plus className="h-4 w-4" />
-              Create
-            </button>
           </div>
         </div>
-      </div>
 
-      {/* Calendar View */}
-      {renderView()}
+        {/* Calendar View */}
+        {renderView()}
+      </div>
 
       {/* Event Form Modal */}
       {showEventForm && (

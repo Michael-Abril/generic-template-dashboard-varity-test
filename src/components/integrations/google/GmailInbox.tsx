@@ -121,6 +121,27 @@ export function GmailInbox({ walletAddress, data }: GmailInboxProps) {
   const [currentPage, setCurrentPage] = useState(0);
   const EMAILS_PER_PAGE = 25;
 
+  // Extract unique user labels from emails (excluding system labels)
+  const userLabels = useMemo(() => {
+    const systemLabels = new Set(['INBOX', 'SENT', 'DRAFT', 'DRAFTS', 'TRASH', 'SPAM', 'STARRED', 'IMPORTANT', 'CATEGORY_PERSONAL', 'CATEGORY_SOCIAL', 'CATEGORY_PROMOTIONS', 'CATEGORY_UPDATES', 'CATEGORY_FORUMS', 'UNREAD']);
+    const labelSet = new Set<string>();
+
+    emails.forEach(email => {
+      if (email.labels) {
+        email.labels.forEach(label => {
+          if (!systemLabels.has(label) && !label.startsWith('CATEGORY_')) {
+            labelSet.add(label);
+          }
+        });
+      }
+    });
+
+    return Array.from(labelSet).sort();
+  }, [emails]);
+
+  // Label colors for display
+  const labelColors = ['bg-green-500', 'bg-purple-500', 'bg-blue-500', 'bg-yellow-500', 'bg-red-500', 'bg-pink-500', 'bg-indigo-500', 'bg-teal-500'];
+
   // Filter emails based on search query and selected label
   const filteredEmails = useMemo(() => {
     let filtered = emails;
@@ -133,6 +154,14 @@ export function GmailInbox({ walletAddress, data }: GmailInboxProps) {
         if (selectedLabel === 'DRAFTS') return email.labels?.includes('DRAFT');
         if (selectedLabel === 'TRASH') return email.labels?.includes('TRASH');
         if (selectedLabel === 'ARCHIVE') return !email.labels?.includes('INBOX');
+        // Handle custom user labels
+        if (userLabels.includes(selectedLabel)) {
+          return email.labels?.includes(selectedLabel);
+        }
+        // Handle category labels
+        if (selectedLabel.startsWith('CATEGORY_')) {
+          return email.labels?.includes(selectedLabel);
+        }
         return true;
       });
     }
@@ -827,17 +856,60 @@ export function GmailInbox({ walletAddress, data }: GmailInboxProps) {
           </div>
 
           {/* Labels Section */}
+          {userLabels.length > 0 && (
+            <div className="mt-4 pt-4 border-t border-gray-200">
+              <div className="px-4 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">Labels</div>
+              <div className="space-y-0.5">
+                {userLabels.map((label, index) => {
+                  const isActive = selectedLabel === label;
+                  const labelCount = emails.filter(e => e.labels?.includes(label)).length;
+                  return (
+                    <button
+                      key={label}
+                      onClick={() => setSelectedLabel(label)}
+                      className={`w-full flex items-center gap-3 px-4 py-2 rounded-r-full transition-all ${
+                        isActive
+                          ? 'bg-blue-100 text-blue-800 font-semibold'
+                          : 'hover:bg-gray-100 text-gray-700 font-medium'
+                      }`}
+                    >
+                      <div className={`w-3 h-3 rounded-full ${labelColors[index % labelColors.length]}`}></div>
+                      <span className="flex-1 text-left text-[14px] truncate">{label.replace('Label_', '').replace(/_/g, ' ')}</span>
+                      {labelCount > 0 && (
+                        <span className="text-xs text-gray-500">{labelCount}</span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Categories Section */}
           <div className="mt-4 pt-4 border-t border-gray-200">
-            <div className="px-4 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">Labels</div>
+            <div className="px-4 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">Categories</div>
             <div className="space-y-0.5">
-              <button className="w-full flex items-center gap-3 px-4 py-2 rounded-r-full hover:bg-gray-100 text-gray-700 font-medium transition-all">
-                <div className="w-3 h-3 rounded-full bg-green-500"></div>
-                <span className="text-[14px]">Personal</span>
-              </button>
-              <button className="w-full flex items-center gap-3 px-4 py-2 rounded-r-full hover:bg-gray-100 text-gray-700 font-medium transition-all">
-                <div className="w-3 h-3 rounded-full bg-purple-500"></div>
-                <span className="text-[14px]">Work</span>
-              </button>
+              {['Primary', 'Social', 'Promotions', 'Updates'].map((category) => {
+                const categoryLabel = `CATEGORY_${category.toUpperCase()}`;
+                const categoryCount = emails.filter(e => e.labels?.includes(categoryLabel)).length;
+                return (
+                  <button
+                    key={category}
+                    onClick={() => setSelectedLabel(categoryLabel)}
+                    className={`w-full flex items-center gap-3 px-4 py-2 rounded-r-full transition-all ${
+                      selectedLabel === categoryLabel
+                        ? 'bg-blue-100 text-blue-800 font-semibold'
+                        : 'hover:bg-gray-100 text-gray-700 font-medium'
+                    }`}
+                  >
+                    <Tag className={`h-4 w-4 ${selectedLabel === categoryLabel ? 'text-blue-700' : 'text-gray-500'}`} />
+                    <span className="flex-1 text-left text-[14px]">{category}</span>
+                    {categoryCount > 0 && (
+                      <span className="text-xs text-gray-500">{categoryCount}</span>
+                    )}
+                  </button>
+                );
+              })}
             </div>
           </div>
         </div>
