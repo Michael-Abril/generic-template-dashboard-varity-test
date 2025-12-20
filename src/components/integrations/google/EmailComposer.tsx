@@ -263,12 +263,12 @@ export function EmailComposer({ walletAddress, onClose, replyTo }: EmailComposer
         </div>
 
         {/* Rich Text Body Editor */}
-        <div className="flex-1 overflow-auto">
+        <div className="flex-1 overflow-auto bg-white">
           <div
             ref={bodyEditorRef}
             contentEditable
-            className="w-full min-h-[200px] px-4 py-3 outline-none focus:bg-gray-50 transition-colors"
-            style={{ lineHeight: '1.6' }}
+            className="w-full min-h-[200px] px-4 py-3 outline-none focus:bg-gray-50 transition-colors text-gray-900"
+            style={{ lineHeight: '1.6', color: '#111827' }}
             onInput={(e) => setBody(e.currentTarget.innerHTML)}
             data-placeholder="Compose your message..."
             suppressContentEditableWarning
@@ -279,6 +279,10 @@ export function EmailComposer({ walletAddress, onClose, replyTo }: EmailComposer
             content: attr(data-placeholder);
             color: #9ca3af;
             pointer-events: none;
+          }
+          [contenteditable] {
+            color: #111827 !important;
+            caret-color: #111827;
           }
         `}</style>
 

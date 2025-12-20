@@ -42,6 +42,8 @@ interface Email {
   to: string;
   subject: string;
   snippet: string;
+  body?: string;
+  bodyHtml?: string;
   date: string;
   starred?: boolean;
   unread?: boolean;
@@ -49,6 +51,52 @@ interface Email {
   labels?: string[];
   payload?: any;
 }
+
+// Helper to decode base64 email body
+const decodeEmailBody = (payload: any): { text: string; html: string } => {
+  let text = '';
+  let html = '';
+
+  if (!payload) return { text, html };
+
+  // Check for body data directly
+  if (payload.body?.data) {
+    try {
+      const decoded = atob(payload.body.data.replace(/-/g, '+').replace(/_/g, '/'));
+      if (payload.mimeType === 'text/html') {
+        html = decoded;
+      } else {
+        text = decoded;
+      }
+    } catch (e) {
+      console.error('Failed to decode body:', e);
+    }
+  }
+
+  // Check parts for multipart emails
+  if (payload.parts) {
+    for (const part of payload.parts) {
+      if (part.mimeType === 'text/plain' && part.body?.data) {
+        try {
+          text = atob(part.body.data.replace(/-/g, '+').replace(/_/g, '/'));
+        } catch (e) {}
+      }
+      if (part.mimeType === 'text/html' && part.body?.data) {
+        try {
+          html = atob(part.body.data.replace(/-/g, '+').replace(/_/g, '/'));
+        } catch (e) {}
+      }
+      // Recursively check nested parts
+      if (part.parts) {
+        const nested = decodeEmailBody(part);
+        if (nested.text) text = nested.text;
+        if (nested.html) html = nested.html;
+      }
+    }
+  }
+
+  return { text, html };
+};
 
 const LABELS = [
   { id: 'INBOX', label: 'Inbox', icon: Inbox, color: 'text-gray-600' },
@@ -119,20 +167,27 @@ export function GmailInbox({ walletAddress, data }: GmailInboxProps) {
   useEffect(() => {
     if (data?.messages) {
       // Data is already synced from Google - use the data prop
-      const parsedEmails = data.messages.map((msg: any) => ({
-        id: msg.id || `email-${Math.random().toString(36).substr(2, 9)}`,
-        threadId: msg.threadId || msg.id,
-        from: msg.from || 'Unknown Sender',
-        to: msg.to || '',
-        subject: msg.subject || '(No Subject)',
-        snippet: msg.snippet || '',
-        date: msg.date || new Date().toLocaleString(),
-        starred: msg.starred || false,
-        unread: msg.unread !== false,  // Default to unread
-        hasAttachment: msg.hasAttachment || false,
-        labels: msg.labels || ['INBOX'],
-        payload: msg.payload
-      }));
+      const parsedEmails = data.messages.map((msg: any) => {
+        // Decode email body from payload
+        const { text, html } = decodeEmailBody(msg.payload);
+
+        return {
+          id: msg.id || `email-${Math.random().toString(36).substr(2, 9)}`,
+          threadId: msg.threadId || msg.id,
+          from: msg.from || 'Unknown Sender',
+          to: msg.to || '',
+          subject: msg.subject || '(No Subject)',
+          snippet: msg.snippet || '',
+          body: text || msg.body || msg.snippet || '',
+          bodyHtml: html || msg.bodyHtml || '',
+          date: msg.date || new Date().toLocaleString(),
+          starred: msg.starred || false,
+          unread: msg.unread !== false,  // Default to unread
+          hasAttachment: msg.hasAttachment || false,
+          labels: msg.labels || ['INBOX'],
+          payload: msg.payload
+        };
+      });
       setEmails(parsedEmails);
       setLoading(false);
     } else {
@@ -680,9 +735,18 @@ export function GmailInbox({ walletAddress, data }: GmailInboxProps) {
 
         {/* Email Body */}
         <div className="flex-1 overflow-auto px-6 py-6">
-          <div className="prose max-w-none">
-            <p className="text-gray-800 leading-relaxed whitespace-pre-wrap">{selectedEmail.snippet}</p>
-          </div>
+          {selectedEmail.bodyHtml ? (
+            <div
+              className="prose max-w-none text-gray-900"
+              dangerouslySetInnerHTML={{ __html: selectedEmail.bodyHtml }}
+            />
+          ) : (
+            <div className="prose max-w-none">
+              <p className="text-gray-900 leading-relaxed whitespace-pre-wrap text-base">
+                {selectedEmail.body || selectedEmail.snippet}
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Actions */}
