@@ -27,6 +27,7 @@ import { GmailInbox } from './GmailInbox';
 import { CalendarView } from './CalendarView';
 import { DriveExplorer } from './DriveExplorer';
 import { ContactsList } from './ContactsList';
+import { TasksList } from './TasksList';
 
 interface GoogleWorkspacePageProps {
   walletAddress: string;
@@ -229,36 +230,7 @@ export function GoogleWorkspacePage({
       case 'contacts':
         return <ContactsList walletAddress={walletAddress} data={data?.contacts} />;
       case 'tasks':
-        return (
-          <div className="bg-gradient-to-br from-purple-50 to-blue-50 rounded-xl border border-purple-200 p-12 text-center">
-            <div className="max-w-md mx-auto">
-              <div className="p-4 bg-purple-100 rounded-full w-fit mx-auto mb-6">
-                <CheckCircle className="h-14 w-14 text-purple-600" />
-              </div>
-              <div className="inline-block px-4 py-1 bg-purple-200 text-purple-800 rounded-full text-sm font-bold mb-4">
-                COMING SOON
-              </div>
-              <h3 className="text-2xl font-bold text-gray-900 mb-3">Google Tasks Integration</h3>
-              <p className="text-gray-700 mb-6 leading-relaxed">
-                We&apos;re working on bringing Google Tasks to your dashboard. Soon you&apos;ll be able to manage your tasks, create to-do lists, and stay organized right from here.
-              </p>
-              <div className="flex flex-col sm:flex-row gap-3 justify-center">
-                <button
-                  onClick={() => setActiveTab('calendar')}
-                  className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
-                >
-                  View Calendar Instead
-                </button>
-                <button
-                  onClick={() => setActiveTab('home')}
-                  className="px-6 py-3 border-2 border-gray-300 text-gray-700 rounded-lg hover:bg-white hover:border-gray-400 transition-colors font-medium"
-                >
-                  Back to Home
-                </button>
-              </div>
-            </div>
-          </div>
-        );
+        return <TasksList walletAddress={walletAddress} data={data?.tasks} />;
       default:
         return renderHome();
     }
