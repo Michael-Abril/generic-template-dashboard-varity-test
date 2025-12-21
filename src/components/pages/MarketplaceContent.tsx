@@ -110,6 +110,7 @@ export default function MarketplaceContent() {
   const [sortBy, setSortBy] = useState<string>('name');
   const [userLicenses, setUserLicenses] = useState<number[]>([]);
   const [connectedOAuthIntegrations, setConnectedOAuthIntegrations] = useState<string[]>([]);
+  const [connectedIntegrationCount, setConnectedIntegrationCount] = useState<number>(0);
   const [purchasing, setPurchasing] = useState<number | null>(null);
   const [purchaseStatus, setPurchaseStatus] = useState<string>('');
   const [loading, setLoading] = useState(true);
@@ -166,6 +167,7 @@ export default function MarketplaceContent() {
     const loadConnectedIntegrations = async () => {
       if (!address) {
         setConnectedOAuthIntegrations([]);
+        setConnectedIntegrationCount(0);
         return;
       }
       try {
@@ -175,15 +177,21 @@ export default function MarketplaceContent() {
         );
         if (!res.ok) {
           setConnectedOAuthIntegrations([]);
+          setConnectedIntegrationCount(0);
           return;
         }
         const data = await res.json();
-        // Extract ALL variations of provider names from connected OAuth integrations
+        // Get the actual connected integrations for count
+        const connectedIntegrations = (data.integrations || [])
+          .filter((integration: { connected: boolean }) => integration.connected);
+
+        // Set the actual count (number of unique integrations)
+        setConnectedIntegrationCount(connectedIntegrations.length);
+
+        // Extract ALL variations of provider names for matching purposes
         // This ensures matching works with product.logo regardless of naming format
         const connectedProviders: string[] = [];
-        (data.integrations || [])
-          .filter((integration: { connected: boolean }) => integration.connected)
-          .forEach((integration: { name: string; slug?: string }) => {
+        connectedIntegrations.forEach((integration: { name: string; slug?: string }) => {
             // Add the slug (backend provider key like "microsoft", "google")
             if (integration.slug) {
               connectedProviders.push(integration.slug);
@@ -197,11 +205,12 @@ export default function MarketplaceContent() {
             connectedProviders.push(nameUnderscored);
             connectedProviders.push(nameNoSpace);
           });
-        // Remove duplicates
+        // Remove duplicates (for matching, not counting)
         setConnectedOAuthIntegrations([...new Set(connectedProviders)]);
       } catch (e) {
         console.error('Failed to load connected integrations', e);
         setConnectedOAuthIntegrations([]);
+        setConnectedIntegrationCount(0);
       }
     };
 
@@ -563,7 +572,7 @@ export default function MarketplaceContent() {
                 </div>
                 <div className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-lg hover:border-gray-300 hover:-translate-y-0.5 transition-all duration-200 cursor-default">
                   <p className="text-sm text-gray-600">Your Connected</p>
-                  <p className="text-2xl font-bold text-green-600">{connectedOAuthIntegrations.length}</p>
+                  <p className="text-2xl font-bold text-green-600">{connectedIntegrationCount}</p>
                 </div>
               </div>
 
