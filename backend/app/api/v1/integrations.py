@@ -17,6 +17,7 @@ from sqlalchemy.orm import selectinload
 
 from app.services.filecoin_service import FilecoinService
 from app.services.encryption_service import EncryptionService
+from app.services.rag_service import BusinessRAGService
 from app.core.database import get_db
 from app.models.marketplace import Product
 from app.models.purchase import Purchase, OAuthToken, SyncLog, SyncStatus
@@ -28,6 +29,7 @@ router = APIRouter()
 # Initialize services
 filecoin_service = FilecoinService()
 encryption_service = EncryptionService()
+rag_service = BusinessRAGService()
 
 
 # Integration name normalization mapping
@@ -322,12 +324,53 @@ async def sync_tool_data(
         oauth_token.last_sync_at = datetime.utcnow()
         await db.commit()
 
+        # Index synced data in Qdrant for RAG queries
+        rag_indexed_count = 0
+        if result and result.get("data"):
+            for data_type, data_info in result.get("data", {}).items():
+                if data_info.get("status") == "success" and data_info.get("cid"):
+                    try:
+                        # Retrieve the encrypted data from Pinata
+                        encrypted = await filecoin_service.retrieve_data(data_info["cid"])
+
+                        # Decrypt the data
+                        decrypted = await encryption_service.decrypt_with_wallet(
+                            encrypted_data=encrypted,
+                            customer_wallet=wallet_address
+                        )
+
+                        # Get the records from the decrypted data
+                        records = decrypted.get("records", []) if isinstance(decrypted, dict) else []
+
+                        # Index in Qdrant for RAG
+                        await rag_service.index_business_data(
+                            business_wallet=wallet_address,
+                            cid=data_info["cid"],
+                            data=decrypted,
+                            integration=normalized_tool,
+                            data_type=data_type
+                        )
+                        rag_indexed_count += 1
+                        logger.info(
+                            f"RAG indexed {data_type} for {wallet_address[:10]}..., "
+                            f"CID: {data_info['cid']}, records: {len(records)}"
+                        )
+                    except Exception as e:
+                        logger.warning(f"Failed to index {data_type} in RAG: {e}")
+                        # Don't fail the whole sync if RAG indexing fails
+                        continue
+
+        logger.info(
+            f"Sync complete for {tool}: {rag_indexed_count} data types indexed in RAG"
+        )
+
         return {
             "success": True,
             "integration": tool,
             "wallet_address": request.wallet_address,
             "sync_result": result,
-            "message": f"Successfully synced {tool} data"
+            "rag_indexed": rag_indexed_count,
+            "message": f"Successfully synced {tool} data and indexed {rag_indexed_count} data types for AI queries"
         }
 
     except HTTPException:
@@ -444,6 +487,93 @@ async def get_tool_data(
 
     except Exception as e:
         logger.error(f"Failed to get {tool} data: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{tool}/reindex")
+async def reindex_tool_data(
+    tool: str,
+    wallet_address: str = Query(..., description="User's wallet address")
+):
+    """
+    Re-index existing Pinata data in Qdrant for RAG queries.
+
+    Use this endpoint to fix missing RAG data for integrations that were
+    synced before RAG indexing was enabled.
+
+    Args:
+        tool: Tool identifier
+        wallet_address: User's wallet address
+
+    Returns:
+        Reindexing result
+    """
+    try:
+        # Normalize integration name
+        normalized_tool = normalize_integration_name(tool)
+
+        logger.info(
+            f"Re-indexing {tool} (normalized: {normalized_tool}) data for wallet {wallet_address}"
+        )
+
+        # List all files for this integration
+        files = await filecoin_service.list_customer_files(
+            customer_wallet=wallet_address,
+            integration=normalized_tool,
+            limit=100
+        )
+
+        if not files:
+            return {
+                "success": True,
+                "integration": tool,
+                "message": f"No data found for {tool}. Run sync first.",
+                "indexed_count": 0
+            }
+
+        indexed_count = 0
+        errors = []
+
+        for file in files:
+            try:
+                cid = file.get("cid")
+                data_type = file.get("metadata", {}).get("data_type", "unknown")
+
+                # Retrieve and decrypt the data
+                encrypted = await filecoin_service.retrieve_data(cid)
+                decrypted = await encryption_service.decrypt_with_wallet(
+                    encrypted_data=encrypted,
+                    customer_wallet=wallet_address
+                )
+
+                # Index in Qdrant
+                await rag_service.index_business_data(
+                    business_wallet=wallet_address,
+                    cid=cid,
+                    data=decrypted,
+                    integration=normalized_tool,
+                    data_type=data_type
+                )
+                indexed_count += 1
+                logger.info(f"Re-indexed {data_type} for {wallet_address[:10]}..., CID: {cid}")
+
+            except Exception as e:
+                errors.append({"cid": file.get("cid"), "error": str(e)})
+                logger.warning(f"Failed to re-index {file.get('cid')}: {e}")
+                continue
+
+        return {
+            "success": True,
+            "integration": tool,
+            "wallet_address": wallet_address,
+            "indexed_count": indexed_count,
+            "total_files": len(files),
+            "errors": errors if errors else None,
+            "message": f"Re-indexed {indexed_count}/{len(files)} files for AI queries"
+        }
+
+    except Exception as e:
+        logger.error(f"Re-indexing failed for {tool}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -580,6 +710,81 @@ async def delete_tool_data(
 
     except Exception as e:
         logger.error(f"Failed to delete {tool} data: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/{provider}")
+async def disconnect_integration(
+    provider: str,
+    wallet_address: str = Query(..., description="User's wallet address")
+):
+    """
+    Disconnect an integration completely.
+
+    This removes:
+    1. OAuth credentials stored in Filecoin
+    2. All synced data for this integration
+
+    Args:
+        provider: Integration provider name (google, microsoft, quickbooks, etc.)
+        wallet_address: User's wallet address
+
+    Returns:
+        Disconnection result
+    """
+    try:
+        # Normalize integration name
+        normalized_provider = normalize_integration_name(provider)
+
+        logger.info(f"Disconnecting {provider} (normalized: {normalized_provider}) for wallet {wallet_address}")
+
+        total_deleted = 0
+
+        # 1. Delete OAuth credentials
+        try:
+            oauth_files = await filecoin_service.list_customer_files(
+                customer_wallet=wallet_address,
+                integration=normalized_provider,
+                data_type="oauth-credentials",
+                limit=100
+            )
+            for file in oauth_files:
+                try:
+                    await filecoin_service.unpin_file(file["cid"])
+                    total_deleted += 1
+                except Exception as e:
+                    logger.warning(f"Failed to delete OAuth credential {file['cid']}: {e}")
+        except Exception as e:
+            logger.warning(f"Error listing OAuth credentials: {e}")
+
+        # 2. Delete all synced data
+        try:
+            data_files = await filecoin_service.list_customer_files(
+                customer_wallet=wallet_address,
+                integration=normalized_provider,
+                limit=1000
+            )
+            for file in data_files:
+                try:
+                    await filecoin_service.unpin_file(file["cid"])
+                    total_deleted += 1
+                except Exception as e:
+                    logger.warning(f"Failed to delete data file {file['cid']}: {e}")
+        except Exception as e:
+            logger.warning(f"Error listing data files: {e}")
+
+        logger.info(f"Disconnected {provider} for wallet {wallet_address}, deleted {total_deleted} files")
+
+        return {
+            "success": True,
+            "provider": provider,
+            "wallet_address": wallet_address,
+            "files_deleted": total_deleted,
+            "message": f"Successfully disconnected {provider}"
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to disconnect {provider}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
