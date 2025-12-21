@@ -131,7 +131,7 @@ export default function CalendarView({ walletAddress, view, events }: CalendarVi
         : `${newEventData.startDate}T${newEventData.startTime}:00`;
 
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/integrations/microsoft365/calendar/events`,
+        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/integrations/microsoft/calendar/events`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

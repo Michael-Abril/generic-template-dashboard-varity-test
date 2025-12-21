@@ -56,7 +56,7 @@ export default function ContactsList({ walletAddress, contacts }: ContactsListPr
   const handleCreateContact = async () => {
     try {
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/integrations/microsoft365/contacts`,
+        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/integrations/microsoft/contacts`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

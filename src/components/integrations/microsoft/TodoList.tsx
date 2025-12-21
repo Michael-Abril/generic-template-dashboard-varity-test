@@ -57,7 +57,7 @@ export default function TodoList({ walletAddress }: TodoListProps) {
   const fetchTasks = async () => {
     try {
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/integrations/microsoft365/tasks?wallet_address=${walletAddress}`
+        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/integrations/microsoft/tasks?wallet_address=${walletAddress}`
       );
       if (response.ok) {
         const data = await response.json();
@@ -74,7 +74,7 @@ export default function TodoList({ walletAddress }: TodoListProps) {
 
     try {
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/integrations/microsoft365/tasks`,
+        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/integrations/microsoft/tasks`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -106,7 +106,7 @@ export default function TodoList({ walletAddress }: TodoListProps) {
   const handleToggleComplete = async (taskId: string, isCompleted: boolean, listId: string) => {
     try {
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/integrations/microsoft365/tasks/${taskId}`,
+        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/integrations/microsoft/tasks/${taskId}`,
         {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
@@ -132,7 +132,7 @@ export default function TodoList({ walletAddress }: TodoListProps) {
   const handleDeleteTask = async (taskId: string, listId: string) => {
     try {
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/integrations/microsoft365/tasks/${taskId}?wallet_address=${walletAddress}&list_id=${listId}`,
+        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/integrations/microsoft/tasks/${taskId}?wallet_address=${walletAddress}&list_id=${listId}`,
         {
           method: 'DELETE'
         }

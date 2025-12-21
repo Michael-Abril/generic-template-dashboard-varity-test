@@ -425,8 +425,140 @@ async def create_account(
     account: AccountCreate = Body(...)
 ):
     """Create a new account in Salesforce"""
-    # Implementation similar to create_lead
-    pass
+    try:
+        credentials = await get_salesforce_credentials(wallet_address)
+
+        # Build Salesforce Account object
+        sf_account = {
+            "Name": account.name
+        }
+
+        # Add optional fields
+        if account.phone:
+            sf_account["Phone"] = account.phone
+        if account.website:
+            sf_account["Website"] = account.website
+        if account.industry:
+            sf_account["Industry"] = account.industry
+        if account.billing_street:
+            sf_account["BillingStreet"] = account.billing_street
+        if account.billing_city:
+            sf_account["BillingCity"] = account.billing_city
+        if account.billing_state:
+            sf_account["BillingState"] = account.billing_state
+        if account.billing_postal_code:
+            sf_account["BillingPostalCode"] = account.billing_postal_code
+        if account.billing_country:
+            sf_account["BillingCountry"] = account.billing_country
+        if account.description:
+            sf_account["Description"] = account.description
+
+        instance_url = credentials.get("instance_url")
+        access_token = credentials.get("access_token")
+
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"{instance_url}/services/data/v58.0/sobjects/Account",
+                headers={
+                    "Authorization": f"Bearer {access_token}",
+                    "Content-Type": "application/json"
+                },
+                json=sf_account,
+                timeout=30.0
+            )
+
+            if response.status_code in [200, 201]:
+                result = response.json()
+                return {
+                    "success": True,
+                    "id": result.get("id"),
+                    "message": "Account created successfully"
+                }
+            else:
+                logger.error(f"Salesforce API error: {response.text}")
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail=f"Salesforce API error: {response.text}"
+                )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to create account: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.patch("/accounts/{account_id}")
+async def update_account(
+    account_id: str,
+    wallet_address: str = Query(...),
+    updates: Dict[str, Any] = Body(...)
+):
+    """Update an account in Salesforce"""
+    try:
+        credentials = await get_salesforce_credentials(wallet_address)
+        instance_url = credentials.get("instance_url")
+        access_token = credentials.get("access_token")
+
+        async with httpx.AsyncClient() as client:
+            response = await client.patch(
+                f"{instance_url}/services/data/v58.0/sobjects/Account/{account_id}",
+                headers={
+                    "Authorization": f"Bearer {access_token}",
+                    "Content-Type": "application/json"
+                },
+                json=updates,
+                timeout=30.0
+            )
+
+            if response.status_code == 204:
+                return {"success": True, "message": "Account updated successfully"}
+            else:
+                logger.error(f"Salesforce API error: {response.text}")
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail=f"Salesforce API error: {response.text}"
+                )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to update account: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/accounts/{account_id}")
+async def delete_account(
+    account_id: str,
+    wallet_address: str = Query(...)
+):
+    """Delete an account in Salesforce"""
+    try:
+        credentials = await get_salesforce_credentials(wallet_address)
+        instance_url = credentials.get("instance_url")
+        access_token = credentials.get("access_token")
+
+        async with httpx.AsyncClient() as client:
+            response = await client.delete(
+                f"{instance_url}/services/data/v58.0/sobjects/Account/{account_id}",
+                headers={"Authorization": f"Bearer {access_token}"},
+                timeout=30.0
+            )
+
+            if response.status_code == 204:
+                return {"success": True, "message": "Account deleted successfully"}
+            else:
+                logger.error(f"Salesforce API error: {response.text}")
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail=f"Salesforce API error: {response.text}"
+                )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to delete account: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/contacts")
@@ -435,8 +567,221 @@ async def create_contact(
     contact: ContactCreate = Body(...)
 ):
     """Create a new contact in Salesforce"""
-    # Implementation similar to create_lead
-    pass
+    try:
+        credentials = await get_salesforce_credentials(wallet_address)
+
+        # Build Salesforce Contact object
+        sf_contact = {
+            "LastName": contact.last_name
+        }
+
+        # Add optional fields
+        if contact.first_name:
+            sf_contact["FirstName"] = contact.first_name
+        if contact.account_id:
+            sf_contact["AccountId"] = contact.account_id
+        if contact.email:
+            sf_contact["Email"] = contact.email
+        if contact.phone:
+            sf_contact["Phone"] = contact.phone
+        if contact.mobile_phone:
+            sf_contact["MobilePhone"] = contact.mobile_phone
+        if contact.title:
+            sf_contact["Title"] = contact.title
+        if contact.department:
+            sf_contact["Department"] = contact.department
+        if contact.mailing_street:
+            sf_contact["MailingStreet"] = contact.mailing_street
+        if contact.mailing_city:
+            sf_contact["MailingCity"] = contact.mailing_city
+        if contact.mailing_state:
+            sf_contact["MailingState"] = contact.mailing_state
+        if contact.mailing_postal_code:
+            sf_contact["MailingPostalCode"] = contact.mailing_postal_code
+        if contact.mailing_country:
+            sf_contact["MailingCountry"] = contact.mailing_country
+        if contact.description:
+            sf_contact["Description"] = contact.description
+
+        instance_url = credentials.get("instance_url")
+        access_token = credentials.get("access_token")
+
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"{instance_url}/services/data/v58.0/sobjects/Contact",
+                headers={
+                    "Authorization": f"Bearer {access_token}",
+                    "Content-Type": "application/json"
+                },
+                json=sf_contact,
+                timeout=30.0
+            )
+
+            if response.status_code in [200, 201]:
+                result = response.json()
+                return {
+                    "success": True,
+                    "id": result.get("id"),
+                    "message": "Contact created successfully"
+                }
+            else:
+                logger.error(f"Salesforce API error: {response.text}")
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail=f"Salesforce API error: {response.text}"
+                )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to create contact: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.patch("/contacts/{contact_id}")
+async def update_contact(
+    contact_id: str,
+    wallet_address: str = Query(...),
+    updates: Dict[str, Any] = Body(...)
+):
+    """Update a contact in Salesforce"""
+    try:
+        credentials = await get_salesforce_credentials(wallet_address)
+        instance_url = credentials.get("instance_url")
+        access_token = credentials.get("access_token")
+
+        async with httpx.AsyncClient() as client:
+            response = await client.patch(
+                f"{instance_url}/services/data/v58.0/sobjects/Contact/{contact_id}",
+                headers={
+                    "Authorization": f"Bearer {access_token}",
+                    "Content-Type": "application/json"
+                },
+                json=updates,
+                timeout=30.0
+            )
+
+            if response.status_code == 204:
+                return {"success": True, "message": "Contact updated successfully"}
+            else:
+                logger.error(f"Salesforce API error: {response.text}")
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail=f"Salesforce API error: {response.text}"
+                )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to update contact: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/contacts/{contact_id}")
+async def delete_contact(
+    contact_id: str,
+    wallet_address: str = Query(...)
+):
+    """Delete a contact in Salesforce"""
+    try:
+        credentials = await get_salesforce_credentials(wallet_address)
+        instance_url = credentials.get("instance_url")
+        access_token = credentials.get("access_token")
+
+        async with httpx.AsyncClient() as client:
+            response = await client.delete(
+                f"{instance_url}/services/data/v58.0/sobjects/Contact/{contact_id}",
+                headers={"Authorization": f"Bearer {access_token}"},
+                timeout=30.0
+            )
+
+            if response.status_code == 204:
+                return {"success": True, "message": "Contact deleted successfully"}
+            else:
+                logger.error(f"Salesforce API error: {response.text}")
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail=f"Salesforce API error: {response.text}"
+                )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to delete contact: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.patch("/opportunities/{opportunity_id}")
+async def update_opportunity(
+    opportunity_id: str,
+    wallet_address: str = Query(...),
+    updates: Dict[str, Any] = Body(...)
+):
+    """Update an opportunity in Salesforce"""
+    try:
+        credentials = await get_salesforce_credentials(wallet_address)
+        instance_url = credentials.get("instance_url")
+        access_token = credentials.get("access_token")
+
+        async with httpx.AsyncClient() as client:
+            response = await client.patch(
+                f"{instance_url}/services/data/v58.0/sobjects/Opportunity/{opportunity_id}",
+                headers={
+                    "Authorization": f"Bearer {access_token}",
+                    "Content-Type": "application/json"
+                },
+                json=updates,
+                timeout=30.0
+            )
+
+            if response.status_code == 204:
+                return {"success": True, "message": "Opportunity updated successfully"}
+            else:
+                logger.error(f"Salesforce API error: {response.text}")
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail=f"Salesforce API error: {response.text}"
+                )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to update opportunity: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/opportunities/{opportunity_id}")
+async def delete_opportunity(
+    opportunity_id: str,
+    wallet_address: str = Query(...)
+):
+    """Delete an opportunity in Salesforce"""
+    try:
+        credentials = await get_salesforce_credentials(wallet_address)
+        instance_url = credentials.get("instance_url")
+        access_token = credentials.get("access_token")
+
+        async with httpx.AsyncClient() as client:
+            response = await client.delete(
+                f"{instance_url}/services/data/v58.0/sobjects/Opportunity/{opportunity_id}",
+                headers={"Authorization": f"Bearer {access_token}"},
+                timeout=30.0
+            )
+
+            if response.status_code == 204:
+                return {"success": True, "message": "Opportunity deleted successfully"}
+            else:
+                logger.error(f"Salesforce API error: {response.text}")
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail=f"Salesforce API error: {response.text}"
+                )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to delete opportunity: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/cases")
@@ -445,8 +790,63 @@ async def create_case(
     case: CaseCreate = Body(...)
 ):
     """Create a new case in Salesforce"""
-    # Implementation similar to create_lead
-    pass
+    try:
+        credentials = await get_salesforce_credentials(wallet_address)
+
+        # Build Salesforce Case object
+        sf_case = {
+            "Status": case.status,
+            "Priority": case.priority,
+            "Origin": case.origin
+        }
+
+        # Add optional fields
+        if case.contact_id:
+            sf_case["ContactId"] = case.contact_id
+        if case.account_id:
+            sf_case["AccountId"] = case.account_id
+        if case.subject:
+            sf_case["Subject"] = case.subject
+        if case.description:
+            sf_case["Description"] = case.description
+        if case.type:
+            sf_case["Type"] = case.type
+        if case.reason:
+            sf_case["Reason"] = case.reason
+
+        instance_url = credentials.get("instance_url")
+        access_token = credentials.get("access_token")
+
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"{instance_url}/services/data/v58.0/sobjects/Case",
+                headers={
+                    "Authorization": f"Bearer {access_token}",
+                    "Content-Type": "application/json"
+                },
+                json=sf_case,
+                timeout=30.0
+            )
+
+            if response.status_code in [200, 201]:
+                result = response.json()
+                return {
+                    "success": True,
+                    "id": result.get("id"),
+                    "message": "Case created successfully"
+                }
+            else:
+                logger.error(f"Salesforce API error: {response.text}")
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail=f"Salesforce API error: {response.text}"
+                )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to create case: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/leads/{lead_id}/convert")

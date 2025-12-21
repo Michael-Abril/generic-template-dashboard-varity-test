@@ -106,11 +106,30 @@ export default function OutlookInbox({
     }
   };
 
-  const handleMarkAsRead = async (messageIds: string[]) => {
+  const handleMarkAsRead = async (messageIds: string[], isRead: boolean = true) => {
     try {
-      // TODO: Implement mark as read API endpoint in backend
-      console.log('Marking as read:', messageIds);
-      alert('Mark as read functionality coming soon');
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+      const results = await Promise.all(
+        messageIds.map((messageId) =>
+          fetch(`${apiUrl}/api/v1/integrations/microsoft/mail/messages/${messageId}/read`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              wallet_address: walletAddress,
+              is_read: isRead
+            })
+          })
+        )
+      );
+
+      const allSuccessful = results.every((r) => r.ok);
+      if (allSuccessful) {
+        // Update local state to reflect change
+        setSelectedMessages(new Set());
+        window.location.reload(); // Refresh to show updated state
+      } else {
+        alert('Some messages could not be updated');
+      }
     } catch (error) {
       console.error('Error marking as read:', error);
       alert('Failed to mark as read');
@@ -118,10 +137,26 @@ export default function OutlookInbox({
   };
 
   const handleDelete = async (messageIds: string[]) => {
+    if (!confirm(`Delete ${messageIds.length} message(s)?`)) return;
+
     try {
-      // TODO: Implement delete messages API endpoint in backend
-      console.log('Deleting:', messageIds);
-      alert('Delete functionality coming soon');
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+      const results = await Promise.all(
+        messageIds.map((messageId) =>
+          fetch(
+            `${apiUrl}/api/v1/integrations/microsoft/mail/messages/${messageId}?wallet_address=${walletAddress}`,
+            { method: 'DELETE' }
+          )
+        )
+      );
+
+      const allSuccessful = results.every((r) => r.ok);
+      if (allSuccessful) {
+        setSelectedMessages(new Set());
+        window.location.reload(); // Refresh to show updated list
+      } else {
+        alert('Some messages could not be deleted');
+      }
     } catch (error) {
       console.error('Error deleting messages:', error);
       alert('Failed to delete messages');
@@ -130,9 +165,26 @@ export default function OutlookInbox({
 
   const handleArchive = async (messageIds: string[]) => {
     try {
-      // TODO: Implement archive messages API endpoint in backend
-      console.log('Archiving:', messageIds);
-      alert('Archive functionality coming soon');
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+      const results = await Promise.all(
+        messageIds.map((messageId) =>
+          fetch(`${apiUrl}/api/v1/integrations/microsoft/mail/messages/${messageId}/archive`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              wallet_address: walletAddress
+            })
+          })
+        )
+      );
+
+      const allSuccessful = results.every((r) => r.ok);
+      if (allSuccessful) {
+        setSelectedMessages(new Set());
+        window.location.reload(); // Refresh to show updated list
+      } else {
+        alert('Some messages could not be archived');
+      }
     } catch (error) {
       console.error('Error archiving messages:', error);
       alert('Failed to archive messages');

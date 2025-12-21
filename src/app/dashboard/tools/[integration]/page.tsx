@@ -228,8 +228,254 @@ function QuickBooksToolPage({
   const [searchFocused, setSearchFocused] = useState(false);
   const [showInvoiceForm, setShowInvoiceForm] = useState(false);
   const [showExpenseForm, setShowExpenseForm] = useState(false);
+  const [savingInvoice, setSavingInvoice] = useState(false);
+  const [savingExpense, setSavingExpense] = useState(false);
   const createMenuRef = useRef<HTMLDivElement>(null);
   const gearMenuRef = useRef<HTMLDivElement>(null);
+
+  // Invoice Form State
+  const [invoiceForm, setInvoiceForm] = useState({
+    customerId: '',
+    customerEmail: '',
+    invoiceDate: new Date().toISOString().split('T')[0],
+    dueDate: '',
+    terms: 'Net 30',
+    lineItems: [{ description: '', quantity: 1, rate: 0 }],
+    notes: ''
+  });
+
+  // Expense Form State
+  const [expenseForm, setExpenseForm] = useState({
+    vendorId: '',
+    paymentAccount: 'Business Checking',
+    paymentDate: new Date().toISOString().split('T')[0],
+    paymentMethod: 'Check',
+    refNo: '',
+    lineItems: [{ category: 'Office Supplies & Software', description: '', amount: 0 }]
+  });
+
+  // Reset forms when modals close
+  useEffect(() => {
+    if (!showInvoiceForm) {
+      setInvoiceForm({
+        customerId: '',
+        customerEmail: '',
+        invoiceDate: new Date().toISOString().split('T')[0],
+        dueDate: '',
+        terms: 'Net 30',
+        lineItems: [{ description: '', quantity: 1, rate: 0 }],
+        notes: ''
+      });
+    }
+  }, [showInvoiceForm]);
+
+  useEffect(() => {
+    if (!showExpenseForm) {
+      setExpenseForm({
+        vendorId: '',
+        paymentAccount: 'Business Checking',
+        paymentDate: new Date().toISOString().split('T')[0],
+        paymentMethod: 'Check',
+        refNo: '',
+        lineItems: [{ category: 'Office Supplies & Software', description: '', amount: 0 }]
+      });
+    }
+  }, [showExpenseForm]);
+
+  // Invoice Line Items Management
+  const addInvoiceLineItem = () => {
+    setInvoiceForm(prev => ({
+      ...prev,
+      lineItems: [...prev.lineItems, { description: '', quantity: 1, rate: 0 }]
+    }));
+  };
+
+  const updateInvoiceLineItem = (index: number, field: string, value: string | number) => {
+    setInvoiceForm(prev => ({
+      ...prev,
+      lineItems: prev.lineItems.map((item, i) =>
+        i === index ? { ...item, [field]: value } : item
+      )
+    }));
+  };
+
+  const removeInvoiceLineItem = (index: number) => {
+    if (invoiceForm.lineItems.length > 1) {
+      setInvoiceForm(prev => ({
+        ...prev,
+        lineItems: prev.lineItems.filter((_, i) => i !== index)
+      }));
+    }
+  };
+
+  // Expense Line Items Management
+  const addExpenseLineItem = () => {
+    setExpenseForm(prev => ({
+      ...prev,
+      lineItems: [...prev.lineItems, { category: 'Office Supplies & Software', description: '', amount: 0 }]
+    }));
+  };
+
+  const updateExpenseLineItem = (index: number, field: string, value: string | number) => {
+    setExpenseForm(prev => ({
+      ...prev,
+      lineItems: prev.lineItems.map((item, i) =>
+        i === index ? { ...item, [field]: value } : item
+      )
+    }));
+  };
+
+  const removeExpenseLineItem = (index: number) => {
+    if (expenseForm.lineItems.length > 1) {
+      setExpenseForm(prev => ({
+        ...prev,
+        lineItems: prev.lineItems.filter((_, i) => i !== index)
+      }));
+    }
+  };
+
+  // Calculate Invoice Totals
+  const invoiceSubtotal = invoiceForm.lineItems.reduce(
+    (sum, item) => sum + (item.quantity * item.rate), 0
+  );
+  const invoiceTax = 0;
+  const invoiceTotal = invoiceSubtotal + invoiceTax;
+
+  // Calculate Expense Total
+  const expenseTotal = expenseForm.lineItems.reduce(
+    (sum, item) => sum + item.amount, 0
+  );
+
+  // Save Invoice Handler
+  const handleSaveInvoice = async (sendAfterSave: boolean = false) => {
+    if (!invoiceForm.customerId) {
+      alert('Please select a customer');
+      return;
+    }
+    if (!invoiceForm.dueDate) {
+      alert('Please enter a due date');
+      return;
+    }
+    if (invoiceForm.lineItems.every(item => !item.description || item.rate === 0)) {
+      alert('Please add at least one line item');
+      return;
+    }
+
+    setSavingInvoice(true);
+    try {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+      const response = await fetch(
+        `${apiUrl}/api/v1/quickbooks/invoices?wallet_address=${walletAddress}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            customer_id: invoiceForm.customerId,
+            invoice_date: invoiceForm.invoiceDate,
+            due_date: invoiceForm.dueDate,
+            terms: invoiceForm.terms,
+            line_items: invoiceForm.lineItems.filter(item => item.description || item.rate > 0).map(item => ({
+              description: item.description,
+              quantity: item.quantity,
+              rate: item.rate
+            })),
+            notes: invoiceForm.notes || undefined
+          })
+        }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || `Failed to create invoice: ${response.status}`);
+      }
+
+      const result = await response.json();
+
+      if (sendAfterSave && result.id) {
+        const sendResponse = await fetch(
+          `${apiUrl}/api/v1/quickbooks/invoices/${result.id}/send?wallet_address=${walletAddress}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: invoiceForm.customerEmail || undefined })
+          }
+        );
+
+        if (!sendResponse.ok) {
+          alert(`Invoice created (${result.doc_number || result.id}) but failed to send.`);
+        } else {
+          alert(`Invoice ${result.doc_number || result.id} created and sent!`);
+        }
+      } else {
+        alert(`Invoice ${result.doc_number || result.id} created successfully!`);
+      }
+
+      setShowInvoiceForm(false);
+      if (onRefresh) onRefresh();
+    } catch (error) {
+      console.error('Failed to save invoice:', error);
+      alert(error instanceof Error ? error.message : 'Failed to create invoice');
+    } finally {
+      setSavingInvoice(false);
+    }
+  };
+
+  // Save Expense Handler
+  const handleSaveExpense = async () => {
+    const validItems = expenseForm.lineItems.filter(item => item.amount > 0);
+    if (validItems.length === 0) {
+      alert('Please add at least one expense line item with an amount');
+      return;
+    }
+
+    setSavingExpense(true);
+    try {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+
+      // Create an expense for each line item with amount > 0
+      const results = [];
+      for (const item of validItems) {
+        const response = await fetch(
+          `${apiUrl}/api/v1/quickbooks/expenses?wallet_address=${walletAddress}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              vendor_id: expenseForm.vendorId || undefined,
+              category: item.category,
+              date: expenseForm.paymentDate,
+              amount: item.amount,
+              payment_method: expenseForm.paymentMethod,
+              payment_account: expenseForm.paymentAccount,
+              reference_number: expenseForm.refNo || undefined,
+              memo: item.description || undefined
+            })
+          }
+        );
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.detail || `Failed to create expense: ${response.status}`);
+        }
+
+        const result = await response.json();
+        results.push(result);
+      }
+
+      if (results.length === 1) {
+        alert(`Expense ${results[0].doc_number || results[0].id} created successfully!`);
+      } else {
+        alert(`${results.length} expenses created successfully!`);
+      }
+      setShowExpenseForm(false);
+      if (onRefresh) onRefresh();
+    } catch (error) {
+      console.error('Failed to save expense:', error);
+      alert(error instanceof Error ? error.message : 'Failed to create expense');
+    } finally {
+      setSavingExpense(false);
+    }
+  };
 
   // Close menus when clicking outside
   useEffect(() => {
@@ -1654,9 +1900,13 @@ function QuickBooksToolPage({
               {/* Invoice Form - QB Style */}
               <div className="grid grid-cols-2 gap-6 mb-6">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Customer</label>
-                  <select className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500">
-                    <option>Select a customer</option>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Customer *</label>
+                  <select
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
+                    value={invoiceForm.customerId}
+                    onChange={(e) => setInvoiceForm(prev => ({ ...prev, customerId: e.target.value }))}
+                  >
+                    <option value="">Select a customer</option>
                     {customers.map((c, i) => (
                       <option key={i} value={String(c.id)}>{String(c.display_name || c.company_name)}</option>
                     ))}
@@ -1664,24 +1914,44 @@ function QuickBooksToolPage({
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-                  <input type="email" className="w-full px-3 py-2 border border-gray-300 rounded-lg" placeholder="customer@email.com" />
+                  <input
+                    type="email"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    placeholder="customer@email.com"
+                    value={invoiceForm.customerEmail}
+                    onChange={(e) => setInvoiceForm(prev => ({ ...prev, customerEmail: e.target.value }))}
+                  />
                 </div>
               </div>
               <div className="grid grid-cols-3 gap-6 mb-6">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Invoice date</label>
-                  <input type="date" className="w-full px-3 py-2 border border-gray-300 rounded-lg" defaultValue={new Date().toISOString().split('T')[0]} />
+                  <input
+                    type="date"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    value={invoiceForm.invoiceDate}
+                    onChange={(e) => setInvoiceForm(prev => ({ ...prev, invoiceDate: e.target.value }))}
+                  />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Due date</label>
-                  <input type="date" className="w-full px-3 py-2 border border-gray-300 rounded-lg" />
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Due date *</label>
+                  <input
+                    type="date"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    value={invoiceForm.dueDate}
+                    onChange={(e) => setInvoiceForm(prev => ({ ...prev, dueDate: e.target.value }))}
+                  />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Terms</label>
-                  <select className="w-full px-3 py-2 border border-gray-300 rounded-lg">
-                    <option>Net 30</option>
-                    <option>Net 15</option>
-                    <option>Due on receipt</option>
+                  <select
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    value={invoiceForm.terms}
+                    onChange={(e) => setInvoiceForm(prev => ({ ...prev, terms: e.target.value }))}
+                  >
+                    <option value="Net 30">Net 30</option>
+                    <option value="Net 15">Net 15</option>
+                    <option value="Due on receipt">Due on receipt</option>
                   </select>
                 </div>
               </div>
@@ -1690,24 +1960,65 @@ function QuickBooksToolPage({
                 <table className="w-full">
                   <thead className="bg-gray-50">
                     <tr>
-                      <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600">Product/Service</th>
                       <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600">Description</th>
-                      <th className="px-4 py-2 text-right text-xs font-semibold text-gray-600">Qty</th>
-                      <th className="px-4 py-2 text-right text-xs font-semibold text-gray-600">Rate</th>
-                      <th className="px-4 py-2 text-right text-xs font-semibold text-gray-600">Amount</th>
+                      <th className="px-4 py-2 text-right text-xs font-semibold text-gray-600 w-24">Qty</th>
+                      <th className="px-4 py-2 text-right text-xs font-semibold text-gray-600 w-32">Rate</th>
+                      <th className="px-4 py-2 text-right text-xs font-semibold text-gray-600 w-32">Amount</th>
+                      <th className="px-4 py-2 w-12"></th>
                     </tr>
                   </thead>
                   <tbody>
-                    <tr>
-                      <td className="px-4 py-2"><input className="w-full px-2 py-1 border rounded" placeholder="Select" /></td>
-                      <td className="px-4 py-2"><input className="w-full px-2 py-1 border rounded" placeholder="Description" /></td>
-                      <td className="px-4 py-2"><input type="number" className="w-full px-2 py-1 border rounded text-right" defaultValue="1" /></td>
-                      <td className="px-4 py-2"><input type="number" className="w-full px-2 py-1 border rounded text-right" placeholder="0.00" /></td>
-                      <td className="px-4 py-2 text-right font-medium">$0.00</td>
-                    </tr>
+                    {invoiceForm.lineItems.map((item, index) => (
+                      <tr key={index} className="border-b">
+                        <td className="px-4 py-2">
+                          <input
+                            className="w-full px-2 py-1 border rounded"
+                            placeholder="Description"
+                            value={item.description}
+                            onChange={(e) => updateInvoiceLineItem(index, 'description', e.target.value)}
+                          />
+                        </td>
+                        <td className="px-4 py-2">
+                          <input
+                            type="number"
+                            min="1"
+                            className="w-full px-2 py-1 border rounded text-right"
+                            value={item.quantity}
+                            onChange={(e) => updateInvoiceLineItem(index, 'quantity', parseFloat(e.target.value) || 0)}
+                          />
+                        </td>
+                        <td className="px-4 py-2">
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            className="w-full px-2 py-1 border rounded text-right"
+                            placeholder="0.00"
+                            value={item.rate || ''}
+                            onChange={(e) => updateInvoiceLineItem(index, 'rate', parseFloat(e.target.value) || 0)}
+                          />
+                        </td>
+                        <td className="px-4 py-2 text-right font-medium">
+                          ${(item.quantity * item.rate).toFixed(2)}
+                        </td>
+                        <td className="px-4 py-2">
+                          {invoiceForm.lineItems.length > 1 && (
+                            <button
+                              onClick={() => removeInvoiceLineItem(index)}
+                              className="p-1 text-gray-400 hover:text-red-500"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
                   </tbody>
                 </table>
-                <button className="mt-2 text-sm text-green-600 hover:text-green-700 font-medium flex items-center gap-1">
+                <button
+                  onClick={addInvoiceLineItem}
+                  className="mt-2 text-sm text-green-600 hover:text-green-700 font-medium flex items-center gap-1"
+                >
                   <Plus className="w-4 h-4" /> Add line
                 </button>
               </div>
@@ -1716,28 +2027,40 @@ function QuickBooksToolPage({
                 <div className="w-64 space-y-2">
                   <div className="flex justify-between text-sm">
                     <span>Subtotal</span>
-                    <span>$0.00</span>
+                    <span>${invoiceSubtotal.toFixed(2)}</span>
                   </div>
                   <div className="flex justify-between text-sm">
                     <span>Tax (0%)</span>
-                    <span>$0.00</span>
+                    <span>${invoiceTax.toFixed(2)}</span>
                   </div>
                   <div className="flex justify-between font-semibold text-lg border-t pt-2">
                     <span>Total</span>
-                    <span>$0.00</span>
+                    <span>${invoiceTotal.toFixed(2)}</span>
                   </div>
                 </div>
               </div>
             </div>
             <div className="border-t px-6 py-4 flex items-center justify-end gap-3 bg-gray-50">
-              <button onClick={() => setShowInvoiceForm(false)} className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-100">
+              <button
+                onClick={() => setShowInvoiceForm(false)}
+                className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-100"
+                disabled={savingInvoice}
+              >
                 Cancel
               </button>
-              <button className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300">
-                Save
+              <button
+                onClick={() => handleSaveInvoice(false)}
+                disabled={savingInvoice}
+                className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 disabled:opacity-50"
+              >
+                {savingInvoice ? 'Saving...' : 'Save'}
               </button>
-              <button className="px-4 py-2 bg-[#2CA01C] text-white rounded-lg hover:bg-[#248a17]">
-                Save and send
+              <button
+                onClick={() => handleSaveInvoice(true)}
+                disabled={savingInvoice}
+                className="px-4 py-2 bg-[#2CA01C] text-white rounded-lg hover:bg-[#248a17] disabled:opacity-50"
+              >
+                {savingInvoice ? 'Saving...' : 'Save and send'}
               </button>
             </div>
           </div>
@@ -1758,8 +2081,12 @@ function QuickBooksToolPage({
               <div className="grid grid-cols-2 gap-6 mb-6">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Payee</label>
-                  <select className="w-full px-3 py-2 border border-gray-300 rounded-lg">
-                    <option>Select a payee</option>
+                  <select
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    value={expenseForm.vendorId}
+                    onChange={(e) => setExpenseForm(prev => ({ ...prev, vendorId: e.target.value }))}
+                  >
+                    <option value="">Select a payee (optional)</option>
                     {vendors.map((v, i) => (
                       <option key={i} value={String(v.id)}>{String(v.display_name || v.company_name)}</option>
                     ))}
@@ -1767,30 +2094,49 @@ function QuickBooksToolPage({
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Payment account</label>
-                  <select className="w-full px-3 py-2 border border-gray-300 rounded-lg">
-                    <option>Business Checking</option>
-                    <option>Business Credit Card</option>
-                    <option>Cash</option>
+                  <select
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    value={expenseForm.paymentAccount}
+                    onChange={(e) => setExpenseForm(prev => ({ ...prev, paymentAccount: e.target.value }))}
+                  >
+                    <option value="Business Checking">Business Checking</option>
+                    <option value="Business Credit Card">Business Credit Card</option>
+                    <option value="Cash">Cash</option>
                   </select>
                 </div>
               </div>
               <div className="grid grid-cols-3 gap-6 mb-6">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Payment date</label>
-                  <input type="date" className="w-full px-3 py-2 border border-gray-300 rounded-lg" defaultValue={new Date().toISOString().split('T')[0]} />
+                  <input
+                    type="date"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    value={expenseForm.paymentDate}
+                    onChange={(e) => setExpenseForm(prev => ({ ...prev, paymentDate: e.target.value }))}
+                  />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Payment method</label>
-                  <select className="w-full px-3 py-2 border border-gray-300 rounded-lg">
-                    <option>Check</option>
-                    <option>Credit Card</option>
-                    <option>Cash</option>
-                    <option>Bank Transfer</option>
+                  <select
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    value={expenseForm.paymentMethod}
+                    onChange={(e) => setExpenseForm(prev => ({ ...prev, paymentMethod: e.target.value }))}
+                  >
+                    <option value="Check">Check</option>
+                    <option value="Credit Card">Credit Card</option>
+                    <option value="Cash">Cash</option>
+                    <option value="Bank Transfer">Bank Transfer</option>
                   </select>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Ref no.</label>
-                  <input type="text" className="w-full px-3 py-2 border border-gray-300 rounded-lg" placeholder="Optional" />
+                  <input
+                    type="text"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    placeholder="Optional"
+                    value={expenseForm.refNo}
+                    onChange={(e) => setExpenseForm(prev => ({ ...prev, refNo: e.target.value }))}
+                  />
                 </div>
               </div>
               {/* Category/Amount */}
@@ -1800,25 +2146,66 @@ function QuickBooksToolPage({
                     <tr>
                       <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600">Category</th>
                       <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600">Description</th>
-                      <th className="px-4 py-2 text-right text-xs font-semibold text-gray-600">Amount</th>
+                      <th className="px-4 py-2 text-right text-xs font-semibold text-gray-600 w-32">Amount</th>
+                      <th className="px-4 py-2 w-12"></th>
                     </tr>
                   </thead>
                   <tbody>
-                    <tr>
-                      <td className="px-4 py-2">
-                        <select className="w-full px-2 py-1 border rounded">
-                          <option>Office Supplies & Software</option>
-                          <option>Advertising & Marketing</option>
-                          <option>Travel</option>
-                          <option>Utilities</option>
-                        </select>
-                      </td>
-                      <td className="px-4 py-2"><input className="w-full px-2 py-1 border rounded" placeholder="Description" /></td>
-                      <td className="px-4 py-2"><input type="number" className="w-full px-2 py-1 border rounded text-right" placeholder="0.00" /></td>
-                    </tr>
+                    {expenseForm.lineItems.map((item, index) => (
+                      <tr key={index} className="border-b">
+                        <td className="px-4 py-2">
+                          <select
+                            className="w-full px-2 py-1 border rounded"
+                            value={item.category}
+                            onChange={(e) => updateExpenseLineItem(index, 'category', e.target.value)}
+                          >
+                            <option value="Office Supplies & Software">Office Supplies & Software</option>
+                            <option value="Advertising & Marketing">Advertising & Marketing</option>
+                            <option value="Travel">Travel</option>
+                            <option value="Utilities">Utilities</option>
+                            <option value="Rent">Rent</option>
+                            <option value="Insurance">Insurance</option>
+                            <option value="Professional Services">Professional Services</option>
+                            <option value="Other">Other</option>
+                          </select>
+                        </td>
+                        <td className="px-4 py-2">
+                          <input
+                            className="w-full px-2 py-1 border rounded"
+                            placeholder="Description"
+                            value={item.description}
+                            onChange={(e) => updateExpenseLineItem(index, 'description', e.target.value)}
+                          />
+                        </td>
+                        <td className="px-4 py-2">
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            className="w-full px-2 py-1 border rounded text-right"
+                            placeholder="0.00"
+                            value={item.amount || ''}
+                            onChange={(e) => updateExpenseLineItem(index, 'amount', parseFloat(e.target.value) || 0)}
+                          />
+                        </td>
+                        <td className="px-4 py-2">
+                          {expenseForm.lineItems.length > 1 && (
+                            <button
+                              onClick={() => removeExpenseLineItem(index)}
+                              className="p-1 text-gray-400 hover:text-red-500"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
                   </tbody>
                 </table>
-                <button className="mt-2 text-sm text-green-600 hover:text-green-700 font-medium flex items-center gap-1">
+                <button
+                  onClick={addExpenseLineItem}
+                  className="mt-2 text-sm text-green-600 hover:text-green-700 font-medium flex items-center gap-1"
+                >
                   <Plus className="w-4 h-4" /> Add line
                 </button>
               </div>
@@ -1827,17 +2214,25 @@ function QuickBooksToolPage({
                 <div className="w-48">
                   <div className="flex justify-between font-semibold text-lg">
                     <span>Total</span>
-                    <span>$0.00</span>
+                    <span>${expenseTotal.toFixed(2)}</span>
                   </div>
                 </div>
               </div>
             </div>
             <div className="border-t px-6 py-4 flex items-center justify-end gap-3 bg-gray-50">
-              <button onClick={() => setShowExpenseForm(false)} className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-100">
+              <button
+                onClick={() => setShowExpenseForm(false)}
+                className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-100"
+                disabled={savingExpense}
+              >
                 Cancel
               </button>
-              <button className="px-4 py-2 bg-[#2CA01C] text-white rounded-lg hover:bg-[#248a17]">
-                Save
+              <button
+                onClick={handleSaveExpense}
+                disabled={savingExpense}
+                className="px-4 py-2 bg-[#2CA01C] text-white rounded-lg hover:bg-[#248a17] disabled:opacity-50"
+              >
+                {savingExpense ? 'Saving...' : 'Save'}
               </button>
             </div>
           </div>
@@ -1945,9 +2340,63 @@ export default function IntegrationToolPage() {
     dataTypes: []
   };
 
-  // Fetch data from Filecoin
-  const fetchData = useCallback(async () => {
+  // Cache key for localStorage
+  const getCacheKey = useCallback(() => {
+    return `varity_integration_${integration}_${address?.toLowerCase()}`;
+  }, [integration, address]);
+
+  // Save data to localStorage cache
+  const saveToCache = useCallback((integrationData: IntegrationData[], syncTime: string | null) => {
     if (!address || !integration) return;
+    try {
+      const cacheData = {
+        data: integrationData,
+        lastSync: syncTime,
+        cachedAt: new Date().toISOString()
+      };
+      localStorage.setItem(getCacheKey(), JSON.stringify(cacheData));
+    } catch (e) {
+      console.warn('Failed to cache integration data:', e);
+    }
+  }, [address, integration, getCacheKey]);
+
+  // Load data from localStorage cache
+  const loadFromCache = useCallback(() => {
+    if (!address || !integration) return null;
+    try {
+      const cached = localStorage.getItem(getCacheKey());
+      if (!cached) return null;
+
+      const cacheData = JSON.parse(cached);
+      const cachedAt = new Date(cacheData.cachedAt);
+      const now = new Date();
+      const cacheAgeMinutes = (now.getTime() - cachedAt.getTime()) / (1000 * 60);
+
+      // Cache valid for 60 minutes
+      if (cacheAgeMinutes < 60 && cacheData.data?.length > 0) {
+        return cacheData;
+      }
+      return null;
+    } catch (e) {
+      console.warn('Failed to load cached integration data:', e);
+      return null;
+    }
+  }, [address, integration, getCacheKey]);
+
+  // Fetch data from Filecoin
+  const fetchData = useCallback(async (forceRefresh = false) => {
+    if (!address || !integration) return;
+
+    // Check cache first (unless forcing refresh)
+    if (!forceRefresh) {
+      const cached = loadFromCache();
+      if (cached) {
+        setData(cached.data);
+        setLastSync(cached.lastSync);
+        setLoading(false);
+        return;
+      }
+    }
 
     setLoading(true);
     setError(null);
@@ -1967,21 +2416,26 @@ export default function IntegrationToolPage() {
       setData(result.data || []);
 
       // Get last sync time from the most recent data
+      let syncTime: string | null = null;
       if (result.data && result.data.length > 0) {
         const mostRecent = result.data.reduce((latest, item) => {
           const itemDate = item.data?.synced_at || item.uploaded_at;
           const latestDate = latest.data?.synced_at || latest.uploaded_at;
           return new Date(itemDate) > new Date(latestDate) ? item : latest;
         });
-        setLastSync(mostRecent.data?.synced_at || mostRecent.uploaded_at);
+        syncTime = mostRecent.data?.synced_at || mostRecent.uploaded_at;
+        setLastSync(syncTime);
       }
+
+      // Save to cache
+      saveToCache(result.data || [], syncTime);
     } catch (err) {
       console.error('Error fetching integration data:', err);
       setError(err instanceof Error ? err.message : 'Failed to load data');
     } finally {
       setLoading(false);
     }
-  }, [address, integration]);
+  }, [address, integration, loadFromCache, saveToCache]);
 
   // Sync data from external service
   const syncData = async () => {
@@ -2006,8 +2460,8 @@ export default function IntegrationToolPage() {
         throw new Error(errorData.detail || 'Sync failed');
       }
 
-      // Refresh data after sync
-      await fetchData();
+      // Force refresh data after sync (bypass cache)
+      await fetchData(true);
       setLastSync(new Date().toISOString());
     } catch (err) {
       console.error('Sync error:', err);
@@ -2016,6 +2470,11 @@ export default function IntegrationToolPage() {
       setSyncing(false);
     }
   };
+
+  // Force refresh data (bypass cache)
+  const refreshData = useCallback(() => {
+    fetchData(true);
+  }, [fetchData]);
 
   useEffect(() => {
     if (authenticated && address && integration) {
@@ -2106,7 +2565,7 @@ export default function IntegrationToolPage() {
           error={error}
           lastSync={lastSync}
           onSync={syncData}
-          onRefresh={fetchData}
+          onRefresh={refreshData}
         />
       </Layout>
     );
@@ -2130,6 +2589,147 @@ export default function IntegrationToolPage() {
 
   // Render HubSpot CRM native UI for HubSpot integration
   if (integration === 'hubspot') {
+    // HubSpot CRUD handlers
+    const hubspotApiUrl = `${process.env.NEXT_PUBLIC_API_URL}/api/v1/hubspot`;
+
+    const handleCreateContact = async () => {
+      alert('Create contact functionality coming soon. You can create contacts directly in HubSpot for now.');
+    };
+
+    const handleEditContact = async (contact: any) => {
+      try {
+        const response = await fetch(`${hubspotApiUrl}/contacts/${contact.id}?wallet_address=${address}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(contact)
+        });
+        if (!response.ok) throw new Error('Failed to update contact');
+        refreshData();
+      } catch (err: any) {
+        alert(`Error: ${err.message}`);
+      }
+    };
+
+    const handleDeleteContact = async (contactId: string) => {
+      if (!confirm('Are you sure you want to delete this contact?')) return;
+      try {
+        const response = await fetch(`${hubspotApiUrl}/contacts/${contactId}?wallet_address=${address}`, {
+          method: 'DELETE'
+        });
+        if (!response.ok) throw new Error('Failed to delete contact');
+        refreshData();
+      } catch (err: any) {
+        alert(`Error: ${err.message}`);
+      }
+    };
+
+    const handleCreateCompany = async () => {
+      alert('Create company functionality coming soon. You can create companies directly in HubSpot for now.');
+    };
+
+    const handleEditCompany = async (company: any) => {
+      try {
+        const response = await fetch(`${hubspotApiUrl}/companies/${company.id}?wallet_address=${address}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(company)
+        });
+        if (!response.ok) throw new Error('Failed to update company');
+        refreshData();
+      } catch (err: any) {
+        alert(`Error: ${err.message}`);
+      }
+    };
+
+    const handleDeleteCompany = async (companyId: string) => {
+      if (!confirm('Are you sure you want to delete this company?')) return;
+      try {
+        const response = await fetch(`${hubspotApiUrl}/companies/${companyId}?wallet_address=${address}`, {
+          method: 'DELETE'
+        });
+        if (!response.ok) throw new Error('Failed to delete company');
+        refreshData();
+      } catch (err: any) {
+        alert(`Error: ${err.message}`);
+      }
+    };
+
+    const handleCreateDeal = async () => {
+      alert('Create deal functionality coming soon. You can create deals directly in HubSpot for now.');
+    };
+
+    const handleEditDeal = async (deal: any) => {
+      try {
+        const response = await fetch(`${hubspotApiUrl}/deals/${deal.id}?wallet_address=${address}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(deal)
+        });
+        if (!response.ok) throw new Error('Failed to update deal');
+        refreshData();
+      } catch (err: any) {
+        alert(`Error: ${err.message}`);
+      }
+    };
+
+    const handleDeleteDeal = async (dealId: string) => {
+      if (!confirm('Are you sure you want to delete this deal?')) return;
+      try {
+        const response = await fetch(`${hubspotApiUrl}/deals/${dealId}?wallet_address=${address}`, {
+          method: 'DELETE'
+        });
+        if (!response.ok) throw new Error('Failed to delete deal');
+        refreshData();
+      } catch (err: any) {
+        alert(`Error: ${err.message}`);
+      }
+    };
+
+    const handleUpdateDealStage = async (dealId: string, newStage: string) => {
+      try {
+        const response = await fetch(`${hubspotApiUrl}/deals/${dealId}?wallet_address=${address}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ dealstage: newStage })
+        });
+        if (!response.ok) throw new Error('Failed to update deal stage');
+        refreshData();
+      } catch (err: any) {
+        alert(`Error: ${err.message}`);
+      }
+    };
+
+    const handleCreateTicket = async () => {
+      alert('Create ticket functionality coming soon. You can create tickets directly in HubSpot for now.');
+    };
+
+    const handleEditTicket = async (ticket: any) => {
+      try {
+        const response = await fetch(`${hubspotApiUrl}/tickets/${ticket.id}?wallet_address=${address}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(ticket)
+        });
+        if (!response.ok) throw new Error('Failed to update ticket');
+        refreshData();
+      } catch (err: any) {
+        alert(`Error: ${err.message}`);
+      }
+    };
+
+    const handleDeleteTicket = async (ticketId: string) => {
+      if (!confirm('Are you sure you want to delete this ticket?')) return;
+      try {
+        const response = await fetch(`${hubspotApiUrl}/tickets/${ticketId}?wallet_address=${address}`, {
+          method: 'DELETE'
+        });
+        if (!response.ok) throw new Error('Failed to delete ticket');
+        refreshData();
+      } catch (err: any) {
+        alert(`Error: ${err.message}`);
+      }
+    };
+
     return (
       <Layout>
         <HubSpotPage
@@ -2140,7 +2740,20 @@ export default function IntegrationToolPage() {
           error={error}
           lastSync={lastSync}
           onSync={syncData}
-          onRefresh={fetchData}
+          onRefresh={refreshData}
+          onCreateContact={handleCreateContact}
+          onEditContact={handleEditContact}
+          onDeleteContact={handleDeleteContact}
+          onCreateCompany={handleCreateCompany}
+          onEditCompany={handleEditCompany}
+          onDeleteCompany={handleDeleteCompany}
+          onCreateDeal={handleCreateDeal}
+          onEditDeal={handleEditDeal}
+          onDeleteDeal={handleDeleteDeal}
+          onUpdateDealStage={handleUpdateDealStage}
+          onCreateTicket={handleCreateTicket}
+          onEditTicket={handleEditTicket}
+          onDeleteTicket={handleDeleteTicket}
         />
       </Layout>
     );
@@ -2159,7 +2772,7 @@ export default function IntegrationToolPage() {
         <SalesforcePage
           walletAddress={address}
           data={salesforceData}
-          onRefresh={fetchData}
+          onRefresh={refreshData}
         />
       </Layout>
     );
@@ -2212,7 +2825,7 @@ export default function IntegrationToolPage() {
           walletAddress={address}
           data={googleData}
           onSync={syncData}
-          onRefresh={fetchData}
+          onRefresh={refreshData}
           loading={loading}
         />
       </Layout>

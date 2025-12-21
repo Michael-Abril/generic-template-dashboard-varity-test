@@ -57,7 +57,7 @@ export default function EmailComposer({ walletAddress, onClose, replyTo }: Email
     setIsSending(true);
     try {
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/integrations/microsoft365/mail/send`,
+        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/integrations/microsoft/mail/send`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -91,7 +91,7 @@ export default function EmailComposer({ walletAddress, onClose, replyTo }: Email
   const handleSaveDraft = async () => {
     try {
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/integrations/microsoft365/mail/drafts`,
+        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/integrations/microsoft/mail/drafts`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

@@ -178,6 +178,91 @@ async def save_draft(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.patch("/mail/messages/{message_id}/read")
+async def mark_message_read(
+    message_id: str,
+    wallet_address: str = Body(..., embed=True),
+    is_read: bool = Body(True),
+    db: AsyncSession = Depends(get_db)
+):
+    """Mark a message as read or unread"""
+    access_token = await get_access_token_from_db(wallet_address, db)
+    if not access_token:
+        raise HTTPException(status_code=401, detail="Not authenticated with Microsoft 365")
+
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.patch(
+                f"{GRAPH_API_BASE}/me/messages/{message_id}",
+                headers={
+                    "Authorization": f"Bearer {access_token}",
+                    "Content-Type": "application/json"
+                },
+                json={"isRead": is_read}
+            )
+            response.raise_for_status()
+            return {"success": True, "message": f"Message marked as {'read' if is_read else 'unread'}"}
+
+    except Exception as e:
+        logger.error(f"Error marking message as read: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/mail/messages/{message_id}")
+async def delete_message(
+    message_id: str,
+    wallet_address: str = Query(...),
+    db: AsyncSession = Depends(get_db)
+):
+    """Delete a message (moves to Deleted Items)"""
+    access_token = await get_access_token_from_db(wallet_address, db)
+    if not access_token:
+        raise HTTPException(status_code=401, detail="Not authenticated with Microsoft 365")
+
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.delete(
+                f"{GRAPH_API_BASE}/me/messages/{message_id}",
+                headers={"Authorization": f"Bearer {access_token}"}
+            )
+            response.raise_for_status()
+            return {"success": True, "message": "Message deleted"}
+
+    except Exception as e:
+        logger.error(f"Error deleting message: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/mail/messages/{message_id}/archive")
+async def archive_message(
+    message_id: str,
+    wallet_address: str = Body(..., embed=True),
+    db: AsyncSession = Depends(get_db)
+):
+    """Move a message to the Archive folder"""
+    access_token = await get_access_token_from_db(wallet_address, db)
+    if not access_token:
+        raise HTTPException(status_code=401, detail="Not authenticated with Microsoft 365")
+
+    try:
+        async with httpx.AsyncClient() as client:
+            # Move message to archive folder
+            response = await client.post(
+                f"{GRAPH_API_BASE}/me/messages/{message_id}/move",
+                headers={
+                    "Authorization": f"Bearer {access_token}",
+                    "Content-Type": "application/json"
+                },
+                json={"destinationId": "archive"}
+            )
+            response.raise_for_status()
+            return {"success": True, "message": "Message archived"}
+
+    except Exception as e:
+        logger.error(f"Error archiving message: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ============================================================================
 # CALENDAR ENDPOINTS
 # ============================================================================
