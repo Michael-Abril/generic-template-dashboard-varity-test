@@ -3,17 +3,9 @@
 import React, { useEffect, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { usePrivy, useWallets } from '@privy-io/react-auth';
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  CardDescription
-} from '@/components/ui/card';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Loader2, CheckCircle2, XCircle, AlertCircle, Shield } from 'lucide-react';
+import { Card, CardContent } from '@/components/ui/card';
+import { Loader2, CheckCircle2, XCircle, Shield } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { logger } from '@/lib/logger';
 
 /**
  * OAuth Callback Handler for Varity Marketplace
@@ -269,49 +261,55 @@ function OAuthCallbackContent({ params }: OAuthCallbackPageProps) {
     return names[provider] || provider;
   };
 
+  const providerName = getProviderDisplayName(params.provider);
+
   return (
-    <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800 p-4">
-      <div className="container max-w-2xl mx-auto pt-20">
-        <Card className="shadow-xl">
-          <CardHeader className="text-center">
-            <div className="flex justify-center mb-4">
-              <Shield className="h-12 w-12 text-blue-500" />
-            </div>
-            <CardTitle className="text-2xl font-bold">
-              OAuth Connection
-            </CardTitle>
-            <CardDescription className="text-lg">
-              {getProviderDisplayName(params.provider)} Integration
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
+    <div className="min-h-screen bg-white flex items-center justify-center p-4">
+      <div className="w-full max-w-md">
+        <Card className="shadow-lg border-0">
+          <CardContent className="pt-8 pb-8 px-8">
             {/* Status Display */}
-            <div className="flex flex-col items-center space-y-4">
+            <div className="flex flex-col items-center text-center">
               {status === 'processing' && (
                 <>
-                  <Loader2 className="h-16 w-16 animate-spin text-blue-500" />
-                  <div className="text-center">
-                    <p className="text-lg font-medium">{message || 'Processing OAuth callback...'}</p>
-                    <p className="text-sm text-gray-500 mt-2">{details}</p>
+                  <div className="w-16 h-16 rounded-full bg-blue-50 flex items-center justify-center mb-6">
+                    <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
                   </div>
+                  <h1 className="text-xl font-semibold text-gray-900 mb-2">
+                    Connecting to {providerName}
+                  </h1>
+                  <p className="text-gray-500">
+                    Please wait while we securely connect your account...
+                  </p>
                 </>
               )}
 
               {status === 'success' && (
                 <>
-                  <CheckCircle2 className="h-16 w-16 text-green-500" />
-                  <Alert className="bg-green-50 border-green-200">
-                    <CheckCircle2 className="h-4 w-4" />
-                    <AlertDescription className="text-green-800">
-                      <strong>{message}</strong>
-                      <br />
-                      {details}
-                    </AlertDescription>
-                  </Alert>
+                  <div className="w-16 h-16 rounded-full bg-green-50 flex items-center justify-center mb-6">
+                    <CheckCircle2 className="h-8 w-8 text-green-600" />
+                  </div>
+                  <h1 className="text-xl font-semibold text-gray-900 mb-2">
+                    {providerName} Connected
+                  </h1>
+                  <p className="text-gray-500 mb-6">
+                    Your account has been successfully connected. This window will close automatically.
+                  </p>
+
+                  {/* Security Badge */}
+                  <div className="w-full p-4 bg-gray-50 rounded-lg">
+                    <div className="flex items-center justify-center space-x-2">
+                      <Shield className="h-4 w-4 text-green-600" />
+                      <span className="text-sm font-medium text-gray-700">
+                        Your data is protected with bank-level security
+                      </span>
+                    </div>
+                  </div>
+
                   {isRedirecting && (
-                    <div className="flex items-center space-x-2">
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      <span className="text-sm text-gray-600">Redirecting to integrations...</span>
+                    <div className="flex items-center space-x-2 mt-4">
+                      <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
+                      <span className="text-sm text-gray-500">Redirecting...</span>
                     </div>
                   )}
                 </>
@@ -319,49 +317,40 @@ function OAuthCallbackContent({ params }: OAuthCallbackPageProps) {
 
               {status === 'error' && (
                 <>
-                  <XCircle className="h-16 w-16 text-red-500" />
-                  <Alert className="bg-red-50 border-red-200">
-                    <AlertCircle className="h-4 w-4" />
-                    <AlertDescription className="text-red-800">
-                      <strong>{message}</strong>
-                      <br />
-                      {details}
-                    </AlertDescription>
-                  </Alert>
-                  <div className="flex space-x-4 mt-4">
+                  <div className="w-16 h-16 rounded-full bg-red-50 flex items-center justify-center mb-6">
+                    <XCircle className="h-8 w-8 text-red-600" />
+                  </div>
+                  <h1 className="text-xl font-semibold text-gray-900 mb-2">
+                    Connection Failed
+                  </h1>
+                  <p className="text-gray-500 mb-6">
+                    {details || 'We couldn\'t connect your account. Please try again.'}
+                  </p>
+                  <div className="flex flex-col w-full space-y-3">
                     <Button
                       onClick={() => router.push('/marketplace')}
-                      variant="outline"
+                      className="w-full"
                     >
-                      Back to Marketplace
+                      Try Again
                     </Button>
                     <Button
                       onClick={() => router.push('/integrations')}
+                      variant="outline"
+                      className="w-full"
                     >
-                      View Integrations
+                      View My Integrations
                     </Button>
                   </div>
                 </>
               )}
             </div>
-
-            {/* Privacy Notice */}
-            <div className="mt-8 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-              <div className="flex items-start space-x-3">
-                <Shield className="h-5 w-5 text-blue-500 mt-0.5 flex-shrink-0" />
-                <div className="text-sm">
-                  <p className="font-semibold text-blue-900 dark:text-blue-100">
-                    Your Data is Secure
-                  </p>
-                  <p className="text-blue-700 dark:text-blue-200 mt-1">
-                    OAuth tokens are encrypted with your wallet address using AES-256-GCM encryption.
-                    Only you can decrypt and access your integration credentials. Varity never sees your tokens.
-                  </p>
-                </div>
-              </div>
-            </div>
           </CardContent>
         </Card>
+
+        {/* Footer */}
+        <p className="text-center text-xs text-gray-400 mt-6">
+          Secured by Varity
+        </p>
       </div>
     </div>
   );

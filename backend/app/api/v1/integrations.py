@@ -15,14 +15,121 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
 from sqlalchemy.orm import selectinload
 
+import httpx
+from datetime import timedelta
+
 from app.services.filecoin_service import FilecoinService
 from app.services.encryption_service import EncryptionService
 from app.services.rag_service import BusinessRAGService
 from app.core.database import get_db
+from app.core.config import settings
 from app.models.marketplace import Product
 from app.models.purchase import Purchase, OAuthToken, SyncLog, SyncStatus
 
 logger = logging.getLogger(__name__)
+
+
+# OAuth token refresh configurations
+TOKEN_REFRESH_CONFIGS = {
+    "google": {
+        "token_url": "https://oauth2.googleapis.com/token",
+        "client_id": getattr(settings, 'google_client_id', ''),
+        "client_secret": getattr(settings, 'google_client_secret', ''),
+    },
+    "microsoft": {
+        "token_url": "https://login.microsoftonline.com/common/oauth2/v2.0/token",
+        "client_id": getattr(settings, 'microsoft_client_id', ''),
+        "client_secret": getattr(settings, 'microsoft_client_secret', ''),
+    },
+    "hubspot": {
+        "token_url": "https://api.hubapi.com/oauth/v1/token",
+        "client_id": getattr(settings, 'hubspot_client_id', ''),
+        "client_secret": getattr(settings, 'hubspot_client_secret', ''),
+    },
+    "salesforce": {
+        "token_url": "https://login.salesforce.com/services/oauth2/token",
+        "client_id": getattr(settings, 'salesforce_client_id', ''),
+        "client_secret": getattr(settings, 'salesforce_client_secret', ''),
+    },
+    "slack": {
+        "token_url": "https://slack.com/api/oauth.v2.access",
+        "client_id": getattr(settings, 'slack_client_id', ''),
+        "client_secret": getattr(settings, 'slack_client_secret', ''),
+    },
+}
+
+
+async def refresh_oauth_token(
+    oauth_token: OAuthToken,
+    provider: str,
+    db: AsyncSession
+) -> bool:
+    """
+    Refresh an expired OAuth token using the refresh_token.
+
+    Args:
+        oauth_token: The OAuthToken model instance
+        provider: The provider name (google, microsoft, etc.)
+        db: Database session
+
+    Returns:
+        True if refresh succeeded, False otherwise
+    """
+    if provider not in TOKEN_REFRESH_CONFIGS:
+        logger.warning(f"No refresh config for provider: {provider}")
+        return False
+
+    if not oauth_token.refresh_token:
+        logger.warning(f"No refresh token available for {provider}")
+        return False
+
+    config = TOKEN_REFRESH_CONFIGS[provider]
+
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                config["token_url"],
+                data={
+                    "grant_type": "refresh_token",
+                    "refresh_token": oauth_token.refresh_token,
+                    "client_id": config["client_id"],
+                    "client_secret": config["client_secret"],
+                },
+                headers={
+                    "Content-Type": "application/x-www-form-urlencoded"
+                }
+            )
+
+            if response.status_code != 200:
+                logger.error(f"Token refresh failed for {provider}: {response.text}")
+                return False
+
+            token_data = response.json()
+
+            # Update the token in the database
+            oauth_token.access_token = token_data.get("access_token")
+
+            # Some providers return a new refresh token
+            if token_data.get("refresh_token"):
+                oauth_token.refresh_token = token_data.get("refresh_token")
+
+            # Update expiration
+            if token_data.get("expires_in"):
+                oauth_token.expires_at = datetime.utcnow() + timedelta(
+                    seconds=int(token_data["expires_in"])
+                )
+
+            oauth_token.last_refreshed_at = datetime.utcnow()
+            oauth_token.updated_at = datetime.utcnow()
+
+            await db.commit()
+
+            logger.info(f"Successfully refreshed {provider} token for user {oauth_token.user_address[:10]}...")
+            return True
+
+    except Exception as e:
+        logger.error(f"Token refresh error for {provider}: {e}")
+        return False
 
 router = APIRouter()
 
@@ -240,14 +347,20 @@ async def sync_tool_data(
                 detail=f"No active OAuth connection found for {tool}. Please connect the integration first."
             )
 
-        # Check if token is expired
+        # Check if token is expired and try to refresh
         if oauth_token.expires_at and oauth_token.expires_at < datetime.utcnow():
-            # TODO: Implement token refresh logic
-            logger.warning(f"OAuth token for {tool} is expired for wallet {wallet_address}")
-            raise HTTPException(
-                status_code=401,
-                detail=f"OAuth token for {tool} has expired. Please reconnect the integration."
-            )
+            logger.info(f"OAuth token for {tool} is expired, attempting refresh...")
+
+            refresh_success = await refresh_oauth_token(oauth_token, provider, db)
+
+            if not refresh_success:
+                logger.warning(f"Token refresh failed for {tool}, wallet {wallet_address}")
+                raise HTTPException(
+                    status_code=401,
+                    detail=f"OAuth token for {tool} has expired and refresh failed. Please reconnect the integration."
+                )
+
+            logger.info(f"Token refreshed successfully for {tool}")
 
         # Get decrypted access token
         access_token = oauth_token.access_token
