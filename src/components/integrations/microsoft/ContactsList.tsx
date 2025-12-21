@@ -172,11 +172,40 @@ export default function ContactsList({ walletAddress, contacts }: ContactsListPr
                 </div>
               </div>
               <div className="flex gap-2">
-                <button className="rounded-lg p-2 hover:bg-gray-100">
+                <button
+                  onClick={() => {
+                    alert('Edit functionality coming soon. You can edit contacts directly in Outlook for now.');
+                  }}
+                  className="rounded-lg p-2 hover:bg-gray-100"
+                  title="Edit contact"
+                >
                   <Edit3 className="h-5 w-5 text-gray-600" />
                 </button>
-                <button className="rounded-lg p-2 hover:bg-gray-100">
-                  <Trash2 className="h-5 w-5 text-gray-600" />
+                <button
+                  onClick={async () => {
+                    if (!confirm(`Are you sure you want to delete ${selectedContact.name}?`)) return;
+                    try {
+                      const response = await fetch(
+                        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/integrations/microsoft/contacts/${selectedContact.id}?wallet_address=${walletAddress}`,
+                        { method: 'DELETE' }
+                      );
+                      if (response.ok) {
+                        alert('Contact deleted successfully!');
+                        setSelectedContact(null);
+                        window.location.reload();
+                      } else {
+                        const error = await response.json();
+                        alert(`Error: ${error.detail || 'Failed to delete contact'}`);
+                      }
+                    } catch (error) {
+                      console.error('Error deleting contact:', error);
+                      alert('Network error. Please try again.');
+                    }
+                  }}
+                  className="rounded-lg p-2 hover:bg-gray-100 hover:bg-red-50"
+                  title="Delete contact"
+                >
+                  <Trash2 className="h-5 w-5 text-gray-600 hover:text-red-600" />
                 </button>
               </div>
             </div>
