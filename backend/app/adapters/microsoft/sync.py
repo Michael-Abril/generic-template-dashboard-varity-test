@@ -86,21 +86,30 @@ class MicrosoftSync:
         """
         async with httpx.AsyncClient() as client:
             try:
-                # Get user's emails (last 100, unread or flagged)
+                # Get user's emails (most recent 100, no filter - get ALL emails)
                 response = await client.get(
                     f"{self.base_url}/me/messages",
                     headers=self.base_headers,
                     params={
                         "$top": 100,
-                        "$filter": "isRead eq false or flag/flagStatus eq 'flagged'",
-                        "$select": "id,subject,from,toRecipients,receivedDateTime,bodyPreview,isRead,importance"
-                    }
+                        "$orderby": "receivedDateTime desc",
+                        "$select": "id,subject,from,toRecipients,receivedDateTime,body,bodyPreview,isRead,importance,hasAttachments"
+                    },
+                    timeout=60.0
                 )
                 response.raise_for_status()
                 data = response.json()
 
                 messages = []
                 for msg in data.get("value", []):
+                    # Get body content (full body if available, fallback to preview)
+                    body_content = ""
+                    body_data = msg.get("body", {})
+                    if body_data:
+                        body_content = body_data.get("content", "")
+                    if not body_content:
+                        body_content = msg.get("bodyPreview", "")
+
                     messages.append({
                         "id": msg["id"],
                         "subject": msg.get("subject", ""),
@@ -108,9 +117,11 @@ class MicrosoftSync:
                         "fromName": msg.get("from", {}).get("emailAddress", {}).get("name", ""),
                         "to": [r.get("emailAddress", {}).get("address", "") for r in msg.get("toRecipients", [])],
                         "receivedDateTime": msg.get("receivedDateTime", ""),
+                        "body": body_content,
                         "bodyPreview": msg.get("bodyPreview", ""),
                         "isRead": msg.get("isRead", False),
-                        "importance": msg.get("importance", "normal")
+                        "importance": msg.get("importance", "normal"),
+                        "hasAttachments": msg.get("hasAttachments", False)
                     })
 
                 logger.info(f"Synced {len(messages)} Outlook messages")
@@ -132,9 +143,9 @@ class MicrosoftSync:
         """
         async with httpx.AsyncClient() as client:
             try:
-                # Get calendar events (next 30 days)
-                start_time = datetime.utcnow().isoformat() + "Z"
-                end_time = (datetime.utcnow() + timedelta(days=30)).isoformat() + "Z"
+                # Get calendar events (30 days past + 60 days future - matches Google)
+                start_time = (datetime.utcnow() - timedelta(days=30)).isoformat() + "Z"
+                end_time = (datetime.utcnow() + timedelta(days=60)).isoformat() + "Z"
 
                 response = await client.get(
                     f"{self.base_url}/me/calendar/calendarView",
@@ -178,44 +189,70 @@ class MicrosoftSync:
 
     async def sync_onedrive(self) -> Dict[str, Any]:
         """
-        Sync OneDrive files metadata
+        Sync OneDrive files metadata (recursively from all folders)
 
         Returns:
             Dictionary containing OneDrive files data
         """
         async with httpx.AsyncClient() as client:
             try:
-                # Get OneDrive files (most recent 50)
-                response = await client.get(
-                    f"{self.base_url}/me/drive/root/children",
-                    headers=self.base_headers,
-                    params={
-                        "$top": 50,
-                        "$select": "id,name,size,createdDateTime,lastModifiedDateTime,webUrl,file,folder,createdBy",
-                        "$orderby": "lastModifiedDateTime desc"
-                    }
-                )
-                response.raise_for_status()
-                data = response.json()
+                all_files = []
+                folders_to_process = [("root", "/me/drive/root/children")]
+                processed_folders = set()
+                max_files = 100  # Limit total files to prevent timeout
 
-                files = []
-                for file in data.get("value", []):
-                    files.append({
-                        "id": file["id"],
-                        "name": file.get("name", ""),
-                        "size": file.get("size", 0),
-                        "createdDateTime": file.get("createdDateTime", ""),
-                        "lastModifiedDateTime": file.get("lastModifiedDateTime", ""),
-                        "webUrl": file.get("webUrl", ""),
-                        "isFolder": "folder" in file,
-                        "mimeType": file.get("file", {}).get("mimeType", ""),
-                        "createdBy": file.get("createdBy", {}).get("user", {}).get("email", "")
-                    })
+                while folders_to_process and len(all_files) < max_files:
+                    folder_id, folder_path = folders_to_process.pop(0)
 
-                logger.info(f"Synced {len(files)} OneDrive files")
+                    if folder_id in processed_folders:
+                        continue
+                    processed_folders.add(folder_id)
+
+                    try:
+                        response = await client.get(
+                            f"{self.base_url}{folder_path}",
+                            headers=self.base_headers,
+                            params={
+                                "$top": 50,
+                                "$select": "id,name,size,createdDateTime,lastModifiedDateTime,webUrl,file,folder,createdBy,parentReference",
+                                "$orderby": "lastModifiedDateTime desc"
+                            },
+                            timeout=30.0
+                        )
+                        response.raise_for_status()
+                        data = response.json()
+
+                        for item in data.get("value", []):
+                            is_folder = "folder" in item
+                            file_entry = {
+                                "id": item["id"],
+                                "name": item.get("name", ""),
+                                "size": item.get("size", 0),
+                                "createdDateTime": item.get("createdDateTime", ""),
+                                "lastModifiedDateTime": item.get("lastModifiedDateTime", ""),
+                                "webUrl": item.get("webUrl", ""),
+                                "isFolder": is_folder,
+                                "mimeType": item.get("file", {}).get("mimeType", ""),
+                                "createdBy": item.get("createdBy", {}).get("user", {}).get("email", ""),
+                                "parentPath": item.get("parentReference", {}).get("path", "")
+                            }
+                            all_files.append(file_entry)
+
+                            # Queue folders for recursive processing
+                            if is_folder and len(all_files) < max_files:
+                                folders_to_process.append(
+                                    (item["id"], f"/me/drive/items/{item['id']}/children")
+                                )
+
+                    except Exception as folder_error:
+                        logger.warning(f"Failed to process folder {folder_id}: {folder_error}")
+                        continue
+
+                logger.info(f"Synced {len(all_files)} OneDrive files from {len(processed_folders)} folders")
                 return {
-                    "files": files,
-                    "synced_count": len(files)
+                    "files": all_files,
+                    "synced_count": len(all_files),
+                    "folders_processed": len(processed_folders)
                 }
 
             except Exception as e:

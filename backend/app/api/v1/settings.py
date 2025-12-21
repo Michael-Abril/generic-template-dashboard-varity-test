@@ -13,8 +13,12 @@ import logging
 
 from app.core.database import get_db
 from app.services.settings_service import settings_service
+from app.services.filecoin_service import FilecoinService
 
 logger = logging.getLogger(__name__)
+
+# Initialize Filecoin service for storage queries
+filecoin_service = FilecoinService()
 
 router = APIRouter()
 
@@ -382,4 +386,99 @@ async def delete_account(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to delete account: {str(e)}"
+        )
+
+
+@router.get("/storage-usage")
+async def get_storage_usage(
+    wallet_address: str = Query(..., description="User's wallet address")
+):
+    """
+    Get Pinata storage usage for this wallet.
+
+    Returns the actual files stored in Pinata grouped by integration,
+    showing file counts and data types for each connected service.
+    """
+    try:
+        logger.info(f"Getting storage usage for wallet {wallet_address}")
+
+        # List all files for this wallet from Pinata
+        files = await filecoin_service.list_customer_files(
+            customer_wallet=wallet_address,
+            limit=1000
+        )
+
+        if not files:
+            return {
+                "success": True,
+                "wallet_address": wallet_address,
+                "total_files": 0,
+                "integrations": {},
+                "message": "No data stored yet. Connect an integration and sync data."
+            }
+
+        # Group files by integration
+        by_integration: Dict[str, Dict[str, Any]] = {}
+        total_size = 0
+
+        for f in files:
+            metadata = f.get("metadata", {})
+            integration = metadata.get("integration", "unknown")
+            data_type = metadata.get("data_type", "unknown")
+            file_size = f.get("size", 0)
+
+            if integration not in by_integration:
+                by_integration[integration] = {
+                    "file_count": 0,
+                    "data_types": [],
+                    "total_bytes": 0,
+                    "latest_sync": None
+                }
+
+            by_integration[integration]["file_count"] += 1
+            by_integration[integration]["total_bytes"] += file_size
+            total_size += file_size
+
+            # Track unique data types
+            if data_type not in by_integration[integration]["data_types"]:
+                by_integration[integration]["data_types"].append(data_type)
+
+            # Track latest sync timestamp
+            timestamp = f.get("timestamp")
+            if timestamp:
+                current_latest = by_integration[integration]["latest_sync"]
+                if not current_latest or timestamp > current_latest:
+                    by_integration[integration]["latest_sync"] = timestamp
+
+        # Format size in human readable format
+        def format_size(bytes_val: int) -> str:
+            if bytes_val < 1024:
+                return f"{bytes_val} B"
+            elif bytes_val < 1024 * 1024:
+                return f"{bytes_val / 1024:.1f} KB"
+            elif bytes_val < 1024 * 1024 * 1024:
+                return f"{bytes_val / (1024 * 1024):.2f} MB"
+            else:
+                return f"{bytes_val / (1024 * 1024 * 1024):.2f} GB"
+
+        # Add formatted size to each integration
+        for integration in by_integration:
+            by_integration[integration]["total_size_formatted"] = format_size(
+                by_integration[integration]["total_bytes"]
+            )
+
+        return {
+            "success": True,
+            "wallet_address": wallet_address,
+            "total_files": len(files),
+            "total_bytes": total_size,
+            "total_size_formatted": format_size(total_size),
+            "integrations": by_integration
+        }
+
+    except Exception as e:
+        logger.error(f"Error getting storage usage: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get storage usage: {str(e)}"
         )
