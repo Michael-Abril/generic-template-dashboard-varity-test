@@ -142,14 +142,13 @@ export default function OneDriveExplorer({
     }
   };
 
-  const handleDownload = async (fileId: string) => {
-    try {
-      // TODO: Implement download file API endpoint in backend
-      console.log('Downloading file:', fileId);
-      alert('Download functionality coming soon');
-    } catch (error) {
-      console.error('Error downloading file:', error);
-      alert('Failed to download file');
+  const handleDownload = (fileId: string) => {
+    const file = files.find(f => f.id === fileId);
+    if (file?.webUrl) {
+      // Open file in OneDrive for download
+      window.open(file.webUrl, '_blank');
+    } else {
+      alert('File URL not available');
     }
   };
 
@@ -167,7 +166,7 @@ export default function OneDriveExplorer({
             const fileContent = event.target?.result as string;
 
             const response = await fetch(
-              `${process.env.NEXT_PUBLIC_API_URL}/api/v1/integrations/microsoft365/onedrive/upload`,
+              `${process.env.NEXT_PUBLIC_API_URL}/api/v1/integrations/microsoft/onedrive/upload`,
               {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -199,13 +198,17 @@ export default function OneDriveExplorer({
   };
 
   const handleShare = (fileId: string) => {
-    try {
-      // TODO: Implement share file API endpoint in backend
-      console.log('Sharing file:', fileId);
-      alert('Share functionality coming soon');
-    } catch (error) {
-      console.error('Error sharing file:', error);
-      alert('Failed to share file');
+    const file = files.find(f => f.id === fileId);
+    if (file?.webUrl) {
+      // Copy share link to clipboard
+      navigator.clipboard.writeText(file.webUrl).then(() => {
+        alert('Share link copied to clipboard!');
+      }).catch(() => {
+        // Fallback: open in new tab
+        window.open(file.webUrl, '_blank');
+      });
+    } else {
+      alert('File URL not available');
     }
   };
 

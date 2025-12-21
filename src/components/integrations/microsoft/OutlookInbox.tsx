@@ -44,13 +44,17 @@ interface OutlookInboxProps {
   folder: string;
   messages: EmailMessage[];
   onCompose: () => void;
+  onReply?: (message: EmailMessage, replyAll?: boolean) => void;
+  onForward?: (message: EmailMessage) => void;
 }
 
 export default function OutlookInbox({
   walletAddress,
   folder,
   messages,
-  onCompose
+  onCompose,
+  onReply,
+  onForward
 }: OutlookInboxProps) {
   const [selectedMessages, setSelectedMessages] = useState<Set<string>>(new Set());
   const [selectedMessage, setSelectedMessage] = useState<EmailMessage | null>(null);
@@ -366,15 +370,24 @@ export default function OutlookInbox({
 
               {/* Action Buttons */}
               <div className="mt-4 flex items-center gap-2">
-                <button className="flex items-center gap-2 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium hover:bg-gray-50">
+                <button
+                  onClick={() => onReply ? onReply(selectedMessage, false) : onCompose()}
+                  className="flex items-center gap-2 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium hover:bg-gray-50"
+                >
                   <Reply className="h-4 w-4" />
                   Reply
                 </button>
-                <button className="flex items-center gap-2 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium hover:bg-gray-50">
+                <button
+                  onClick={() => onReply ? onReply(selectedMessage, true) : onCompose()}
+                  className="flex items-center gap-2 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium hover:bg-gray-50"
+                >
                   <ReplyAll className="h-4 w-4" />
                   Reply All
                 </button>
-                <button className="flex items-center gap-2 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium hover:bg-gray-50">
+                <button
+                  onClick={() => onForward ? onForward(selectedMessage) : onCompose()}
+                  className="flex items-center gap-2 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium hover:bg-gray-50"
+                >
                   <Forward className="h-4 w-4" />
                   Forward
                 </button>
