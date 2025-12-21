@@ -178,15 +178,27 @@ export default function MarketplaceContent() {
           return;
         }
         const data = await res.json();
-        // Extract provider names from connected OAuth integrations
-        const connectedProviders = (data.integrations || [])
+        // Extract ALL variations of provider names from connected OAuth integrations
+        // This ensures matching works with product.logo regardless of naming format
+        const connectedProviders: string[] = [];
+        (data.integrations || [])
           .filter((integration: { connected: boolean }) => integration.connected)
-          .map((integration: { name: string }) => {
-            // Map display names back to provider keys used in LOGO_TO_OAUTH_PROVIDER
-            const name = integration.name.toLowerCase().replace(/\s+/g, '-');
-            return name;
+          .forEach((integration: { name: string; slug?: string }) => {
+            // Add the slug (backend provider key like "microsoft", "google")
+            if (integration.slug) {
+              connectedProviders.push(integration.slug);
+              connectedProviders.push(integration.slug.toLowerCase());
+            }
+            // Add display name variations (e.g., "Microsoft 365" -> "microsoft-365")
+            const nameDashed = integration.name.toLowerCase().replace(/\s+/g, '-');
+            const nameUnderscored = integration.name.toLowerCase().replace(/\s+/g, '_');
+            const nameNoSpace = integration.name.toLowerCase().replace(/\s+/g, '');
+            connectedProviders.push(nameDashed);
+            connectedProviders.push(nameUnderscored);
+            connectedProviders.push(nameNoSpace);
           });
-        setConnectedOAuthIntegrations(connectedProviders);
+        // Remove duplicates
+        setConnectedOAuthIntegrations([...new Set(connectedProviders)]);
       } catch (e) {
         console.error('Failed to load connected integrations', e);
         setConnectedOAuthIntegrations([]);
