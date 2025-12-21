@@ -414,7 +414,7 @@ export default function AnalyticsContent() {
                       width={70}
                     />
                     <Tooltip
-                      formatter={(value: number) => [`$${value.toLocaleString()}`, 'Revenue']}
+                      formatter={(value) => [`$${(value ?? 0).toLocaleString()}`, 'Revenue']}
                       contentStyle={{
                         backgroundColor: '#fff',
                         border: '1px solid #e5e7eb',
@@ -519,7 +519,7 @@ export default function AnalyticsContent() {
                         width={50}
                       />
                       <Tooltip
-                        formatter={(value: number) => [value.toLocaleString(), 'Customers']}
+                        formatter={(value) => [(value ?? 0).toLocaleString(), 'Customers']}
                         contentStyle={{
                           backgroundColor: '#fff',
                           border: '1px solid #e5e7eb',
@@ -580,7 +580,7 @@ export default function AnalyticsContent() {
                         width={80}
                       />
                       <Tooltip
-                        formatter={(value: number) => [value.toLocaleString(), 'Count']}
+                        formatter={(value) => [(value ?? 0).toLocaleString(), 'Count']}
                         contentStyle={{
                           backgroundColor: '#fff',
                           border: '1px solid #e5e7eb',
