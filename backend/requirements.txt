@@ -56,10 +56,12 @@ numpy==1.24.3  # For data processing
 sendgrid==6.10.0  # Email notifications and reports
 jinja2==3.1.2  # Email templates
 
-# PDF Generation
+# PDF Generation & Extraction
 reportlab==4.0.7  # PDF report generation
 matplotlib==3.7.5  # Charts for reports (3.7.5 max for Python 3.8)
 pillow==10.1.0  # Image processing for PDFs
+PyMuPDF==1.23.8  # PDF text extraction (fitz)
+python-docx==1.1.0  # Word document extraction
 
 # Excel Export
 openpyxl==3.1.2  # Excel file generation for data export

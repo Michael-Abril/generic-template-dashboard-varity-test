@@ -11,7 +11,7 @@ Features:
 - Deep research mode for complex queries
 - Multi-provider support (Together.ai, Ollama)
 """
-from fastapi import APIRouter, HTTPException, Query, Depends  # type: ignore[import]
+from fastapi import APIRouter, HTTPException, Query, Depends, UploadFile, File  # type: ignore[import]
 from pydantic import BaseModel  # type: ignore[import]
 from typing import List, Optional, Dict, Any
 import logging
@@ -833,6 +833,162 @@ async def analyze_document(request: DocumentAnalysisRequest):
 
     except Exception as e:
         logger.error(f"Document analysis failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ==================== File Upload & PDF Extraction ====================
+
+class FileUploadResponse(BaseModel):
+    """File upload response with extracted content"""
+    success: bool
+    filename: str
+    content: str
+    content_type: str
+    file_size: int
+    extraction_method: str
+    metadata: Dict[str, Any]
+
+
+@router.post("/upload/document", response_model=FileUploadResponse)
+async def upload_document_for_analysis(
+    file: UploadFile = File(...),
+    wallet_address: str = Query(..., description="User's wallet address")
+):
+    """
+    Upload a document file and extract its text content for AI analysis.
+
+    Supports:
+    - PDF files (.pdf) - extracts text using PyMuPDF
+    - Text files (.txt, .md) - reads directly
+    - CSV files (.csv) - reads as text
+    - Word documents (.docx) - extracts text using python-docx
+
+    Args:
+        file: The file to upload
+        wallet_address: User's wallet address
+
+    Returns:
+        Extracted text content ready for analysis
+    """
+    try:
+        logger.info(
+            f"Document upload from {wallet_address[:10]}...: "
+            f"filename={file.filename}, content_type={file.content_type}"
+        )
+
+        # Read file content
+        file_content = await file.read()
+        file_size = len(file_content)
+
+        # Check file size (max 10MB)
+        if file_size > 10 * 1024 * 1024:
+            raise HTTPException(status_code=400, detail="File size must be less than 10MB")
+
+        # Determine file type and extract text
+        filename = file.filename or "document"
+        file_ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+
+        extracted_text = ""
+        extraction_method = "direct"
+
+        if file_ext == "pdf" or file.content_type == "application/pdf":
+            # Extract text from PDF
+            extraction_method = "pdf_extraction"
+            try:
+                import io
+                # Try PyMuPDF (fitz) first
+                try:
+                    import fitz  # PyMuPDF
+                    pdf_doc = fitz.open(stream=file_content, filetype="pdf")
+                    text_parts = []
+                    for page_num, page in enumerate(pdf_doc):
+                        page_text = page.get_text()
+                        if page_text.strip():
+                            text_parts.append(f"--- Page {page_num + 1} ---\n{page_text}")
+                    extracted_text = "\n\n".join(text_parts)
+                    extraction_method = "pymupdf"
+                    logger.info(f"PDF extracted with PyMuPDF: {len(extracted_text)} chars, {len(pdf_doc)} pages")
+                except ImportError:
+                    # Fallback to pdfplumber
+                    try:
+                        import pdfplumber
+                        with pdfplumber.open(io.BytesIO(file_content)) as pdf:
+                            text_parts = []
+                            for page_num, page in enumerate(pdf.pages):
+                                page_text = page.extract_text() or ""
+                                if page_text.strip():
+                                    text_parts.append(f"--- Page {page_num + 1} ---\n{page_text}")
+                            extracted_text = "\n\n".join(text_parts)
+                            extraction_method = "pdfplumber"
+                            logger.info(f"PDF extracted with pdfplumber: {len(extracted_text)} chars")
+                    except ImportError:
+                        # Basic fallback - indicate PDF needs processing
+                        logger.warning("No PDF library available, returning placeholder")
+                        extracted_text = f"[PDF Document: {filename}]\n\nThe document contains {file_size} bytes. PDF text extraction requires PyMuPDF or pdfplumber library to be installed."
+                        extraction_method = "placeholder"
+
+                if not extracted_text.strip():
+                    extracted_text = f"[PDF Document: {filename}]\n\nThis PDF appears to contain images or scanned content that requires OCR to extract text. The document is {file_size} bytes."
+                    extraction_method = "ocr_required"
+
+            except Exception as e:
+                logger.error(f"PDF extraction failed: {e}")
+                extracted_text = f"[PDF Document: {filename}]\n\nFailed to extract text from PDF: {str(e)}"
+                extraction_method = "error"
+
+        elif file_ext == "docx" or file.content_type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+            # Extract text from Word document
+            extraction_method = "docx_extraction"
+            try:
+                import io
+                from docx import Document
+                doc = Document(io.BytesIO(file_content))
+                paragraphs = [para.text for para in doc.paragraphs if para.text.strip()]
+                extracted_text = "\n\n".join(paragraphs)
+                logger.info(f"DOCX extracted: {len(extracted_text)} chars, {len(paragraphs)} paragraphs")
+            except ImportError:
+                extracted_text = f"[Word Document: {filename}]\n\nWord document extraction requires python-docx library to be installed."
+                extraction_method = "placeholder"
+            except Exception as e:
+                logger.error(f"DOCX extraction failed: {e}")
+                extracted_text = f"[Word Document: {filename}]\n\nFailed to extract text: {str(e)}"
+                extraction_method = "error"
+
+        elif file_ext in ["txt", "md", "csv", "json", "xml", "html"]:
+            # Read text files directly
+            try:
+                extracted_text = file_content.decode("utf-8")
+            except UnicodeDecodeError:
+                extracted_text = file_content.decode("latin-1")
+            extraction_method = "text_read"
+            logger.info(f"Text file read: {len(extracted_text)} chars")
+
+        else:
+            # Unknown file type
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unsupported file type: {file_ext}. Supported: pdf, docx, txt, md, csv, json, xml, html"
+            )
+
+        return FileUploadResponse(
+            success=True,
+            filename=filename,
+            content=extracted_text,
+            content_type=file.content_type or "unknown",
+            file_size=file_size,
+            extraction_method=extraction_method,
+            metadata={
+                "wallet_address": wallet_address,
+                "original_filename": filename,
+                "char_count": len(extracted_text),
+                "timestamp": datetime.now().isoformat()
+            }
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Document upload failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

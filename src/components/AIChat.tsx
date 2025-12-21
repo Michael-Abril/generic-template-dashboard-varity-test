@@ -353,29 +353,55 @@ export function AIChat() {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    // Check file size (max 5MB)
-    if (file.size > 5 * 1024 * 1024) {
-      alert('File size must be less than 5MB');
+    // Check file size (max 10MB)
+    if (file.size > 10 * 1024 * 1024) {
+      alert('File size must be less than 10MB');
       return;
     }
 
     // Check file type
-    const allowedTypes = ['text/plain', 'text/markdown', 'application/pdf', 'text/csv'];
-    const allowedExtensions = ['.txt', '.md', '.pdf', '.csv', '.doc', '.docx'];
+    const allowedTypes = ['text/plain', 'text/markdown', 'application/pdf', 'text/csv', 'application/json', 'text/xml', 'text/html'];
+    const allowedExtensions = ['.txt', '.md', '.pdf', '.csv', '.doc', '.docx', '.json', '.xml', '.html'];
     const fileExtension = '.' + file.name.split('.').pop()?.toLowerCase();
 
     if (!allowedTypes.includes(file.type) && !allowedExtensions.includes(fileExtension)) {
-      alert('Please upload a text file (.txt, .md, .csv) or PDF');
+      alert('Please upload a supported file type: PDF, Word, text, markdown, CSV, JSON, or XML');
       return;
     }
 
     try {
       let content: string;
+      const isPdfOrDocx = file.type === 'application/pdf' ||
+                          fileExtension === '.pdf' ||
+                          fileExtension === '.docx' ||
+                          file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 
-      if (file.type === 'application/pdf' || fileExtension === '.pdf') {
-        // For PDF, we'll send to backend for extraction
-        content = `[PDF Document: ${file.name}]\n\nNote: PDF content extraction will be processed by the AI.`;
-        // In production, you'd upload the file to backend for PDF parsing
+      if (isPdfOrDocx) {
+        // Upload to backend for extraction
+        if (!address) {
+          alert('Wallet not connected. Please connect your wallet first.');
+          return;
+        }
+
+        const formData = new FormData();
+        formData.append('file', file);
+
+        const uploadResponse = await fetch(
+          `${API_BASE_URL}/api/v1/ai/upload/document?wallet_address=${encodeURIComponent(address)}`,
+          {
+            method: 'POST',
+            body: formData
+          }
+        );
+
+        if (!uploadResponse.ok) {
+          const errorData = await uploadResponse.json().catch(() => ({ detail: 'Upload failed' }));
+          throw new Error(errorData.detail || 'Failed to upload document');
+        }
+
+        const uploadData = await uploadResponse.json();
+        content = uploadData.content;
+        logger.info(`Document extracted: ${uploadData.extraction_method}, ${uploadData.metadata?.char_count} chars`);
       } else {
         // For text files, read directly
         content = await file.text();
@@ -384,8 +410,8 @@ export function AIChat() {
       setUploadedDocument({ name: file.name, content });
       setShowDocumentUpload(false);
     } catch (error) {
-      logger.error('Failed to read file:', error);
-      alert('Failed to read file. Please try again.');
+      logger.error('Failed to process file:', error);
+      alert(error instanceof Error ? error.message : 'Failed to process file. Please try again.');
     }
 
     // Reset file input
