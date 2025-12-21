@@ -152,16 +152,16 @@ export default function QuickBooksPage({ walletAddress, data }: QuickBooksPagePr
         return <QuickBooksDashboard walletAddress={walletAddress} data={data} />;
 
       case 'invoices':
-        return <InvoicesList walletAddress={walletAddress} />;
+        return <InvoicesList walletAddress={walletAddress} invoices={data?.invoices || []} />;
 
       case 'customers':
-        return <CustomersList walletAddress={walletAddress} />;
+        return <CustomersList walletAddress={walletAddress} customers={data?.customers || []} />;
 
       case 'expenses-list':
-        return <ExpensesList walletAddress={walletAddress} />;
+        return <ExpensesList walletAddress={walletAddress} expenses={data?.expenses || []} />;
 
       case 'vendors':
-        return <VendorsList walletAddress={walletAddress} />;
+        return <VendorsList walletAddress={walletAddress} vendors={data?.vendors || []} />;
 
       case 'reports':
         return <ReportViewer walletAddress={walletAddress} />;

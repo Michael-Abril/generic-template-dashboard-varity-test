@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { usePrivy } from '@privy-io/react-auth';
 import { useWallets } from '@privy-io/react-auth';
 import { useRouter } from 'next/navigation';
@@ -119,7 +119,9 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
+  const [importing, setImporting] = useState(false);
   const [storageUsed, setStorageUsed] = useState<string>('0 GB');
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Account settings state
   const [companyName, setCompanyName] = useState('');
@@ -368,6 +370,43 @@ export default function SettingsPage() {
       toast.error('Export failed', 'Unable to export data. Please try again.');
     } finally {
       setExporting(false);
+    }
+  };
+
+  // Import data from file
+  const handleImportData = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file || !address) {
+      return;
+    }
+
+    setImporting(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('wallet_address', address);
+
+      const response = await fetch(`${API_BASE_URL}/api/v1/import/data`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        toast.success('Import complete', `Successfully imported ${result.records_imported || 0} records.`);
+      } else {
+        const error = await response.json();
+        toast.error('Import failed', error.detail || 'Unable to import data. Please check file format.');
+      }
+    } catch (error) {
+      console.error('Error importing data:', error);
+      toast.error('Import failed', 'Unable to import data. Please try again.');
+    } finally {
+      setImporting(false);
+      // Reset file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
     }
   };
 
@@ -626,7 +665,7 @@ export default function SettingsPage() {
                           type="text"
                           value={companyName}
                           onChange={(e) => setCompanyName(e.target.value)}
-                          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-600 focus:border-transparent"
+                          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-600 focus:border-transparent bg-white text-gray-900"
                           placeholder="Enter company name"
                         />
                       </div>
@@ -715,7 +754,7 @@ export default function SettingsPage() {
                           type="text"
                           value={contactName}
                           onChange={(e) => setContactName(e.target.value)}
-                          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-600 focus:border-transparent"
+                          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-600 focus:border-transparent bg-white text-gray-900"
                           placeholder="Your name"
                         />
                       </div>
@@ -724,13 +763,20 @@ export default function SettingsPage() {
                         <label className="block text-sm font-semibold text-gray-700 mb-2">
                           Referral Source
                         </label>
-                        <input
-                          type="text"
-                          value={referralSource || 'Not set'}
-                          disabled
-                          className="w-full px-4 py-3 border border-gray-300 rounded-lg bg-gray-50 text-gray-500 cursor-not-allowed"
-                        />
-                        <p className="text-xs text-gray-500 mt-1">Collected during onboarding</p>
+                        <select
+                          value={referralSource}
+                          onChange={(e) => setReferralSource(e.target.value)}
+                          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-600 focus:border-transparent bg-white text-gray-900"
+                        >
+                          <option value="">Not specified</option>
+                          <option value="Search engine (Google, Bing)">Search engine (Google, Bing)</option>
+                          <option value="Social media">Social media</option>
+                          <option value="Friend or colleague">Friend or colleague</option>
+                          <option value="Industry publication">Industry publication</option>
+                          <option value="Conference or event">Conference or event</option>
+                          <option value="Other">Other</option>
+                        </select>
+                        <p className="text-xs text-gray-500 mt-1">How did you hear about us?</p>
                       </div>
 
                       <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
@@ -942,7 +988,7 @@ export default function SettingsPage() {
                                 type="email"
                                 value={inviteEmail}
                                 onChange={(e) => setInviteEmail(e.target.value)}
-                                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-600 focus:border-transparent"
+                                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-600 focus:border-transparent bg-white text-gray-900"
                                 placeholder="colleague@company.com"
                               />
                             </div>
@@ -1192,13 +1238,48 @@ export default function SettingsPage() {
                         <p className="text-sm text-gray-600 mb-4">
                           Upload data from previous exports or other systems
                         </p>
-                        <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-gray-400 transition-colors">
-                          <Upload className="w-10 h-10 text-gray-400 mx-auto mb-3" />
-                          <p className="text-gray-600 mb-2">Drag and drop files here, or click to browse</p>
-                          <p className="text-xs text-gray-500">Supports JSON, CSV, and Excel files</p>
-                          <input type="file" className="hidden" accept=".json,.csv,.xlsx" />
-                          <button className="mt-4 bg-gray-100 text-gray-700 px-6 py-2 rounded-lg font-semibold hover:bg-gray-200 transition-all">
-                            Select File
+                        <div
+                          className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors cursor-pointer ${
+                            importing
+                              ? 'border-blue-400 bg-blue-50'
+                              : 'border-gray-300 hover:border-blue-400 hover:bg-gray-50'
+                          }`}
+                          onClick={() => !importing && fileInputRef.current?.click()}
+                        >
+                          {importing ? (
+                            <>
+                              <div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
+                              <p className="text-blue-600 font-medium mb-2">Importing data...</p>
+                              <p className="text-xs text-gray-500">Please wait while we process your file</p>
+                            </>
+                          ) : (
+                            <>
+                              <Upload className="w-10 h-10 text-gray-400 mx-auto mb-3" />
+                              <p className="text-gray-600 mb-2">Click to select a file or drag and drop</p>
+                              <p className="text-xs text-gray-500">Supports JSON, CSV, and Excel files</p>
+                            </>
+                          )}
+                          <input
+                            ref={fileInputRef}
+                            type="file"
+                            className="hidden"
+                            accept=".json,.csv,.xlsx"
+                            onChange={handleImportData}
+                            disabled={importing}
+                          />
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              fileInputRef.current?.click();
+                            }}
+                            disabled={importing}
+                            className={`mt-4 px-6 py-2 rounded-lg font-semibold transition-all ${
+                              importing
+                                ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                                : 'bg-blue-600 text-white hover:bg-blue-700 hover:shadow-md'
+                            }`}
+                          >
+                            {importing ? 'Importing...' : 'Select File'}
                           </button>
                         </div>
                       </div>
@@ -1242,7 +1323,7 @@ export default function SettingsPage() {
                                 type="text"
                                 value={deleteConfirmText}
                                 onChange={(e) => setDeleteConfirmText(e.target.value)}
-                                className="w-full px-4 py-2 border border-red-300 rounded-lg focus:ring-2 focus:ring-red-500"
+                                className="w-full px-4 py-2 border border-red-300 rounded-lg focus:ring-2 focus:ring-red-500 bg-white text-gray-900"
                                 placeholder="DELETE"
                               />
                               <div className="flex gap-3">
