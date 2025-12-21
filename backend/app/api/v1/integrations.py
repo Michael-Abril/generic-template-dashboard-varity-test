@@ -140,8 +140,10 @@ async def get_installed_integrations(
         for token in oauth_tokens:
             # Determine sync status
             sync_status = "connected"
+            needs_reauth = False
             if token.expires_at and token.expires_at < datetime.utcnow():
                 sync_status = "expired"
+                needs_reauth = True
 
             installed_tools.append(
                 {
@@ -151,17 +153,21 @@ async def get_installed_integrations(
                     "installed_at": token.connected_at.isoformat() if token.connected_at else token.created_at.isoformat(),
                     "last_sync": token.last_sync_at.isoformat() if token.last_sync_at else None,
                     "sync_status": sync_status,
+                    "needs_reauth": needs_reauth,
                     "data_count": 0,  # Would need to query Filecoin for actual count
                 }
             )
 
         # Convert to the simple integrations format expected by frontend
+        # NOTE: connected = True for any active token (is_active=True in database)
+        # Token expiry just means they need to re-authenticate, but it's still "connected"
         integrations = [
             {
                 "id": tool["tool_id"],
                 "name": tool["tool_name"],
                 "slug": tool["integration"],
-                "connected": tool["sync_status"] in {"connected", "success", "partial"},
+                "connected": True,  # If token exists and is_active, it's connected
+                "needs_reauth": tool["needs_reauth"],
             }
             for tool in installed_tools
         ]
@@ -716,14 +722,16 @@ async def delete_tool_data(
 @router.delete("/{provider}")
 async def disconnect_integration(
     provider: str,
-    wallet_address: str = Query(..., description="User's wallet address")
+    wallet_address: str = Query(..., description="User's wallet address"),
+    db: AsyncSession = Depends(get_db)
 ):
     """
     Disconnect an integration completely.
 
     This removes:
-    1. OAuth credentials stored in Filecoin
-    2. All synced data for this integration
+    1. OAuth token from database (sets is_active = False)
+    2. OAuth credentials stored in Filecoin
+    3. All synced data for this integration
 
     Args:
         provider: Integration provider name (google, microsoft, quickbooks, etc.)
@@ -735,12 +743,35 @@ async def disconnect_integration(
     try:
         # Normalize integration name
         normalized_provider = normalize_integration_name(provider)
+        user_address = wallet_address.lower()
 
         logger.info(f"Disconnecting {provider} (normalized: {normalized_provider}) for wallet {wallet_address}")
 
         total_deleted = 0
+        token_deactivated = False
 
-        # 1. Delete OAuth credentials
+        # 1. Deactivate OAuth token in database
+        try:
+            token_result = await db.execute(
+                select(OAuthToken).where(
+                    and_(
+                        OAuthToken.user_address == user_address,
+                        OAuthToken.provider == normalized_provider,
+                        OAuthToken.is_active == True  # noqa: E712
+                    )
+                )
+            )
+            oauth_token = token_result.scalar_one_or_none()
+
+            if oauth_token:
+                oauth_token.is_active = False
+                await db.commit()
+                token_deactivated = True
+                logger.info(f"Deactivated OAuth token for {provider}")
+        except Exception as e:
+            logger.warning(f"Error deactivating OAuth token: {e}")
+
+        # 2. Delete OAuth credentials from Filecoin
         try:
             oauth_files = await filecoin_service.list_customer_files(
                 customer_wallet=wallet_address,
@@ -757,7 +788,7 @@ async def disconnect_integration(
         except Exception as e:
             logger.warning(f"Error listing OAuth credentials: {e}")
 
-        # 2. Delete all synced data
+        # 3. Delete all synced data from Filecoin
         try:
             data_files = await filecoin_service.list_customer_files(
                 customer_wallet=wallet_address,
@@ -773,12 +804,13 @@ async def disconnect_integration(
         except Exception as e:
             logger.warning(f"Error listing data files: {e}")
 
-        logger.info(f"Disconnected {provider} for wallet {wallet_address}, deleted {total_deleted} files")
+        logger.info(f"Disconnected {provider} for wallet {wallet_address}, token_deactivated={token_deactivated}, deleted {total_deleted} files")
 
         return {
             "success": True,
             "provider": provider,
             "wallet_address": wallet_address,
+            "token_deactivated": token_deactivated,
             "files_deleted": total_deleted,
             "message": f"Successfully disconnected {provider}"
         }
