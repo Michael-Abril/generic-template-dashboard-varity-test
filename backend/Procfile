@@ -1,1 +1,2 @@
 web: bash start.sh
+worker: celery -A celery_worker worker --beat --loglevel=info

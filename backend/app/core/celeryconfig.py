@@ -6,8 +6,14 @@ import os
 from celery.schedules import crontab
 
 # Broker settings
-broker_url = os.getenv('REDIS_URL', 'redis://localhost:6380')
-result_backend = os.getenv('REDIS_URL', 'redis://localhost:6380')
+broker_url = os.getenv('REDIS_URL', 'redis://localhost:6379')
+result_backend = os.getenv('REDIS_URL', 'redis://localhost:6379')
+
+# Backend URL for API calls during sync
+backend_url = os.getenv(
+    'BACKEND_URL',
+    'https://generic-template-dashboard-production.up.railway.app'
+)
 
 # Task serialization
 task_serializer = 'json'

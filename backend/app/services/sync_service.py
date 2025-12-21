@@ -726,39 +726,107 @@ class IntegrationSyncService:
 # Celery tasks
 @app.task(name='app.services.sync_service.sync_all_integrations')
 def sync_all_integrations():
-    """Sync data from all active integrations"""
-    sync_service = IntegrationSyncService()
+    """
+    Sync data from all active integrations for all users.
 
-    # Get all active integrations from database
-    # For now, using mock data
-    active_integrations = [
-        {'user_id': 'user1', 'integration': 'quickbooks', 'credentials': {}},
-        {'user_id': 'user2', 'integration': 'stripe', 'credentials': {}},
-    ]
+    This task runs every 30 minutes via Celery Beat.
+    It queries all active OAuth tokens and triggers sync for each.
+    """
+    import asyncio
+    from sqlalchemy import create_engine, text
+    from sqlalchemy.orm import sessionmaker
 
-    results = []
-    for integration_config in active_integrations:
-        try:
-            # Run sync based on integration type
-            if integration_config['integration'] == 'quickbooks':
-                result = asyncio.run(sync_service.sync_quickbooks_data(
-                    access_token=integration_config['credentials'].get('access_token'),
-                    company_id=integration_config['credentials'].get('company_id')
-                ))
-            elif integration_config['integration'] == 'stripe':
-                result = asyncio.run(sync_service.sync_stripe_data(
-                    api_key=integration_config['credentials'].get('api_key')
-                ))
-            else:
-                result = {'success': False, 'error': 'Unknown integration'}
+    logger.info("Starting scheduled sync for all integrations...")
 
-            results.append(result)
+    # Get database URL from environment
+    database_url = os.getenv('DATABASE_URL', '')
+    if not database_url:
+        logger.error("DATABASE_URL not set, cannot sync")
+        return {'error': 'DATABASE_URL not configured'}
 
-        except Exception as e:
-            logger.error(f"Failed to sync {integration_config['integration']}: {str(e)}")
-            results.append({'success': False, 'error': str(e)})
+    # Convert async URL to sync URL for Celery
+    sync_db_url = database_url.replace('postgresql+asyncpg://', 'postgresql://')
 
-    return results
+    try:
+        engine = create_engine(sync_db_url)
+        Session = sessionmaker(bind=engine)
+        session = Session()
+
+        # Query all active OAuth tokens
+        result = session.execute(text("""
+            SELECT DISTINCT user_address, provider
+            FROM oauth_tokens
+            WHERE is_active = true
+        """))
+
+        active_integrations = [
+            {'wallet_address': row[0], 'provider': row[1]}
+            for row in result.fetchall()
+        ]
+
+        session.close()
+
+        logger.info(f"Found {len(active_integrations)} active integrations to sync")
+
+        # Trigger sync for each integration
+        sync_results = []
+        for integration in active_integrations:
+            try:
+                # Call the sync endpoint via HTTP (to reuse existing logic)
+                import httpx
+
+                backend_url = os.getenv(
+                    'BACKEND_URL',
+                    'https://generic-template-dashboard-production.up.railway.app'
+                )
+
+                response = httpx.post(
+                    f"{backend_url}/api/v1/integrations/{integration['provider']}/sync",
+                    json={'wallet_address': integration['wallet_address']},
+                    timeout=300.0  # 5 minute timeout for sync
+                )
+
+                if response.status_code == 200:
+                    sync_results.append({
+                        'wallet': integration['wallet_address'][:10] + '...',
+                        'provider': integration['provider'],
+                        'status': 'success'
+                    })
+                    logger.info(
+                        f"Synced {integration['provider']} for {integration['wallet_address'][:10]}..."
+                    )
+                else:
+                    sync_results.append({
+                        'wallet': integration['wallet_address'][:10] + '...',
+                        'provider': integration['provider'],
+                        'status': 'failed',
+                        'error': response.text[:200]
+                    })
+                    logger.warning(
+                        f"Failed to sync {integration['provider']} for "
+                        f"{integration['wallet_address'][:10]}...: {response.status_code}"
+                    )
+
+            except Exception as e:
+                logger.error(f"Sync error for {integration}: {str(e)}")
+                sync_results.append({
+                    'wallet': integration['wallet_address'][:10] + '...',
+                    'provider': integration['provider'],
+                    'status': 'error',
+                    'error': str(e)
+                })
+
+        return {
+            'status': 'completed',
+            'synced': len([r for r in sync_results if r['status'] == 'success']),
+            'failed': len([r for r in sync_results if r['status'] != 'success']),
+            'results': sync_results,
+            'timestamp': datetime.now().isoformat()
+        }
+
+    except Exception as e:
+        logger.error(f"sync_all_integrations failed: {str(e)}")
+        return {'error': str(e), 'timestamp': datetime.now().isoformat()}
 
 
 @app.task(name='app.services.sync_service.sync_critical_data')
