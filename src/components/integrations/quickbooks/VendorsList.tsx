@@ -12,11 +12,29 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 
-interface VendorsListProps {
-  walletAddress: string;
+interface Vendor {
+  id?: string;
+  Id?: string;
+  displayName?: string;
+  DisplayName?: string;
+  companyName?: string;
+  CompanyName?: string;
+  email?: string;
+  PrimaryEmailAddr?: { Address?: string };
+  phone?: string;
+  PrimaryPhone?: { FreeFormNumber?: string };
+  balance?: number;
+  Balance?: number;
+  openBills?: number;
 }
 
-interface Vendor {
+interface VendorsListProps {
+  walletAddress: string;
+  vendors?: Vendor[];
+}
+
+// Helper function to normalize vendor data from QuickBooks API format
+function normalizeVendor(vendor: Vendor): {
   id: string;
   displayName: string;
   companyName?: string;
@@ -24,40 +42,23 @@ interface Vendor {
   phone?: string;
   balance: number;
   openBills: number;
+} {
+  return {
+    id: vendor.id || vendor.Id || String(Math.random()),
+    displayName: vendor.displayName || vendor.DisplayName || 'Unknown',
+    companyName: vendor.companyName || vendor.CompanyName,
+    email: vendor.email || vendor.PrimaryEmailAddr?.Address,
+    phone: vendor.phone || vendor.PrimaryPhone?.FreeFormNumber,
+    balance: vendor.balance ?? vendor.Balance ?? 0,
+    openBills: vendor.openBills ?? 0
+  };
 }
 
-export default function VendorsList({ walletAddress }: VendorsListProps) {
+export default function VendorsList({ walletAddress, vendors: rawVendors = [] }: VendorsListProps) {
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Mock data
-  const vendors: Vendor[] = [
-    {
-      id: '1',
-      displayName: 'Office Supplies Co',
-      companyName: 'Office Supplies Corporation',
-      email: 'billing@officesupplies.com',
-      phone: '555-1111',
-      balance: 0,
-      openBills: 0
-    },
-    {
-      id: '2',
-      displayName: 'Tech Services',
-      companyName: 'Tech Services Inc',
-      email: 'accounts@techservices.com',
-      phone: '555-2222',
-      balance: 1200,
-      openBills: 2
-    },
-    {
-      id: '3',
-      displayName: 'Marketing Agency',
-      email: 'billing@marketing.com',
-      phone: '555-3333',
-      balance: 5000,
-      openBills: 1
-    },
-  ];
+  // Normalize vendors from QuickBooks API format
+  const vendors = rawVendors.map(normalizeVendor);
 
   const filteredVendors = vendors.filter(vendor =>
     vendor.displayName.toLowerCase().includes(searchQuery.toLowerCase()) ||

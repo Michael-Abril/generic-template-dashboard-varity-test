@@ -12,11 +12,31 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 
-interface ExpensesListProps {
-  walletAddress: string;
+interface Expense {
+  id?: string;
+  Id?: string;
+  vendor?: string;
+  EntityRef?: { name?: string };
+  category?: string;
+  AccountRef?: { name?: string };
+  date?: string;
+  TxnDate?: string;
+  amount?: number;
+  TotalAmt?: number;
+  paymentMethod?: string;
+  PaymentMethodRef?: { name?: string };
+  PaymentType?: string;
+  memo?: string;
+  PrivateNote?: string;
 }
 
-interface Expense {
+interface ExpensesListProps {
+  walletAddress: string;
+  expenses?: Expense[];
+}
+
+// Helper function to normalize expense data from QuickBooks API format
+function normalizeExpense(exp: Expense): {
   id: string;
   vendor?: string;
   category: string;
@@ -24,40 +44,23 @@ interface Expense {
   amount: number;
   paymentMethod: string;
   memo?: string;
+} {
+  return {
+    id: exp.id || exp.Id || String(Math.random()),
+    vendor: exp.vendor || exp.EntityRef?.name,
+    category: exp.category || exp.AccountRef?.name || 'Uncategorized',
+    date: exp.date || exp.TxnDate || '',
+    amount: exp.amount ?? exp.TotalAmt ?? 0,
+    paymentMethod: exp.paymentMethod || exp.PaymentMethodRef?.name || exp.PaymentType || 'Unknown',
+    memo: exp.memo || exp.PrivateNote
+  };
 }
 
-export default function ExpensesList({ walletAddress }: ExpensesListProps) {
+export default function ExpensesList({ walletAddress, expenses: rawExpenses = [] }: ExpensesListProps) {
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Mock data
-  const expenses: Expense[] = [
-    {
-      id: '1',
-      vendor: 'Office Supplies Co',
-      category: 'Office Supplies',
-      date: '2025-12-15',
-      amount: 250.00,
-      paymentMethod: 'Credit Card',
-      memo: 'Monthly office supplies'
-    },
-    {
-      id: '2',
-      vendor: 'Tech Services',
-      category: 'Software & Subscriptions',
-      date: '2025-12-10',
-      amount: 599.00,
-      paymentMethod: 'Credit Card',
-      memo: 'Annual software license'
-    },
-    {
-      id: '3',
-      category: 'Meals & Entertainment',
-      date: '2025-12-08',
-      amount: 85.50,
-      paymentMethod: 'Cash',
-      memo: 'Client lunch meeting'
-    },
-  ];
+  // Normalize expenses from QuickBooks API format
+  const expenses = rawExpenses.map(normalizeExpense);
 
   const filteredExpenses = expenses.filter(expense =>
     (expense.vendor?.toLowerCase().includes(searchQuery.toLowerCase()) || '') ||

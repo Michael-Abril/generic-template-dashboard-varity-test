@@ -13,11 +13,29 @@ import {
 } from '@/components/ui/dropdown-menu';
 import CustomerForm from './CustomerForm';
 
-interface CustomersListProps {
-  walletAddress: string;
+interface Customer {
+  id?: string;
+  Id?: string;
+  displayName?: string;
+  DisplayName?: string;
+  companyName?: string;
+  CompanyName?: string;
+  email?: string;
+  PrimaryEmailAddr?: { Address?: string };
+  phone?: string;
+  PrimaryPhone?: { FreeFormNumber?: string };
+  balance?: number;
+  Balance?: number;
+  openInvoices?: number;
 }
 
-interface Customer {
+interface CustomersListProps {
+  walletAddress: string;
+  customers?: Customer[];
+}
+
+// Helper function to normalize customer data from QuickBooks API format
+function normalizeCustomer(cust: Customer): {
   id: string;
   displayName: string;
   companyName: string;
@@ -25,19 +43,32 @@ interface Customer {
   phone?: string;
   balance: number;
   openInvoices: number;
+} {
+  return {
+    id: cust.id || cust.Id || String(Math.random()),
+    displayName: cust.displayName || cust.DisplayName || 'Unknown',
+    companyName: cust.companyName || cust.CompanyName || '',
+    email: cust.email || cust.PrimaryEmailAddr?.Address,
+    phone: cust.phone || cust.PrimaryPhone?.FreeFormNumber,
+    balance: cust.balance ?? cust.Balance ?? 0,
+    openInvoices: cust.openInvoices ?? 0
+  };
 }
 
-export default function CustomersList({ walletAddress }: CustomersListProps) {
+export default function CustomersList({ walletAddress, customers: rawCustomers = [] }: CustomersListProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [showCustomerForm, setShowCustomerForm] = useState(false);
-  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+  const [selectedCustomer, setSelectedCustomer] = useState<ReturnType<typeof normalizeCustomer> | null>(null);
+
+  // Normalize customers from QuickBooks API format
+  const customers = rawCustomers.map(normalizeCustomer);
 
   const handleCreateCustomer = () => {
     setSelectedCustomer(null);
     setShowCustomerForm(true);
   };
 
-  const handleEditCustomer = (customer: Customer) => {
+  const handleEditCustomer = (customer: ReturnType<typeof normalizeCustomer>) => {
     setSelectedCustomer(customer);
     setShowCustomerForm(true);
   };
@@ -66,37 +97,6 @@ export default function CustomersList({ walletAddress }: CustomersListProps) {
       alert('Failed to delete customer');
     }
   };
-
-  // Mock data
-  const customers: Customer[] = [
-    {
-      id: '1',
-      displayName: 'John Smith',
-      companyName: 'Acme Corporation',
-      email: 'john@acme.com',
-      phone: '555-0123',
-      balance: 5000,
-      openInvoices: 2
-    },
-    {
-      id: '2',
-      displayName: 'Sarah Johnson',
-      companyName: 'Tech Solutions Inc',
-      email: 'sarah@techsolutions.com',
-      phone: '555-0456',
-      balance: 0,
-      openInvoices: 0
-    },
-    {
-      id: '3',
-      displayName: 'Mike Davis',
-      companyName: 'Global Enterprises',
-      email: 'mike@global.com',
-      phone: '555-0789',
-      balance: 8200,
-      openInvoices: 1
-    },
-  ];
 
   const filteredCustomers = customers.filter(customer =>
     customer.displayName.toLowerCase().includes(searchQuery.toLowerCase()) ||

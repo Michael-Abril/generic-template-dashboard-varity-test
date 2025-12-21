@@ -1,42 +1,94 @@
 "use client";
 
-import React from 'react';
+import React, { useMemo } from 'react';
 import { DollarSign, Receipt, TrendingUp, Users, FileText, Clock, AlertCircle } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 
 interface QuickBooksDashboardProps {
   walletAddress: string;
-  data: any;
+  data: {
+    invoices?: any[];
+    expenses?: any[];
+    customers?: any[];
+    vendors?: any[];
+    payments?: any[];
+  } | null;
 }
 
 export default function QuickBooksDashboard({ walletAddress, data }: QuickBooksDashboardProps) {
-  // Mock data - will be replaced with real API data
-  const dashboardData = {
-    invoices: {
-      paid: { count: 45, amount: 125000 },
-      open: { count: 12, amount: 34500 },
-      overdue: { count: 3, amount: 8200 }
-    },
-    expenses: {
-      total: 42300,
-      thisMonth: 8500,
-      count: 156
-    },
-    customers: {
-      total: 87,
-      new: 5
-    },
-    vendors: {
-      total: 34,
-      active: 28
-    },
-    bankAccounts: [
-      { name: 'Business Checking', balance: 45678.90, lastUpdated: '2 hours ago' },
-      { name: 'Savings Account', balance: 125000.00, lastUpdated: '1 day ago' },
-      { name: 'Credit Card', balance: -3456.78, lastUpdated: '3 hours ago' }
-    ]
-  };
+  // Calculate dashboard stats from real data
+  const dashboardData = useMemo(() => {
+    const invoices = data?.invoices || [];
+    const expenses = data?.expenses || [];
+    const customers = data?.customers || [];
+    const vendors = data?.vendors || [];
+
+    // Calculate invoice stats
+    const now = new Date();
+    const invoiceStats = invoices.reduce(
+      (acc, inv) => {
+        const balance = inv.balance ?? inv.Balance ?? 0;
+        const amount = inv.amount ?? inv.TotalAmt ?? 0;
+        const dueDate = inv.dueDate || inv.DueDate;
+
+        if (balance === 0 && amount > 0) {
+          acc.paid.count++;
+          acc.paid.amount += amount;
+        } else if (dueDate && new Date(dueDate) < now) {
+          acc.overdue.count++;
+          acc.overdue.amount += balance;
+        } else {
+          acc.open.count++;
+          acc.open.amount += balance;
+        }
+        return acc;
+      },
+      {
+        paid: { count: 0, amount: 0 },
+        open: { count: 0, amount: 0 },
+        overdue: { count: 0, amount: 0 }
+      }
+    );
+
+    // Calculate expense stats
+    const thisMonth = new Date();
+    thisMonth.setDate(1);
+    const expenseStats = expenses.reduce(
+      (acc, exp) => {
+        const amount = exp.amount ?? exp.TotalAmt ?? 0;
+        const txnDate = exp.date || exp.TxnDate;
+        acc.total += amount;
+        acc.count++;
+        if (txnDate && new Date(txnDate) >= thisMonth) {
+          acc.thisMonth += amount;
+        }
+        return acc;
+      },
+      { total: 0, thisMonth: 0, count: 0 }
+    );
+
+    // Calculate total income (paid invoices)
+    const totalIncome = invoiceStats.paid.amount;
+    const netIncome = totalIncome - expenseStats.total;
+
+    return {
+      invoices: invoiceStats,
+      expenses: expenseStats,
+      customers: {
+        total: customers.length,
+        new: 0 // Would need creation date to calculate
+      },
+      vendors: {
+        total: vendors.length,
+        active: vendors.length
+      },
+      bankAccounts: [], // Bank accounts would come from a separate API
+      totalIncome,
+      netIncome,
+      hasData: invoices.length > 0 || expenses.length > 0 || customers.length > 0 || vendors.length > 0
+    };
+  }, [data]);
 
   const shortcuts = [
     { icon: FileText, label: 'Invoice', color: 'bg-blue-500' },
@@ -153,15 +205,22 @@ export default function QuickBooksDashboard({ walletAddress, data }: QuickBooksD
             <div className="space-y-3">
               <div>
                 <p className="text-xs text-gray-600 dark:text-gray-400 mb-1">Income</p>
-                <p className="text-lg font-bold text-green-600">$159,500</p>
+                <p className="text-lg font-bold text-green-600">
+                  ${dashboardData.totalIncome.toLocaleString()}
+                </p>
               </div>
               <div>
                 <p className="text-xs text-gray-600 dark:text-gray-400 mb-1">Expenses</p>
-                <p className="text-lg font-bold text-red-600">$42,300</p>
+                <p className="text-lg font-bold text-red-600">
+                  ${dashboardData.expenses.total.toLocaleString()}
+                </p>
               </div>
               <div className="pt-2 border-t border-gray-200 dark:border-gray-700">
                 <p className="text-xs text-gray-600 dark:text-gray-400 mb-1">Net Income</p>
-                <p className="text-xl font-bold text-gray-900 dark:text-white">$117,200</p>
+                <p className={`text-xl font-bold ${dashboardData.netIncome >= 0 ? 'text-gray-900 dark:text-white' : 'text-red-600'}`}>
+                  ${Math.abs(dashboardData.netIncome).toLocaleString()}
+                  {dashboardData.netIncome < 0 && <span className="text-xs ml-1">(Loss)</span>}
+                </p>
               </div>
             </div>
           </CardContent>
@@ -209,34 +268,41 @@ export default function QuickBooksDashboard({ walletAddress, data }: QuickBooksD
           <CardTitle className="text-lg">Bank Accounts</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="space-y-4">
-            {dashboardData.bankAccounts.map((account, index) => (
-              <div
-                key={index}
-                className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-lg"
-              >
-                <div>
-                  <p className="font-medium text-gray-900 dark:text-white">{account.name}</p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                    Updated {account.lastUpdated}
-                  </p>
+          {dashboardData.bankAccounts.length > 0 ? (
+            <div className="space-y-4">
+              {dashboardData.bankAccounts.map((account: { name: string; balance: number; lastUpdated: string }, index: number) => (
+                <div
+                  key={index}
+                  className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-lg"
+                >
+                  <div>
+                    <p className="font-medium text-gray-900 dark:text-white">{account.name}</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                      Updated {account.lastUpdated}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className={`text-lg font-bold ${
+                      account.balance < 0 ? 'text-red-600' : 'text-gray-900 dark:text-white'
+                    }`}>
+                      ${Math.abs(account.balance).toLocaleString('en-US', {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2
+                      })}
+                    </p>
+                    {account.balance < 0 && (
+                      <span className="text-xs text-red-600">Credit</span>
+                    )}
+                  </div>
                 </div>
-                <div className="text-right">
-                  <p className={`text-lg font-bold ${
-                    account.balance < 0 ? 'text-red-600' : 'text-gray-900 dark:text-white'
-                  }`}>
-                    ${Math.abs(account.balance).toLocaleString('en-US', {
-                      minimumFractionDigits: 2,
-                      maximumFractionDigits: 2
-                    })}
-                  </p>
-                  {account.balance < 0 && (
-                    <span className="text-xs text-red-600">Credit</span>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+              <p className="text-sm">No bank accounts connected yet.</p>
+              <p className="text-xs mt-1">Connect your bank to see real-time balances.</p>
+            </div>
+          )}
           <Button variant="outline" className="w-full mt-4">
             Connect Bank Account
           </Button>
@@ -250,6 +316,21 @@ export default function QuickBooksDashboard({ walletAddress, data }: QuickBooksD
         </CardHeader>
         <CardContent>
           <div className="space-y-3">
+            {/* No Data Notice */}
+            {!dashboardData.hasData && (
+              <div className="flex items-start space-x-3 p-3 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg">
+                <AlertCircle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-yellow-900 dark:text-yellow-200">
+                    No QuickBooks data synced yet
+                  </p>
+                  <p className="text-xs text-yellow-700 dark:text-yellow-300 mt-1">
+                    Trigger a sync from the Marketplace to see your real data here.
+                  </p>
+                </div>
+              </div>
+            )}
+
             {/* Overdue Invoices Alert */}
             {dashboardData.invoices.overdue.count > 0 && (
               <div className="flex items-start space-x-3 p-3 bg-red-50 dark:bg-red-900/20 rounded-lg">
@@ -268,31 +349,35 @@ export default function QuickBooksDashboard({ walletAddress, data }: QuickBooksD
               </div>
             )}
 
-            {/* Recent Activity */}
-            <div className="flex items-start space-x-3 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-              <TrendingUp className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
-              <div className="flex-1">
-                <p className="text-sm font-medium text-blue-900 dark:text-blue-200">
-                  Sales are up 15% this month
-                </p>
-                <p className="text-xs text-blue-700 dark:text-blue-300 mt-1">
-                  Great job! Keep up the momentum.
-                </p>
+            {/* Data Summary */}
+            {dashboardData.hasData && (
+              <div className="flex items-start space-x-3 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                <TrendingUp className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-blue-900 dark:text-blue-200">
+                    Business Summary
+                  </p>
+                  <p className="text-xs text-blue-700 dark:text-blue-300 mt-1">
+                    {dashboardData.customers.total} customers, {dashboardData.vendors.total} vendors, {dashboardData.invoices.paid.count + dashboardData.invoices.open.count + dashboardData.invoices.overdue.count} invoices
+                  </p>
+                </div>
               </div>
-            </div>
+            )}
 
             {/* Sync Status */}
-            <div className="flex items-start space-x-3 p-3 bg-green-50 dark:bg-green-900/20 rounded-lg">
-              <Clock className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
-              <div className="flex-1">
-                <p className="text-sm font-medium text-green-900 dark:text-green-200">
-                  All data synced to Filecoin
-                </p>
-                <p className="text-xs text-green-700 dark:text-green-300 mt-1">
-                  Last sync: 5 minutes ago
-                </p>
+            {dashboardData.hasData && (
+              <div className="flex items-start space-x-3 p-3 bg-green-50 dark:bg-green-900/20 rounded-lg">
+                <Clock className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-green-900 dark:text-green-200">
+                    Data synced to Filecoin
+                  </p>
+                  <p className="text-xs text-green-700 dark:text-green-300 mt-1">
+                    Your QuickBooks data is securely stored.
+                  </p>
+                </div>
               </div>
-            </div>
+            )}
           </div>
         </CardContent>
       </Card>

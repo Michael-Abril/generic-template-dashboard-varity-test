@@ -14,11 +14,30 @@ import {
 import { Badge } from '@/components/ui/badge';
 import InvoiceForm from './InvoiceForm';
 
-interface InvoicesListProps {
-  walletAddress: string;
+interface Invoice {
+  id: string;
+  number?: string;
+  DocNumber?: string;
+  customer?: string;
+  CustomerRef?: { name?: string; value?: string };
+  date?: string;
+  TxnDate?: string;
+  dueDate?: string;
+  DueDate?: string;
+  amount?: number;
+  TotalAmt?: number;
+  balance?: number;
+  Balance?: number;
+  status?: 'paid' | 'open' | 'overdue' | 'draft';
 }
 
-interface Invoice {
+interface InvoicesListProps {
+  walletAddress: string;
+  invoices?: Invoice[];
+}
+
+// Helper function to normalize invoice data from QuickBooks API format
+function normalizeInvoice(inv: Invoice): {
   id: string;
   number: string;
   customer: string;
@@ -27,57 +46,39 @@ interface Invoice {
   amount: number;
   balance: number;
   status: 'paid' | 'open' | 'overdue' | 'draft';
+} {
+  const balance = inv.balance ?? inv.Balance ?? 0;
+  const amount = inv.amount ?? inv.TotalAmt ?? 0;
+  const dueDate = inv.dueDate || inv.DueDate || '';
+
+  // Determine status based on balance and due date
+  let status: 'paid' | 'open' | 'overdue' | 'draft' = 'open';
+  if (balance === 0 && amount > 0) {
+    status = 'paid';
+  } else if (dueDate && new Date(dueDate) < new Date()) {
+    status = 'overdue';
+  }
+
+  return {
+    id: inv.id || String(Math.random()),
+    number: inv.number || inv.DocNumber || 'N/A',
+    customer: inv.customer || inv.CustomerRef?.name || 'Unknown Customer',
+    date: inv.date || inv.TxnDate || '',
+    dueDate: dueDate,
+    amount: amount,
+    balance: balance,
+    status: inv.status || status
+  };
 }
 
-export default function InvoicesList({ walletAddress }: InvoicesListProps) {
+export default function InvoicesList({ walletAddress, invoices: rawInvoices = [] }: InvoicesListProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [showInvoiceForm, setShowInvoiceForm] = useState(false);
-  const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
+  const [selectedInvoice, setSelectedInvoice] = useState<ReturnType<typeof normalizeInvoice> | null>(null);
 
-  // Mock data - will be replaced with API call
-  const invoices: Invoice[] = [
-    {
-      id: '1',
-      number: 'INV-1001',
-      customer: 'Acme Corporation',
-      date: '2025-12-01',
-      dueDate: '2025-12-31',
-      amount: 5000,
-      balance: 5000,
-      status: 'open'
-    },
-    {
-      id: '2',
-      number: 'INV-1002',
-      customer: 'Tech Solutions Inc',
-      date: '2025-11-15',
-      dueDate: '2025-12-15',
-      amount: 3500,
-      balance: 0,
-      status: 'paid'
-    },
-    {
-      id: '3',
-      number: 'INV-1003',
-      customer: 'Global Enterprises',
-      date: '2025-10-20',
-      dueDate: '2025-11-20',
-      amount: 8200,
-      balance: 8200,
-      status: 'overdue'
-    },
-    {
-      id: '4',
-      number: 'INV-1004',
-      customer: 'Startup Co',
-      date: '2025-12-10',
-      dueDate: '2026-01-10',
-      amount: 2100,
-      balance: 2100,
-      status: 'open'
-    },
-  ];
+  // Normalize invoices from QuickBooks API format
+  const invoices = rawInvoices.map(normalizeInvoice);
 
   const getStatusBadge = (status: string) => {
     const variants: Record<string, { variant: any; label: string }> = {
@@ -372,7 +373,9 @@ export default function InvoicesList({ walletAddress }: InvoicesListProps) {
             {filteredInvoices.length === 0 && (
               <div className="text-center py-12">
                 <p className="text-gray-500 dark:text-gray-400">
-                  No invoices found. Create your first invoice to get started.
+                  {rawInvoices.length === 0
+                    ? "No invoices synced yet. Sync your QuickBooks data or create your first invoice."
+                    : "No invoices match your search criteria."}
                 </p>
                 <Button onClick={handleCreateInvoice} className="mt-4">
                   <Plus className="w-4 h-4 mr-2" />
