@@ -1,12 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { usePrivy } from '@privy-io/react-auth';
 import { useWalletSync } from '@/app/providers';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Layout } from '@/components/Layout';
-import { logger } from '@/lib/logger';
 import { useToast } from '@/components/ui/Toast';
 import {
   FileSpreadsheet,
@@ -14,58 +13,99 @@ import {
   DollarSign,
   Users,
   BarChart3,
-  Target
+  Target,
+  Sparkles,
+  Settings2,
+  Save,
+  RotateCcw,
+  Plus,
+  LayoutGrid
 } from 'lucide-react';
-import {
-  BarChart,
-  Bar,
-  LineChart,
-  Line,
-  AreaChart,
-  Area,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  Cell,
-  PieChart,
-  Pie,
-  Legend,
-} from 'recharts';
+import { Layout as GridLayout } from 'react-grid-layout';
+import { AISidebar, DashboardGrid } from '@/components/analytics';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8002';
 
-/**
- * Analytics Page Content
- *
- * Comprehensive business intelligence dashboard with:
- * - Revenue trends over time
- * - Expense breakdown by category
- * - Customer growth metrics
- * - Sales pipeline visualization
- * - Top products/services
- * - Time period filtering
- * - Export to PDF/CSV
- */
+interface ChartConfig {
+  id: string;
+  type: 'bar' | 'line' | 'area' | 'pie' | 'donut' | 'kpi';
+  title: string;
+  data: Array<{ label: string; value: number; [key: string]: unknown }>;
+  config: {
+    xAxisLabel?: string;
+    yAxisLabel?: string;
+    colors?: string[];
+    showLegend?: boolean;
+    valuePrefix?: string;
+    valueSuffix?: string;
+  };
+  summary?: string;
+  suggested_queries?: string[];
+}
+
+interface Widget {
+  id: string;
+  chart: ChartConfig;
+  layout: GridLayout;
+}
 
 type TimePeriod = 'mtd' | 'qtd' | 'ytd' | 'custom';
-
-interface ChartData {
-  label: string;
-  value: number;
-  color?: string;
-}
 
 export default function AnalyticsContent() {
   const { authenticated } = usePrivy();
   const { address } = useWalletSync();
   const router = useRouter();
   const toast = useToast();
+
+  // Time period state
   const [timePeriod, setTimePeriod] = useState<TimePeriod>('mtd');
   const [customDateRange, setCustomDateRange] = useState({ start: '', end: '' });
+
+  // Analytics state
   const [loading, setLoading] = useState(false);
-  const [analyticsData, setAnalyticsData] = useState<any>(null);
+  const [analyticsData, setAnalyticsData] = useState<Record<string, unknown> | null>(null);
+
+  // AI Sidebar state
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  // Dashboard customization state
+  const [widgets, setWidgets] = useState<Widget[]>([]);
+  const [isEditing, setIsEditing] = useState(true);
+  const [hasChanges, setHasChanges] = useState(false);
+  const [connectedIntegrations, setConnectedIntegrations] = useState<string[]>([]);
+
+  // Load saved layout from localStorage on mount
+  useEffect(() => {
+    if (address) {
+      const savedWidgets = localStorage.getItem(`analytics_widgets_${address}`);
+      if (savedWidgets) {
+        try {
+          setWidgets(JSON.parse(savedWidgets));
+        } catch (e) {
+          console.error('Failed to parse saved widgets:', e);
+        }
+      }
+
+      // Fetch connected integrations
+      fetchConnectedIntegrations();
+    }
+  }, [address]);
+
+  const fetchConnectedIntegrations = async () => {
+    if (!address) return;
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/api/v1/integrations/installed?wallet_address=${address}`
+      );
+      if (response.ok) {
+        const data = await response.json();
+        const integrations = data.integrations?.map((i: { provider?: string; name?: string }) => i.provider || i.name) || [];
+        setConnectedIntegrations(integrations);
+      }
+    } catch (e) {
+      console.error('Failed to fetch integrations:', e);
+    }
+  };
 
   // Fetch analytics data when time period changes
   useEffect(() => {
@@ -88,21 +128,16 @@ export default function AnalyticsContent() {
           `${API_BASE_URL}/api/v1/dashboard/analytics?${params}`,
           {
             method: 'GET',
-            headers: {
-              'Content-Type': 'application/json',
-            },
+            headers: { 'Content-Type': 'application/json' },
           }
         );
 
-        if (!response.ok) {
-          throw new Error('Failed to fetch analytics');
+        if (response.ok) {
+          const data = await response.json();
+          setAnalyticsData(data);
         }
-
-        const data = await response.json();
-        setAnalyticsData(data);
       } catch (error) {
         console.error('Error fetching analytics:', error);
-        // Keep mock data as fallback
       } finally {
         setLoading(false);
       }
@@ -111,12 +146,118 @@ export default function AnalyticsContent() {
     fetchAnalytics();
   }, [address, timePeriod, customDateRange]);
 
-  // Redirect if not authenticated - use useEffect to avoid render-time side effects
+  // Redirect if not authenticated
   useEffect(() => {
     if (!authenticated) {
       router.push('/');
     }
   }, [authenticated, router]);
+
+  // Handle adding a chart from AI sidebar
+  const handleAddChart = useCallback((chart: ChartConfig) => {
+    const newWidget: Widget = {
+      id: chart.id,
+      chart,
+      layout: {
+        i: chart.id,
+        x: (widgets.length % 2) * 6,
+        y: Math.floor(widgets.length / 2) * 3,
+        w: chart.type === 'kpi' ? 3 : 6,
+        h: chart.type === 'kpi' ? 2 : 3,
+        minW: 3,
+        minH: 2
+      }
+    };
+    setWidgets(prev => [...prev, newWidget]);
+    setHasChanges(true);
+    toast.success('Chart added to dashboard');
+  }, [widgets, toast]);
+
+  // Handle layout changes from drag/resize
+  const handleLayoutChange = useCallback((newLayout: GridLayout[]) => {
+    setWidgets(prev =>
+      prev.map(widget => {
+        const layoutItem = newLayout.find(l => l.i === widget.id);
+        if (layoutItem) {
+          return { ...widget, layout: layoutItem };
+        }
+        return widget;
+      })
+    );
+    setHasChanges(true);
+  }, []);
+
+  // Handle removing a widget
+  const handleRemoveWidget = useCallback((widgetId: string) => {
+    setWidgets(prev => prev.filter(w => w.id !== widgetId));
+    setHasChanges(true);
+    toast.info('Chart removed from dashboard');
+  }, [toast]);
+
+  // Save layout
+  const handleSaveLayout = useCallback(async () => {
+    if (!address) return;
+
+    try {
+      // Save to localStorage for now (MVP)
+      localStorage.setItem(`analytics_widgets_${address}`, JSON.stringify(widgets));
+
+      // Also save to backend (if available)
+      try {
+        await fetch(`${API_BASE_URL}/api/v1/ai/analytics/layouts`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            wallet_address: address,
+            name: 'Default Layout',
+            widgets: widgets.map(w => ({
+              id: w.id,
+              chart_config: w.chart,
+              ...w.layout
+            })),
+            is_default: true
+          })
+        });
+      } catch (e) {
+        // Backend save is optional for MVP
+        console.log('Backend layout save not available');
+      }
+
+      setHasChanges(false);
+      toast.success('Layout saved successfully');
+    } catch (error) {
+      toast.error('Failed to save layout');
+    }
+  }, [address, widgets, toast]);
+
+  // Reset layout
+  const handleResetLayout = useCallback(() => {
+    setWidgets([]);
+    setHasChanges(true);
+    toast.info('Layout reset');
+  }, [toast]);
+
+  // Export functions
+  const handleExportPDF = () => {
+    toast.info('Coming soon', 'PDF export will be available in a future update.');
+  };
+
+  const handleExportCSV = () => {
+    if (widgets.length === 0) {
+      toast.info('No data to export', 'Add some charts first.');
+      return;
+    }
+    const allData = widgets.flatMap(w =>
+      w.chart.data.map(d => `${w.chart.title},${d.label},${d.value}`)
+    );
+    const csv = 'Chart,Label,Value\n' + allData.join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `analytics-${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
+  };
 
   // Show loading while checking authentication
   if (!authenticated) {
@@ -130,77 +271,17 @@ export default function AnalyticsContent() {
     );
   }
 
-  // Derived metrics from backend analytics data (no hard-coded demo data)
-  const metrics = analyticsData?.metrics || {};
-  const charts = analyticsData?.charts || {};
-
+  // Derived metrics from backend analytics data
+  const metrics = (analyticsData as { metrics?: Record<string, number> })?.metrics || {};
   const totalRevenue = typeof metrics.revenue === 'number' ? metrics.revenue : 0;
   const totalCustomers = typeof metrics.customers === 'number' ? metrics.customers : 0;
   const averageRevenue = typeof metrics.average_revenue === 'number' ? metrics.average_revenue : 0;
   const conversionRate = typeof metrics.conversion_rate === 'number' ? metrics.conversion_rate : 0;
 
-  const revenueTrend: Array<{ label: string; value: number }> = Array.isArray(charts.revenue_trend)
-    ? charts.revenue_trend.map((point: any) => ({
-        label: point.month || point.label || '',
-        value: Number(point.value || 0),
-      }))
-    : [];
-
-  const expenseBreakdown: ChartData[] = Array.isArray(charts.expense_categories)
-    ? charts.expense_categories.map((item: any) => ({
-        label: item.category || item.label || '',
-        value: Number(item.value || 0),
-        color: 'bg-blue-500',
-      }))
-    : [];
-
-  const customerGrowth: Array<{ label: string; value: number }> = Array.isArray(charts.customer_growth)
-    ? charts.customer_growth.map((item: any) => ({
-        label: item.month || item.label || '',
-        value: Number(item.value || 0),
-      }))
-    : [];
-
-  const totalExpenses = expenseBreakdown.reduce((sum, item) => sum + item.value, 0);
-  const maxRevenue = revenueTrend.length > 0 ? Math.max(...revenueTrend.map(d => d.value)) || 1 : 1;
-  const maxCustomers = customerGrowth.length > 0 ? Math.max(...customerGrowth.map(d => d.value)) || 1 : 1;
-
-  // Pipeline data from backend or empty array
-  const pipelineData: Array<{ label: string; value: number }> = Array.isArray(charts.pipeline)
-    ? charts.pipeline.map((item: { stage?: string; label?: string; value?: number }) => ({
-        label: item.stage || item.label || '',
-        value: Number(item.value || 0),
-      }))
-    : [];
-  const maxPipeline = pipelineData.length > 0 ? Math.max(...pipelineData.map(d => d.value)) || 1 : 1;
-
-  // Top products data from backend or empty array
-  const topProductsData: Array<{ label: string; value: number }> = Array.isArray(charts.top_products)
-    ? charts.top_products.map((item: { product?: string; label?: string; value?: number }) => ({
-        label: item.product || item.label || '',
-        value: Number(item.value || 0),
-      }))
-    : [];
-
-  const handleExportPDF = () => {
-    toast.info('Coming soon', 'PDF export will be available in a future update.');
-  };
-
-  const handleExportCSV = () => {
-    const csv = 'Revenue Data\n' + revenueTrend.map((d: { label: string; value: number }) => `${d.label},${d.value}`).join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `analytics-${new Date().toISOString().split('T')[0]}.csv`;
-    link.click();
-  };
-
   return (
     <Layout>
       <div className="min-h-screen bg-gray-50">
         <div className="px-4 sm:px-6 py-6">
-
           {/* Header */}
           <div className="mb-8">
             <div className="flex items-center gap-2 text-sm text-gray-500 mb-2">
@@ -211,25 +292,43 @@ export default function AnalyticsContent() {
             <div className="flex items-center justify-between">
               <div>
                 <h1 className="text-3xl font-bold text-gray-900 mb-2">
-                  Business Analytics
+                  AI-Powered Analytics
                 </h1>
                 <p className="text-gray-600">
-                  Comprehensive insights across all your business metrics
+                  Create custom visualizations with AI - just describe what you want to see
                 </p>
               </div>
 
               <div className="flex items-center gap-3">
+                {hasChanges && (
+                  <button
+                    onClick={handleSaveLayout}
+                    className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-all text-sm font-medium flex items-center gap-2"
+                  >
+                    <Save className="w-4 h-4" />
+                    Save Layout
+                  </button>
+                )}
                 <button
                   onClick={handleExportCSV}
-                  className="text-gray-600 hover:text-gray-900 px-4 py-2 rounded-lg hover:bg-white border border-gray-200 transition-all text-sm font-medium"
+                  className="text-gray-600 hover:text-gray-900 px-4 py-2 rounded-lg hover:bg-white border border-gray-200 transition-all text-sm font-medium flex items-center gap-2"
                 >
-                  <FileSpreadsheet className="w-4 h-4 inline mr-1" /> Export CSV
+                  <FileSpreadsheet className="w-4 h-4" />
+                  Export CSV
                 </button>
                 <button
                   onClick={handleExportPDF}
-                  className="text-gray-600 hover:text-gray-900 px-4 py-2 rounded-lg hover:bg-white border border-gray-200 transition-all text-sm font-medium"
+                  className="text-gray-600 hover:text-gray-900 px-4 py-2 rounded-lg hover:bg-white border border-gray-200 transition-all text-sm font-medium flex items-center gap-2"
                 >
-                  <FileText className="w-4 h-4 inline mr-1" /> Export PDF
+                  <FileText className="w-4 h-4" />
+                  Export PDF
+                </button>
+                <button
+                  onClick={() => setSidebarOpen(true)}
+                  className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-4 py-2 rounded-lg hover:from-blue-700 hover:to-indigo-700 transition-all text-sm font-medium flex items-center gap-2 shadow-lg shadow-blue-500/25"
+                >
+                  <Sparkles className="w-4 h-4" />
+                  Create Chart with AI
                 </button>
               </div>
             </div>
@@ -244,46 +343,22 @@ export default function AnalyticsContent() {
               </div>
 
               <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setTimePeriod('mtd')}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                    timePeriod === 'mtd'
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
-                >
-                  Month to Date
-                </button>
-                <button
-                  onClick={() => setTimePeriod('qtd')}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                    timePeriod === 'qtd'
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
-                >
-                  Quarter to Date
-                </button>
-                <button
-                  onClick={() => setTimePeriod('ytd')}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                    timePeriod === 'ytd'
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
-                >
-                  Year to Date
-                </button>
-                <button
-                  onClick={() => setTimePeriod('custom')}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                    timePeriod === 'custom'
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
-                >
-                  Custom Range
-                </button>
+                {(['mtd', 'qtd', 'ytd', 'custom'] as TimePeriod[]).map((period) => (
+                  <button
+                    key={period}
+                    onClick={() => setTimePeriod(period)}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                      timePeriod === period
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                  >
+                    {period === 'mtd' && 'Month to Date'}
+                    {period === 'qtd' && 'Quarter to Date'}
+                    {period === 'ytd' && 'Year to Date'}
+                    {period === 'custom' && 'Custom Range'}
+                  </button>
+                ))}
               </div>
             </div>
 
@@ -307,9 +382,6 @@ export default function AnalyticsContent() {
                     className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
                   />
                 </div>
-                <button className="mt-5 bg-blue-600 text-white px-6 py-2 rounded-lg text-sm font-semibold hover:bg-blue-700 hover:shadow-md hover:scale-[1.02] active:scale-[0.98] transition-all duration-200">
-                  Apply
-                </button>
               </div>
             )}
           </div>
@@ -329,9 +401,9 @@ export default function AnalyticsContent() {
                 </div>
               </div>
               <p className="text-sm text-green-600 font-medium">
-                {metrics.revenue_change_percent != null
-                  ? `↑ ${metrics.revenue_change_percent}% vs last period`
-                  : 'Revenue change will appear after data sync'}
+                {(metrics as { revenue_change_percent?: number }).revenue_change_percent != null
+                  ? `${(metrics as { revenue_change_percent: number }).revenue_change_percent}% vs last period`
+                  : 'Connect integrations for data'}
               </p>
             </div>
 
@@ -348,9 +420,9 @@ export default function AnalyticsContent() {
                 </div>
               </div>
               <p className="text-sm text-blue-600 font-medium">
-                {metrics.customers_change_percent != null
-                  ? `↑ ${metrics.customers_change_percent}% vs last period`
-                  : 'Customer growth will appear after data sync'}
+                {(metrics as { customers_change_percent?: number }).customers_change_percent != null
+                  ? `${(metrics as { customers_change_percent: number }).customers_change_percent}% vs last period`
+                  : 'Connect integrations for data'}
               </p>
             </div>
 
@@ -385,276 +457,91 @@ export default function AnalyticsContent() {
             </div>
           </div>
 
-          {/* Revenue Trend Chart */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-8">
-            <div className="mb-6">
-              <h3 className="text-lg font-bold text-gray-900 mb-1">Revenue Trend</h3>
-              <p className="text-sm text-gray-600">Monthly revenue over the last 12 months</p>
+          {/* Dashboard Controls */}
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-3">
+              <h2 className="text-lg font-semibold text-gray-900">Custom Dashboard</h2>
+              <span className="text-sm text-gray-500">
+                {widgets.length} chart{widgets.length !== 1 ? 's' : ''}
+              </span>
             </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setIsEditing(!isEditing)}
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
+                  isEditing
+                    ? 'bg-blue-100 text-blue-700'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+              >
+                <Settings2 className="w-4 h-4" />
+                {isEditing ? 'Editing' : 'Edit Layout'}
+              </button>
+              {widgets.length > 0 && (
+                <button
+                  onClick={handleResetLayout}
+                  className="px-3 py-1.5 rounded-lg text-sm font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 transition-all flex items-center gap-2"
+                >
+                  <RotateCcw className="w-4 h-4" />
+                  Reset
+                </button>
+              )}
+            </div>
+          </div>
 
-            {revenueTrend.length > 0 ? (
-              <div className="h-80">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart
-                    data={revenueTrend}
-                    margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
-                  >
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
-                    <XAxis
-                      dataKey="label"
-                      axisLine={false}
-                      tickLine={false}
-                      tick={{ fontSize: 12, fill: '#6b7280' }}
-                    />
-                    <YAxis
-                      axisLine={false}
-                      tickLine={false}
-                      tick={{ fontSize: 12, fill: '#6b7280' }}
-                      tickFormatter={(value) => `$${(value / 1000).toFixed(0)}K`}
-                      width={70}
-                    />
-                    <Tooltip
-                      formatter={(value) => [`$${(value ?? 0).toLocaleString()}`, 'Revenue']}
-                      contentStyle={{
-                        backgroundColor: '#fff',
-                        border: '1px solid #e5e7eb',
-                        borderRadius: '8px',
-                        boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
-                      }}
-                      cursor={{ fill: 'rgba(59, 130, 246, 0.1)' }}
-                    />
-                    <Bar dataKey="value" radius={[4, 4, 0, 0]} maxBarSize={50}>
-                      {revenueTrend.map((_, index, arr) => (
-                        <Cell
-                          key={`cell-${index}`}
-                          fill={index === arr.length - 1 ? '#3b82f6' : '#93c5fd'}
-                        />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
+          {/* Dashboard Grid */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 min-h-[400px]">
+            {widgets.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-16">
+                <div className="w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center mb-4">
+                  <LayoutGrid className="w-10 h-10 text-blue-600" />
+                </div>
+                <h3 className="text-xl font-semibold text-gray-900 mb-2">Build Your Custom Dashboard</h3>
+                <p className="text-gray-500 text-center max-w-md mb-6">
+                  Use AI to create any visualization you need. Just describe what you want to see,
+                  and AI will generate the perfect chart.
+                </p>
+                <button
+                  onClick={() => setSidebarOpen(true)}
+                  className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-6 py-3 rounded-xl hover:from-blue-700 hover:to-indigo-700 transition-all font-medium flex items-center gap-2 shadow-lg shadow-blue-500/25"
+                >
+                  <Sparkles className="w-5 h-5" />
+                  Create Your First Chart
+                </button>
+                <p className="text-sm text-gray-400 mt-4">
+                  Try: "Show monthly revenue trend" or "Compare expenses by category"
+                </p>
               </div>
             ) : (
-              <div className="flex items-center justify-center h-32 text-gray-400">
-                <p className="text-sm">No revenue trend data available yet</p>
-              </div>
+              <DashboardGrid
+                widgets={widgets}
+                onLayoutChange={handleLayoutChange}
+                onRemoveWidget={handleRemoveWidget}
+                isEditing={isEditing}
+              />
             )}
           </div>
 
-          {/* Two Column Layout */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
-
-            {/* Expense Breakdown */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-              <div className="mb-6">
-                <h3 className="text-lg font-bold text-gray-900 mb-1">Expense Breakdown</h3>
-                <p className="text-sm text-gray-600">Distribution of expenses by category</p>
-              </div>
-
-              <div className="space-y-4">
-                {expenseBreakdown.map((item, index) => {
-                  const percentage = (item.value / totalExpenses) * 100;
-                  return (
-                    <div key={index}>
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="flex items-center gap-2">
-                          <div className={`w-3 h-3 rounded-full ${item.color}`}></div>
-                          <span className="text-sm font-medium text-gray-900">{item.label}</span>
-                        </div>
-                        <div className="text-right">
-                          <span className="text-sm font-semibold text-gray-900">${(item.value / 1000).toFixed(1)}K</span>
-                          <span className="text-xs text-gray-500 ml-2">{percentage.toFixed(1)}%</span>
-                        </div>
-                      </div>
-                      <div className="w-full bg-gray-100 rounded-full h-2">
-                        <div
-                          className={`h-2 rounded-full ${item.color} transition-all duration-500`}
-                          style={{ width: `${percentage}%` }}
-                        ></div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-
-              <div className="mt-6 pt-6 border-t border-gray-200">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-semibold text-gray-700">Total Expenses</span>
-                  <span className="text-lg font-bold text-gray-900">${(totalExpenses / 1000).toFixed(1)}K</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Customer Growth */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-              <div className="mb-6">
-                <h3 className="text-lg font-bold text-gray-900 mb-1">Customer Growth</h3>
-                <p className="text-sm text-gray-600">Total customers over the last 12 months</p>
-              </div>
-
-              {customerGrowth.length > 0 ? (
-                <div className="h-64">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart
-                      data={customerGrowth}
-                      margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
-                    >
-                      <defs>
-                        <linearGradient id="colorCustomers" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#22c55e" stopOpacity={0.3}/>
-                          <stop offset="95%" stopColor="#22c55e" stopOpacity={0}/>
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
-                      <XAxis
-                        dataKey="label"
-                        axisLine={false}
-                        tickLine={false}
-                        tick={{ fontSize: 11, fill: '#6b7280' }}
-                      />
-                      <YAxis
-                        axisLine={false}
-                        tickLine={false}
-                        tick={{ fontSize: 11, fill: '#6b7280' }}
-                        width={50}
-                      />
-                      <Tooltip
-                        formatter={(value) => [(value ?? 0).toLocaleString(), 'Customers']}
-                        contentStyle={{
-                          backgroundColor: '#fff',
-                          border: '1px solid #e5e7eb',
-                          borderRadius: '8px',
-                          boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
-                        }}
-                      />
-                      <Area
-                        type="monotone"
-                        dataKey="value"
-                        stroke="#22c55e"
-                        strokeWidth={2}
-                        fillOpacity={1}
-                        fill="url(#colorCustomers)"
-                      />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                </div>
-              ) : (
-                <div className="flex items-center justify-center h-32 text-gray-400">
-                  <p className="text-sm">No customer growth data available yet</p>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Bottom Row - Pipeline and Products */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-
-            {/* Sales Pipeline Funnel */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-              <div className="mb-6">
-                <h3 className="text-lg font-bold text-gray-900 mb-1">Sales Pipeline</h3>
-                <p className="text-sm text-gray-600">Conversion funnel from leads to customers</p>
-              </div>
-
-              {pipelineData.length > 0 ? (
-                <div className="h-64">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart
-                      layout="vertical"
-                      data={pipelineData}
-                      margin={{ top: 10, right: 30, left: 80, bottom: 5 }}
-                    >
-                      <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f0f0f0" />
-                      <XAxis
-                        type="number"
-                        axisLine={false}
-                        tickLine={false}
-                        tick={{ fontSize: 11, fill: '#6b7280' }}
-                      />
-                      <YAxis
-                        type="category"
-                        dataKey="label"
-                        axisLine={false}
-                        tickLine={false}
-                        tick={{ fontSize: 12, fill: '#374151' }}
-                        width={80}
-                      />
-                      <Tooltip
-                        formatter={(value) => [(value ?? 0).toLocaleString(), 'Count']}
-                        contentStyle={{
-                          backgroundColor: '#fff',
-                          border: '1px solid #e5e7eb',
-                          borderRadius: '8px',
-                          boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
-                        }}
-                      />
-                      <Bar dataKey="value" radius={[0, 4, 4, 0]} maxBarSize={40}>
-                        {pipelineData.map((_, index) => {
-                          const colors = ['#c084fc', '#a855f7', '#9333ea', '#7e22ce', '#6b21a8'];
-                          return (
-                            <Cell
-                              key={`cell-${index}`}
-                              fill={colors[index % colors.length]}
-                            />
-                          );
-                        })}
-                      </Bar>
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              ) : (
-                <div className="flex items-center justify-center h-32 text-gray-400">
-                  <p className="text-sm">No pipeline data available yet</p>
-                </div>
-              )}
-
-              {pipelineData.length > 0 && (
-                <div className="mt-6 pt-6 border-t border-gray-200">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-semibold text-gray-700">Overall Conversion</span>
-                    <span className="text-lg font-bold text-purple-600">
-                      {pipelineData.length >= 2
-                        ? ((pipelineData[pipelineData.length - 1].value / (pipelineData[0].value || 1)) * 100).toFixed(1)
-                        : '0.0'}%
-                    </span>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Top Products/Services */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-              <div className="mb-6">
-                <h3 className="text-lg font-bold text-gray-900 mb-1">Top Products/Services</h3>
-                <p className="text-sm text-gray-600">Best performing offerings by revenue</p>
-              </div>
-
-              <div className="space-y-4">
-                {topProductsData.map((item, index) => (
-                  <div key={index} className="flex items-center gap-4">
-                    <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center text-white font-bold text-sm">
-                      {index + 1}
-                    </div>
-                    <div className="flex-1">
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-sm font-medium text-gray-900">{item.label}</span>
-                        <span className="text-sm font-semibold text-gray-900">${(item.value / 1000).toFixed(1)}K</span>
-                      </div>
-                      <div className="w-full bg-gray-100 rounded-full h-2">
-                        <div
-                          className="h-2 rounded-full bg-gradient-to-r from-blue-500 to-purple-600 transition-all duration-500"
-                          style={{ width: `${topProductsData[0]?.value ? (item.value / topProductsData[0].value) * 100 : 0}%` }}
-                        ></div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-
+          {/* Quick Add Button (Floating) */}
+          {widgets.length > 0 && (
+            <button
+              onClick={() => setSidebarOpen(true)}
+              className="fixed bottom-8 right-8 w-14 h-14 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-full shadow-xl shadow-blue-500/30 hover:from-blue-700 hover:to-indigo-700 transition-all flex items-center justify-center z-30"
+            >
+              <Plus className="w-6 h-6" />
+            </button>
+          )}
         </div>
       </div>
+
+      {/* AI Sidebar */}
+      <AISidebar
+        isOpen={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
+        onAddChart={handleAddChart}
+        walletAddress={address || ''}
+        connectedIntegrations={connectedIntegrations}
+      />
     </Layout>
   );
 }
