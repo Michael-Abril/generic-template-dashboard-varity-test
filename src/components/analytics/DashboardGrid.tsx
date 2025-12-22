@@ -72,7 +72,7 @@ export default function DashboardGrid({
   };
 
   // Generate layout from widgets
-  const layout: Layout[] = widgets.map((widget, index) => ({
+  const layout = widgets.map((widget, index) => ({
     i: widget.id,
     x: widget.layout?.x ?? (index % 2) * 6,
     y: widget.layout?.y ?? Math.floor(index / 2) * 3,
@@ -80,7 +80,7 @@ export default function DashboardGrid({
     h: widget.layout?.h ?? 3,
     minW: 3,
     minH: 2
-  }));
+  })) as Layout[];
 
   if (widgets.length === 0) {
     return (
