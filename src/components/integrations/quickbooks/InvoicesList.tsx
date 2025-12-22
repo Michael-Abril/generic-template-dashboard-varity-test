@@ -101,7 +101,7 @@ export default function InvoicesList({ walletAddress, invoices: rawInvoices = []
     setShowInvoiceForm(true);
   };
 
-  const handleEditInvoice = (invoice: Invoice) => {
+  const handleEditInvoice = (invoice: ReturnType<typeof normalizeInvoice>) => {
     setSelectedInvoice(invoice);
     setShowInvoiceForm(true);
   };
