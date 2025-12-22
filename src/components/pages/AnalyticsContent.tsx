@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { usePrivy } from '@privy-io/react-auth';
 import { useWalletSync } from '@/app/providers';
 import { useRouter } from 'next/navigation';
@@ -10,19 +10,29 @@ import { useToast } from '@/components/ui/Toast';
 import {
   FileSpreadsheet,
   FileText,
-  DollarSign,
-  Users,
-  BarChart3,
-  Target,
   Sparkles,
   Settings2,
   Save,
   RotateCcw,
   Plus,
-  LayoutGrid
+  LayoutGrid,
+  Library,
+  Grid3X3
 } from 'lucide-react';
-import { Layout as GridLayout } from 'react-grid-layout';
-import { AISidebar, DashboardGrid } from '@/components/analytics';
+import { Layout as GridLayout, LayoutItem } from 'react-grid-layout';
+import {
+  AISidebar,
+  DashboardGrid,
+  TabBar,
+  WidgetLibrary,
+  DynamicChart,
+  KPIWidget,
+  DataTableWidget,
+  ListWidget,
+  TextWidget
+} from '@/components/analytics';
+import type { DashboardTab, WidgetTemplate } from '@/components/analytics';
+import LayoutTemplates, { LAYOUT_TEMPLATES, LayoutTemplate } from '@/components/analytics/LayoutTemplates';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8002';
 
@@ -45,11 +55,84 @@ interface ChartConfig {
 
 interface Widget {
   id: string;
-  chart: ChartConfig;
-  layout: GridLayout;
+  type: 'chart' | 'kpi' | 'table' | 'list' | 'text' | 'metric';
+  subtype?: string;
+  title: string;
+  chart?: ChartConfig;
+  config?: Record<string, unknown>;
+  layout: LayoutItem;
+}
+
+interface TabLayout {
+  tabId: string;
+  widgets: Widget[];
 }
 
 type TimePeriod = 'mtd' | 'qtd' | 'ytd' | 'custom';
+
+// Sample data generators for different widget types
+const generateSampleKPIData = (subtype?: string) => {
+  const samples: Record<string, { value: number; change: number; prefix?: string; suffix?: string }> = {
+    revenue: { value: 125000, change: 12.5, prefix: '$' },
+    customers: { value: 1234, change: 8.3 },
+    orders: { value: 567, change: -2.1 },
+    conversion: { value: 3.4, change: 0.5, suffix: '%' },
+    profit: { value: 45000, change: 15.2, prefix: '$' },
+    margin: { value: 32.5, change: 2.1, suffix: '%' },
+    pipeline: { value: 890000, change: 18.7, prefix: '$' },
+    deals: { value: 45, change: 5.0 },
+    growth: { value: 24.5, change: 3.2, suffix: '%' },
+  };
+  return samples[subtype || 'revenue'] || samples.revenue;
+};
+
+const generateSampleListData = (subtype?: string) => {
+  const lists: Record<string, Array<{ id: string; title: string; subtitle?: string; value?: string | number; change?: number }>> = {
+    customers: [
+      { id: '1', title: 'Acme Corp', subtitle: 'Enterprise', value: '$45,000', change: 12 },
+      { id: '2', title: 'TechStart Inc', subtitle: 'Growth', value: '$32,000', change: 8 },
+      { id: '3', title: 'Global Industries', subtitle: 'Enterprise', value: '$28,000', change: -3 },
+      { id: '4', title: 'Innovation Labs', subtitle: 'Startup', value: '$21,000', change: 25 },
+      { id: '5', title: 'Digital Solutions', subtitle: 'Growth', value: '$18,000', change: 5 },
+    ],
+    products: [
+      { id: '1', title: 'Pro Plan', subtitle: '450 sales', value: '$89,100' },
+      { id: '2', title: 'Enterprise Plan', subtitle: '120 sales', value: '$71,880' },
+      { id: '3', title: 'Starter Plan', subtitle: '890 sales', value: '$44,500' },
+      { id: '4', title: 'Add-on: Analytics', subtitle: '320 sales', value: '$15,680' },
+      { id: '5', title: 'Add-on: API Access', subtitle: '210 sales', value: '$10,290' },
+    ],
+    activity: [
+      { id: '1', title: 'New customer signed up', subtitle: 'Acme Corp', value: '2 min ago' },
+      { id: '2', title: 'Invoice paid', subtitle: '#INV-2024-0892', value: '15 min ago' },
+      { id: '3', title: 'Deal closed', subtitle: 'TechStart Inc - $32,000', value: '1 hr ago' },
+      { id: '4', title: 'Meeting scheduled', subtitle: 'With Global Industries', value: '2 hrs ago' },
+      { id: '5', title: 'Email campaign sent', subtitle: 'Q4 Newsletter', value: '3 hrs ago' },
+    ],
+    deals: [
+      { id: '1', title: 'Enterprise Deal', subtitle: 'Negotiating', value: '$125,000', change: 75 },
+      { id: '2', title: 'Growth Package', subtitle: 'Proposal Sent', value: '$45,000', change: 50 },
+      { id: '3', title: 'Starter Bundle', subtitle: 'Demo Scheduled', value: '$12,000', change: 25 },
+    ],
+  };
+  return lists[subtype || 'customers'] || lists.customers;
+};
+
+const generateSampleTableData = () => ({
+  columns: [
+    { key: 'name', label: 'Name', type: 'text' as const },
+    { key: 'amount', label: 'Amount', type: 'currency' as const },
+    { key: 'date', label: 'Date', type: 'date' as const },
+    { key: 'status', label: 'Status', type: 'status' as const },
+  ],
+  data: [
+    { id: '1', name: 'Invoice #001', amount: 2500, date: '2024-12-15', status: 'success' },
+    { id: '2', name: 'Invoice #002', amount: 1800, date: '2024-12-14', status: 'warning' },
+    { id: '3', name: 'Invoice #003', amount: 3200, date: '2024-12-13', status: 'success' },
+    { id: '4', name: 'Invoice #004', amount: 950, date: '2024-12-12', status: 'error' },
+    { id: '5', name: 'Invoice #005', amount: 4100, date: '2024-12-11', status: 'success' },
+  ],
+});
 
 export default function AnalyticsContent() {
   const { authenticated } = usePrivy();
@@ -65,28 +148,58 @@ export default function AnalyticsContent() {
   const [loading, setLoading] = useState(false);
   const [analyticsData, setAnalyticsData] = useState<Record<string, unknown> | null>(null);
 
-  // AI Sidebar state
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  // Tab state
+  const [tabs, setTabs] = useState<DashboardTab[]>([
+    { id: 'default', name: 'Overview', isDefault: true, createdAt: new Date().toISOString() }
+  ]);
+  const [activeTabId, setActiveTabId] = useState('default');
+
+  // Sidebar states
+  const [aiSidebarOpen, setAiSidebarOpen] = useState(false);
+  const [widgetLibraryOpen, setWidgetLibraryOpen] = useState(false);
+  const [templatesOpen, setTemplatesOpen] = useState(false);
 
   // Dashboard customization state
-  const [widgets, setWidgets] = useState<Widget[]>([]);
+  const [tabLayouts, setTabLayouts] = useState<TabLayout[]>([
+    { tabId: 'default', widgets: [] }
+  ]);
   const [isEditing, setIsEditing] = useState(true);
   const [hasChanges, setHasChanges] = useState(false);
   const [connectedIntegrations, setConnectedIntegrations] = useState<string[]>([]);
 
+  // Get current tab's widgets
+  const currentWidgets = useMemo(() => {
+    const layout = tabLayouts.find(l => l.tabId === activeTabId);
+    return layout?.widgets || [];
+  }, [tabLayouts, activeTabId]);
+
   // Load saved layout from localStorage on mount
   useEffect(() => {
     if (address) {
-      const savedWidgets = localStorage.getItem(`analytics_widgets_${address}`);
-      if (savedWidgets) {
+      // Load tabs
+      const savedTabs = localStorage.getItem(`analytics_tabs_${address}`);
+      if (savedTabs) {
         try {
-          setWidgets(JSON.parse(savedWidgets));
+          const parsed = JSON.parse(savedTabs);
+          setTabs(parsed);
+          if (parsed.length > 0) {
+            setActiveTabId(parsed[0].id);
+          }
         } catch (e) {
-          console.error('Failed to parse saved widgets:', e);
+          console.error('Failed to parse saved tabs:', e);
         }
       }
 
-      // Fetch connected integrations
+      // Load layouts
+      const savedLayouts = localStorage.getItem(`analytics_layouts_${address}`);
+      if (savedLayouts) {
+        try {
+          setTabLayouts(JSON.parse(savedLayouts));
+        } catch (e) {
+          console.error('Failed to parse saved layouts:', e);
+        }
+      }
+
       fetchConnectedIntegrations();
     }
   }, [address]);
@@ -153,54 +266,190 @@ export default function AnalyticsContent() {
     }
   }, [authenticated, router]);
 
+  // Tab handlers
+  const handleAddTab = useCallback(() => {
+    const newTab: DashboardTab = {
+      id: `tab-${Date.now()}`,
+      name: `Dashboard ${tabs.length + 1}`,
+      createdAt: new Date().toISOString()
+    };
+    setTabs(prev => [...prev, newTab]);
+    setTabLayouts(prev => [...prev, { tabId: newTab.id, widgets: [] }]);
+    setActiveTabId(newTab.id);
+    setHasChanges(true);
+  }, [tabs.length]);
+
+  const handleRenameTab = useCallback((tabId: string, newName: string) => {
+    setTabs(prev => prev.map(t => t.id === tabId ? { ...t, name: newName } : t));
+    setHasChanges(true);
+  }, []);
+
+  const handleDeleteTab = useCallback((tabId: string) => {
+    if (tabs.length <= 1) {
+      toast.error('Cannot delete the last tab');
+      return;
+    }
+    setTabs(prev => prev.filter(t => t.id !== tabId));
+    setTabLayouts(prev => prev.filter(l => l.tabId !== tabId));
+    if (activeTabId === tabId) {
+      setActiveTabId(tabs[0].id === tabId ? tabs[1]?.id : tabs[0].id);
+    }
+    setHasChanges(true);
+  }, [tabs, activeTabId, toast]);
+
+  const handleDuplicateTab = useCallback((tabId: string) => {
+    const originalTab = tabs.find(t => t.id === tabId);
+    const originalLayout = tabLayouts.find(l => l.tabId === tabId);
+    if (!originalTab) return;
+
+    const newTabId = `tab-${Date.now()}`;
+    const newTab: DashboardTab = {
+      id: newTabId,
+      name: `${originalTab.name} (Copy)`,
+      createdAt: new Date().toISOString()
+    };
+
+    setTabs(prev => [...prev, newTab]);
+    setTabLayouts(prev => [...prev, {
+      tabId: newTabId,
+      widgets: originalLayout?.widgets.map(w => ({
+        ...w,
+        id: `${w.id}-${Date.now()}`,
+        layout: { ...w.layout, i: `${w.id}-${Date.now()}` }
+      })) || []
+    }]);
+    setActiveTabId(newTabId);
+    setHasChanges(true);
+  }, [tabs, tabLayouts]);
+
+  const handleReorderTabs = useCallback((newTabs: DashboardTab[]) => {
+    setTabs(newTabs);
+    setHasChanges(true);
+  }, []);
+
   // Handle adding a chart from AI sidebar
-  const handleAddChart = useCallback((chart: ChartConfig) => {
+  const handleAddChartFromAI = useCallback((chart: ChartConfig) => {
     const newWidget: Widget = {
       id: chart.id,
+      type: 'chart',
+      title: chart.title,
       chart,
       layout: {
         i: chart.id,
-        x: (widgets.length % 2) * 6,
-        y: Math.floor(widgets.length / 2) * 3,
+        x: (currentWidgets.length % 2) * 6,
+        y: Math.floor(currentWidgets.length / 2) * 3,
         w: chart.type === 'kpi' ? 3 : 6,
         h: chart.type === 'kpi' ? 2 : 3,
         minW: 3,
         minH: 2
       }
     };
-    setWidgets(prev => [...prev, newWidget]);
+
+    setTabLayouts(prev => prev.map(l =>
+      l.tabId === activeTabId
+        ? { ...l, widgets: [...l.widgets, newWidget] }
+        : l
+    ));
     setHasChanges(true);
     toast.success('Chart added to dashboard');
-  }, [widgets, toast]);
+  }, [currentWidgets.length, activeTabId, toast]);
+
+  // Handle adding widget from library
+  const handleAddWidgetFromLibrary = useCallback((template: WidgetTemplate) => {
+    const widgetId = `widget-${Date.now()}`;
+    const newWidget: Widget = {
+      id: widgetId,
+      type: template.type,
+      subtype: template.subtype,
+      title: template.name,
+      config: template.config,
+      layout: {
+        i: widgetId,
+        x: (currentWidgets.length % 2) * 6,
+        y: Math.floor(currentWidgets.length / 2) * 3,
+        w: template.defaultSize.w,
+        h: template.defaultSize.h,
+        minW: 3,
+        minH: 2
+      }
+    };
+
+    setTabLayouts(prev => prev.map(l =>
+      l.tabId === activeTabId
+        ? { ...l, widgets: [...l.widgets, newWidget] }
+        : l
+    ));
+    setHasChanges(true);
+    toast.success(`${template.name} added to dashboard`);
+  }, [currentWidgets.length, activeTabId, toast]);
+
+  // Handle applying a layout template
+  const handleApplyTemplate = useCallback((template: LayoutTemplate) => {
+    const newWidgets: Widget[] = template.widgets.map((tw, index) => {
+      const widgetId = `widget-${Date.now()}-${index}`;
+      return {
+        id: widgetId,
+        type: tw.type as Widget['type'],
+        subtype: tw.subtype,
+        title: tw.title,
+        config: tw.config,
+        layout: {
+          i: widgetId,
+          x: tw.x,
+          y: tw.y,
+          w: tw.w,
+          h: tw.h,
+          minW: 3,
+          minH: 2
+        }
+      };
+    });
+
+    setTabLayouts(prev => prev.map(l =>
+      l.tabId === activeTabId
+        ? { ...l, widgets: newWidgets }
+        : l
+    ));
+    setHasChanges(true);
+    toast.success(`Applied "${template.name}" template`);
+  }, [activeTabId, toast]);
 
   // Handle layout changes from drag/resize
-  const handleLayoutChange = useCallback((newLayout: GridLayout[]) => {
-    setWidgets(prev =>
-      prev.map(widget => {
-        const layoutItem = newLayout.find(l => l.i === widget.id);
-        if (layoutItem) {
-          return { ...widget, layout: layoutItem };
-        }
-        return widget;
-      })
-    );
+  const handleLayoutChange = useCallback((newLayout: GridLayout) => {
+    setTabLayouts(prev => prev.map(l => {
+      if (l.tabId !== activeTabId) return l;
+      return {
+        ...l,
+        widgets: l.widgets.map(widget => {
+          const layoutItem = newLayout.find(item => item.i === widget.id);
+          if (layoutItem) {
+            return { ...widget, layout: layoutItem };
+          }
+          return widget;
+        })
+      };
+    }));
     setHasChanges(true);
-  }, []);
+  }, [activeTabId]);
 
   // Handle removing a widget
   const handleRemoveWidget = useCallback((widgetId: string) => {
-    setWidgets(prev => prev.filter(w => w.id !== widgetId));
+    setTabLayouts(prev => prev.map(l =>
+      l.tabId === activeTabId
+        ? { ...l, widgets: l.widgets.filter(w => w.id !== widgetId) }
+        : l
+    ));
     setHasChanges(true);
-    toast.info('Chart removed from dashboard');
-  }, [toast]);
+    toast.info('Widget removed from dashboard');
+  }, [activeTabId, toast]);
 
   // Save layout
   const handleSaveLayout = useCallback(async () => {
     if (!address) return;
 
     try {
-      // Save to localStorage for now (MVP)
-      localStorage.setItem(`analytics_widgets_${address}`, JSON.stringify(widgets));
+      localStorage.setItem(`analytics_tabs_${address}`, JSON.stringify(tabs));
+      localStorage.setItem(`analytics_layouts_${address}`, JSON.stringify(tabLayouts));
 
       // Also save to backend (if available)
       try {
@@ -209,17 +458,11 @@ export default function AnalyticsContent() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             wallet_address: address,
-            name: 'Default Layout',
-            widgets: widgets.map(w => ({
-              id: w.id,
-              chart_config: w.chart,
-              ...w.layout
-            })),
-            is_default: true
+            tabs,
+            layouts: tabLayouts
           })
         });
       } catch (e) {
-        // Backend save is optional for MVP
         console.log('Backend layout save not available');
       }
 
@@ -228,14 +471,16 @@ export default function AnalyticsContent() {
     } catch (error) {
       toast.error('Failed to save layout');
     }
-  }, [address, widgets, toast]);
+  }, [address, tabs, tabLayouts, toast]);
 
-  // Reset layout
+  // Reset current tab's layout
   const handleResetLayout = useCallback(() => {
-    setWidgets([]);
+    setTabLayouts(prev => prev.map(l =>
+      l.tabId === activeTabId ? { ...l, widgets: [] } : l
+    ));
     setHasChanges(true);
     toast.info('Layout reset');
-  }, [toast]);
+  }, [activeTabId, toast]);
 
   // Export functions
   const handleExportPDF = () => {
@@ -243,12 +488,13 @@ export default function AnalyticsContent() {
   };
 
   const handleExportCSV = () => {
-    if (widgets.length === 0) {
-      toast.info('No data to export', 'Add some charts first.');
+    if (currentWidgets.length === 0) {
+      toast.info('No data to export', 'Add some widgets first.');
       return;
     }
-    const allData = widgets.flatMap(w =>
-      w.chart.data.map(d => `${w.chart.title},${d.label},${d.value}`)
+    const chartWidgets = currentWidgets.filter(w => w.chart);
+    const allData = chartWidgets.flatMap(w =>
+      w.chart?.data.map(d => `${w.title},${d.label},${d.value}`) || []
     );
     const csv = 'Chart,Label,Value\n' + allData.join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
@@ -258,6 +504,82 @@ export default function AnalyticsContent() {
     link.download = `analytics-${new Date().toISOString().split('T')[0]}.csv`;
     link.click();
   };
+
+  // Render individual widget based on type
+  const renderWidget = useCallback((widget: Widget) => {
+    switch (widget.type) {
+      case 'chart':
+        if (widget.chart) {
+          return <DynamicChart chart={widget.chart} />;
+        }
+        return <div className="flex items-center justify-center h-full text-gray-400">No chart data</div>;
+
+      case 'kpi':
+      case 'metric': {
+        const kpiData = generateSampleKPIData(widget.subtype);
+        return (
+          <KPIWidget
+            title={widget.title}
+            value={kpiData.value}
+            change={kpiData.change}
+            prefix={kpiData.prefix}
+            suffix={kpiData.suffix}
+            sparklineData={[100, 120, 110, 140, 130, kpiData.value / 1000]}
+          />
+        );
+      }
+
+      case 'table': {
+        const tableData = generateSampleTableData();
+        return (
+          <DataTableWidget
+            title={widget.title}
+            columns={tableData.columns}
+            data={tableData.data}
+            pageSize={5}
+          />
+        );
+      }
+
+      case 'list': {
+        const listData = generateSampleListData(widget.subtype);
+        return (
+          <ListWidget
+            title={widget.title}
+            items={listData}
+            variant={widget.subtype === 'activity' ? 'activity' : 'ranked'}
+            maxItems={5}
+          />
+        );
+      }
+
+      case 'text':
+        return (
+          <TextWidget
+            content={(widget.config?.content as string) || ''}
+            onChange={(content) => {
+              setTabLayouts(prev => prev.map(l =>
+                l.tabId === activeTabId
+                  ? {
+                      ...l,
+                      widgets: l.widgets.map(w =>
+                        w.id === widget.id
+                          ? { ...w, config: { ...w.config, content } }
+                          : w
+                      )
+                    }
+                  : l
+              ));
+              setHasChanges(true);
+            }}
+            variant={(widget.config?.variant as 'note' | 'header' | 'markdown') || 'note'}
+          />
+        );
+
+      default:
+        return <div className="flex items-center justify-center h-full text-gray-400">Unknown widget type</div>;
+    }
+  }, [activeTabId]);
 
   // Show loading while checking authentication
   if (!authenticated) {
@@ -271,19 +593,12 @@ export default function AnalyticsContent() {
     );
   }
 
-  // Derived metrics from backend analytics data
-  const metrics = (analyticsData as { metrics?: Record<string, number> })?.metrics || {};
-  const totalRevenue = typeof metrics.revenue === 'number' ? metrics.revenue : 0;
-  const totalCustomers = typeof metrics.customers === 'number' ? metrics.customers : 0;
-  const averageRevenue = typeof metrics.average_revenue === 'number' ? metrics.average_revenue : 0;
-  const conversionRate = typeof metrics.conversion_rate === 'number' ? metrics.conversion_rate : 0;
-
   return (
     <Layout>
       <div className="min-h-screen bg-gray-50">
         <div className="px-4 sm:px-6 py-6">
           {/* Header */}
-          <div className="mb-8">
+          <div className="mb-6">
             <div className="flex items-center gap-2 text-sm text-gray-500 mb-2">
               <Link href="/dashboard" className="hover:text-gray-700 transition-colors duration-150">Dashboard</Link>
               <span>/</span>
@@ -295,7 +610,7 @@ export default function AnalyticsContent() {
                   AI-Powered Analytics
                 </h1>
                 <p className="text-gray-600">
-                  Create custom visualizations with AI - just describe what you want to see
+                  Create custom visualizations with AI - drag, drop, and customize your dashboards
                 </p>
               </div>
 
@@ -323,25 +638,27 @@ export default function AnalyticsContent() {
                   <FileText className="w-4 h-4" />
                   Export PDF
                 </button>
-                <button
-                  onClick={() => setSidebarOpen(true)}
-                  className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-4 py-2 rounded-lg hover:from-blue-700 hover:to-indigo-700 transition-all text-sm font-medium flex items-center gap-2 shadow-lg shadow-blue-500/25"
-                >
-                  <Sparkles className="w-4 h-4" />
-                  Create Chart with AI
-                </button>
               </div>
             </div>
           </div>
 
-          {/* Time Period Selector */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-8">
-            <div className="flex items-center justify-between flex-wrap gap-4">
-              <div>
-                <h3 className="font-semibold text-gray-900 mb-1">Time Period</h3>
-                <p className="text-sm text-gray-600">Select the time range for your analytics</p>
-              </div>
+          {/* Tab Bar */}
+          <TabBar
+            tabs={tabs}
+            activeTabId={activeTabId}
+            onTabChange={setActiveTabId}
+            onAddTab={handleAddTab}
+            onRenameTab={handleRenameTab}
+            onDeleteTab={handleDeleteTab}
+            onDuplicateTab={handleDuplicateTab}
+            onReorderTabs={handleReorderTabs}
+            onOpenTemplates={() => setTemplatesOpen(true)}
+          />
 
+          {/* Time Period & Controls */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-6">
+            <div className="flex items-center justify-between flex-wrap gap-4">
+              {/* Time Period Selector */}
               <div className="flex items-center gap-2">
                 {(['mtd', 'qtd', 'ytd', 'custom'] as TimePeriod[]).map((period) => (
                   <button
@@ -353,116 +670,64 @@ export default function AnalyticsContent() {
                         : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                     }`}
                   >
-                    {period === 'mtd' && 'Month to Date'}
-                    {period === 'qtd' && 'Quarter to Date'}
-                    {period === 'ytd' && 'Year to Date'}
-                    {period === 'custom' && 'Custom Range'}
+                    {period === 'mtd' && 'MTD'}
+                    {period === 'qtd' && 'QTD'}
+                    {period === 'ytd' && 'YTD'}
+                    {period === 'custom' && 'Custom'}
                   </button>
                 ))}
-              </div>
-            </div>
 
-            {timePeriod === 'custom' && (
-              <div className="mt-4 flex items-center gap-4">
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Start Date</label>
-                  <input
-                    type="date"
-                    value={customDateRange.start}
-                    onChange={(e) => setCustomDateRange({ ...customDateRange, start: e.target.value })}
-                    className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">End Date</label>
-                  <input
-                    type="date"
-                    value={customDateRange.end}
-                    onChange={(e) => setCustomDateRange({ ...customDateRange, end: e.target.value })}
-                    className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
-                  />
-                </div>
+                {timePeriod === 'custom' && (
+                  <div className="flex items-center gap-2 ml-2">
+                    <input
+                      type="date"
+                      value={customDateRange.start}
+                      onChange={(e) => setCustomDateRange({ ...customDateRange, start: e.target.value })}
+                      className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                    />
+                    <span className="text-gray-400">to</span>
+                    <input
+                      type="date"
+                      value={customDateRange.end}
+                      onChange={(e) => setCustomDateRange({ ...customDateRange, end: e.target.value })}
+                      className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                    />
+                  </div>
+                )}
               </div>
-            )}
-          </div>
 
-          {/* Key Metrics Summary */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-            <div className="bg-white border border-gray-200 rounded-xl p-6 hover:shadow-lg hover:border-gray-300 hover:-translate-y-0.5 transition-all duration-200">
-              <div className="flex items-center gap-3 mb-3">
-                <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
-                  <DollarSign className="w-6 h-6 text-green-600" />
-                </div>
-                <div>
-                  <p className="text-sm text-gray-600">Total Revenue</p>
-                  <p className="text-2xl font-bold text-gray-900">
-                    {totalRevenue ? `$${(totalRevenue / 1000).toFixed(1)}K` : '—'}
-                  </p>
-                </div>
+              {/* Action Buttons */}
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setWidgetLibraryOpen(true)}
+                  className="px-4 py-2 rounded-lg text-sm font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 transition-all flex items-center gap-2"
+                >
+                  <Library className="w-4 h-4" />
+                  Widget Library
+                </button>
+                <button
+                  onClick={() => setTemplatesOpen(true)}
+                  className="px-4 py-2 rounded-lg text-sm font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 transition-all flex items-center gap-2"
+                >
+                  <Grid3X3 className="w-4 h-4" />
+                  Templates
+                </button>
+                <button
+                  onClick={() => setAiSidebarOpen(true)}
+                  className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-4 py-2 rounded-lg hover:from-blue-700 hover:to-indigo-700 transition-all text-sm font-medium flex items-center gap-2 shadow-lg shadow-blue-500/25"
+                >
+                  <Sparkles className="w-4 h-4" />
+                  Create with AI
+                </button>
               </div>
-              <p className="text-sm text-green-600 font-medium">
-                {(metrics as { revenue_change_percent?: number }).revenue_change_percent != null
-                  ? `${(metrics as { revenue_change_percent: number }).revenue_change_percent}% vs last period`
-                  : 'Connect integrations for data'}
-              </p>
-            </div>
-
-            <div className="bg-white border border-gray-200 rounded-xl p-6 hover:shadow-lg hover:border-gray-300 hover:-translate-y-0.5 transition-all duration-200">
-              <div className="flex items-center gap-3 mb-3">
-                <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
-                  <Users className="w-6 h-6 text-blue-600" />
-                </div>
-                <div>
-                  <p className="text-sm text-gray-600">Total Customers</p>
-                  <p className="text-2xl font-bold text-gray-900">
-                    {totalCustomers ? totalCustomers.toLocaleString() : '—'}
-                  </p>
-                </div>
-              </div>
-              <p className="text-sm text-blue-600 font-medium">
-                {(metrics as { customers_change_percent?: number }).customers_change_percent != null
-                  ? `${(metrics as { customers_change_percent: number }).customers_change_percent}% vs last period`
-                  : 'Connect integrations for data'}
-              </p>
-            </div>
-
-            <div className="bg-white border border-gray-200 rounded-xl p-6 hover:shadow-lg hover:border-gray-300 hover:-translate-y-0.5 transition-all duration-200">
-              <div className="flex items-center gap-3 mb-3">
-                <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center">
-                  <BarChart3 className="w-6 h-6 text-orange-600" />
-                </div>
-                <div>
-                  <p className="text-sm text-gray-600">Avg Revenue</p>
-                  <p className="text-2xl font-bold text-gray-900">
-                    {averageRevenue ? `$${(averageRevenue / 1000).toFixed(1)}K` : '—'}
-                  </p>
-                </div>
-              </div>
-              <p className="text-sm text-orange-600 font-medium">Per month average</p>
-            </div>
-
-            <div className="bg-white border border-gray-200 rounded-xl p-6 hover:shadow-lg hover:border-gray-300 hover:-translate-y-0.5 transition-all duration-200">
-              <div className="flex items-center gap-3 mb-3">
-                <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center">
-                  <Target className="w-6 h-6 text-purple-600" />
-                </div>
-                <div>
-                  <p className="text-sm text-gray-600">Conversion Rate</p>
-                  <p className="text-2xl font-bold text-gray-900">
-                    {conversionRate ? `${conversionRate.toFixed(1)}%` : '—'}
-                  </p>
-                </div>
-              </div>
-              <p className="text-sm text-purple-600 font-medium">Lead to customer</p>
             </div>
           </div>
 
           {/* Dashboard Controls */}
-          <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-3">
-              <h2 className="text-lg font-semibold text-gray-900">Custom Dashboard</h2>
               <span className="text-sm text-gray-500">
-                {widgets.length} chart{widgets.length !== 1 ? 's' : ''}
+                {currentWidgets.length} widget{currentWidgets.length !== 1 ? 's' : ''}
               </span>
             </div>
             <div className="flex items-center gap-2">
@@ -475,9 +740,9 @@ export default function AnalyticsContent() {
                 }`}
               >
                 <Settings2 className="w-4 h-4" />
-                {isEditing ? 'Editing' : 'Edit Layout'}
+                {isEditing ? 'Editing' : 'Edit'}
               </button>
-              {widgets.length > 0 && (
+              {currentWidgets.length > 0 && (
                 <button
                   onClick={handleResetLayout}
                   className="px-3 py-1.5 rounded-lg text-sm font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 transition-all flex items-center gap-2"
@@ -490,42 +755,74 @@ export default function AnalyticsContent() {
           </div>
 
           {/* Dashboard Grid */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 min-h-[400px]">
-            {widgets.length === 0 ? (
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 min-h-[500px]">
+            {currentWidgets.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16">
                 <div className="w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center mb-4">
                   <LayoutGrid className="w-10 h-10 text-blue-600" />
                 </div>
                 <h3 className="text-xl font-semibold text-gray-900 mb-2">Build Your Custom Dashboard</h3>
                 <p className="text-gray-500 text-center max-w-md mb-6">
-                  Use AI to create any visualization you need. Just describe what you want to see,
-                  and AI will generate the perfect chart.
+                  Add widgets from the library, use AI to generate charts, or start from a template.
                 </p>
-                <button
-                  onClick={() => setSidebarOpen(true)}
-                  className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-6 py-3 rounded-xl hover:from-blue-700 hover:to-indigo-700 transition-all font-medium flex items-center gap-2 shadow-lg shadow-blue-500/25"
-                >
-                  <Sparkles className="w-5 h-5" />
-                  Create Your First Chart
-                </button>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => setTemplatesOpen(true)}
+                    className="px-6 py-3 rounded-xl border-2 border-gray-200 hover:border-gray-300 transition-all font-medium flex items-center gap-2"
+                  >
+                    <Grid3X3 className="w-5 h-5" />
+                    Use Template
+                  </button>
+                  <button
+                    onClick={() => setWidgetLibraryOpen(true)}
+                    className="px-6 py-3 rounded-xl border-2 border-gray-200 hover:border-gray-300 transition-all font-medium flex items-center gap-2"
+                  >
+                    <Library className="w-5 h-5" />
+                    Add Widget
+                  </button>
+                  <button
+                    onClick={() => setAiSidebarOpen(true)}
+                    className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-6 py-3 rounded-xl hover:from-blue-700 hover:to-indigo-700 transition-all font-medium flex items-center gap-2 shadow-lg shadow-blue-500/25"
+                  >
+                    <Sparkles className="w-5 h-5" />
+                    Create with AI
+                  </button>
+                </div>
                 <p className="text-sm text-gray-400 mt-4">
                   Try: "Show monthly revenue trend" or "Compare expenses by category"
                 </p>
               </div>
             ) : (
               <DashboardGrid
-                widgets={widgets}
+                widgets={currentWidgets.map(w => ({
+                  id: w.id,
+                  chart: w.chart || {
+                    id: w.id,
+                    type: 'bar' as const,
+                    title: w.title,
+                    data: [],
+                    config: {}
+                  },
+                  layout: w.layout
+                }))}
                 onLayoutChange={handleLayoutChange}
                 onRemoveWidget={handleRemoveWidget}
                 isEditing={isEditing}
+                renderWidget={(widget) => {
+                  const fullWidget = currentWidgets.find(w => w.id === widget.id);
+                  if (fullWidget) {
+                    return renderWidget(fullWidget);
+                  }
+                  return null;
+                }}
               />
             )}
           </div>
 
           {/* Quick Add Button (Floating) */}
-          {widgets.length > 0 && (
+          {currentWidgets.length > 0 && (
             <button
-              onClick={() => setSidebarOpen(true)}
+              onClick={() => setWidgetLibraryOpen(true)}
               className="fixed bottom-8 right-8 w-14 h-14 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-full shadow-xl shadow-blue-500/30 hover:from-blue-700 hover:to-indigo-700 transition-all flex items-center justify-center z-30"
             >
               <Plus className="w-6 h-6" />
@@ -536,11 +833,25 @@ export default function AnalyticsContent() {
 
       {/* AI Sidebar */}
       <AISidebar
-        isOpen={sidebarOpen}
-        onClose={() => setSidebarOpen(false)}
-        onAddChart={handleAddChart}
+        isOpen={aiSidebarOpen}
+        onClose={() => setAiSidebarOpen(false)}
+        onAddChart={handleAddChartFromAI}
         walletAddress={address || ''}
         connectedIntegrations={connectedIntegrations}
+      />
+
+      {/* Widget Library Sidebar */}
+      <WidgetLibrary
+        isOpen={widgetLibraryOpen}
+        onClose={() => setWidgetLibraryOpen(false)}
+        onAddWidget={handleAddWidgetFromLibrary}
+      />
+
+      {/* Layout Templates Modal */}
+      <LayoutTemplates
+        isOpen={templatesOpen}
+        onClose={() => setTemplatesOpen(false)}
+        onApplyTemplate={handleApplyTemplate}
       />
     </Layout>
   );

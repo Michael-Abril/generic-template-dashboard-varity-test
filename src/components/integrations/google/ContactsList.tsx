@@ -140,8 +140,17 @@ export function ContactsList({ walletAddress, data }: ContactsListProps) {
       const resourceName = selectedContact.resourceName.replace('people/', '');
 
       const response = await fetch(
-        `${API_URL}/api/v1/integrations/google/contacts/${resourceName}?wallet_address=${walletAddress}&given_name=${encodeURIComponent(formData.given_name)}&family_name=${encodeURIComponent(formData.family_name)}&email=${encodeURIComponent(formData.email || '')}&phone=${encodeURIComponent(formData.phone || '')}`,
-        { method: 'PATCH' }
+        `${API_URL}/api/v1/integrations/google/contacts/${resourceName}?wallet_address=${walletAddress}`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            given_name: formData.given_name,
+            family_name: formData.family_name,
+            email: formData.email || undefined,
+            phone: formData.phone || undefined
+          })
+        }
       );
 
       if (!response.ok) {

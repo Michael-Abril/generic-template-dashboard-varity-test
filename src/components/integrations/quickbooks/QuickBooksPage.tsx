@@ -23,6 +23,7 @@ import ExpenseForm from './ExpenseForm';
 interface QuickBooksPageProps {
   walletAddress: string;
   data: any;
+  onRefresh?: () => void;
 }
 
 interface SidebarItem {
@@ -107,7 +108,7 @@ const CREATE_MENU_ITEMS = {
   ]
 };
 
-export default function QuickBooksPage({ walletAddress, data }: QuickBooksPageProps) {
+export default function QuickBooksPage({ walletAddress, data, onRefresh }: QuickBooksPageProps) {
   const [activeSection, setActiveSection] = useState('dashboard');
   const [expandedItems, setExpandedItems] = useState<string[]>(['sales', 'expenses', 'accounting']);
   const [showCreateMenu, setShowCreateMenu] = useState(false);
@@ -387,10 +388,8 @@ export default function QuickBooksPage({ walletAddress, data }: QuickBooksPagePr
               const result = await response.json();
               if (result.success) {
                 setShowInvoiceForm(false);
-                // Refresh data if on invoices page
-                if (activeSection === 'invoices') {
-                  window.location.reload();
-                }
+                // Refresh data after creating invoice
+                onRefresh?.();
               } else {
                 alert('Failed to create invoice: ' + (result.detail || 'Unknown error'));
               }
@@ -418,10 +417,8 @@ export default function QuickBooksPage({ walletAddress, data }: QuickBooksPagePr
               const result = await response.json();
               if (result.success) {
                 setShowCustomerForm(false);
-                // Refresh data if on customers page
-                if (activeSection === 'customers') {
-                  window.location.reload();
-                }
+                // Refresh data after creating customer
+                onRefresh?.();
               } else {
                 alert('Failed to create customer: ' + (result.detail || 'Unknown error'));
               }
@@ -449,10 +446,8 @@ export default function QuickBooksPage({ walletAddress, data }: QuickBooksPagePr
               const result = await response.json();
               if (result.success) {
                 setShowExpenseForm(false);
-                // Refresh data if on expenses page
-                if (activeSection === 'expenses-list') {
-                  window.location.reload();
-                }
+                // Refresh data after creating expense
+                onRefresh?.();
               } else {
                 alert('Failed to create expense: ' + (result.detail || 'Unknown error'));
               }

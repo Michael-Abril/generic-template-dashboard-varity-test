@@ -2,10 +2,13 @@
 
 import React, { useState, useCallback, useEffect } from 'react';
 import GridLayout, { Layout } from 'react-grid-layout';
-import { Trash2, GripVertical, Maximize2, Minimize2, MoreVertical } from 'lucide-react';
+import { Trash2, GripVertical, Maximize2, Minimize2 } from 'lucide-react';
 import DynamicChart from './DynamicChart';
 
 import 'react-grid-layout/css/styles.css';
+
+// Cast to avoid strict type checking issues with react-grid-layout
+const ReactGridLayout = GridLayout as any;
 
 interface ChartConfig {
   id: string;
@@ -24,17 +27,31 @@ interface ChartConfig {
   suggested_queries?: string[];
 }
 
+// Define LayoutItem for individual grid items
+interface LayoutItem {
+  i: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  minW?: number;
+  minH?: number;
+  maxW?: number;
+  maxH?: number;
+}
+
 interface Widget {
   id: string;
   chart: ChartConfig;
-  layout: Layout;
+  layout: LayoutItem;
 }
 
 interface DashboardGridProps {
   widgets: Widget[];
-  onLayoutChange: (layout: Layout[]) => void;
+  onLayoutChange: (layout: Layout) => void;
   onRemoveWidget: (widgetId: string) => void;
   isEditing?: boolean;
+  renderWidget?: (widget: Widget) => React.ReactNode;
 }
 
 const GRID_COLS = 12;
@@ -44,7 +61,8 @@ export default function DashboardGrid({
   widgets,
   onLayoutChange,
   onRemoveWidget,
-  isEditing = true
+  isEditing = true,
+  renderWidget
 }: DashboardGridProps) {
   const [containerWidth, setContainerWidth] = useState(1200);
   const [expandedWidget, setExpandedWidget] = useState<string | null>(null);
@@ -63,7 +81,7 @@ export default function DashboardGrid({
     return () => window.removeEventListener('resize', updateWidth);
   }, []);
 
-  const handleLayoutChange = useCallback((newLayout: Layout[]) => {
+  const handleLayoutChange = useCallback((newLayout: Layout) => {
     onLayoutChange(newLayout);
   }, [onLayoutChange]);
 
@@ -72,7 +90,7 @@ export default function DashboardGrid({
   };
 
   // Generate layout from widgets
-  const layout = widgets.map((widget, index) => ({
+  const layout: LayoutItem[] = widgets.map((widget, index) => ({
     i: widget.id,
     x: widget.layout?.x ?? (index % 2) * 6,
     y: widget.layout?.y ?? Math.floor(index / 2) * 3,
@@ -80,7 +98,26 @@ export default function DashboardGrid({
     h: widget.layout?.h ?? 3,
     minW: 3,
     minH: 2
-  })) as Layout[];
+  }));
+
+  // Function to render widget content
+  const renderWidgetContent = (widget: Widget) => {
+    // If custom renderWidget is provided, use it
+    if (renderWidget) {
+      const customContent = renderWidget(widget);
+      if (customContent !== null) {
+        return customContent;
+      }
+    }
+
+    // Default: render DynamicChart
+    return (
+      <DynamicChart
+        chart={widget.chart}
+        height={ROW_HEIGHT * (widget.layout?.h || 3) - 80}
+      />
+    );
+  };
 
   if (widgets.length === 0) {
     return (
@@ -93,9 +130,9 @@ export default function DashboardGrid({
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
           </svg>
         </div>
-        <p className="text-gray-500 font-medium">No charts yet</p>
+        <p className="text-gray-500 font-medium">No widgets yet</p>
         <p className="text-sm text-gray-400 mt-1">
-          Use the AI sidebar to create your first chart
+          Add widgets from the library or use AI to create charts
         </p>
       </div>
     );
@@ -121,10 +158,14 @@ export default function DashboardGrid({
                   </button>
                 </div>
                 <div className="p-6 h-[500px]">
-                  <DynamicChart
-                    chart={widgets.find(w => w.id === expandedWidget)!.chart}
-                    height={450}
-                  />
+                  {renderWidget ? (
+                    renderWidget(widgets.find(w => w.id === expandedWidget)!)
+                  ) : (
+                    <DynamicChart
+                      chart={widgets.find(w => w.id === expandedWidget)!.chart}
+                      height={450}
+                    />
+                  )}
                 </div>
               </>
             )}
@@ -132,7 +173,7 @@ export default function DashboardGrid({
         </div>
       )}
 
-      <GridLayout
+      <ReactGridLayout
         className="layout"
         layout={layout}
         cols={GRID_COLS}
@@ -183,15 +224,12 @@ export default function DashboardGrid({
             </div>
 
             {/* Widget Content */}
-            <div className="p-3 h-[calc(100%-44px)]">
-              <DynamicChart
-                chart={widget.chart}
-                height={ROW_HEIGHT * (widget.layout?.h || 3) - 80}
-              />
+            <div className="p-3 h-[calc(100%-44px)] overflow-auto">
+              {renderWidgetContent(widget)}
             </div>
           </div>
         ))}
-      </GridLayout>
+      </ReactGridLayout>
     </div>
   );
 }

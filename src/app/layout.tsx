@@ -3,7 +3,7 @@ import { Inter } from 'next/font/google';
 import { Providers } from './providers';
 import { PWAInitializer } from '@/components/PWAInitializer';
 import { Suspense } from 'react';
-import { Analytics } from '@/components/Analytics';
+import { AnalyticsTracker } from '@/components/AnalyticsTracker';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -53,7 +53,7 @@ export default function RootLayout({
         <Providers>{children}</Providers>
         <PWAInitializer />
         <Suspense fallback={null}>
-          <Analytics />
+          <AnalyticsTracker />
         </Suspense>
       </body>
     </html>

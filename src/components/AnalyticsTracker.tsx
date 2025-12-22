@@ -10,7 +10,7 @@ import { initAnalytics, trackPageView, isAnalyticsEnabled } from '@/lib/monitori
  *
  * Add this component to your root layout to enable analytics.
  */
-export function Analytics() {
+export function AnalyticsTracker() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
 

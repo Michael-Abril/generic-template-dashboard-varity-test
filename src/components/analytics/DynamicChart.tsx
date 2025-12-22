@@ -16,8 +16,7 @@ import {
   CartesianGrid,
   Tooltip,
   Legend,
-  ResponsiveContainer,
-  TooltipProps
+  ResponsiveContainer
 } from 'recharts';
 import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
 
@@ -45,12 +44,13 @@ interface DynamicChartProps {
 
 const DEFAULT_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16'];
 
-const CustomTooltip = ({ active, payload, label, prefix = '', suffix = '' }: TooltipProps<number, string> & { prefix?: string; suffix?: string }) => {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const CustomTooltip = ({ active, payload, label, prefix = '', suffix = '' }: any) => {
   if (active && payload && payload.length) {
     return (
       <div className="bg-white px-3 py-2 shadow-lg rounded-lg border border-gray-200">
         <p className="text-sm font-medium text-gray-900">{label}</p>
-        {payload.map((entry, index) => (
+        {payload.map((entry: { color?: string; value?: number | string }, index: number) => (
           <p key={index} className="text-sm" style={{ color: entry.color }}>
             {prefix}{typeof entry.value === 'number' ? entry.value.toLocaleString() : entry.value}{suffix}
           </p>
@@ -240,7 +240,7 @@ export default function DynamicChart({ chart, height = 300 }: DynamicChartProps)
               outerRadius="80%"
               paddingAngle={2}
               dataKey="value"
-              label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
+              label={({ name, percent }: { name?: string; percent?: number }) => `${name || ''} (${((percent || 0) * 100).toFixed(0)}%)`}
               labelLine={false}
             >
               {formattedData.map((_, index) => (
@@ -253,7 +253,7 @@ export default function DynamicChart({ chart, height = 300 }: DynamicChartProps)
               ))}
             </Pie>
             <Tooltip
-              formatter={(value: number) => [formatValue(value), '']}
+              formatter={(value: number | undefined) => [formatValue(value ?? 0), '']}
             />
           </PieChart>
         </ResponsiveContainer>

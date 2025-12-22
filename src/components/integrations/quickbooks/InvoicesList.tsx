@@ -34,6 +34,7 @@ interface Invoice {
 interface InvoicesListProps {
   walletAddress: string;
   invoices?: Invoice[];
+  onRefresh?: () => void;
 }
 
 // Helper function to normalize invoice data from QuickBooks API format
@@ -71,7 +72,7 @@ function normalizeInvoice(inv: Invoice): {
   };
 }
 
-export default function InvoicesList({ walletAddress, invoices: rawInvoices = [] }: InvoicesListProps) {
+export default function InvoicesList({ walletAddress, invoices: rawInvoices = [], onRefresh }: InvoicesListProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [showInvoiceForm, setShowInvoiceForm] = useState(false);
@@ -121,7 +122,7 @@ export default function InvoicesList({ walletAddress, invoices: rawInvoices = []
       const result = await response.json();
       if (result.success) {
         alert('Invoice deleted successfully');
-        window.location.reload();
+        onRefresh?.();
       } else {
         alert('Failed to delete invoice: ' + (result.detail || 'Unknown error'));
       }
@@ -418,7 +419,7 @@ export default function InvoicesList({ walletAddress, invoices: rawInvoices = []
               if (result.success) {
                 setShowInvoiceForm(false);
                 setSelectedInvoice(null);
-                window.location.reload();
+                onRefresh?.();
               } else {
                 alert('Failed to save invoice: ' + (result.detail || 'Unknown error'));
               }
