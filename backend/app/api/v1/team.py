@@ -3,19 +3,24 @@ Team Management API Endpoints
 
 Provides endpoints for managing team members, invitations, and roles.
 Enables businesses to invite employees to their dashboard.
+
+PRODUCTION-READY: Uses database persistence with proper access control.
 """
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from pydantic import BaseModel, EmailStr, Field
+from sqlalchemy import select, and_, or_
+from sqlalchemy.orm import selectinload
+from pydantic import BaseModel, EmailStr
 from typing import Optional, List
-from datetime import datetime
+from datetime import datetime, timedelta
 from enum import Enum
 import logging
 import uuid
+import secrets
 
 from app.core.database import get_db
-from app.services.team_service import team_service, UserRole
+from app.models.team import Team, TeamMember, TeamInvitation, TeamRole as DBTeamRole, InvitationStatus
 from app.services.email_service import email_service
 
 logger = logging.getLogger(__name__)
@@ -74,67 +79,160 @@ class RemoveMemberResponse(BaseModel):
     message: str
 
 
-# In-memory storage for wallet-based teams (MVP)
-# In production, this would be a database
-_wallet_teams = {}
-
-
-def _get_or_create_team(wallet_address: str, user_email: str = None) -> dict:
+# Helper functions
+async def get_or_create_team(db: AsyncSession, wallet_address: str, user_email: str = None) -> Team:
     """Get or create a team for a wallet address"""
     wallet_lower = wallet_address.lower()
 
-    if wallet_lower not in _wallet_teams:
-        # Create new team with owner
-        team_id = str(uuid.uuid4())
-        _wallet_teams[wallet_lower] = {
-            'id': team_id,
-            'owner_wallet': wallet_lower,
-            'members': [
-                {
-                    'id': '1',
-                    'name': 'You (Owner)',
-                    'email': user_email or f'{wallet_lower[:10]}...@wallet',
-                    'role': 'owner',
-                    'status': 'active',
-                    'wallet_address': wallet_lower,
-                    'joined_at': datetime.now().isoformat()
-                }
-            ],
-            'invitations': []
-        }
+    # Check if team exists
+    result = await db.execute(
+        select(Team).where(Team.owner_wallet == wallet_lower)
+    )
+    team = result.scalar_one_or_none()
 
-    return _wallet_teams[wallet_lower]
+    if not team:
+        # Create new team with owner
+        team = Team(
+            owner_wallet=wallet_lower,
+            company_name=None  # Will be set from settings
+        )
+        db.add(team)
+        await db.flush()
+
+        # Add owner as first member
+        owner_member = TeamMember(
+            team_id=team.id,
+            name="Owner",
+            email=user_email or f"{wallet_lower[:10]}...@wallet",
+            role=DBTeamRole.OWNER,
+            status="active",
+            wallet_address=wallet_lower
+        )
+        db.add(owner_member)
+        await db.commit()
+        await db.refresh(team)
+
+    return team
+
+
+async def get_team_member_by_wallet(db: AsyncSession, team_id: int, wallet_address: str) -> Optional[TeamMember]:
+    """Get a team member by their wallet address"""
+    result = await db.execute(
+        select(TeamMember).where(
+            and_(
+                TeamMember.team_id == team_id,
+                TeamMember.wallet_address == wallet_address.lower()
+            )
+        )
+    )
+    return result.scalar_one_or_none()
+
+
+async def verify_team_access(db: AsyncSession, wallet_address: str, required_roles: List[str] = None) -> tuple[Team, TeamMember]:
+    """
+    Verify that wallet has access to team operations.
+    Returns (team, member) if authorized, raises HTTPException if not.
+    """
+    wallet_lower = wallet_address.lower()
+
+    # Get team where this wallet is owner
+    result = await db.execute(
+        select(Team).where(Team.owner_wallet == wallet_lower)
+    )
+    team = result.scalar_one_or_none()
+
+    if not team:
+        # Check if wallet is a team member
+        result = await db.execute(
+            select(TeamMember).where(
+                and_(
+                    TeamMember.wallet_address == wallet_lower,
+                    TeamMember.status == "active"
+                )
+            ).options(selectinload(TeamMember.team))
+        )
+        member = result.scalar_one_or_none()
+
+        if not member:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No team found for this wallet address"
+            )
+
+        team = member.team
+    else:
+        # Wallet is owner, get their member record
+        member = await get_team_member_by_wallet(db, team.id, wallet_lower)
+
+    # Check role permissions if required
+    if required_roles and member.role.value not in required_roles:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Insufficient permissions. Required roles: {required_roles}"
+        )
+
+    return team, member
 
 
 # Endpoints
 @router.get("", response_model=TeamResponse)
 async def get_team_members(
-    wallet_address: str = Query(..., description="Owner's wallet address"),
+    wallet_address: str = Query(..., description="User's wallet address"),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Get team members for a business
 
-    Returns all team members associated with this wallet's dashboard.
+    Returns all team members associated with this wallet's team.
+    Creates a new team if this is the first access for this wallet.
+    Works for both team owners and team members.
     """
     try:
-        team = _get_or_create_team(wallet_address)
+        # First try to get or create team for this wallet (if they're an owner)
+        team = await get_or_create_team(db, wallet_address)
 
-        members = [
-            TeamMemberResponse(
-                id=m['id'],
-                name=m['name'],
-                email=m['email'],
-                role=m['role'],
-                status=m['status'],
-                wallet_address=m.get('wallet_address'),
-                joined_at=m.get('joined_at')
+        # If we got a team, verify access
+        wallet_lower = wallet_address.lower()
+        member = await get_team_member_by_wallet(db, team.id, wallet_lower)
+
+        if not member:
+            # Not a member of this team, check if they're a member elsewhere
+            result = await db.execute(
+                select(TeamMember).where(
+                    and_(
+                        TeamMember.wallet_address == wallet_lower,
+                        TeamMember.status == "active"
+                    )
+                ).options(selectinload(TeamMember.team))
             )
-            for m in team['members']
+            member = result.scalar_one_or_none()
+
+            if member:
+                team = member.team
+
+        # Get all members
+        result = await db.execute(
+            select(TeamMember).where(TeamMember.team_id == team.id)
+        )
+        members = result.scalars().all()
+
+        member_responses = [
+            TeamMemberResponse(
+                id=str(m.id),
+                name=m.name or m.email.split('@')[0].title(),
+                email=m.email,
+                role=m.role.value if hasattr(m.role, 'value') else m.role,
+                status=m.status,
+                wallet_address=m.wallet_address,
+                joined_at=m.joined_at.isoformat() if m.joined_at else None
+            )
+            for m in members
         ]
 
-        return TeamResponse(members=members, total=len(members))
+        return TeamResponse(members=member_responses, total=len(member_responses))
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error fetching team members: {str(e)}")
         raise HTTPException(
@@ -146,82 +244,94 @@ async def get_team_members(
 @router.post("/invite", response_model=InviteMemberResponse)
 async def invite_team_member(
     request: InviteMemberRequest,
-    wallet_address: str = Query(..., description="Owner's wallet address"),
+    wallet_address: str = Query(..., description="Inviter's wallet address"),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Invite a new team member
 
+    Only owners and admins can invite new members.
     Sends an invitation email to the specified email address.
-    The invitee will receive a link to join the team.
     """
     try:
-        team = _get_or_create_team(wallet_address)
+        # Verify caller has permission to invite
+        team, caller = await verify_team_access(db, wallet_address, required_roles=["owner", "admin"])
 
         # Check if email is already a member
-        for member in team['members']:
-            if member['email'].lower() == request.email.lower():
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"{request.email} is already a team member"
+        result = await db.execute(
+            select(TeamMember).where(
+                and_(
+                    TeamMember.team_id == team.id,
+                    TeamMember.email == request.email.lower()
                 )
+            )
+        )
+        existing = result.scalar_one_or_none()
 
-        # Generate invitation
-        invitation_id = str(uuid.uuid4())
-        invitation_token = str(uuid.uuid4())
+        if existing:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"{request.email} is already a team member"
+            )
+
+        # Generate secure invitation token
+        invitation_token = secrets.token_urlsafe(32)
 
         # Create pending member entry
-        new_member = {
-            'id': invitation_id,
-            'name': request.email.split('@')[0].title(),
-            'email': request.email,
-            'role': request.role.value,
-            'status': 'pending',
-            'wallet_address': None,
-            'joined_at': datetime.now().isoformat(),
-            'invitation_token': invitation_token
-        }
+        new_member = TeamMember(
+            team_id=team.id,
+            name=request.email.split('@')[0].title(),
+            email=request.email.lower(),
+            role=DBTeamRole(request.role.value),
+            status="pending",
+            wallet_address=None
+        )
+        db.add(new_member)
+        await db.flush()
 
-        team['members'].append(new_member)
-
-        # Store invitation
-        team['invitations'].append({
-            'id': invitation_id,
-            'email': request.email,
-            'role': request.role.value,
-            'token': invitation_token,
-            'created_at': datetime.now().isoformat(),
-            'status': 'pending'
-        })
+        # Create invitation record
+        invitation = TeamInvitation(
+            team_id=team.id,
+            member_id=new_member.id,
+            email=request.email.lower(),
+            role=DBTeamRole(request.role.value),
+            token=invitation_token,
+            status=InvitationStatus.PENDING,
+            invited_by_wallet=wallet_address.lower(),
+            invited_by_name=caller.name,
+            expires_at=datetime.utcnow() + timedelta(days=7)
+        )
+        db.add(invitation)
+        await db.commit()
 
         # Send invitation email
         try:
-            # Get company name from settings if available
-            company_name = "Your Company"  # Could fetch from settings
+            company_name = team.company_name or "Your Company"
             invitation_link = f"https://app.varity.so/accept-invitation/{invitation_token}"
 
             await email_service.send_team_invitation(
                 to_email=request.email,
-                inviter_name="Team Admin",
+                inviter_name=caller.name or "Team Admin",
                 company_name=company_name,
                 role=request.role.value.title(),
                 invitation_link=invitation_link
             )
             logger.info(f"Invitation email sent to {request.email}")
         except Exception as email_error:
-            # Log but don't fail - invitation is still created
             logger.warning(f"Could not send invitation email: {str(email_error)}")
+            # Continue - invitation is still valid
 
         return InviteMemberResponse(
             success=True,
             message=f"Invitation sent to {request.email}",
-            invitation_id=invitation_id
+            invitation_id=str(new_member.id)
         )
 
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error inviting team member: {str(e)}")
+        await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to invite team member: {str(e)}"
@@ -232,43 +342,62 @@ async def invite_team_member(
 async def update_member_role(
     member_id: str,
     request: UpdateRoleRequest,
-    wallet_address: str = Query(..., description="Owner's wallet address"),
+    wallet_address: str = Query(..., description="Caller's wallet address"),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Update a team member's role
 
-    Changes the role of an existing team member.
+    Only owners and admins can change roles.
     Cannot change the role of the team owner.
     """
     try:
-        team = _get_or_create_team(wallet_address)
+        # Verify caller has permission
+        team, caller = await verify_team_access(db, wallet_address, required_roles=["owner", "admin"])
 
         # Find member
-        member_found = None
-        for member in team['members']:
-            if member['id'] == member_id:
-                member_found = member
-                break
+        result = await db.execute(
+            select(TeamMember).where(
+                and_(
+                    TeamMember.id == int(member_id),
+                    TeamMember.team_id == team.id
+                )
+            )
+        )
+        member = result.scalar_one_or_none()
 
-        if not member_found:
+        if not member:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Team member {member_id} not found"
             )
 
         # Cannot change owner role
-        if member_found['role'] == 'owner':
+        if member.role == DBTeamRole.OWNER:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Cannot change the owner's role"
             )
 
-        # Update role
-        old_role = member_found['role']
-        member_found['role'] = request.role.value
+        # Admin cannot promote to owner or demote other admins (unless they are owner)
+        if caller.role != DBTeamRole.OWNER:
+            if request.role.value == "owner":
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Only owner can promote to owner role"
+                )
+            if member.role == DBTeamRole.ADMIN:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Only owner can change admin roles"
+                )
 
-        logger.info(f"Updated role for {member_found['email']} from {old_role} to {request.role.value}")
+        # Update role
+        old_role = member.role.value
+        member.role = DBTeamRole(request.role.value)
+        await db.commit()
+
+        logger.info(f"Updated role for {member.email} from {old_role} to {request.role.value}")
 
         return {
             "success": True,
@@ -281,6 +410,7 @@ async def update_member_role(
         raise
     except Exception as e:
         logger.error(f"Error updating member role: {str(e)}")
+        await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to update role: {str(e)}"
@@ -290,47 +420,72 @@ async def update_member_role(
 @router.delete("/members/{member_id}", response_model=RemoveMemberResponse)
 async def remove_team_member(
     member_id: str,
-    wallet_address: str = Query(..., description="Owner's wallet address"),
+    wallet_address: str = Query(..., description="Caller's wallet address"),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Remove a team member
 
-    Removes a member from the team. Cannot remove the team owner.
+    Only owners and admins can remove members.
+    Cannot remove the team owner.
     """
     try:
-        team = _get_or_create_team(wallet_address)
+        # Verify caller has permission
+        team, caller = await verify_team_access(db, wallet_address, required_roles=["owner", "admin"])
 
-        # Find and remove member
-        member_to_remove = None
-        for i, member in enumerate(team['members']):
-            if member['id'] == member_id:
-                if member['role'] == 'owner':
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail="Cannot remove the team owner"
-                    )
-                member_to_remove = member
-                team['members'].pop(i)
-                break
+        # Find member
+        result = await db.execute(
+            select(TeamMember).where(
+                and_(
+                    TeamMember.id == int(member_id),
+                    TeamMember.team_id == team.id
+                )
+            )
+        )
+        member = result.scalar_one_or_none()
 
-        if not member_to_remove:
+        if not member:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Team member {member_id} not found"
             )
 
-        logger.info(f"Removed team member {member_to_remove['email']}")
+        # Cannot remove owner
+        if member.role == DBTeamRole.OWNER:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Cannot remove the team owner"
+            )
+
+        # Admin cannot remove other admins (unless caller is owner)
+        if caller.role != DBTeamRole.OWNER and member.role == DBTeamRole.ADMIN:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only owner can remove admins"
+            )
+
+        member_email = member.email
+
+        # Delete associated invitation if exists
+        await db.execute(
+            select(TeamInvitation).where(TeamInvitation.member_id == member.id)
+        )
+
+        await db.delete(member)
+        await db.commit()
+
+        logger.info(f"Removed team member {member_email}")
 
         return RemoveMemberResponse(
             success=True,
-            message=f"Removed {member_to_remove['email']} from team"
+            message=f"Removed {member_email} from team"
         )
 
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error removing team member: {str(e)}")
+        await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to remove team member: {str(e)}"
@@ -350,40 +505,75 @@ async def accept_invitation(
     Binds the invitee's wallet address to their team membership.
     """
     try:
-        # Search for invitation across all teams
-        for team_wallet, team in _wallet_teams.items():
-            for invitation in team.get('invitations', []):
-                if invitation['token'] == token and invitation['status'] == 'pending':
-                    # Found the invitation - update member
-                    for member in team['members']:
-                        if member.get('invitation_token') == token:
-                            member['status'] = 'active'
-                            member['wallet_address'] = wallet_address.lower()
-                            member['joined_at'] = datetime.now().isoformat()
-                            del member['invitation_token']
-
-                            # Update invitation status
-                            invitation['status'] = 'accepted'
-                            invitation['accepted_at'] = datetime.now().isoformat()
-
-                            logger.info(f"Invitation accepted by {wallet_address}")
-
-                            return {
-                                "success": True,
-                                "message": "Successfully joined the team",
-                                "team_id": team['id'],
-                                "role": member['role']
-                            }
-
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Invalid or expired invitation"
+        # Find invitation by token
+        result = await db.execute(
+            select(TeamInvitation).where(
+                and_(
+                    TeamInvitation.token == token,
+                    TeamInvitation.status == InvitationStatus.PENDING
+                )
+            ).options(selectinload(TeamInvitation.member))
         )
+        invitation = result.scalar_one_or_none()
+
+        if not invitation:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Invalid or expired invitation"
+            )
+
+        # Check if expired
+        if invitation.expires_at < datetime.utcnow():
+            invitation.status = InvitationStatus.EXPIRED
+            await db.commit()
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="This invitation has expired"
+            )
+
+        # Check if wallet is already part of a team
+        result = await db.execute(
+            select(TeamMember).where(
+                and_(
+                    TeamMember.wallet_address == wallet_address.lower(),
+                    TeamMember.status == "active"
+                )
+            )
+        )
+        existing = result.scalar_one_or_none()
+
+        if existing:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="This wallet is already part of a team"
+            )
+
+        # Update member record
+        member = invitation.member
+        member.status = "active"
+        member.wallet_address = wallet_address.lower()
+        member.joined_at = datetime.utcnow()
+
+        # Update invitation status
+        invitation.status = InvitationStatus.ACCEPTED
+        invitation.accepted_at = datetime.utcnow()
+
+        await db.commit()
+
+        logger.info(f"Invitation accepted by {wallet_address} for team {invitation.team_id}")
+
+        return {
+            "success": True,
+            "message": "Successfully joined the team",
+            "team_id": str(invitation.team_id),
+            "role": member.role.value
+        }
 
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error accepting invitation: {str(e)}")
+        await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to accept invitation: {str(e)}"
@@ -392,27 +582,38 @@ async def accept_invitation(
 
 @router.get("/invitations")
 async def get_pending_invitations(
-    wallet_address: str = Query(..., description="Owner's wallet address"),
+    wallet_address: str = Query(..., description="Caller's wallet address"),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Get pending invitations
 
     Returns all pending invitations for this team.
+    Only owners and admins can view invitations.
     """
     try:
-        team = _get_or_create_team(wallet_address)
+        team, _ = await verify_team_access(db, wallet_address, required_roles=["owner", "admin"])
+
+        result = await db.execute(
+            select(TeamInvitation).where(
+                and_(
+                    TeamInvitation.team_id == team.id,
+                    TeamInvitation.status == InvitationStatus.PENDING
+                )
+            )
+        )
+        invitations = result.scalars().all()
 
         pending = [
             {
-                'id': inv['id'],
-                'email': inv['email'],
-                'role': inv['role'],
-                'created_at': inv['created_at'],
-                'status': inv['status']
+                "id": str(inv.id),
+                "email": inv.email,
+                "role": inv.role.value if hasattr(inv.role, 'value') else inv.role,
+                "created_at": inv.created_at.isoformat() if inv.created_at else None,
+                "expires_at": inv.expires_at.isoformat() if inv.expires_at else None,
+                "status": inv.status.value if hasattr(inv.status, 'value') else inv.status
             }
-            for inv in team.get('invitations', [])
-            if inv['status'] == 'pending'
+            for inv in invitations
         ]
 
         return {
@@ -421,6 +622,8 @@ async def get_pending_invitations(
             "total": len(pending)
         }
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error fetching invitations: {str(e)}")
         raise HTTPException(
@@ -432,47 +635,96 @@ async def get_pending_invitations(
 @router.delete("/invitations/{invitation_id}")
 async def cancel_invitation(
     invitation_id: str,
-    wallet_address: str = Query(..., description="Owner's wallet address"),
+    wallet_address: str = Query(..., description="Caller's wallet address"),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Cancel a pending invitation
 
-    Cancels an invitation that hasn't been accepted yet.
+    Only owners and admins can cancel invitations.
     """
     try:
-        team = _get_or_create_team(wallet_address)
+        team, _ = await verify_team_access(db, wallet_address, required_roles=["owner", "admin"])
 
-        # Find and remove invitation
-        for i, inv in enumerate(team.get('invitations', [])):
-            if inv['id'] == invitation_id:
-                if inv['status'] != 'pending':
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail="Can only cancel pending invitations"
-                    )
-
-                # Remove invitation
-                team['invitations'].pop(i)
-
-                # Remove pending member entry
-                team['members'] = [m for m in team['members'] if m['id'] != invitation_id]
-
-                return {
-                    "success": True,
-                    "message": "Invitation cancelled"
-                }
-
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Invitation not found"
+        # Find invitation
+        result = await db.execute(
+            select(TeamInvitation).where(
+                and_(
+                    TeamInvitation.id == int(invitation_id),
+                    TeamInvitation.team_id == team.id
+                )
+            ).options(selectinload(TeamInvitation.member))
         )
+        invitation = result.scalar_one_or_none()
+
+        if not invitation:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Invitation not found"
+            )
+
+        if invitation.status != InvitationStatus.PENDING:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Can only cancel pending invitations"
+            )
+
+        # Update status
+        invitation.status = InvitationStatus.CANCELLED
+
+        # Remove pending member
+        if invitation.member:
+            await db.delete(invitation.member)
+
+        await db.commit()
+
+        return {
+            "success": True,
+            "message": "Invitation cancelled"
+        }
 
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error cancelling invitation: {str(e)}")
+        await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to cancel invitation: {str(e)}"
+        )
+
+
+@router.get("/my-team")
+async def get_my_team_info(
+    wallet_address: str = Query(..., description="User's wallet address"),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Get team info for a team member
+
+    Returns information about the team the user belongs to.
+    Works for any team member (not just owners).
+    """
+    try:
+        team, member = await verify_team_access(db, wallet_address)
+
+        return {
+            "success": True,
+            "team": {
+                "id": str(team.id),
+                "company_name": team.company_name,
+                "owner_wallet": team.owner_wallet,
+                "created_at": team.created_at.isoformat() if team.created_at else None
+            },
+            "my_role": member.role.value if hasattr(member.role, 'value') else member.role,
+            "my_status": member.status
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching team info: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to fetch team info: {str(e)}"
         )

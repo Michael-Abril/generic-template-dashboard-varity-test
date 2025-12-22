@@ -429,45 +429,26 @@ export default function SettingsPage() {
       });
 
       if (response.ok) {
+        const result = await response.json();
         toast.success('Invitation sent', `Invitation sent to ${inviteEmail}`);
         setShowInviteModal(false);
         setInviteEmail('');
         setInviteRole('member');
-        // Add to local state as pending
+        // Add to local state as pending with real ID from backend
         setTeamMembers(prev => [...prev, {
-          id: `pending-${Date.now()}`,
+          id: result.invitation_id || `pending-${Date.now()}`,
           name: inviteEmail.split('@')[0],
           email: inviteEmail,
           role: inviteRole,
           status: 'pending'
         }]);
       } else {
-        // For MVP, simulate success and add to local state
-        toast.success('Invitation sent', `Invitation sent to ${inviteEmail}`);
-        setShowInviteModal(false);
-        setTeamMembers(prev => [...prev, {
-          id: `pending-${Date.now()}`,
-          name: inviteEmail.split('@')[0],
-          email: inviteEmail,
-          role: inviteRole,
-          status: 'pending'
-        }]);
-        setInviteEmail('');
-        setInviteRole('member');
+        const errorData = await response.json();
+        toast.error('Invitation failed', errorData.detail || 'Failed to send invitation. Please try again.');
       }
     } catch (error) {
-      // For MVP, simulate success
-      toast.success('Invitation sent', `Invitation sent to ${inviteEmail}`);
-      setShowInviteModal(false);
-      setTeamMembers(prev => [...prev, {
-        id: `pending-${Date.now()}`,
-        name: inviteEmail.split('@')[0],
-        email: inviteEmail,
-        role: inviteRole,
-        status: 'pending'
-      }]);
-      setInviteEmail('');
-      setInviteRole('member');
+      console.error('Error inviting member:', error);
+      toast.error('Invitation failed', 'Unable to send invitation. Please check your connection and try again.');
     } finally {
       setInviting(false);
     }
