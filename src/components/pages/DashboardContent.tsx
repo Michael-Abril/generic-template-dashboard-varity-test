@@ -402,7 +402,7 @@ export default function DashboardContent() {
                       width={60}
                     />
                     <Tooltip
-                      formatter={(value: number) => [`$${value.toLocaleString()}`, 'Revenue']}
+                      formatter={(value) => [`$${(value ?? 0).toLocaleString()}`, 'Revenue']}
                       contentStyle={{
                         backgroundColor: '#fff',
                         border: '1px solid #e5e7eb',

@@ -31,6 +31,11 @@ logger = logging.getLogger(__name__)
 
 # OAuth token refresh configurations
 TOKEN_REFRESH_CONFIGS = {
+    "quickbooks": {
+        "token_url": "https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer",
+        "client_id": getattr(settings, 'quickbooks_client_id', ''),
+        "client_secret": getattr(settings, 'quickbooks_client_secret', ''),
+    },
     "google": {
         "token_url": "https://oauth2.googleapis.com/token",
         "client_id": getattr(settings, 'google_client_id', ''),
