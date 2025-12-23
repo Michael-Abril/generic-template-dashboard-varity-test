@@ -487,7 +487,7 @@ async def multi_tenant_ai_query(request: MultiTenantQueryRequest):
     Architecture:
     - Each business has isolated Qdrant collection: business_{wallet}
     - RAG queries are wallet-scoped
-    - Shared LLM on Akash Network
+    - Shared LLM (Together.ai primary, Ollama fallback)
     - Zero cross-business data leakage
 
     Args:
@@ -502,8 +502,15 @@ async def multi_tenant_ai_query(request: MultiTenantQueryRequest):
             f"'{request.query[:100]}...'"
         )
 
-        # Query AI with business-specific RAG
-        result = await ollama_business_service.query_business_ai(
+        # MVP: Use Together.ai exclusively for AI queries
+        if not os.getenv("TOGETHER_API_KEY"):
+            raise HTTPException(
+                status_code=503,
+                detail="AI service not configured. TOGETHER_API_KEY is required."
+            )
+
+        # Query AI with business-specific RAG using Together.ai
+        result = await together_business_service.query_business_ai(
             business_wallet=request.wallet_address,
             user_query=request.query,
             integration=request.integration,
@@ -1098,7 +1105,12 @@ async def deep_research(request: ResearchQueryRequest, db: AsyncSession = Depend
         industry = user_context.get("industry")
         company_name = user_context.get("company_name")
 
-        ai_service = get_business_ai_service()
+        # MVP: Use Together.ai exclusively
+        if not os.getenv("TOGETHER_API_KEY"):
+            raise HTTPException(
+                status_code=503,
+                detail="AI service not configured. TOGETHER_API_KEY is required."
+            )
 
         # Map depth to context items
         depth_mapping = {
@@ -1108,8 +1120,8 @@ async def deep_research(request: ResearchQueryRequest, db: AsyncSession = Depend
         }
         max_context = depth_mapping.get(request.depth, 5)
 
-        # Query with research mode and industry context
-        result = await ai_service.query_business_ai(
+        # Query with research mode and industry context using Together.ai
+        result = await together_business_service.query_business_ai(
             business_wallet=request.wallet_address,
             user_query=request.query,
             integration=request.integration,
@@ -1130,7 +1142,7 @@ async def deep_research(request: ResearchQueryRequest, db: AsyncSession = Depend
                 "wallet_address": request.wallet_address,
                 "integration": request.integration,
                 "data_type": request.data_type,
-                "provider": get_llm_provider(),
+                "provider": "together",
                 "timestamp": datetime.now().isoformat()
             }
         )
