@@ -550,18 +550,33 @@ class TogetherBusinessService:
                     data_type=data_type
                 )
 
+                # Limit context size to prevent token overflow
+                MAX_CHARS_PER_ENTRY = 3000  # ~750 tokens per entry
+                MAX_TOTAL_CHARS = 30000     # ~7500 tokens total context
+                total_chars = 0
+
                 for idx, result in enumerate(rag_results, 1):
+                    if total_chars >= MAX_TOTAL_CHARS:
+                        logger.info(f"Context limit reached at {total_chars} chars, truncating")
+                        break
+
                     data = result.get("data", {})
                     cid = result.get("cid", "")
                     integration_name = result.get("integration", "")
                     data_type_name = result.get("data_type", "")
 
+                    # Truncate data to reasonable size
+                    data_str = json.dumps(data, indent=2)
+                    if len(data_str) > MAX_CHARS_PER_ENTRY:
+                        data_str = data_str[:MAX_CHARS_PER_ENTRY] + "\n... [truncated]"
+
                     context_entry = f"""
 Source {idx} (Integration: {integration_name}, Type: {data_type_name}):
-{json.dumps(data, indent=2)}
+{data_str}
 """
                     context_parts.append(context_entry.strip())
                     source_cids.append(cid)
+                    total_chars += len(context_entry)
 
             except Exception as e:
                 logger.warning(f"RAG query failed, falling back to general mode: {e}")
@@ -1279,18 +1294,32 @@ Guidelines:
                 data_type=data_type
             )
 
+            # Limit context size to prevent token overflow
+            MAX_CHARS_PER_ENTRY = 3000
+            MAX_TOTAL_CHARS = 30000
+            total_chars = 0
+
             for idx, result in enumerate(rag_results, 1):
+                if total_chars >= MAX_TOTAL_CHARS:
+                    break
+
                 data = result.get("data", {})
                 cid = result.get("cid", "")
                 integration_name = result.get("integration", "")
                 data_type_name = result.get("data_type", "")
 
+                # Truncate data to reasonable size
+                data_str = json.dumps(data, indent=2)
+                if len(data_str) > MAX_CHARS_PER_ENTRY:
+                    data_str = data_str[:MAX_CHARS_PER_ENTRY] + "\n... [truncated]"
+
                 context_entry = f"""
 Business Data Source {idx} (Integration: {integration_name}, Type: {data_type_name}):
-{json.dumps(data, indent=2)}
+{data_str}
 """
                 context_parts.append(context_entry.strip())
                 source_cids.append(cid)
+                total_chars += len(context_entry)
 
         except Exception as e:
             logger.warning(f"RAG query failed: {e}")
