@@ -2556,8 +2556,13 @@ export default function IntegrationToolPage() {
   // Render simplified QuickBooks MVP UI
   if (integration === 'quickbooks') {
     // Transform data into format expected by QuickBooksPage
+    // Backend stores: { data_type: "invoices", data: { records: [...] } }
+    // Frontend expects: { invoices: [...], expenses: [...] }
     const quickbooksData = (data || []).reduce((acc, item) => {
-      acc[item.data_type] = item.data;
+      if (item && item.data_type) {
+        // Extract records array from data object
+        acc[item.data_type] = item.data?.records || item.data || [];
+      }
       return acc;
     }, {} as Record<string, any>);
 
