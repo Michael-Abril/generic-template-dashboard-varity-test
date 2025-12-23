@@ -20,7 +20,7 @@ interface QuickBooksPageProps {
   onRefresh?: () => void;
 }
 
-// Simple tab configuration for MVP
+// Simple tab configuration for MVP - Simplified Dec 23, 2025
 const TABS = [
   { id: 'overview', label: 'Overview' },
   { id: 'invoices', label: 'Invoices' },
