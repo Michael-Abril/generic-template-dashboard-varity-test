@@ -14,17 +14,19 @@ import { MarketplaceSkeleton } from '@/components/ui/Skeleton';
 // import { CONTRACTS, USDC_ABI, TOOL_MARKETPLACE_ABI, parseUSDC } from '@/lib/contracts';
 // import { ethers } from 'ethers';
 import * as marketplaceService from '@/services/marketplaceService';
-import type { ProductSummary, ProductDetail, PricingPlan } from '@/services/marketplaceService';
+import type { ProductSummary, ProductDetail } from '@/services/marketplaceService';
 
 /**
- * Tool Integration Marketplace - Enterprise UI with Dynamic Data
+ * Tool Integration Marketplace - OAuth Connection UI
  *
  * Features:
  * - Dynamic product loading from backend API
- * - Pricing tier selection (Starter/Professional/Enterprise)
- * - Per-user/seat quantity selection
- * - Real-time pricing calculation
- * - Smart contract integration for purchases
+ * - OAuth-based integration connections
+ * - Available vs Coming Soon product filtering
+ * - Search and category filtering
+ *
+ * Note: USDC purchase functionality is disabled for MVP launch.
+ * Will be re-enabled post-launch for premium integrations.
  */
 
 // Mapping from product logo names to OAuth provider names in the backend
@@ -111,30 +113,15 @@ export default function MarketplaceContent() {
   const [userLicenses, setUserLicenses] = useState<number[]>([]);
   const [connectedOAuthIntegrations, setConnectedOAuthIntegrations] = useState<string[]>([]);
   const [connectedIntegrationCount, setConnectedIntegrationCount] = useState<number>(0);
-  const [purchasing, setPurchasing] = useState<number | null>(null);
-  const [purchaseStatus, setPurchaseStatus] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   // Marketplace tab state: "available" shows working integrations, "coming-soon" shows roadmap
   const [marketplaceTab, setMarketplaceTab] = useState<'available' | 'coming-soon'>('available');
 
-  // Tier selection modal state
+  // Connection modal state
   const [selectedProduct, setSelectedProduct] = useState<ProductDetail | null>(null);
-  const [selectedTier, setSelectedTier] = useState<PricingPlan | null>(null);
-  const [quantity, setQuantity] = useState<number>(1);
-  const [billingPeriod, setBillingPeriod] = useState<'monthly' | 'annually'>('monthly');
-  const [showTierModal, setShowTierModal] = useState(false);
-
-  // Purchase confirmation modal state
-  const [showConfirmationModal, setShowConfirmationModal] = useState(false);
-  const [purchaseDetails, setPurchaseDetails] = useState<{
-    product: ProductDetail;
-    tier: PricingPlan;
-    price: number;
-    duration: string;
-    transactionHash?: string;
-  } | null>(null);
+  const [showConnectionModal, setShowConnectionModal] = useState(false);
 
   // Load products and categories on mount
   useEffect(() => {
@@ -278,117 +265,14 @@ export default function MarketplaceContent() {
 
   const handleSelectProduct = async (product: ProductSummary) => {
     try {
-      // Fetch full product details with pricing tiers
+      // Fetch full product details
       const productDetail = await marketplaceService.getProductById(product.id);
       setSelectedProduct(productDetail);
-
-      // Select first tier by default (or popular tier)
-      // If no pricing plans exist, create a free tier for installation
-      let defaultTier: PricingPlan | null = null;
-
-      if (productDetail.pricing_plans && productDetail.pricing_plans.length > 0) {
-        defaultTier = productDetail.pricing_plans.find(p => p.is_popular) || productDetail.pricing_plans[0];
-      } else {
-        // Create a "Free Installation" tier for products without pricing plans
-        defaultTier = {
-          id: 0,
-          tier: 'free',
-          name: 'Free Installation',
-          monthly_price: 0,
-          annual_price: 0,
-          annual_discount_percent: null,
-          is_per_user: false,
-          minimum_users: null,
-          maximum_users: null,
-          is_free: true,
-          is_popular: true,
-          is_recommended: true,
-          setup_fee: null,
-          onboarding_fee: null,
-          features: [
-            { feature_text: 'Connect your account', category: null, is_included: true, is_highlight: true },
-            { feature_text: 'Sync business data', category: null, is_included: true, is_highlight: false },
-            { feature_text: 'AI-powered insights', category: null, is_included: true, is_highlight: false }
-          ],
-          limits: []
-        };
-      }
-
-      setSelectedTier(defaultTier);
-
-      // Reset quantity
-      setQuantity(defaultTier?.is_per_user ? (defaultTier.minimum_users || 1) : 1);
-      setBillingPeriod('monthly');
-
-      setShowTierModal(true);
-    } catch (err: any) {
+      setShowConnectionModal(true);
+    } catch (err: unknown) {
       console.error('Error loading product details:', err);
-      toast.error('Failed to load details', err.message || 'Please try again later.');
-    }
-  };
-
-  const handleTierChange = (tier: PricingPlan) => {
-    setSelectedTier(tier);
-    // Adjust quantity to minimum if needed
-    if (tier.is_per_user && tier.minimum_users && quantity < tier.minimum_users) {
-      setQuantity(tier.minimum_users);
-    }
-  };
-
-  const calculateTotalPrice = (): number => {
-    if (!selectedTier) return 0;
-
-    const basePrice = billingPeriod === 'monthly'
-      ? (selectedTier.monthly_price || 0)
-      : (selectedTier.annual_price || selectedTier.monthly_price || 0);
-
-    const total = selectedTier.is_per_user ? basePrice * quantity : basePrice;
-    const setup = selectedTier.setup_fee || 0;
-    const onboarding = selectedTier.onboarding_fee || 0;
-
-    return total + (setup + onboarding) / (billingPeriod === 'annually' ? 12 : 1);
-  };
-
-  const handlePurchase = async () => {
-    if (!selectedProduct || !selectedTier || !authenticated || !address) {
-      toast.warning('Authentication required', 'Please sign in and connect wallet first.');
-      return;
-    }
-
-    setPurchasing(selectedProduct.id);
-    setPurchaseStatus('Processing purchase...');
-
-    try {
-      const users = selectedTier.is_per_user ? quantity : 1;
-
-      const purchaseRequest: marketplaceService.PurchaseRequest = {
-        product_id: selectedProduct.id,
-        tier: selectedTier.tier,
-        billing_period: billingPeriod,
-        users,
-        wallet_address: address,
-      };
-
-      const purchaseResponse = await marketplaceService.purchaseLicense(purchaseRequest);
-
-      // Show success with real backend data
-      setPurchaseDetails({
-        product: selectedProduct,
-        tier: selectedTier,
-        price: Number(purchaseResponse.amount_paid ?? calculateTotalPrice()),
-        duration: billingPeriod === 'annually' ? '1 year' : '1 month',
-        transactionHash: purchaseResponse.transaction_hash,
-      });
-
-      setShowTierModal(false);
-      setShowConfirmationModal(true);
-
-    } catch (error: any) {
-      console.error('Purchase error:', error);
-      toast.error('Purchase failed', error.message || 'Please try again later.');
-    } finally {
-      setPurchasing(null);
-      setPurchaseStatus('');
+      const errorMessage = err instanceof Error ? err.message : 'Please try again later.';
+      toast.error('Failed to load details', errorMessage);
     }
   };
 
@@ -676,7 +560,7 @@ export default function MarketplaceContent() {
       </div>
 
       {/* Integration Connection Modal */}
-      {showTierModal && selectedProduct && selectedTier && (
+      {showConnectionModal && selectedProduct && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
             <div className="sticky top-0 bg-white border-b border-gray-200 p-6 flex items-start justify-between">
@@ -688,7 +572,7 @@ export default function MarketplaceContent() {
                 </div>
               </div>
               <button
-                onClick={() => setShowTierModal(false)}
+                onClick={() => setShowConnectionModal(false)}
                 className="text-gray-400 hover:text-gray-600"
               >
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -738,7 +622,7 @@ export default function MarketplaceContent() {
               {isOAuthSupported(selectedProduct.logo) ? (
                 <div className="flex gap-3">
                   <button
-                    onClick={() => setShowTierModal(false)}
+                    onClick={() => setShowConnectionModal(false)}
                     className="flex-1 py-3 px-4 border border-gray-300 rounded-lg text-gray-700 font-medium hover:bg-gray-50 transition-all"
                   >
                     Cancel
@@ -752,7 +636,7 @@ export default function MarketplaceContent() {
 
                       // Use the mapped OAuth provider name
                       const provider = getOAuthProvider(selectedProduct.logo);
-                      setShowTierModal(false);
+                      setShowConnectionModal(false);
 
                       try {
                         // Get OAuth authorization URL from backend
@@ -828,35 +712,13 @@ export default function MarketplaceContent() {
                     </div>
                   </div>
                   <button
-                    onClick={() => setShowTierModal(false)}
+                    onClick={() => setShowConnectionModal(false)}
                     className="w-full py-3 px-4 border border-gray-300 rounded-lg text-gray-700 font-medium hover:bg-gray-50 transition-all"
                   >
                     Close
                   </button>
                 </div>
               )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Purchase Confirmation Modal */}
-      {showConfirmationModal && purchaseDetails && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl max-w-lg w-full">
-            <div className="bg-gradient-to-r from-green-500 to-green-600 p-6 rounded-t-xl">
-              <h2 className="text-2xl font-bold text-white text-center">Purchase Successful!</h2>
-            </div>
-
-            <div className="p-6">
-              <div className="flex gap-3">
-                <button
-                  onClick={() => setShowConfirmationModal(false)}
-                  className="flex-1 py-3 px-4 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 hover:shadow-md hover:scale-[1.02] active:scale-[0.98] transition-all duration-200"
-                >
-                  Close
-                </button>
-              </div>
             </div>
           </div>
         </div>

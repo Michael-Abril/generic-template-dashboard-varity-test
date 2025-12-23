@@ -1,6 +1,6 @@
 # CLAUDE.md - Varity Generic Dashboard Template
 
-**Last Updated:** December 18, 2025
+**Last Updated:** December 23, 2025
 **Status:** LIVE at https://app.varity.so
 **Build Status:** Passing (Frontend: Vercel | Backend: Railway)
 
@@ -23,10 +23,11 @@
 | **Data Sync (Google)** | ✅ | ✅ WORKING | Gmail, Calendar, Drive, Contacts sync |
 | **AI Assistant** | ✅ | ✅ WORKING | Chat, RAG, modes all functional |
 | **Onboarding Flow** | ✅ | ✅ WORKING | 6-step wizard complete |
-| **Dashboard KPIs** | ✅ | ⚠️ NEEDS DATA | UI works, requires synced data |
-| **USDC Purchase Flow** | ✅ | ❌ DISABLED | Intentionally disabled for GTM |
-| **Team Management** | ✅ | ⚠️ MVP MODE | Simulates success locally |
-| **Data Import** | ✅ | ❌ NOT IMPLEMENTED | UI exists, no handler |
+| **Dashboard KPIs** | ✅ | ✅ WORKING | Clean redesigned UI with AI insights |
+| **Marketplace** | ✅ | ✅ WORKING | OAuth-only (USDC purchases post-MVP) |
+| **Team Management** | ✅ | ✅ WORKING | Frontend makes API calls to backend |
+| **Data Import** | ✅ | ⏳ COMING SOON | UI shows "Coming Soon" badge |
+| **Data Export** | ✅ | ✅ WORKING | JSON, CSV, Excel formats |
 
 ---
 
@@ -37,16 +38,11 @@
 | Issue | Location | Impact | Status |
 |-------|----------|--------|--------|
 | **QuickBooks 403 Error** | OAuth sync | Cannot sync production data | BLOCKED - needs Intuit approval |
-| **Duplicate Component Files** | `src/components/` | Code bloat, merge conflicts | Needs cleanup |
-| **USDC Purchase Disabled** | `MarketplaceContent.tsx:13-15` | Products can't be purchased | Intentional (post-GTM) |
-| **Data Import No Handler** | `Settings:1140` | Import button does nothing | Incomplete feature |
 
 ### MEDIUM PRIORITY (Functional but Incomplete)
 
 | Issue | Location | Impact |
 |-------|----------|--------|
-| Team invites simulated | `Settings:397-422` | Invites may not actually send |
-| Storage usage hardcoded | `Settings:1156` | Shows fake 5% usage |
 | Document upload incomplete | `AIChat.tsx` | File input hidden, no handler |
 | Console.log statements | Throughout | Should use logger.ts |
 
@@ -55,30 +51,17 @@
 | Issue | Location |
 |-------|----------|
 | TypeScript `any` types | Various API responses |
-| Magic numbers | Timezone defaults, storage % |
 | Inconsistent loading states | Mixed spinners/skeletons |
 
----
+### ✅ RESOLVED (December 23, 2025)
 
-## DUPLICATE FILES TO DELETE
-
-The following duplicate files exist and should be removed:
-
-```
-src/components/integrations/google/
-├── ContactsList 2.tsx          ← DELETE
-├── DriveExplorer 2.tsx         ← DELETE
-├── DriveExplorer 3.tsx         ← DELETE
-├── GmailInbox 2.tsx            ← DELETE
-├── GmailInbox 3.tsx            ← DELETE
-└── GmailInbox 4.tsx            ← DELETE
-
-src/components/onboarding/
-├── OnboardingWizard 2.tsx      ← DELETE
-└── steps/
-    ├── CompleteStep 2.tsx      ← DELETE
-    └── WelcomeStep 2.tsx       ← DELETE
-```
+| Issue | Resolution |
+|-------|------------|
+| Duplicate component files | Deleted 9 duplicate files |
+| USDC purchase code | Removed from marketplace (OAuth-only now) |
+| Data import broken | Changed to "Coming Soon" UI |
+| Storage usage hardcoded | Replaced with decentralized storage info card |
+| Team invites simulated | Frontend makes proper API calls |
 
 ---
 
@@ -126,22 +109,17 @@ https://app.varity.so/oauth/callback/hubspot      ← developers.hubspot.com
 | **Homepage** | `/` | ✅ 100% | Hero, FAQ, marketing complete |
 | **Onboarding** | `/onboarding` | ✅ 100% | 6-step wizard, email collection |
 | **AI Assistant** | `/ai-assistant` | ✅ 95% | Chat works, document upload incomplete |
+| **Dashboard** | `/dashboard` | ✅ 100% | Clean redesigned UI with AI insights widget |
+| **Marketplace** | `/marketplace` | ✅ 100% | OAuth-only connections (USDC post-MVP) |
+| **Settings** | `/settings` | ✅ 95% | All tabs work, data import "Coming Soon" |
 
 ### Working But Data-Dependent Pages
 
 | Page | URL | Status | Notes |
 |------|-----|--------|-------|
-| **Dashboard** | `/dashboard` | ⚠️ Needs Data | KPIs, charts ready but need synced data |
 | **Analytics** | `/analytics` | ⚠️ Needs Data | Charts render, need backend data |
-| **Marketplace** | `/marketplace` | ⚠️ Partial | OAuth works, USDC purchase disabled |
 | **Integrations** | `/integrations` | ⚠️ Backend Dependent | List works, sync depends on backend |
 | **Integration Tools** | `/dashboard/tools/[integration]` | ⚠️ Needs Data | UI complete, needs synced data |
-
-### Partially Complete Pages
-
-| Page | URL | Status | Issues |
-|------|-----|--------|--------|
-| **Settings** | `/settings` | ⚠️ 80% | Team invites simulated, data import broken |
 
 ---
 
@@ -303,6 +281,14 @@ This is the most complete integration and serves as the reference for others:
 - Fixed Archive, Reply All, Forward handlers
 - Added working modal buttons (Preview, Share, Star, Rename)
 
+### Recent Fixes (Dec 23, 2025)
+
+- **Dashboard Redesign**: Clean Business Overview with AI Insight widget
+- **Marketplace Cleanup**: Removed USDC purchase code, OAuth-only connections
+- **Settings Improvements**: Data Import → "Coming Soon", decentralized storage info card
+- **Duplicate Files Deleted**: Removed 9 duplicate component files
+- **Text Visibility Fixes**: Added text-gray-900 to dropdowns across Analytics, Marketplace, Integration Tools
+
 ---
 
 ## MULTI-TENANT SECURITY (4-Layer Architecture)
@@ -359,8 +345,8 @@ FRONTEND_URL=https://app.varity.so
 - [ ] Test HubSpot OAuth flow
 - [ ] Verify data appears on Dashboard after sync
 - [ ] Test AI Assistant with synced data
-- [ ] Test all buttons on Settings page
-- [ ] Remove duplicate component files
+- [x] Test all buttons on Settings page (Dec 23, 2025)
+- [x] Remove duplicate component files (Dec 23, 2025)
 - [ ] Verify Analytics page renders with data
 
 ### Manual Testing URLs

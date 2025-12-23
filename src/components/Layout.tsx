@@ -45,9 +45,9 @@ export function Layout({ children }: LayoutProps) {
   }, [authenticated, address]);
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="h-screen bg-gray-50 overflow-hidden">
       <Sidebar installedTools={installedTools} />
-      <main className="lg:ml-64">
+      <main className="lg:ml-64 h-full overflow-auto">
         {children}
       </main>
     </div>

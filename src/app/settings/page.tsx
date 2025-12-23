@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { usePrivy } from '@privy-io/react-auth';
 import { useWallets } from '@privy-io/react-auth';
 import { useRouter } from 'next/navigation';
@@ -119,9 +119,6 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
-  const [importing, setImporting] = useState(false);
-  const [storageUsed, setStorageUsed] = useState<string>('0 GB');
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Account settings state
   const [companyName, setCompanyName] = useState('');
@@ -370,43 +367,6 @@ export default function SettingsPage() {
       toast.error('Export failed', 'Unable to export data. Please try again.');
     } finally {
       setExporting(false);
-    }
-  };
-
-  // Import data from file
-  const handleImportData = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file || !address) {
-      return;
-    }
-
-    setImporting(true);
-    try {
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('wallet_address', address);
-
-      const response = await fetch(`${API_BASE_URL}/api/v1/import/data`, {
-        method: 'POST',
-        body: formData,
-      });
-
-      if (response.ok) {
-        const result = await response.json();
-        toast.success('Import complete', `Successfully imported ${result.records_imported || 0} records.`);
-      } else {
-        const error = await response.json();
-        toast.error('Import failed', error.detail || 'Unable to import data. Please check file format.');
-      }
-    } catch (error) {
-      console.error('Error importing data:', error);
-      toast.error('Import failed', 'Unable to import data. Please try again.');
-    } finally {
-      setImporting(false);
-      // Reset file input
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
     }
   };
 
@@ -1213,70 +1173,57 @@ export default function SettingsPage() {
                         </div>
                       </div>
 
-                      {/* Import Data */}
+                      {/* Import Data - Coming Soon */}
                       <div className="border-t border-gray-200 pt-6">
-                        <h3 className="font-semibold text-gray-900 mb-2">Import Data</h3>
+                        <div className="flex items-center gap-3 mb-2">
+                          <h3 className="font-semibold text-gray-900">Import Data</h3>
+                          <span className="text-xs bg-amber-100 text-amber-800 px-2 py-1 rounded-full font-medium">Coming Soon</span>
+                        </div>
                         <p className="text-sm text-gray-600 mb-4">
                           Upload data from previous exports or other systems
                         </p>
-                        <div
-                          className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors cursor-pointer ${
-                            importing
-                              ? 'border-blue-400 bg-blue-50'
-                              : 'border-gray-300 hover:border-blue-400 hover:bg-gray-50'
-                          }`}
-                          onClick={() => !importing && fileInputRef.current?.click()}
-                        >
-                          {importing ? (
-                            <>
-                              <div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
-                              <p className="text-blue-600 font-medium mb-2">Importing data...</p>
-                              <p className="text-xs text-gray-500">Please wait while we process your file</p>
-                            </>
-                          ) : (
-                            <>
-                              <Upload className="w-10 h-10 text-gray-400 mx-auto mb-3" />
-                              <p className="text-gray-600 mb-2">Click to select a file or drag and drop</p>
-                              <p className="text-xs text-gray-500">Supports JSON, CSV, and Excel files</p>
-                            </>
-                          )}
-                          <input
-                            ref={fileInputRef}
-                            type="file"
-                            className="hidden"
-                            accept=".json,.csv,.xlsx"
-                            onChange={handleImportData}
-                            disabled={importing}
-                          />
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              fileInputRef.current?.click();
-                            }}
-                            disabled={importing}
-                            className={`mt-4 px-6 py-2 rounded-lg font-semibold transition-all ${
-                              importing
-                                ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                                : 'bg-blue-600 text-white hover:bg-blue-700 hover:shadow-md'
-                            }`}
-                          >
-                            {importing ? 'Importing...' : 'Select File'}
-                          </button>
+                        <div className="border-2 border-dashed rounded-lg p-8 text-center border-gray-200 bg-gray-50 opacity-60 cursor-not-allowed">
+                          <Upload className="w-10 h-10 text-gray-300 mx-auto mb-3" />
+                          <p className="text-gray-400 mb-2">Data import will be available soon</p>
+                          <p className="text-xs text-gray-400">Supports JSON, CSV, and Excel files</p>
                         </div>
                       </div>
 
-                      {/* Storage Usage */}
+                      {/* Storage Info */}
                       <div className="border-t border-gray-200 pt-6">
-                        <h3 className="font-semibold text-gray-900 mb-4">Storage Usage</h3>
-                        <div className="bg-gray-50 rounded-lg p-6">
-                          <div className="flex justify-between items-center mb-2">
-                            <span className="text-gray-700">Used Storage</span>
-                            <span className="font-bold text-gray-900">Unlimited (Decentralized)</span>
+                        <h3 className="font-semibold text-gray-900 mb-4">Data Storage</h3>
+                        <div className="bg-gradient-to-br from-blue-50 to-purple-50 border border-blue-100 rounded-lg p-6">
+                          <div className="flex items-center gap-3 mb-3">
+                            <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-purple-600 rounded-lg flex items-center justify-center">
+                              <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2" />
+                              </svg>
+                            </div>
+                            <div>
+                              <p className="font-semibold text-gray-900">Decentralized Storage</p>
+                              <p className="text-sm text-gray-600">Powered by Filecoin & IPFS</p>
+                            </div>
                           </div>
-                          <div className="w-full bg-gray-200 rounded-full h-3">
-                            <div className="bg-gradient-to-r from-blue-600 to-purple-600 h-3 rounded-full" style={{width: '5%'}}></div>
-                          </div>
-                          <p className="text-xs text-gray-500 mt-2">Your data is encrypted and stored on Filecoin/IPFS</p>
+                          <ul className="space-y-2 text-sm text-gray-700">
+                            <li className="flex items-center gap-2">
+                              <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                              </svg>
+                              End-to-end encrypted with your wallet key
+                            </li>
+                            <li className="flex items-center gap-2">
+                              <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                              </svg>
+                              No storage limits - unlimited data
+                            </li>
+                            <li className="flex items-center gap-2">
+                              <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                              </svg>
+                              Only you can access your data
+                            </li>
+                          </ul>
                         </div>
                       </div>
 

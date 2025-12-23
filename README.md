@@ -20,7 +20,7 @@ A company-specific AI dashboard with encrypted data storage on Filecoin/IPFS. Ea
 
 ---
 
-## Current Status
+## Current Status (December 23, 2025)
 
 ### What Works
 
@@ -32,6 +32,11 @@ A company-specific AI dashboard with encrypted data storage on Filecoin/IPFS. Ea
 | AI Assistant | ✅ Working |
 | Onboarding | ✅ Working |
 | Conversations | ✅ Working |
+| Dashboard | ✅ Clean redesigned UI with AI insights |
+| Marketplace | ✅ OAuth-only connections |
+| Settings | ✅ All tabs functional |
+| Data Export | ✅ JSON, CSV, Excel |
+| Team Management | ✅ Frontend makes API calls |
 
 ### What's Blocked/Untested
 
@@ -42,7 +47,7 @@ A company-specific AI dashboard with encrypted data storage on Filecoin/IPFS. Ea
 | Slack | ❓ | Needs testing |
 | Salesforce | ❓ | Needs testing |
 | HubSpot | ❓ | Needs testing |
-| USDC Purchases | ❌ | Disabled for GTM |
+| Data Import | ⏳ | Coming Soon |
 
 ---
 
@@ -187,21 +192,22 @@ https://app.varity.so/oauth/callback/hubspot
 
 ## Known Issues
 
-### High Priority
+### Active Issues
 
 | Issue | Impact | Status |
 |-------|--------|--------|
 | QuickBooks 403 | Can't sync production data | Needs Intuit approval |
-| Duplicate files in `src/components/` | Code bloat | Needs cleanup |
-| USDC purchases disabled | Can't buy products | Intentional (post-GTM) |
+| Document upload | AI Assistant file upload incomplete | Medium priority |
 
-### Medium Priority
+### ✅ Resolved (December 23, 2025)
 
-| Issue | Location |
-|-------|----------|
-| Team invites simulated | Settings page |
-| Data import no handler | Settings page |
-| Document upload incomplete | AI Assistant |
+| Issue | Resolution |
+|-------|------------|
+| Duplicate component files | Deleted 9 duplicate files |
+| USDC purchases code | Removed from marketplace (OAuth-only now) |
+| Data import broken | Changed to "Coming Soon" UI |
+| Storage usage hardcoded | Replaced with decentralized storage info |
+| Team invites simulated | Frontend now makes proper API calls |
 
 ---
 

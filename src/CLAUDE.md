@@ -1,6 +1,6 @@
 # CLAUDE.md - Frontend (Next.js 14)
 
-**Last Updated:** December 18, 2025
+**Last Updated:** December 23, 2025
 **Framework:** Next.js 14 (App Router)
 **Language:** TypeScript
 **Styling:** Tailwind CSS
@@ -8,32 +8,23 @@
 
 ---
 
-## CRITICAL: KNOWN ISSUES
-
-### Files to Delete (Duplicates)
-
-```bash
-# These duplicate files MUST be deleted:
-rm "src/components/integrations/google/ContactsList 2.tsx"
-rm "src/components/integrations/google/DriveExplorer 2.tsx"
-rm "src/components/integrations/google/DriveExplorer 3.tsx"
-rm "src/components/integrations/google/GmailInbox 2.tsx"
-rm "src/components/integrations/google/GmailInbox 3.tsx"
-rm "src/components/integrations/google/GmailInbox 4.tsx"
-rm "src/components/onboarding/OnboardingWizard 2.tsx"
-rm "src/components/onboarding/steps/CompleteStep 2.tsx"
-rm "src/components/onboarding/steps/WelcomeStep 2.tsx"
-```
+## KNOWN ISSUES
 
 ### Incomplete Features
 
 | Feature | Location | Issue |
 |---------|----------|-------|
-| **USDC Purchase** | `MarketplaceContent.tsx:13-15` | Intentionally disabled (post-GTM) |
-| **Data Import** | `Settings page` | UI exists, no file handler |
 | **Document Upload** | `AIChat.tsx` | File input hidden, no handler |
-| **Team Invites** | `Settings:397-422` | Simulates success locally |
-| **Storage Usage** | `Settings:1156` | Hardcoded 5% |
+| **Data Import** | `Settings page` | Shows "Coming Soon" badge |
+
+### ✅ Resolved (December 23, 2025)
+
+| Feature | Resolution |
+|---------|------------|
+| Duplicate component files | Deleted 9 duplicate files |
+| USDC Purchase code | Removed from marketplace (OAuth-only) |
+| Storage usage hardcoded | Replaced with decentralized storage info |
+| Team invites | Frontend makes proper API calls |
 
 ---
 
@@ -46,22 +37,17 @@ rm "src/components/onboarding/steps/WelcomeStep 2.tsx"
 | `/` | `page.tsx` | Hero, FAQ, marketing |
 | `/onboarding` | `OnboardingWizard.tsx` | 6-step complete |
 | `/ai-assistant` | `AIChat.tsx` | Chat functional |
+| `/dashboard` | `DashboardContent.tsx` | Clean redesigned UI with AI insights |
+| `/marketplace` | `MarketplaceContent.tsx` | OAuth-only connections |
+| `/settings` | `page.tsx` | All tabs work, data import "Coming Soon" |
 
 ### Data-Dependent
 
 | Page | Component | Requires |
 |------|-----------|----------|
-| `/dashboard` | `DashboardContent.tsx` | Synced integration data |
 | `/analytics` | `AnalyticsContent.tsx` | Synced integration data |
-| `/marketplace` | `MarketplaceContent.tsx` | Backend products API |
 | `/integrations` | `page.tsx` | Connected OAuth tokens |
 | `/dashboard/tools/[integration]` | Dynamic page | Synced data per integration |
-
-### Partially Complete
-
-| Page | Component | Issues |
-|------|-----------|--------|
-| `/settings` | `page.tsx` | Team invites simulated, import broken |
 
 ---
 
@@ -188,6 +174,33 @@ src/components/onboarding/
 2. **Regenerate Response Fix**
    - Now auto-sends instead of just setting input
    - `sendMessage` accepts optional `overrideMessage` parameter
+
+---
+
+## RECENT FIXES (December 23, 2025)
+
+### Dashboard Redesign
+- Clean "Business Overview" UI with AI Insight widget
+- KPI cards clickable (link to Analytics)
+- Revenue Trend chart with Recharts
+- Recent Activity feed (limited to 7 items)
+- Single clean empty state when no integrations
+
+### Marketplace Cleanup
+- Removed all USDC purchase-related code
+- OAuth-only connection flow
+- Simplified state management (removed tier selection, purchase modals)
+- Updated component description
+
+### Settings Page Improvements
+- Data Import: Changed to "Coming Soon" with disabled UI
+- Storage: Replaced fake progress bar with decentralized storage info card
+- Removed unused import-related state and handlers
+
+### Code Cleanup
+- Deleted 9 duplicate component files
+- Fixed text visibility (`text-gray-900`) across multiple pages
+- Added KPI data transformer in `dashboardService.ts`
 
 ---
 

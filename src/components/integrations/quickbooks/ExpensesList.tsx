@@ -1,16 +1,9 @@
 "use client";
 
-import React, { useState } from 'react';
-import { Plus, Search, MoreHorizontal, Edit, Trash2, Receipt } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import React, { useState, useMemo } from 'react';
+import { Search, Receipt } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 
 interface Expense {
   id?: string;
@@ -35,164 +28,142 @@ interface ExpensesListProps {
   expenses?: Expense[];
 }
 
-// Helper function to normalize expense data from QuickBooks API format
-function normalizeExpense(exp: Expense): {
-  id: string;
-  vendor?: string;
-  category: string;
-  date: string;
-  amount: number;
-  paymentMethod: string;
-  memo?: string;
-} {
+// Normalize expense data from QuickBooks API format
+function normalizeExpense(exp: Expense) {
   return {
     id: exp.id || exp.Id || String(Math.random()),
-    vendor: exp.vendor || exp.EntityRef?.name,
+    vendor: exp.vendor || exp.EntityRef?.name || 'Unknown Vendor',
     category: exp.category || exp.AccountRef?.name || 'Uncategorized',
     date: exp.date || exp.TxnDate || '',
     amount: exp.amount ?? exp.TotalAmt ?? 0,
-    paymentMethod: exp.paymentMethod || exp.PaymentMethodRef?.name || exp.PaymentType || 'Unknown',
-    memo: exp.memo || exp.PrivateNote
+    paymentMethod: exp.paymentMethod || exp.PaymentMethodRef?.name || exp.PaymentType || '-',
+    memo: exp.memo || exp.PrivateNote || '',
   };
 }
 
 export default function ExpensesList({ walletAddress, expenses: rawExpenses = [] }: ExpensesListProps) {
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Normalize expenses from QuickBooks API format
-  const expenses = rawExpenses.map(normalizeExpense);
+  // Normalize and filter expenses
+  const expenses = useMemo(() => {
+    const normalized = rawExpenses.map(normalizeExpense);
 
-  const filteredExpenses = expenses.filter(expense =>
-    (expense.vendor?.toLowerCase().includes(searchQuery.toLowerCase()) || '') ||
-    expense.category.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+    if (!searchQuery.trim()) return normalized;
 
-  const totalExpenses = expenses.reduce((sum, exp) => sum + exp.amount, 0);
+    const query = searchQuery.toLowerCase();
+    return normalized.filter(exp =>
+      exp.vendor.toLowerCase().includes(query) ||
+      exp.category.toLowerCase().includes(query) ||
+      exp.memo.toLowerCase().includes(query)
+    );
+  }, [rawExpenses, searchQuery]);
+
+  // Calculate total
+  const total = useMemo(() => {
+    return expenses.reduce((sum, exp) => sum + exp.amount, 0);
+  }, [expenses]);
+
+  const formatDate = (dateStr: string) => {
+    if (!dateStr) return '-';
+    try {
+      return new Date(dateStr).toLocaleDateString();
+    } catch {
+      return dateStr;
+    }
+  };
 
   return (
     <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Expenses</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-            Track and manage business expenses
-          </p>
-        </div>
-        <Button className="bg-green-600 hover:bg-green-700">
-          <Plus className="w-4 h-4 mr-2" />
-          New Expense
-        </Button>
-      </div>
-
+      {/* Search and Total */}
       <Card>
         <CardContent className="pt-6">
-          <div className="flex items-center justify-between">
-            <div className="flex-1 mr-4">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-                <Input
-                  type="text"
-                  placeholder="Search expenses..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-10"
-                />
-              </div>
+          <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
+            <div className="relative flex-1 w-full sm:max-w-md">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <Input
+                type="text"
+                placeholder="Search by vendor, category, or memo..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-10"
+              />
             </div>
             <div className="text-right">
               <p className="text-sm text-gray-500 dark:text-gray-400">Total Expenses</p>
               <p className="text-2xl font-bold text-gray-900 dark:text-white">
-                ${totalExpenses.toLocaleString()}
+                ${total.toLocaleString()}
               </p>
             </div>
           </div>
         </CardContent>
       </Card>
 
+      {/* Expenses Table */}
       <Card>
         <CardHeader>
-          <CardTitle>All Expenses ({filteredExpenses.length})</CardTitle>
+          <CardTitle className="text-lg">
+            Expenses ({expenses.length})
+          </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-gray-200 dark:border-gray-700">
-                  <th className="text-left py-3 px-4 text-sm font-medium text-gray-500 dark:text-gray-400">
-                    Date
-                  </th>
-                  <th className="text-left py-3 px-4 text-sm font-medium text-gray-500 dark:text-gray-400">
-                    Vendor/Payee
-                  </th>
-                  <th className="text-left py-3 px-4 text-sm font-medium text-gray-500 dark:text-gray-400">
-                    Category
-                  </th>
-                  <th className="text-left py-3 px-4 text-sm font-medium text-gray-500 dark:text-gray-400">
-                    Payment Method
-                  </th>
-                  <th className="text-left py-3 px-4 text-sm font-medium text-gray-500 dark:text-gray-400">
-                    Memo
-                  </th>
-                  <th className="text-right py-3 px-4 text-sm font-medium text-gray-500 dark:text-gray-400">
-                    Amount
-                  </th>
-                  <th className="text-center py-3 px-4 text-sm font-medium text-gray-500 dark:text-gray-400">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredExpenses.map((expense) => (
-                  <tr
-                    key={expense.id}
-                    className="border-b border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800"
-                  >
-                    <td className="py-3 px-4 text-sm text-gray-600 dark:text-gray-400">
-                      {new Date(expense.date).toLocaleDateString()}
-                    </td>
-                    <td className="py-3 px-4 text-sm text-gray-900 dark:text-white">
-                      {expense.vendor || 'N/A'}
-                    </td>
-                    <td className="py-3 px-4 text-sm text-gray-600 dark:text-gray-400">
-                      {expense.category}
-                    </td>
-                    <td className="py-3 px-4 text-sm text-gray-600 dark:text-gray-400">
-                      {expense.paymentMethod}
-                    </td>
-                    <td className="py-3 px-4 text-sm text-gray-600 dark:text-gray-400">
-                      {expense.memo || '-'}
-                    </td>
-                    <td className="py-3 px-4 text-sm text-right font-medium text-gray-900 dark:text-white">
-                      ${expense.amount.toLocaleString()}
-                    </td>
-                    <td className="py-3 px-4 text-center">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" className="h-8 w-8">
-                            <MoreHorizontal className="w-4 h-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem>
-                            <Edit className="w-4 h-4 mr-2" />
-                            Edit
-                          </DropdownMenuItem>
-                          <DropdownMenuItem>
-                            <Receipt className="w-4 h-4 mr-2" />
-                            View Receipt
-                          </DropdownMenuItem>
-                          <DropdownMenuItem className="text-red-600">
-                            <Trash2 className="w-4 h-4 mr-2" />
-                            Delete
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </td>
+          {expenses.length === 0 ? (
+            <div className="text-center py-12">
+              <Receipt className="w-12 h-12 mx-auto text-gray-300 dark:text-gray-600 mb-4" />
+              <p className="text-gray-500 dark:text-gray-400">
+                {rawExpenses.length === 0
+                  ? 'No expenses synced yet'
+                  : 'No expenses match your search'}
+              </p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-gray-200 dark:border-gray-700">
+                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-500 dark:text-gray-400">
+                      Date
+                    </th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-500 dark:text-gray-400">
+                      Vendor
+                    </th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-500 dark:text-gray-400">
+                      Category
+                    </th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-500 dark:text-gray-400">
+                      Payment Method
+                    </th>
+                    <th className="text-right py-3 px-4 text-sm font-medium text-gray-500 dark:text-gray-400">
+                      Amount
+                    </th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {expenses.map((expense) => (
+                    <tr
+                      key={expense.id}
+                      className="border-b border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800/50"
+                    >
+                      <td className="py-3 px-4 text-sm text-gray-600 dark:text-gray-400">
+                        {formatDate(expense.date)}
+                      </td>
+                      <td className="py-3 px-4 text-sm font-medium text-gray-900 dark:text-white">
+                        {expense.vendor}
+                      </td>
+                      <td className="py-3 px-4 text-sm text-gray-700 dark:text-gray-300">
+                        {expense.category}
+                      </td>
+                      <td className="py-3 px-4 text-sm text-gray-600 dark:text-gray-400">
+                        {expense.paymentMethod}
+                      </td>
+                      <td className="py-3 px-4 text-sm text-right font-medium text-gray-900 dark:text-white">
+                        ${expense.amount.toLocaleString()}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

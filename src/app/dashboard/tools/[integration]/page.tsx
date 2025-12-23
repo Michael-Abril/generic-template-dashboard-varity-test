@@ -2583,6 +2583,7 @@ export default function IntegrationToolPage() {
       <QuickBooksPage
         walletAddress={address}
         data={quickbooksData}
+        onRefresh={syncData}
       />
     );
   }
