@@ -1372,16 +1372,16 @@ function QuickBooksToolPage({
             <input
               type="text"
               placeholder="Search products and services"
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent text-gray-900"
             />
           </div>
-          <select className="px-3 py-2 border border-gray-300 rounded-lg text-sm">
+          <select className="px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900">
             <option>All Types</option>
             <option>Service</option>
             <option>Non-inventory</option>
             <option>Inventory</option>
           </select>
-          <select className="px-3 py-2 border border-gray-300 rounded-lg text-sm">
+          <select className="px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900">
             <option>Active</option>
             <option>Inactive</option>
             <option>All</option>

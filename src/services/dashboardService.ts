@@ -69,6 +69,7 @@ export interface TopCustomersResponse {
 
 /**
  * Fetch dashboard KPIs
+ * Transforms flat backend response to KPIResponse format expected by frontend
  */
 export async function getKPIs(walletAddress: string): Promise<KPIResponse> {
   try {
@@ -82,7 +83,48 @@ export async function getKPIs(walletAddress: string): Promise<KPIResponse> {
     }
 
     const data = await response.json();
-    return data;
+
+    // Transform flat backend response to expected KPIResponse format
+    const kpis: KPIData[] = [
+      {
+        title: 'Total Revenue',
+        value: `$${(data.total_revenue || 0).toLocaleString()}`,
+        change: { value: data.revenue_change_percent || 0, period: 'vs last month' },
+        icon: 'DollarSign',
+        source: 'QuickBooks',
+        trend: (data.revenue_change_percent || 0) >= 0 ? 'up' : 'down',
+        color: 'green'
+      },
+      {
+        title: 'Active Customers',
+        value: (data.active_customers || 0).toLocaleString(),
+        change: { value: data.customers_change_percent || 0, period: 'vs last month' },
+        icon: 'Users',
+        source: 'QuickBooks',
+        trend: (data.customers_change_percent || 0) >= 0 ? 'up' : 'down',
+        color: 'blue'
+      },
+      {
+        title: 'Inventory Value',
+        value: `$${(data.inventory_value || 0).toLocaleString()}`,
+        change: { value: data.inventory_change_percent || 0, period: 'vs last month' },
+        icon: 'Package',
+        source: 'QuickBooks',
+        trend: (data.inventory_change_percent || 0) >= 0 ? 'up' : 'down',
+        color: 'orange'
+      },
+      {
+        title: 'Unpaid Invoices',
+        value: `$${(data.unpaid_invoices || 0).toLocaleString()}`,
+        change: { value: data.invoices_change_percent || 0, period: 'vs last month' },
+        icon: 'FileText',
+        source: 'QuickBooks',
+        trend: (data.invoices_change_percent || 0) <= 0 ? 'up' : 'down',
+        color: 'purple'
+      }
+    ];
+
+    return { kpis, last_updated: data.last_updated || new Date().toISOString() };
   } catch (error) {
     logger.error('Error fetching KPIs:', error);
     throw error;

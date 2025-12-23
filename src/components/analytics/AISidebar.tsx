@@ -61,7 +61,7 @@ export default function AISidebar({
   const [error, setError] = useState<string | null>(null);
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(true);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Fetch suggestions on mount
   useEffect(() => {
@@ -70,12 +70,28 @@ export default function AISidebar({
     }
   }, [isOpen, connectedIntegrations]);
 
-  // Focus input when sidebar opens
+  // Focus textarea when sidebar opens
   useEffect(() => {
-    if (isOpen && inputRef.current) {
-      setTimeout(() => inputRef.current?.focus(), 300);
+    if (isOpen && textareaRef.current) {
+      setTimeout(() => textareaRef.current?.focus(), 300);
     }
   }, [isOpen]);
+
+  // Auto-resize textarea on content change
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+      textareaRef.current.style.height = Math.min(textareaRef.current.scrollHeight, 150) + 'px';
+    }
+  }, [query]);
+
+  // Handle Enter key (submit) vs Shift+Enter (newline)
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSubmit(e);
+    }
+  };
 
   const fetchSuggestions = async () => {
     try {
@@ -285,19 +301,20 @@ export default function AISidebar({
           {/* Input Section */}
           <div className="p-4 border-b">
             <form onSubmit={handleSubmit} className="relative">
-              <input
-                ref={inputRef}
-                type="text"
+              <textarea
+                ref={textareaRef}
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
+                onKeyDown={handleKeyDown}
                 placeholder="Create a chart... (e.g., 'Show revenue by month')"
-                className="w-full px-4 py-3 pr-12 rounded-xl border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all text-sm"
+                className="w-full px-4 py-3 pr-12 rounded-xl border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all text-sm resize-none min-h-[48px]"
                 disabled={isLoading}
+                rows={1}
               />
               <button
                 type="submit"
                 disabled={isLoading || !query.trim()}
-                className="absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+                className="absolute right-2 top-3 p-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
               >
                 {isLoading ? (
                   <Loader2 className="w-4 h-4 animate-spin" />

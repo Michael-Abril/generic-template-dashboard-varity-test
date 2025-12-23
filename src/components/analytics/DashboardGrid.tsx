@@ -183,7 +183,7 @@ export default function DashboardGrid({
         isDraggable={isEditing}
         isResizable={isEditing}
         draggableHandle=".drag-handle"
-        margin={[16, 16]}
+        margin={[8, 8]}
         containerPadding={[0, 0]}
       >
         {widgets.map((widget) => (

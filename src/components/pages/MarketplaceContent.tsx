@@ -519,7 +519,7 @@ export default function MarketplaceContent() {
                   <select
                     value={sortBy}
                     onChange={(e) => setSortBy(e.target.value)}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-600 focus:border-transparent text-sm bg-white"
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-600 focus:border-transparent text-sm bg-white text-gray-900"
                   >
                     <option value="name">Sort: A-Z</option>
                     <option value="price-low">Sort: Price (Low to High)</option>

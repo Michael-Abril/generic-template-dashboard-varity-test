@@ -702,6 +702,71 @@ async def oauth_callback_post(request: Request, db: AsyncSession = Depends(get_d
                 # Trigger sync
                 sync_result = await sync.sync_data(wallet_address)
                 logger.info(f"Initial sync completed for {integration}: {sync_result.get('data', {}).keys() if sync_result else 'N/A'}")
+
+                # === CRITICAL: Index synced data in Qdrant for AI queries ===
+                # Without this, the AI Assistant cannot query the synced data
+                rag_indexed_count = 0
+                rag_errors = []
+
+                if sync_result and sync_result.get("data"):
+                    try:
+                        # Import RAG and decryption services
+                        from app.services.rag_service import rag_service
+                        from app.services.filecoin_service import FilecoinService
+                        from app.services.encryption_service import EncryptionService
+
+                        filecoin_svc = FilecoinService()
+                        encryption_svc = EncryptionService()
+
+                        if rag_service is None:
+                            logger.warning(
+                                f"RAG service not available - data synced to Pinata but NOT indexed for AI queries. "
+                                f"Configure QDRANT_URL and QDRANT_API_KEY to enable RAG."
+                            )
+                        else:
+                            # Index each data type that was synced
+                            for data_type, data_info in sync_result.get("data", {}).items():
+                                if data_info.get("status") == "success" and data_info.get("cid"):
+                                    try:
+                                        # Retrieve encrypted data from Pinata
+                                        encrypted = await filecoin_svc.retrieve_data(data_info["cid"])
+
+                                        # Decrypt the data
+                                        decrypted = await encryption_svc.decrypt_with_wallet(
+                                            encrypted_data=encrypted,
+                                            customer_wallet=wallet_address
+                                        )
+
+                                        # Index in Qdrant for AI queries
+                                        await rag_service.index_business_data(
+                                            business_wallet=wallet_address,
+                                            cid=data_info["cid"],
+                                            data=decrypted,
+                                            integration=integration,
+                                            data_type=data_type
+                                        )
+                                        rag_indexed_count += 1
+                                        logger.info(
+                                            f"RAG indexed {data_type} for {wallet_address[:10]}..., "
+                                            f"CID: {data_info['cid']}"
+                                        )
+
+                                    except Exception as rag_error:
+                                        error_msg = f"Failed to index {data_type}: {str(rag_error)}"
+                                        rag_errors.append(error_msg)
+                                        logger.warning(f"Failed to index {data_type} in RAG: {rag_error}")
+                                        # Don't fail OAuth flow if RAG indexing fails
+                                        continue
+
+                            if rag_indexed_count > 0:
+                                logger.info(f"RAG indexing complete: {rag_indexed_count} data types indexed for AI queries")
+                            if rag_errors:
+                                logger.warning(f"RAG indexing had {len(rag_errors)} errors: {rag_errors}")
+
+                    except Exception as rag_setup_error:
+                        logger.error(f"RAG indexing setup failed: {rag_setup_error}")
+                        # Don't fail OAuth flow
+
             else:
                 logger.warning(f"No sync adapter found for {integration}")
 

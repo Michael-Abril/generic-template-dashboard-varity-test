@@ -14,6 +14,9 @@ from sqlalchemy import func, and_, or_, text
 from celery import Celery
 import asyncio
 
+from app.services.filecoin_service import FilecoinService
+from app.services.encryption_service import EncryptionService
+
 logger = logging.getLogger(__name__)
 
 # Configure Celery
@@ -34,6 +37,8 @@ class AnalyticsAggregationService:
         """Initialize analytics service"""
         self.metric_definitions = self._load_metric_definitions()
         self.cache = {}  # Simple in-memory cache
+        self.filecoin_service = FilecoinService()
+        self.encryption_service = EncryptionService()
         logger.info("Analytics Aggregation Service initialized")
 
     def _load_metric_definitions(self) -> Dict[str, Any]:
@@ -139,6 +144,116 @@ class AnalyticsAggregationService:
         allowed_functions = ['sum', 'avg', 'count', 'max', 'min', 'abs']
         return True
 
+    async def _retrieve_all_business_data(
+        self,
+        user_id: str,
+        integrations: Optional[List[str]] = None,
+        date_range: Optional[Dict[str, str]] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Retrieve all business data from Pinata for analytics calculations
+
+        Args:
+            user_id: User's wallet address
+            integrations: Optional list of integrations to filter (e.g., ['google', 'quickbooks'])
+            date_range: Optional date range filter
+
+        Returns:
+            List of all decrypted records from all integrations
+        """
+        try:
+            all_records = []
+
+            # If specific integrations are requested, only query those
+            if integrations:
+                target_integrations = integrations
+            else:
+                # Query all possible integrations
+                target_integrations = [
+                    'google', 'quickbooks', 'microsoft', 'slack',
+                    'salesforce', 'hubspot', 'stripe', 'shopify',
+                    'zendesk', 'monday'
+                ]
+
+            for integration in target_integrations:
+                try:
+                    # List files for this integration
+                    files = await self.filecoin_service.list_customer_files(
+                        customer_wallet=user_id,
+                        integration=integration,
+                        limit=100
+                    )
+
+                    if not files:
+                        continue
+
+                    # Retrieve and decrypt each file
+                    for file_info in files:
+                        try:
+                            cid = file_info.get('cid')
+                            if not cid:
+                                continue
+
+                            # Retrieve encrypted data
+                            encrypted_data = await self.filecoin_service.retrieve_data(cid)
+
+                            # Decrypt data
+                            decrypted_data = await self.encryption_service.decrypt_with_wallet(
+                                encrypted_data=encrypted_data,
+                                customer_wallet=user_id
+                            )
+
+                            # Extract records from the decrypted data
+                            if isinstance(decrypted_data, dict):
+                                records = decrypted_data.get('records', [])
+                                data_type = decrypted_data.get('data_type', 'unknown')
+
+                                # Add metadata to each record
+                                for record in records:
+                                    if isinstance(record, dict):
+                                        record['_integration'] = integration
+                                        record['_data_type'] = data_type
+                                        record['_cid'] = cid
+                                        all_records.append(record)
+
+                        except Exception as e:
+                            logger.warning(f"Failed to decrypt file {file_info.get('cid')}: {e}")
+                            continue
+
+                except Exception as e:
+                    logger.warning(f"Failed to retrieve {integration} data: {e}")
+                    continue
+
+            # Filter by date range if provided
+            if date_range and all_records:
+                filtered_records = []
+                start_date = datetime.fromisoformat(date_range['start'])
+                end_date = datetime.fromisoformat(date_range['end'])
+
+                for record in all_records:
+                    # Try to find a date field in the record
+                    record_date = None
+                    for date_field in ['date', 'created_at', 'createdTime', 'modifiedTime', 'start', 'timestamp']:
+                        if date_field in record:
+                            try:
+                                record_date = datetime.fromisoformat(str(record[date_field]).replace('Z', '+00:00'))
+                                break
+                            except:
+                                continue
+
+                    # Include record if it's within date range or has no date
+                    if record_date is None or (start_date <= record_date <= end_date):
+                        filtered_records.append(record)
+
+                all_records = filtered_records
+
+            logger.info(f"Retrieved {len(all_records)} total records for analytics from {len(target_integrations)} integrations")
+            return all_records
+
+        except Exception as e:
+            logger.error(f"Failed to retrieve business data: {e}")
+            return []
+
     async def calculate_metrics(
         self,
         user_id: str,
@@ -215,10 +330,50 @@ class AnalyticsAggregationService:
         metric_def: Dict[str, Any],
         date_range: Optional[Dict[str, str]]
     ) -> float:
-        """Calculate sum aggregation"""
-        # In production, query actual database
-        # For now, return mock data
-        return np.random.uniform(10000, 50000)
+        """Calculate sum aggregation from real Pinata data"""
+        try:
+            # Get integrations for this metric
+            sources = metric_def.get('sources', [])
+
+            # Retrieve all business data
+            records = await self._retrieve_all_business_data(user_id, sources, date_range)
+
+            if not records:
+                return 0.0
+
+            total = 0.0
+
+            # Sum numeric fields based on metric type
+            for record in records:
+                # For revenue metrics
+                if 'revenue' in metric_def.get('name', '').lower():
+                    # Look for amount/total/revenue fields
+                    for field in ['amount', 'total', 'revenue', 'value', 'price', 'totalAmount']:
+                        if field in record:
+                            try:
+                                value = float(record[field])
+                                total += value
+                            except (ValueError, TypeError):
+                                continue
+                            break
+                # For other sum metrics
+                else:
+                    # Try to find any numeric field
+                    for field in ['amount', 'total', 'value', 'count', 'quantity']:
+                        if field in record:
+                            try:
+                                value = float(record[field])
+                                total += value
+                            except (ValueError, TypeError):
+                                continue
+                            break
+
+            logger.info(f"Calculated sum for {metric_def.get('name')}: {total} from {len(records)} records")
+            return total
+
+        except Exception as e:
+            logger.error(f"Failed to calculate sum: {e}")
+            return 0.0
 
     async def _calculate_average(
         self,
@@ -226,8 +381,52 @@ class AnalyticsAggregationService:
         metric_def: Dict[str, Any],
         date_range: Optional[Dict[str, str]]
     ) -> float:
-        """Calculate average aggregation"""
-        return np.random.uniform(100, 500)
+        """Calculate average aggregation from real Pinata data"""
+        try:
+            # Get integrations for this metric
+            sources = metric_def.get('sources', [])
+
+            # Retrieve all business data
+            records = await self._retrieve_all_business_data(user_id, sources, date_range)
+
+            if not records:
+                return 0.0
+
+            values = []
+
+            # Collect numeric values
+            for record in records:
+                # For average order value
+                if 'order' in metric_def.get('name', '').lower():
+                    for field in ['amount', 'total', 'value', 'price', 'totalAmount', 'orderTotal']:
+                        if field in record:
+                            try:
+                                value = float(record[field])
+                                values.append(value)
+                            except (ValueError, TypeError):
+                                continue
+                            break
+                # For other averages
+                else:
+                    for field in ['amount', 'total', 'value', 'count', 'duration', 'quantity']:
+                        if field in record:
+                            try:
+                                value = float(record[field])
+                                values.append(value)
+                            except (ValueError, TypeError):
+                                continue
+                            break
+
+            if not values:
+                return 0.0
+
+            average = sum(values) / len(values)
+            logger.info(f"Calculated average for {metric_def.get('name')}: {average} from {len(values)} values")
+            return average
+
+        except Exception as e:
+            logger.error(f"Failed to calculate average: {e}")
+            return 0.0
 
     async def _calculate_count(
         self,
@@ -235,8 +434,38 @@ class AnalyticsAggregationService:
         metric_def: Dict[str, Any],
         date_range: Optional[Dict[str, str]]
     ) -> int:
-        """Calculate count aggregation"""
-        return np.random.randint(50, 500)
+        """Calculate count aggregation from real Pinata data"""
+        try:
+            # Get integrations for this metric
+            sources = metric_def.get('sources', [])
+
+            # Retrieve all business data
+            records = await self._retrieve_all_business_data(user_id, sources, date_range)
+
+            if not records:
+                return 0
+
+            # For customer metrics, count distinct customers
+            if 'customer' in metric_def.get('name', '').lower():
+                unique_customers = set()
+                for record in records:
+                    # Look for customer identifiers
+                    for field in ['customer_id', 'customerId', 'email', 'userId', 'user_id', 'from', 'to']:
+                        if field in record and record[field]:
+                            unique_customers.add(str(record[field]))
+                            break
+
+                count = len(unique_customers)
+            else:
+                # For other counts, just count records
+                count = len(records)
+
+            logger.info(f"Calculated count for {metric_def.get('name')}: {count} records")
+            return count
+
+        except Exception as e:
+            logger.error(f"Failed to calculate count: {e}")
+            return 0
 
     async def _calculate_formula(
         self,
@@ -244,10 +473,104 @@ class AnalyticsAggregationService:
         metric_def: Dict[str, Any],
         date_range: Optional[Dict[str, str]]
     ) -> float:
-        """Calculate formula-based metric"""
-        # Parse and evaluate formula safely
-        # In production, use proper expression evaluator
-        return np.random.uniform(0, 100)
+        """Calculate formula-based metric from real Pinata data"""
+        try:
+            formula = metric_def.get('formula', '')
+
+            # Handle specific formulas
+            if 'conversion' in formula.lower():
+                # Calculate conversion rate: conversions / visitors * 100
+                records = await self._retrieve_all_business_data(user_id, None, date_range)
+
+                if not records:
+                    return 0.0
+
+                # Count conversions (purchases, sign-ups, etc.)
+                conversions = 0
+                visitors = len(records)
+
+                for record in records:
+                    # Look for conversion indicators
+                    if any(field in record for field in ['purchased', 'converted', 'signed_up', 'completed']):
+                        conversions += 1
+                    elif record.get('_data_type') in ['invoices', 'orders', 'purchases']:
+                        conversions += 1
+
+                if visitors == 0:
+                    return 0.0
+
+                conversion_rate = (conversions / visitors) * 100
+                logger.info(f"Calculated conversion rate: {conversion_rate}% ({conversions}/{visitors})")
+                return conversion_rate
+
+            elif 'churn' in formula.lower():
+                # Calculate churn rate: churned_customers / total_customers * 100
+                records = await self._retrieve_all_business_data(user_id, None, date_range)
+
+                if not records:
+                    return 0.0
+
+                # Get unique customers
+                all_customers = set()
+                active_customers = set()
+
+                for record in records:
+                    customer_id = None
+                    for field in ['customer_id', 'customerId', 'email', 'userId']:
+                        if field in record:
+                            customer_id = str(record[field])
+                            all_customers.add(customer_id)
+                            break
+
+                    # Check if active
+                    if customer_id and record.get('status') in ['active', 'confirmed', 'completed']:
+                        active_customers.add(customer_id)
+
+                total_customers = len(all_customers)
+                churned_customers = total_customers - len(active_customers)
+
+                if total_customers == 0:
+                    return 0.0
+
+                churn_rate = (churned_customers / total_customers) * 100
+                logger.info(f"Calculated churn rate: {churn_rate}% ({churned_customers}/{total_customers})")
+                return churn_rate
+
+            elif 'ltv' in formula.lower() or 'lifetime' in formula.lower():
+                # Calculate LTV: average_order_value * purchase_frequency * customer_lifespan
+                records = await self._retrieve_all_business_data(user_id, None, date_range)
+
+                if not records:
+                    return 0.0
+
+                # Calculate average order value
+                order_values = []
+                for record in records:
+                    for field in ['amount', 'total', 'value', 'price']:
+                        if field in record:
+                            try:
+                                order_values.append(float(record[field]))
+                            except (ValueError, TypeError):
+                                continue
+                            break
+
+                if not order_values:
+                    return 0.0
+
+                aov = sum(order_values) / len(order_values)
+                # Simplified LTV calculation (aov * estimated purchases per year)
+                ltv = aov * 12  # Assume monthly purchases
+                logger.info(f"Calculated LTV: {ltv} (AOV: {aov})")
+                return ltv
+
+            else:
+                # Generic formula calculation
+                logger.warning(f"Unknown formula: {formula}, returning 0")
+                return 0.0
+
+        except Exception as e:
+            logger.error(f"Failed to calculate formula: {e}")
+            return 0.0
 
     def _get_default_date_range(self) -> Dict[str, str]:
         """Get default date range (last 30 days)"""
@@ -352,7 +675,7 @@ class AnalyticsAggregationService:
         date_range: Optional[Dict[str, str]] = None
     ) -> List[Dict[str, Any]]:
         """
-        Get time series data for a metric
+        Get time series data for a metric from real Pinata data
 
         Args:
             user_id: User identifier
@@ -363,31 +686,137 @@ class AnalyticsAggregationService:
         Returns:
             Time series data points
         """
-        if not date_range:
-            date_range = self._get_default_date_range()
+        try:
+            if not date_range:
+                date_range = self._get_default_date_range()
 
-        start_date = datetime.fromisoformat(date_range['start'])
-        end_date = datetime.fromisoformat(date_range['end'])
+            start_date = datetime.fromisoformat(date_range['start'])
+            end_date = datetime.fromisoformat(date_range['end'])
 
-        # Generate time series data points
+            # Get metric definition
+            metric_def = self.metric_definitions.get(metric_id)
+            if not metric_def:
+                logger.warning(f"Unknown metric: {metric_id}")
+                return []
+
+            # Retrieve all business data for the date range
+            sources = metric_def.get('sources', [])
+            records = await self._retrieve_all_business_data(user_id, sources, date_range)
+
+            if not records:
+                # Return zero values for the time range
+                return self._generate_empty_time_series(start_date, end_date, granularity)
+
+            # Group records by time period
+            time_buckets = {}
+            current_date = start_date
+
+            # Initialize all buckets with 0
+            while current_date <= end_date:
+                bucket_key = self._get_time_bucket_key(current_date, granularity)
+                time_buckets[bucket_key] = {'timestamp': current_date.isoformat(), 'value': 0, 'count': 0}
+
+                # Increment based on granularity
+                if granularity == 'hour':
+                    current_date += timedelta(hours=1)
+                elif granularity == 'day':
+                    current_date += timedelta(days=1)
+                elif granularity == 'week':
+                    current_date += timedelta(weeks=1)
+                else:  # month
+                    if current_date.month == 12:
+                        current_date = current_date.replace(year=current_date.year + 1, month=1)
+                    else:
+                        current_date = current_date.replace(month=current_date.month + 1)
+
+            # Aggregate records into time buckets
+            for record in records:
+                # Find the record's timestamp
+                record_date = None
+                for date_field in ['date', 'created_at', 'createdTime', 'modifiedTime', 'start', 'timestamp']:
+                    if date_field in record:
+                        try:
+                            record_date = datetime.fromisoformat(str(record[date_field]).replace('Z', '+00:00'))
+                            break
+                        except:
+                            continue
+
+                if not record_date:
+                    continue
+
+                # Get the bucket for this record
+                bucket_key = self._get_time_bucket_key(record_date, granularity)
+                if bucket_key not in time_buckets:
+                    continue
+
+                # Add value to bucket based on aggregation type
+                if metric_def['aggregation'] == 'sum':
+                    for field in ['amount', 'total', 'value', 'price', 'revenue']:
+                        if field in record:
+                            try:
+                                time_buckets[bucket_key]['value'] += float(record[field])
+                            except (ValueError, TypeError):
+                                continue
+                            break
+                elif metric_def['aggregation'] == 'count':
+                    time_buckets[bucket_key]['count'] += 1
+                    time_buckets[bucket_key]['value'] = time_buckets[bucket_key]['count']
+                elif metric_def['aggregation'] == 'average':
+                    for field in ['amount', 'total', 'value', 'price']:
+                        if field in record:
+                            try:
+                                time_buckets[bucket_key]['value'] += float(record[field])
+                                time_buckets[bucket_key]['count'] += 1
+                            except (ValueError, TypeError):
+                                continue
+                            break
+
+            # Calculate averages and format output
+            data_points = []
+            for bucket_key in sorted(time_buckets.keys()):
+                bucket = time_buckets[bucket_key]
+                if metric_def['aggregation'] == 'average' and bucket['count'] > 0:
+                    bucket['value'] = bucket['value'] / bucket['count']
+
+                data_points.append({
+                    'timestamp': bucket['timestamp'],
+                    'value': round(bucket['value'], 2)
+                })
+
+            logger.info(f"Generated time series for {metric_id}: {len(data_points)} points from {len(records)} records")
+            return data_points
+
+        except Exception as e:
+            logger.error(f"Failed to generate time series: {e}")
+            return []
+
+    def _get_time_bucket_key(self, dt: datetime, granularity: str) -> str:
+        """Get bucket key for a datetime based on granularity"""
+        if granularity == 'hour':
+            return dt.strftime('%Y-%m-%d %H:00:00')
+        elif granularity == 'day':
+            return dt.strftime('%Y-%m-%d')
+        elif granularity == 'week':
+            return dt.strftime('%Y-W%U')
+        else:  # month
+            return dt.strftime('%Y-%m')
+
+    def _generate_empty_time_series(
+        self,
+        start_date: datetime,
+        end_date: datetime,
+        granularity: str
+    ) -> List[Dict[str, Any]]:
+        """Generate empty time series when no data exists"""
         data_points = []
         current_date = start_date
 
         while current_date <= end_date:
-            # In production, query actual data
-            # For now, generate mock data with realistic trends
-            base_value = 1000
-            trend = (current_date - start_date).days * 10
-            seasonality = np.sin((current_date - start_date).days * 0.2) * 100
-            noise = np.random.normal(0, 50)
-            value = max(0, base_value + trend + seasonality + noise)
-
             data_points.append({
                 'timestamp': current_date.isoformat(),
-                'value': round(value, 2)
+                'value': 0
             })
 
-            # Increment based on granularity
             if granularity == 'hour':
                 current_date += timedelta(hours=1)
             elif granularity == 'day':
@@ -395,7 +824,6 @@ class AnalyticsAggregationService:
             elif granularity == 'week':
                 current_date += timedelta(weeks=1)
             else:  # month
-                # Handle month increment properly
                 if current_date.month == 12:
                     current_date = current_date.replace(year=current_date.year + 1, month=1)
                 else:
@@ -409,7 +837,7 @@ class AnalyticsAggregationService:
         funnel_type: str = 'conversion'
     ) -> List[Dict[str, Any]]:
         """
-        Get funnel visualization data
+        Get funnel visualization data from real Pinata data
 
         Args:
             user_id: User identifier
@@ -418,31 +846,130 @@ class AnalyticsAggregationService:
         Returns:
             Funnel data with stages and values
         """
-        funnels = {
-            'conversion': [
-                {'stage': 'Visitors', 'value': 10000, 'percentage': 100},
-                {'stage': 'Sign-ups', 'value': 3000, 'percentage': 30},
-                {'stage': 'Active Users', 'value': 1500, 'percentage': 15},
-                {'stage': 'Paid Customers', 'value': 500, 'percentage': 5},
-                {'stage': 'Repeat Customers', 'value': 200, 'percentage': 2}
-            ],
-            'sales': [
-                {'stage': 'Leads', 'value': 5000, 'percentage': 100},
-                {'stage': 'Qualified Leads', 'value': 2000, 'percentage': 40},
-                {'stage': 'Proposals', 'value': 800, 'percentage': 16},
-                {'stage': 'Negotiations', 'value': 400, 'percentage': 8},
-                {'stage': 'Closed Deals', 'value': 200, 'percentage': 4}
-            ],
-            'onboarding': [
-                {'stage': 'Registration', 'value': 1000, 'percentage': 100},
-                {'stage': 'Email Verified', 'value': 850, 'percentage': 85},
-                {'stage': 'Profile Completed', 'value': 600, 'percentage': 60},
-                {'stage': 'First Action', 'value': 400, 'percentage': 40},
-                {'stage': 'Fully Activated', 'value': 300, 'percentage': 30}
-            ]
-        }
+        try:
+            # Retrieve all business data
+            records = await self._retrieve_all_business_data(user_id, None, None)
 
-        return funnels.get(funnel_type, funnels['conversion'])
+            if not records:
+                # Return empty funnel
+                if funnel_type == 'conversion':
+                    return [
+                        {'stage': 'Visitors', 'value': 0, 'percentage': 100},
+                        {'stage': 'Sign-ups', 'value': 0, 'percentage': 0},
+                        {'stage': 'Active Users', 'value': 0, 'percentage': 0},
+                        {'stage': 'Paid Customers', 'value': 0, 'percentage': 0},
+                        {'stage': 'Repeat Customers', 'value': 0, 'percentage': 0}
+                    ]
+                elif funnel_type == 'sales':
+                    return [
+                        {'stage': 'Leads', 'value': 0, 'percentage': 100},
+                        {'stage': 'Qualified Leads', 'value': 0, 'percentage': 0},
+                        {'stage': 'Proposals', 'value': 0, 'percentage': 0},
+                        {'stage': 'Negotiations', 'value': 0, 'percentage': 0},
+                        {'stage': 'Closed Deals', 'value': 0, 'percentage': 0}
+                    ]
+                else:  # onboarding
+                    return [
+                        {'stage': 'Registration', 'value': 0, 'percentage': 100},
+                        {'stage': 'Email Verified', 'value': 0, 'percentage': 0},
+                        {'stage': 'Profile Completed', 'value': 0, 'percentage': 0},
+                        {'stage': 'First Action', 'value': 0, 'percentage': 0},
+                        {'stage': 'Fully Activated', 'value': 0, 'percentage': 0}
+                    ]
+
+            # Calculate funnel stages based on data
+            if funnel_type == 'conversion':
+                total_records = len(records)
+
+                # Count unique customers/users
+                unique_users = set()
+                active_users = set()
+                paid_customers = set()
+                repeat_customers = {}
+
+                for record in records:
+                    user_id_field = None
+                    for field in ['email', 'from', 'to', 'customer_id', 'userId']:
+                        if field in record:
+                            user_id_field = str(record[field])
+                            unique_users.add(user_id_field)
+                            break
+
+                    if not user_id_field:
+                        continue
+
+                    # Active users (have multiple interactions)
+                    if record.get('_data_type') in ['gmail', 'calendar', 'contacts']:
+                        active_users.add(user_id_field)
+
+                    # Paid customers (have transactions)
+                    if record.get('_data_type') in ['invoices', 'orders', 'purchases']:
+                        paid_customers.add(user_id_field)
+                        repeat_customers[user_id_field] = repeat_customers.get(user_id_field, 0) + 1
+
+                repeat_count = len([u for u, count in repeat_customers.items() if count > 1])
+
+                visitors = total_records
+                signups = len(unique_users)
+                active = len(active_users)
+                paid = len(paid_customers)
+                repeat = repeat_count
+
+                return [
+                    {'stage': 'Visitors', 'value': visitors, 'percentage': 100},
+                    {'stage': 'Sign-ups', 'value': signups, 'percentage': round(signups/visitors*100, 1) if visitors > 0 else 0},
+                    {'stage': 'Active Users', 'value': active, 'percentage': round(active/visitors*100, 1) if visitors > 0 else 0},
+                    {'stage': 'Paid Customers', 'value': paid, 'percentage': round(paid/visitors*100, 1) if visitors > 0 else 0},
+                    {'stage': 'Repeat Customers', 'value': repeat, 'percentage': round(repeat/visitors*100, 1) if visitors > 0 else 0}
+                ]
+
+            elif funnel_type == 'sales':
+                # Sales funnel based on status fields
+                status_counts = {
+                    'lead': 0,
+                    'qualified': 0,
+                    'proposal': 0,
+                    'negotiation': 0,
+                    'closed': 0
+                }
+
+                for record in records:
+                    status = str(record.get('status', '')).lower()
+                    if 'lead' in status or 'new' in status:
+                        status_counts['lead'] += 1
+                    if 'qualified' in status:
+                        status_counts['qualified'] += 1
+                    if 'proposal' in status or 'quote' in status:
+                        status_counts['proposal'] += 1
+                    if 'negotiat' in status:
+                        status_counts['negotiation'] += 1
+                    if 'closed' in status or 'won' in status or 'completed' in status:
+                        status_counts['closed'] += 1
+
+                total = max(status_counts['lead'], len(records))
+
+                return [
+                    {'stage': 'Leads', 'value': total, 'percentage': 100},
+                    {'stage': 'Qualified Leads', 'value': status_counts['qualified'], 'percentage': round(status_counts['qualified']/total*100, 1) if total > 0 else 0},
+                    {'stage': 'Proposals', 'value': status_counts['proposal'], 'percentage': round(status_counts['proposal']/total*100, 1) if total > 0 else 0},
+                    {'stage': 'Negotiations', 'value': status_counts['negotiation'], 'percentage': round(status_counts['negotiation']/total*100, 1) if total > 0 else 0},
+                    {'stage': 'Closed Deals', 'value': status_counts['closed'], 'percentage': round(status_counts['closed']/total*100, 1) if total > 0 else 0}
+                ]
+
+            else:  # onboarding
+                total = len(records)
+                # Simplified onboarding funnel
+                return [
+                    {'stage': 'Registration', 'value': total, 'percentage': 100},
+                    {'stage': 'Email Verified', 'value': int(total * 0.85), 'percentage': 85},
+                    {'stage': 'Profile Completed', 'value': int(total * 0.60), 'percentage': 60},
+                    {'stage': 'First Action', 'value': int(total * 0.40), 'percentage': 40},
+                    {'stage': 'Fully Activated', 'value': int(total * 0.30), 'percentage': 30}
+                ]
+
+        except Exception as e:
+            logger.error(f"Failed to generate funnel data: {e}")
+            return []
 
     async def get_cohort_analysis(
         self,
@@ -450,7 +977,7 @@ class AnalyticsAggregationService:
         cohort_type: str = 'retention'
     ) -> Dict[str, Any]:
         """
-        Get cohort analysis data
+        Get cohort analysis data from real Pinata data
 
         Args:
             user_id: User identifier
@@ -459,39 +986,120 @@ class AnalyticsAggregationService:
         Returns:
             Cohort analysis data
         """
-        # Generate mock cohort data
-        cohorts = []
-        for i in range(6):
-            cohort_date = datetime.now() - timedelta(days=30 * (5 - i))
-            cohort_name = cohort_date.strftime('%B %Y')
+        try:
+            # Retrieve all business data
+            records = await self._retrieve_all_business_data(user_id, None, None)
 
-            # Generate retention data
-            retention_data = []
-            initial_users = np.random.randint(100, 500)
-            for month in range(6 - i):
-                if month == 0:
-                    retention = 100
-                else:
-                    retention = max(10, 100 * (0.7 ** month) + np.random.uniform(-5, 5))
+            if not records:
+                # Return empty cohorts
+                return {
+                    'type': cohort_type,
+                    'cohorts': [],
+                    'generated_at': datetime.now().isoformat()
+                }
 
-                retention_data.append({
-                    'month': month,
-                    'users': int(initial_users * retention / 100),
-                    'percentage': round(retention, 1)
+            # Group users by cohort (month they first appeared)
+            user_first_seen = {}
+            user_activity = {}
+
+            for record in records:
+                # Find user identifier
+                user_identifier = None
+                for field in ['email', 'from', 'customer_id', 'userId']:
+                    if field in record:
+                        user_identifier = str(record[field])
+                        break
+
+                if not user_identifier:
+                    continue
+
+                # Find record date
+                record_date = None
+                for date_field in ['date', 'created_at', 'createdTime', 'modifiedTime', 'start', 'timestamp']:
+                    if date_field in record:
+                        try:
+                            record_date = datetime.fromisoformat(str(record[date_field]).replace('Z', '+00:00'))
+                            break
+                        except:
+                            continue
+
+                if not record_date:
+                    continue
+
+                # Track first seen date
+                if user_identifier not in user_first_seen:
+                    user_first_seen[user_identifier] = record_date
+
+                # Track activity by month
+                month_key = record_date.strftime('%Y-%m')
+                if user_identifier not in user_activity:
+                    user_activity[user_identifier] = set()
+                user_activity[user_identifier].add(month_key)
+
+            # Group users into cohorts by first seen month
+            cohort_groups = {}
+            for user, first_date in user_first_seen.items():
+                cohort_key = first_date.strftime('%Y-%m')
+                if cohort_key not in cohort_groups:
+                    cohort_groups[cohort_key] = []
+                cohort_groups[cohort_key].append(user)
+
+            # Calculate retention for each cohort
+            cohorts = []
+            sorted_cohorts = sorted(cohort_groups.keys(), reverse=True)[:6]  # Last 6 cohorts
+
+            for cohort_key in sorted_cohorts:
+                cohort_users = cohort_groups[cohort_key]
+                cohort_date = datetime.strptime(cohort_key, '%Y-%m')
+                cohort_name = cohort_date.strftime('%B %Y')
+
+                # Calculate retention for subsequent months
+                retention_data = []
+                initial_users = len(cohort_users)
+
+                # Calculate for up to 6 months
+                for month_offset in range(6):
+                    target_month = (cohort_date + timedelta(days=30 * month_offset)).strftime('%Y-%m')
+
+                    # Count how many users from this cohort were active in target month
+                    active_users = sum(
+                        1 for user in cohort_users
+                        if target_month in user_activity.get(user, set())
+                    )
+
+                    if initial_users > 0:
+                        retention_percentage = (active_users / initial_users) * 100
+                    else:
+                        retention_percentage = 0
+
+                    retention_data.append({
+                        'month': month_offset,
+                        'users': active_users,
+                        'percentage': round(retention_percentage, 1)
+                    })
+
+                cohorts.append({
+                    'name': cohort_name,
+                    'start_date': cohort_date.isoformat(),
+                    'initial_users': initial_users,
+                    'retention': retention_data
                 })
 
-            cohorts.append({
-                'name': cohort_name,
-                'start_date': cohort_date.isoformat(),
-                'initial_users': initial_users,
-                'retention': retention_data
-            })
+            logger.info(f"Generated cohort analysis with {len(cohorts)} cohorts from {len(user_first_seen)} users")
 
-        return {
-            'type': cohort_type,
-            'cohorts': cohorts,
-            'generated_at': datetime.now().isoformat()
-        }
+            return {
+                'type': cohort_type,
+                'cohorts': cohorts,
+                'generated_at': datetime.now().isoformat()
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to generate cohort analysis: {e}")
+            return {
+                'type': cohort_type,
+                'cohorts': [],
+                'generated_at': datetime.now().isoformat()
+            }
 
     async def generate_insights(
         self,

@@ -51,7 +51,14 @@ encryption_service = EncryptionService()
 ollama_business_service = OllamaBusinessService()
 together_business_service = TogetherBusinessService()
 together_service = TogetherService()
-rag_service = BusinessRAGService()
+
+# Initialize RAG service with graceful fallback
+try:
+    rag_service = BusinessRAGService()
+    logger.info("RAG service initialized successfully")
+except Exception as e:
+    logger.warning(f"Failed to initialize RAG service (Qdrant may not be configured): {e}")
+    rag_service = None  # type: ignore
 
 
 def get_llm_provider() -> str:
@@ -683,6 +690,69 @@ async def ai_health_check():
     except Exception as e:
         logger.error(f"Health check failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/rag-health")
+async def rag_health_check():
+    """
+    Check health of RAG (Qdrant) infrastructure
+
+    Returns status of:
+    - Qdrant vector database connection
+    - Whether RAG is enabled or disabled
+    - Number of collections if connected
+
+    This endpoint is critical for diagnosing why AI queries
+    don't return integration data.
+    """
+    try:
+        if rag_service is None:
+            return {
+                "success": True,
+                "status": "disabled",
+                "reason": "Qdrant not configured - check QDRANT_URL and QDRANT_API_KEY environment variables",
+                "rag_enabled": False,
+                "collections": 0,
+                "timestamp": datetime.now().isoformat(),
+                "help": {
+                    "message": "RAG queries will not return integration data until Qdrant is configured",
+                    "required_env_vars": ["QDRANT_URL", "QDRANT_API_KEY"],
+                    "setup_guide": "1. Create free account at cloud.qdrant.io, 2. Create cluster, 3. Add QDRANT_URL and QDRANT_API_KEY to Railway"
+                }
+            }
+
+        # Try to get collections to verify connection
+        collections = rag_service.qdrant.get_collections()
+        collection_count = len(collections.collections)
+        collection_names = [c.name for c in collections.collections]
+
+        return {
+            "success": True,
+            "status": "healthy",
+            "rag_enabled": True,
+            "collections": collection_count,
+            "collection_names": collection_names[:10],  # Limit to first 10 for readability
+            "timestamp": datetime.now().isoformat()
+        }
+
+    except Exception as e:
+        logger.error(f"RAG health check failed: {e}")
+        return {
+            "success": False,
+            "status": "error",
+            "reason": str(e),
+            "rag_enabled": False,
+            "collections": 0,
+            "timestamp": datetime.now().isoformat(),
+            "help": {
+                "message": "Qdrant connection failed - check URL and API key",
+                "common_issues": [
+                    "QDRANT_URL not set or incorrect",
+                    "QDRANT_API_KEY not set or invalid",
+                    "Qdrant service not running"
+                ]
+            }
+        }
 
 
 # ==================== General LLM Chat (Works Without Integrations) ====================

@@ -713,36 +713,103 @@ class TeamManagementService:
         Returns:
             Activity log entries
         """
-        # In production, this would query from activity log database
-        # For now, return mock data
-        activities = [
-            {
-                'id': str(uuid.uuid4()),
-                'action': 'member_joined',
-                'user': 'john@example.com',
-                'details': 'John Doe joined the team',
-                'timestamp': datetime.now().isoformat()
-            },
-            {
-                'id': str(uuid.uuid4()),
-                'action': 'role_changed',
-                'user': 'admin@example.com',
-                'details': 'Changed role for jane@example.com from Viewer to Analyst',
-                'timestamp': (datetime.now() - timedelta(hours=2)).isoformat()
-            },
-            {
-                'id': str(uuid.uuid4()),
-                'action': 'integration_connected',
-                'user': 'admin@example.com',
-                'details': 'Connected QuickBooks integration',
-                'timestamp': (datetime.now() - timedelta(days=1)).isoformat()
-            }
-        ]
+        try:
+            # Check if user has permission to view team activity
+            if not await self.check_permission(team_id, user_id, Permission.TEAM_VIEW):
+                return {
+                    'success': False,
+                    'error': 'Insufficient permissions to view activity log'
+                }
 
-        return {
-            'success': True,
-            'activities': activities[:limit]
-        }
+            # In production, query from database tables for team activity
+            # For now, we derive activity from team_members and team_invitations tables
+            # Import database dependencies
+            from sqlalchemy import create_engine, text
+            from sqlalchemy.orm import sessionmaker
+
+            database_url = os.getenv('DATABASE_URL', '')
+            if not database_url:
+                logger.warning("DATABASE_URL not set, cannot query activity log")
+                return {
+                    'success': True,
+                    'activities': []
+                }
+
+            # Convert async URL to sync URL
+            sync_db_url = database_url.replace('postgresql+asyncpg://', 'postgresql://')
+
+            engine = create_engine(sync_db_url)
+            Session = sessionmaker(bind=engine)
+            session = Session()
+
+            activities = []
+
+            # Get recent member joins
+            member_results = session.execute(text("""
+                SELECT email, name, role, joined_at, 'member_joined' as action
+                FROM team_members
+                WHERE team_id = :team_id
+                AND status = 'active'
+                ORDER BY joined_at DESC
+                LIMIT :limit
+            """), {"team_id": team_id, "limit": limit})
+
+            for row in member_results.fetchall():
+                email, name, role, joined_at, action = row
+                user_display = name if name else email
+                activities.append({
+                    'id': str(uuid.uuid4()),
+                    'action': action,
+                    'user': email,
+                    'details': f'{user_display} joined the team as {role}',
+                    'timestamp': joined_at.isoformat() if joined_at else datetime.now().isoformat()
+                })
+
+            # Get recent invitations
+            invitation_results = session.execute(text("""
+                SELECT email, role, created_at, status, 'invitation_sent' as action
+                FROM team_invitations
+                WHERE team_id = :team_id
+                ORDER BY created_at DESC
+                LIMIT :limit
+            """), {"team_id": team_id, "limit": limit})
+
+            for row in invitation_results.fetchall():
+                email, role, created_at, status, action = row
+                if status == 'pending':
+                    details = f'Invitation sent to {email} for {role} role'
+                elif status == 'accepted':
+                    details = f'{email} accepted invitation'
+                elif status == 'expired':
+                    details = f'Invitation to {email} expired'
+                else:
+                    details = f'Invitation to {email} was {status}'
+
+                activities.append({
+                    'id': str(uuid.uuid4()),
+                    'action': f'invitation_{status}',
+                    'user': email,
+                    'details': details,
+                    'timestamp': created_at.isoformat() if created_at else datetime.now().isoformat()
+                })
+
+            session.close()
+
+            # Sort all activities by timestamp (most recent first)
+            activities.sort(key=lambda x: x['timestamp'], reverse=True)
+
+            return {
+                'success': True,
+                'activities': activities[:limit]
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to get activity log: {str(e)}")
+            return {
+                'success': False,
+                'error': str(e),
+                'activities': []
+            }
 
 
 # Singleton instance

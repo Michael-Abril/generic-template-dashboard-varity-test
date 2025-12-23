@@ -282,9 +282,43 @@ async def get_dashboard_kpis(
                     if float(acc.get("annual_revenue", 0)) > 0
                 ])
 
-                # Mock previous month comparison (would need historical data)
-                # In production, query historical snapshots
-                customers_change_percent = 5.2  # Placeholder
+                # Calculate historical comparison
+                # Get all historical account files to track customer growth
+                try:
+                    all_account_files = await filecoin_service.list_customer_files(
+                        customer_wallet=wallet_address,
+                        integration="salesforce",
+                        data_type="accounts",
+                        limit=100
+                    )
+
+                    # If we have historical data (more than 1 file), calculate change
+                    if len(all_account_files) > 1:
+                        # Get the previous sync (second most recent)
+                        previous_file = all_account_files[1]
+                        previous_encrypted = await filecoin_service.retrieve_data(previous_file["cid"])
+                        previous_decrypted = await encryption_service.decrypt_with_wallet(
+                            encrypted_data=previous_encrypted,
+                            customer_wallet=wallet_address
+                        )
+
+                        # Count previous active customers
+                        previous_accounts = previous_decrypted if isinstance(previous_decrypted, list) else [previous_decrypted]
+                        previous_customers = len([
+                            acc for acc in previous_accounts
+                            if float(acc.get("annual_revenue", 0)) > 0
+                        ])
+
+                        customers_change_percent = calculate_percentage_change(
+                            active_customers, previous_customers
+                        )
+                    else:
+                        # First sync, no historical data
+                        customers_change_percent = 0.0
+
+                except Exception as hist_error:
+                    logger.warning(f"Could not calculate customer change: {hist_error}")
+                    customers_change_percent = 0.0
 
                 logger.info(f"Salesforce: {active_customers} active customers")
 
@@ -310,8 +344,43 @@ async def get_dashboard_kpis(
                     for prod in shopify_products
                 )
 
-                # Mock inventory change (would need historical data)
-                inventory_change_percent = -2.4  # Placeholder
+                # Calculate historical comparison
+                # Get all historical product files to track inventory changes
+                try:
+                    all_product_files = await filecoin_service.list_customer_files(
+                        customer_wallet=wallet_address,
+                        integration="shopify",
+                        data_type="products",
+                        limit=100
+                    )
+
+                    # If we have historical data (more than 1 file), calculate change
+                    if len(all_product_files) > 1:
+                        # Get the previous sync (second most recent)
+                        previous_file = all_product_files[1]
+                        previous_encrypted = await filecoin_service.retrieve_data(previous_file["cid"])
+                        previous_decrypted = await encryption_service.decrypt_with_wallet(
+                            encrypted_data=previous_encrypted,
+                            customer_wallet=wallet_address
+                        )
+
+                        # Calculate previous inventory value
+                        previous_products = previous_decrypted if isinstance(previous_decrypted, list) else [previous_decrypted]
+                        previous_inventory = sum(
+                            float(prod.get("price", 0)) * int(prod.get("inventory_quantity", 0))
+                            for prod in previous_products
+                        )
+
+                        inventory_change_percent = calculate_percentage_change(
+                            inventory_value, previous_inventory
+                        )
+                    else:
+                        # First sync, no historical data
+                        inventory_change_percent = 0.0
+
+                except Exception as hist_error:
+                    logger.warning(f"Could not calculate inventory change: {hist_error}")
+                    inventory_change_percent = 0.0
 
                 logger.info(f"Shopify: ${inventory_value} inventory value")
 

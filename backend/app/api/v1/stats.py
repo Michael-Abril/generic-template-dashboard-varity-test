@@ -10,15 +10,20 @@ NOTE: All user tracking is handled by Privy.
 This module fetches user count from Privy for the progress bar.
 """
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Depends
 from fastapi.responses import PlainTextResponse
 from datetime import datetime
 from typing import List, Optional
 import logging
 import httpx
 import base64
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, func
 
 from app.core.config import settings
+from app.core.database import get_db
+from app.models.purchase import OAuthToken
+from app.models.conversation import Message
 
 logger = logging.getLogger(__name__)
 
@@ -145,7 +150,7 @@ async def get_signup_stats():
 
 
 @router.get("/stats/platform")
-async def get_platform_stats():
+async def get_platform_stats(db: AsyncSession = Depends(get_db)):
     """
     Get overall platform statistics.
 
@@ -155,10 +160,30 @@ async def get_platform_stats():
     try:
         signup_count = await get_privy_user_count()
 
+        # Count total active integrations from OAuthToken table
+        total_integrations = 0
+        try:
+            result = await db.execute(
+                select(func.count(OAuthToken.id)).where(OAuthToken.is_active == True)
+            )
+            total_integrations = result.scalar() or 0
+        except Exception as e:
+            logger.warning(f"Error counting integrations: {e}")
+
+        # Count total AI queries from Message table (assistant messages are AI responses)
+        total_ai_queries = 0
+        try:
+            result = await db.execute(
+                select(func.count(Message.id)).where(Message.role == "assistant")
+            )
+            total_ai_queries = result.scalar() or 0
+        except Exception as e:
+            logger.warning(f"Error counting AI queries: {e}")
+
         return {
             "totalUsers": signup_count,
-            "totalIntegrations": 0,  # Placeholder - will be implemented
-            "totalAIQueries": 0,  # Placeholder - will be implemented
+            "totalIntegrations": total_integrations,
+            "totalAIQueries": total_ai_queries,
             "betaSpotsRemaining": max(0, BETA_TOTAL_SPOTS - signup_count),
             "lastUpdated": datetime.utcnow().isoformat(),
             "source": "privy"

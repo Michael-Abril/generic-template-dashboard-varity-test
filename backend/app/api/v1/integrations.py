@@ -141,7 +141,14 @@ router = APIRouter()
 # Initialize services
 filecoin_service = FilecoinService()
 encryption_service = EncryptionService()
-rag_service = BusinessRAGService()
+
+# Initialize RAG service with graceful fallback
+try:
+    rag_service = BusinessRAGService()
+    logger.info("RAG service initialized successfully in integrations module")
+except Exception as e:
+    logger.warning(f"Failed to initialize RAG service in integrations (Qdrant may not be configured): {e}")
+    rag_service = None  # type: ignore
 
 
 # Integration name normalization mapping
@@ -450,7 +457,23 @@ async def sync_tool_data(
 
         # Index synced data in Qdrant for RAG queries
         rag_indexed_count = 0
-        if result and result.get("data"):
+        rag_failed_count = 0
+        rag_status = "disabled" if rag_service is None else "healthy"
+        rag_errors: List[str] = []
+
+        # Only attempt RAG indexing if rag_service is available
+        if rag_service is None:
+            logger.warning(
+                f"RAG service not available - data synced to Pinata but NOT indexed for AI queries. "
+                f"Configure QDRANT_URL and QDRANT_API_KEY to enable RAG."
+            )
+            rag_status = "disabled"
+            # Count how many data types could have been indexed
+            if result and result.get("data"):
+                for data_type, data_info in result.get("data", {}).items():
+                    if data_info.get("status") == "success" and data_info.get("cid"):
+                        rag_failed_count += 1
+        elif result and result.get("data"):
             for data_type, data_info in result.get("data", {}).items():
                 if data_info.get("status") == "success" and data_info.get("cid"):
                     try:
@@ -480,13 +503,35 @@ async def sync_tool_data(
                             f"CID: {data_info['cid']}, records: {len(records)}"
                         )
                     except Exception as e:
+                        rag_failed_count += 1
+                        error_msg = f"Failed to index {data_type}: {str(e)}"
+                        rag_errors.append(error_msg)
                         logger.warning(f"Failed to index {data_type} in RAG: {e}")
                         # Don't fail the whole sync if RAG indexing fails
                         continue
 
+        # Determine final RAG status
+        if rag_service is None:
+            rag_status = "disabled"
+        elif rag_failed_count > 0 and rag_indexed_count == 0:
+            rag_status = "error"
+        elif rag_failed_count > 0:
+            rag_status = "partial"
+        else:
+            rag_status = "healthy"
+
         logger.info(
-            f"Sync complete for {tool}: {rag_indexed_count} data types indexed in RAG"
+            f"Sync complete for {tool}: {rag_indexed_count} data types indexed in RAG, "
+            f"{rag_failed_count} failed, status={rag_status}"
         )
+
+        # Build message with RAG status info
+        if rag_status == "disabled":
+            message = f"Data synced to storage but NOT indexed for AI queries (Qdrant not configured)"
+        elif rag_failed_count > 0:
+            message = f"Synced {tool} data. {rag_indexed_count} indexed for AI, {rag_failed_count} failed"
+        else:
+            message = f"Successfully synced {tool} data and indexed {rag_indexed_count} data types for AI queries"
 
         return {
             "success": True,
@@ -494,7 +539,10 @@ async def sync_tool_data(
             "wallet_address": request.wallet_address,
             "sync_result": result,
             "rag_indexed": rag_indexed_count,
-            "message": f"Successfully synced {tool} data and indexed {rag_indexed_count} data types for AI queries"
+            "rag_failed": rag_failed_count,
+            "rag_status": rag_status,
+            "rag_errors": rag_errors[:5] if rag_errors else [],  # Limit to first 5 errors
+            "message": message
         }
 
     except HTTPException:

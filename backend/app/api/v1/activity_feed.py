@@ -2,7 +2,7 @@
 Activity Feed API Endpoints
 Exposes unified activity feed from all productivity integrations
 """
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Query
 from typing import List, Optional
 from datetime import datetime, timedelta
 from pydantic import BaseModel
@@ -29,14 +29,14 @@ class ActivityFeedResponse(BaseModel):
 @router.post("/fetch", response_model=ActivityFeedResponse)
 async def fetch_unified_feed(
     request: ActivityFeedRequest,
-    business_wallet: str = "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb"  # Placeholder
+    wallet_address: str = Query(..., description="User's wallet address")
 ):
     """
     Fetch unified activity feed from multiple productivity integrations
 
     Args:
         request: Activity feed request parameters
-        business_wallet: Business wallet address (from auth in production)
+        wallet_address: Business wallet address (required)
 
     Returns:
         Unified activity feed
@@ -47,7 +47,7 @@ async def fetch_unified_feed(
         since = datetime.utcnow() - timedelta(days=request.since_days)
 
         activities = await service.fetch_unified_feed(
-            business_wallet=business_wallet,
+            business_wallet=wallet_address,
             integrations=request.integrations,
             limit=request.limit,
             since=since
@@ -69,15 +69,15 @@ async def fetch_unified_feed(
 
 @router.get("/recent")
 async def get_recent_activities(
-    limit: int = 50,
-    business_wallet: str = "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb"
+    wallet_address: str = Query(..., description="User's wallet address"),
+    limit: int = Query(50, description="Maximum number of activities to return")
 ):
     """
     Get recent activities from all integrations
 
     Args:
+        wallet_address: Business wallet address (required)
         limit: Maximum number of activities to return
-        business_wallet: Business wallet address
 
     Returns:
         Recent activities
@@ -94,7 +94,7 @@ async def get_recent_activities(
         since = datetime.utcnow() - timedelta(days=7)
 
         activities = await service.fetch_unified_feed(
-            business_wallet=business_wallet,
+            business_wallet=wallet_address,
             integrations=all_integrations,
             limit=limit,
             since=since

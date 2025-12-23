@@ -709,18 +709,47 @@ class IntegrationSyncService:
         Returns:
             Latest sync data if available
         """
-        # In production, this would query the database
-        # For now, return mock data
-        return {
-            'data': {},
-            'reports': {
-                'summary': {
-                    'total_revenue': 10000,
-                    'total_customers': 50,
-                    'sync_time': datetime.now().isoformat()
-                }
-            }
-        }
+        try:
+            from sqlalchemy import create_engine, text
+            from sqlalchemy.orm import sessionmaker
+
+            # Get database URL from environment
+            database_url = os.getenv('DATABASE_URL', '')
+            if not database_url:
+                logger.warning("DATABASE_URL not set, cannot query sync data")
+                return None
+
+            # Convert async URL to sync URL
+            sync_db_url = database_url.replace('postgresql+asyncpg://', 'postgresql://')
+
+            engine = create_engine(sync_db_url)
+            Session = sessionmaker(bind=engine)
+            session = Session()
+
+            # Query the latest successful sync for this user and integration
+            result = session.execute(text("""
+                SELECT result_summary, completed_at
+                FROM sync_logs
+                WHERE user_address = :user_id
+                AND resource_type = :integration
+                AND status = 'success'
+                ORDER BY completed_at DESC
+                LIMIT 1
+            """), {"user_id": user_id, "integration": integration})
+
+            row = result.fetchone()
+            session.close()
+
+            if row and row[0]:
+                # Return the stored result_summary from the database
+                return row[0]
+
+            # No sync data found - return None instead of mock data
+            return None
+
+        except Exception as e:
+            logger.error(f"Failed to query latest sync data: {str(e)}")
+            return None
 
 
 # Celery tasks

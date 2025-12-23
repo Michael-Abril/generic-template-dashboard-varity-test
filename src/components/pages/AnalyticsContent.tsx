@@ -683,14 +683,14 @@ export default function AnalyticsContent() {
                       type="date"
                       value={customDateRange.start}
                       onChange={(e) => setCustomDateRange({ ...customDateRange, start: e.target.value })}
-                      className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                      className="px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900"
                     />
                     <span className="text-gray-400">to</span>
                     <input
                       type="date"
                       value={customDateRange.end}
                       onChange={(e) => setCustomDateRange({ ...customDateRange, end: e.target.value })}
-                      className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                      className="px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900"
                     />
                   </div>
                 )}
@@ -755,7 +755,7 @@ export default function AnalyticsContent() {
           </div>
 
           {/* Dashboard Grid */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 min-h-[500px]">
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 min-h-[500px]">
             {currentWidgets.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16">
                 <div className="w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center mb-4">
@@ -768,14 +768,14 @@ export default function AnalyticsContent() {
                 <div className="flex items-center gap-3">
                   <button
                     onClick={() => setTemplatesOpen(true)}
-                    className="px-6 py-3 rounded-xl border-2 border-gray-200 hover:border-gray-300 transition-all font-medium flex items-center gap-2"
+                    className="px-6 py-3 rounded-xl border-2 border-gray-200 hover:border-gray-300 transition-all font-medium flex items-center gap-2 text-gray-700"
                   >
                     <Grid3X3 className="w-5 h-5" />
                     Use Template
                   </button>
                   <button
                     onClick={() => setWidgetLibraryOpen(true)}
-                    className="px-6 py-3 rounded-xl border-2 border-gray-200 hover:border-gray-300 transition-all font-medium flex items-center gap-2"
+                    className="px-6 py-3 rounded-xl border-2 border-gray-200 hover:border-gray-300 transition-all font-medium flex items-center gap-2 text-gray-700"
                   >
                     <Library className="w-5 h-5" />
                     Add Widget
