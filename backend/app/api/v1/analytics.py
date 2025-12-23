@@ -1,13 +1,17 @@
 """
-Productivity Analytics API Endpoints
-Provides productivity metrics and insights
+Analytics API Endpoints
+Provides real analytics metrics from integrated business data
+
+Note: Productivity metrics endpoints are disabled for MVP - they returned placeholder data.
+      Advanced analytics endpoints below use real data from Pinata/Filecoin.
 """
 from fastapi import APIRouter, HTTPException
 from typing import Optional, List
 from datetime import datetime, timedelta
 from pydantic import BaseModel
 
-from app.services.productivity_analytics import ProductivityAnalytics
+# ProductivityAnalytics disabled for MVP - returned placeholder data
+# from app.services.productivity_analytics import ProductivityAnalytics
 
 router = APIRouter(prefix="/analytics", tags=["Analytics"])
 
@@ -20,152 +24,31 @@ class AnalyticsRequest(BaseModel):
     integrations: Optional[List[str]] = None
 
 
-@router.post("/metrics")
-async def get_metrics(request: AnalyticsRequest):
-    """
-    Get comprehensive productivity metrics
+# =====================================================================
+# PRODUCTIVITY ENDPOINTS - DISABLED FOR MVP (returned placeholder data)
+# These endpoints will be re-enabled when real productivity tracking
+# is implemented with actual Slack, Asana, GitHub, Zoom data.
+# =====================================================================
 
-    Args:
-        request: Analytics request parameters
+# @router.post("/metrics")
+# async def get_metrics(request: AnalyticsRequest):
+#     """Disabled for MVP - returned placeholder metrics"""
+#     raise HTTPException(status_code=501, detail="Productivity metrics coming soon")
 
-    Returns:
-        Comprehensive metrics dashboard
-    """
-    try:
-        service = ProductivityAnalytics()
+# @router.get("/score/{business_wallet}")
+# async def get_productivity_score(business_wallet: str, period_days: int = 30):
+#     """Disabled for MVP - returned placeholder scores"""
+#     raise HTTPException(status_code=501, detail="Productivity scores coming soon")
 
-        # Parse dates or use defaults
-        if request.start_date:
-            start_date = datetime.fromisoformat(request.start_date.replace("Z", "+00:00"))
-        else:
-            start_date = datetime.utcnow() - timedelta(days=30)
+# @router.post("/export")
+# async def export_dashboard(request: AnalyticsRequest, format: str = "json"):
+#     """Disabled for MVP - returned placeholder dashboard"""
+#     raise HTTPException(status_code=501, detail="Dashboard export coming soon")
 
-        if request.end_date:
-            end_date = datetime.fromisoformat(request.end_date.replace("Z", "+00:00"))
-        else:
-            end_date = datetime.utcnow()
-
-        metrics = await service.calculate_metrics(
-            business_wallet=request.business_wallet,
-            start_date=start_date,
-            end_date=end_date,
-            integrations=request.integrations
-        )
-
-        return metrics
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.get("/score/{business_wallet}")
-async def get_productivity_score(
-    business_wallet: str,
-    period_days: int = 30
-):
-    """
-    Get team productivity score
-
-    Args:
-        business_wallet: Business identifier
-        period_days: Number of days to analyze
-
-    Returns:
-        Productivity score and breakdown
-    """
-    try:
-        service = ProductivityAnalytics()
-
-        score = await service.get_team_productivity_score(
-            business_wallet=business_wallet,
-            period_days=period_days
-        )
-
-        return score
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.post("/export")
-async def export_dashboard(request: AnalyticsRequest, format: str = "json"):
-    """
-    Export comprehensive dashboard data
-
-    Args:
-        request: Analytics request parameters
-        format: Export format (json, csv)
-
-    Returns:
-        Dashboard data for visualization
-    """
-    try:
-        service = ProductivityAnalytics()
-
-        # Parse dates
-        if request.start_date:
-            start_date = datetime.fromisoformat(request.start_date.replace("Z", "+00:00"))
-        else:
-            start_date = datetime.utcnow() - timedelta(days=30)
-
-        if request.end_date:
-            end_date = datetime.fromisoformat(request.end_date.replace("Z", "+00:00"))
-        else:
-            end_date = datetime.utcnow()
-
-        dashboard_data = await service.export_dashboard_data(
-            business_wallet=request.business_wallet,
-            start_date=start_date,
-            end_date=end_date,
-            format=format
-        )
-
-        return dashboard_data
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.get("/insights/{business_wallet}")
-async def get_insights(business_wallet: str, days: int = 30):
-    """
-    Get AI-powered productivity insights
-
-    Args:
-        business_wallet: Business identifier
-        days: Number of days to analyze
-
-    Returns:
-        Insights and recommendations
-    """
-    try:
-        service = ProductivityAnalytics()
-
-        start_date = datetime.utcnow() - timedelta(days=days)
-        end_date = datetime.utcnow()
-
-        insights = await service._generate_insights(
-            business_wallet=business_wallet,
-            start_date=start_date,
-            end_date=end_date
-        )
-
-        recommendations = await service._generate_recommendations(
-            business_wallet=business_wallet
-        )
-
-        alerts = await service._generate_alerts(
-            business_wallet=business_wallet
-        )
-
-        return {
-            "insights": insights,
-            "recommendations": recommendations,
-            "alerts": alerts
-        }
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+# @router.get("/insights/{business_wallet}")
+# async def get_insights(business_wallet: str, days: int = 30):
+#     """Disabled for MVP - returned placeholder insights"""
+#     raise HTTPException(status_code=501, detail="AI insights coming soon")
 
 
 # =====================================================================

@@ -2,7 +2,13 @@
 Dashboard API Endpoints - KPI Metrics and Business Intelligence
 
 This module provides endpoints for the main dashboard page with real-time
-business metrics aggregated from integrated tools (QuickBooks, Salesforce, Shopify).
+business metrics aggregated from ALL 6 integrated tools:
+- QuickBooks (financial)
+- Google Workspace (productivity)
+- Microsoft 365 (productivity)
+- Slack (communication)
+- Salesforce (CRM)
+- HubSpot (CRM/marketing)
 """
 from fastapi import APIRouter, HTTPException, Query, Depends
 from pydantic import BaseModel, Field
@@ -24,22 +30,35 @@ router = APIRouter(tags=["dashboard"])
 filecoin_service = FilecoinService()
 encryption_service = EncryptionService()
 
+# All 6 supported integrations
+SUPPORTED_INTEGRATIONS = ["quickbooks", "google", "microsoft", "slack", "salesforce", "hubspot"]
+
 
 # =====================================================================
 # RESPONSE MODELS
 # =====================================================================
 
+class DynamicKPI(BaseModel):
+    """A single KPI metric"""
+    id: str
+    title: str
+    value: str
+    change_value: float
+    change_period: str
+    icon: str
+    source: str
+    trend: str  # 'up', 'down', 'neutral'
+    color: str  # 'blue', 'green', 'orange', 'purple', 'red'
+
+    class Config:
+        from_attributes = True
+
+
 class KPIMetricsResponse(BaseModel):
-    """Dashboard KPI metrics"""
-    total_revenue: float
-    revenue_change_percent: float
-    active_customers: int
-    customers_change_percent: float
-    inventory_value: float
-    inventory_change_percent: float
-    unpaid_invoices: float
-    invoices_change_percent: float
-    data_sources: List[str]  # List of connected integrations
+    """Dashboard KPI metrics - dynamic based on connected integrations"""
+    kpis: List[DynamicKPI]
+    data_sources: List[str]  # List of connected integrations with data
+    has_data: bool  # True if any integration has data
     last_updated: str
 
     class Config:
@@ -191,35 +210,26 @@ async def get_dashboard_kpis(
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Get KPI metrics for the dashboard
+    Get KPI metrics for the dashboard from ALL 6 integrations
 
-    Aggregates data from:
-    - QuickBooks: Total revenue, unpaid invoices
-    - Salesforce: Active customers
-    - Shopify: Inventory value
+    Aggregates data from whichever integrations the user has connected:
+    - QuickBooks: Revenue, invoices
+    - Google Workspace: Emails, calendar events, drive files, contacts
+    - Microsoft 365: Emails, calendar events, files
+    - Slack: Messages, channels
+    - Salesforce: Accounts, opportunities, leads
+    - HubSpot: Contacts, deals, companies
 
-    Returns real-time business metrics with trend indicators.
+    Returns dynamic KPIs based on connected integrations.
     """
     try:
         logger.info(f"Fetching KPI metrics for wallet {wallet_address}")
 
-        # Initialize metrics
-        total_revenue = 0.0
-        revenue_change_percent = 0.0
-        active_customers = 0
-        customers_change_percent = 0.0
-        inventory_value = 0.0
-        inventory_change_percent = 0.0
-        unpaid_invoices = 0.0
-        invoices_change_percent = 0.0
+        kpis = []
         data_sources = []
 
-        # Get current date for filtering
-        current_month = datetime.utcnow().replace(day=1)
-        last_month = (current_month - timedelta(days=1)).replace(day=1)
-
         # ============================================
-        # QUICKBOOKS DATA - Revenue and Invoices
+        # QUICKBOOKS DATA - Financial KPIs
         # ============================================
         try:
             qb_invoices = await get_integration_data(
@@ -231,40 +241,350 @@ async def get_dashboard_kpis(
             if qb_invoices:
                 data_sources.append("QuickBooks")
 
-                # Calculate total revenue (all paid invoices)
-                current_month_revenue = sum(
+                # Total Revenue
+                total_revenue = sum(
                     float(inv.get("total_amount", 0))
                     for inv in qb_invoices
                     if inv.get("status") == "paid"
                 )
-                total_revenue = current_month_revenue
+                kpis.append(DynamicKPI(
+                    id="qb_revenue",
+                    title="Total Revenue",
+                    value=f"${total_revenue:,.2f}",
+                    change_value=0.0,
+                    change_period="vs last month",
+                    icon="DollarSign",
+                    source="QuickBooks",
+                    trend="neutral",
+                    color="green"
+                ))
 
-                # Calculate unpaid invoices
-                unpaid_invoices = sum(
+                # Unpaid Invoices
+                unpaid = sum(
                     float(inv.get("balance", 0))
                     for inv in qb_invoices
                     if inv.get("status") == "outstanding"
                 )
+                kpis.append(DynamicKPI(
+                    id="qb_unpaid",
+                    title="Unpaid Invoices",
+                    value=f"${unpaid:,.2f}",
+                    change_value=0.0,
+                    change_period="vs last month",
+                    icon="FileText",
+                    source="QuickBooks",
+                    trend="neutral",
+                    color="orange"
+                ))
 
-                # Calculate previous month for comparison
-                last_month_revenue = sum(
-                    float(inv.get("total_amount", 0))
-                    for inv in qb_invoices
-                    if inv.get("status") == "paid" and
-                       inv.get("txn_date", "").startswith(last_month.strftime("%Y-%m"))
-                )
-
-                revenue_change_percent = calculate_percentage_change(
-                    current_month_revenue, last_month_revenue
-                )
-
-                logger.info(f"QuickBooks: ${total_revenue} revenue, ${unpaid_invoices} unpaid")
+                logger.info(f"QuickBooks: ${total_revenue} revenue, ${unpaid} unpaid")
 
         except Exception as e:
             logger.warning(f"QuickBooks data unavailable: {e}")
 
         # ============================================
-        # SALESFORCE DATA - Active Customers
+        # GOOGLE WORKSPACE DATA - Productivity KPIs
+        # ============================================
+        try:
+            # Gmail
+            gmail_data = await get_integration_data(
+                wallet_address=wallet_address,
+                integration="google",
+                data_type="gmail"
+            )
+
+            if gmail_data:
+                data_sources.append("Google") if "Google" not in data_sources else None
+
+                # Handle both list of messages and dict with messages key
+                if isinstance(gmail_data, list):
+                    messages = gmail_data
+                elif isinstance(gmail_data, dict):
+                    messages = gmail_data.get("messages", [])
+                else:
+                    messages = []
+
+                email_count = len(messages)
+                unread_count = len([m for m in messages if m.get("unread", False)])
+
+                kpis.append(DynamicKPI(
+                    id="google_emails",
+                    title="Total Emails",
+                    value=str(email_count),
+                    change_value=0.0,
+                    change_period="synced",
+                    icon="Mail",
+                    source="Google",
+                    trend="neutral",
+                    color="blue"
+                ))
+
+                if unread_count > 0:
+                    kpis.append(DynamicKPI(
+                        id="google_unread",
+                        title="Unread Emails",
+                        value=str(unread_count),
+                        change_value=0.0,
+                        change_period="need attention",
+                        icon="Inbox",
+                        source="Google",
+                        trend="up" if unread_count > 10 else "neutral",
+                        color="red" if unread_count > 10 else "blue"
+                    ))
+
+                logger.info(f"Google Gmail: {email_count} emails, {unread_count} unread")
+
+            # Calendar
+            calendar_data = await get_integration_data(
+                wallet_address=wallet_address,
+                integration="google",
+                data_type="calendar"
+            )
+
+            if calendar_data:
+                data_sources.append("Google") if "Google" not in data_sources else None
+
+                # Handle both list and dict formats
+                if isinstance(calendar_data, list):
+                    events = calendar_data
+                elif isinstance(calendar_data, dict):
+                    events = calendar_data.get("events", [])
+                else:
+                    events = []
+
+                event_count = len(events)
+
+                kpis.append(DynamicKPI(
+                    id="google_events",
+                    title="Calendar Events",
+                    value=str(event_count),
+                    change_value=0.0,
+                    change_period="upcoming",
+                    icon="Calendar",
+                    source="Google",
+                    trend="neutral",
+                    color="purple"
+                ))
+
+                logger.info(f"Google Calendar: {event_count} events")
+
+            # Drive
+            drive_data = await get_integration_data(
+                wallet_address=wallet_address,
+                integration="google",
+                data_type="drive"
+            )
+
+            if drive_data:
+                data_sources.append("Google") if "Google" not in data_sources else None
+
+                # Handle both list and dict formats
+                if isinstance(drive_data, list):
+                    files = drive_data
+                elif isinstance(drive_data, dict):
+                    files = drive_data.get("files", [])
+                else:
+                    files = []
+
+                file_count = len(files)
+
+                kpis.append(DynamicKPI(
+                    id="google_files",
+                    title="Drive Files",
+                    value=str(file_count),
+                    change_value=0.0,
+                    change_period="synced",
+                    icon="FolderOpen",
+                    source="Google",
+                    trend="neutral",
+                    color="green"
+                ))
+
+                logger.info(f"Google Drive: {file_count} files")
+
+            # Contacts
+            contacts_data = await get_integration_data(
+                wallet_address=wallet_address,
+                integration="google",
+                data_type="contacts"
+            )
+
+            if contacts_data:
+                data_sources.append("Google") if "Google" not in data_sources else None
+
+                # Handle both list and dict formats
+                if isinstance(contacts_data, list):
+                    contacts = contacts_data
+                elif isinstance(contacts_data, dict):
+                    contacts = contacts_data.get("contacts", [])
+                else:
+                    contacts = []
+
+                contact_count = len(contacts)
+
+                kpis.append(DynamicKPI(
+                    id="google_contacts",
+                    title="Contacts",
+                    value=str(contact_count),
+                    change_value=0.0,
+                    change_period="synced",
+                    icon="Users",
+                    source="Google",
+                    trend="neutral",
+                    color="blue"
+                ))
+
+                logger.info(f"Google Contacts: {contact_count} contacts")
+
+        except Exception as e:
+            logger.warning(f"Google Workspace data unavailable: {e}")
+
+        # ============================================
+        # MICROSOFT 365 DATA - Productivity KPIs
+        # ============================================
+        try:
+            # Outlook Mail
+            outlook_data = await get_integration_data(
+                wallet_address=wallet_address,
+                integration="microsoft",
+                data_type="mail"
+            )
+
+            if outlook_data:
+                data_sources.append("Microsoft") if "Microsoft" not in data_sources else None
+
+                if isinstance(outlook_data, list):
+                    messages = outlook_data
+                elif isinstance(outlook_data, dict):
+                    messages = outlook_data.get("messages", [])
+                else:
+                    messages = []
+
+                email_count = len(messages)
+
+                kpis.append(DynamicKPI(
+                    id="ms_emails",
+                    title="Outlook Emails",
+                    value=str(email_count),
+                    change_value=0.0,
+                    change_period="synced",
+                    icon="Mail",
+                    source="Microsoft",
+                    trend="neutral",
+                    color="blue"
+                ))
+
+                logger.info(f"Microsoft Outlook: {email_count} emails")
+
+            # OneDrive
+            onedrive_data = await get_integration_data(
+                wallet_address=wallet_address,
+                integration="microsoft",
+                data_type="files"
+            )
+
+            if onedrive_data:
+                data_sources.append("Microsoft") if "Microsoft" not in data_sources else None
+
+                if isinstance(onedrive_data, list):
+                    files = onedrive_data
+                elif isinstance(onedrive_data, dict):
+                    files = onedrive_data.get("files", [])
+                else:
+                    files = []
+
+                file_count = len(files)
+
+                kpis.append(DynamicKPI(
+                    id="ms_files",
+                    title="OneDrive Files",
+                    value=str(file_count),
+                    change_value=0.0,
+                    change_period="synced",
+                    icon="FolderOpen",
+                    source="Microsoft",
+                    trend="neutral",
+                    color="blue"
+                ))
+
+                logger.info(f"Microsoft OneDrive: {file_count} files")
+
+        except Exception as e:
+            logger.warning(f"Microsoft 365 data unavailable: {e}")
+
+        # ============================================
+        # SLACK DATA - Communication KPIs
+        # ============================================
+        try:
+            slack_messages = await get_integration_data(
+                wallet_address=wallet_address,
+                integration="slack",
+                data_type="messages"
+            )
+
+            if slack_messages:
+                data_sources.append("Slack") if "Slack" not in data_sources else None
+
+                if isinstance(slack_messages, list):
+                    messages = slack_messages
+                elif isinstance(slack_messages, dict):
+                    messages = slack_messages.get("messages", [])
+                else:
+                    messages = []
+
+                msg_count = len(messages)
+
+                kpis.append(DynamicKPI(
+                    id="slack_messages",
+                    title="Slack Messages",
+                    value=str(msg_count),
+                    change_value=0.0,
+                    change_period="synced",
+                    icon="MessageSquare",
+                    source="Slack",
+                    trend="neutral",
+                    color="purple"
+                ))
+
+                logger.info(f"Slack: {msg_count} messages")
+
+            slack_channels = await get_integration_data(
+                wallet_address=wallet_address,
+                integration="slack",
+                data_type="channels"
+            )
+
+            if slack_channels:
+                data_sources.append("Slack") if "Slack" not in data_sources else None
+
+                if isinstance(slack_channels, list):
+                    channels = slack_channels
+                elif isinstance(slack_channels, dict):
+                    channels = slack_channels.get("channels", [])
+                else:
+                    channels = []
+
+                channel_count = len(channels)
+
+                kpis.append(DynamicKPI(
+                    id="slack_channels",
+                    title="Slack Channels",
+                    value=str(channel_count),
+                    change_value=0.0,
+                    change_period="active",
+                    icon="Hash",
+                    source="Slack",
+                    trend="neutral",
+                    color="purple"
+                ))
+
+                logger.info(f"Slack: {channel_count} channels")
+
+        except Exception as e:
+            logger.warning(f"Slack data unavailable: {e}")
+
+        # ============================================
+        # SALESFORCE DATA - CRM KPIs
         # ============================================
         try:
             sf_accounts = await get_integration_data(
@@ -274,129 +594,176 @@ async def get_dashboard_kpis(
             )
 
             if sf_accounts:
-                data_sources.append("Salesforce")
+                data_sources.append("Salesforce") if "Salesforce" not in data_sources else None
 
-                # Count active accounts (with revenue)
-                active_customers = len([
-                    acc for acc in sf_accounts
-                    if float(acc.get("annual_revenue", 0)) > 0
-                ])
+                account_count = len(sf_accounts) if isinstance(sf_accounts, list) else 0
 
-                # Calculate historical comparison
-                # Get all historical account files to track customer growth
-                try:
-                    all_account_files = await filecoin_service.list_customer_files(
-                        customer_wallet=wallet_address,
-                        integration="salesforce",
-                        data_type="accounts",
-                        limit=100
-                    )
+                kpis.append(DynamicKPI(
+                    id="sf_accounts",
+                    title="Accounts",
+                    value=str(account_count),
+                    change_value=0.0,
+                    change_period="total",
+                    icon="Building",
+                    source="Salesforce",
+                    trend="neutral",
+                    color="blue"
+                ))
 
-                    # If we have historical data (more than 1 file), calculate change
-                    if len(all_account_files) > 1:
-                        # Get the previous sync (second most recent)
-                        previous_file = all_account_files[1]
-                        previous_encrypted = await filecoin_service.retrieve_data(previous_file["cid"])
-                        previous_decrypted = await encryption_service.decrypt_with_wallet(
-                            encrypted_data=previous_encrypted,
-                            customer_wallet=wallet_address
-                        )
+                logger.info(f"Salesforce: {account_count} accounts")
 
-                        # Count previous active customers
-                        previous_accounts = previous_decrypted if isinstance(previous_decrypted, list) else [previous_decrypted]
-                        previous_customers = len([
-                            acc for acc in previous_accounts
-                            if float(acc.get("annual_revenue", 0)) > 0
-                        ])
+            sf_opportunities = await get_integration_data(
+                wallet_address=wallet_address,
+                integration="salesforce",
+                data_type="opportunities"
+            )
 
-                        customers_change_percent = calculate_percentage_change(
-                            active_customers, previous_customers
-                        )
-                    else:
-                        # First sync, no historical data
-                        customers_change_percent = 0.0
+            if sf_opportunities:
+                data_sources.append("Salesforce") if "Salesforce" not in data_sources else None
 
-                except Exception as hist_error:
-                    logger.warning(f"Could not calculate customer change: {hist_error}")
-                    customers_change_percent = 0.0
+                opp_count = len(sf_opportunities) if isinstance(sf_opportunities, list) else 0
+                opp_value = sum(
+                    float(opp.get("amount", 0))
+                    for opp in sf_opportunities
+                ) if isinstance(sf_opportunities, list) else 0
 
-                logger.info(f"Salesforce: {active_customers} active customers")
+                kpis.append(DynamicKPI(
+                    id="sf_opportunities",
+                    title="Opportunities",
+                    value=str(opp_count),
+                    change_value=0.0,
+                    change_period=f"${opp_value:,.0f} pipeline",
+                    icon="Target",
+                    source="Salesforce",
+                    trend="neutral",
+                    color="green"
+                ))
+
+                logger.info(f"Salesforce: {opp_count} opportunities, ${opp_value} pipeline")
+
+            sf_leads = await get_integration_data(
+                wallet_address=wallet_address,
+                integration="salesforce",
+                data_type="leads"
+            )
+
+            if sf_leads:
+                data_sources.append("Salesforce") if "Salesforce" not in data_sources else None
+
+                lead_count = len(sf_leads) if isinstance(sf_leads, list) else 0
+
+                kpis.append(DynamicKPI(
+                    id="sf_leads",
+                    title="Leads",
+                    value=str(lead_count),
+                    change_value=0.0,
+                    change_period="active",
+                    icon="UserPlus",
+                    source="Salesforce",
+                    trend="neutral",
+                    color="orange"
+                ))
+
+                logger.info(f"Salesforce: {lead_count} leads")
 
         except Exception as e:
             logger.warning(f"Salesforce data unavailable: {e}")
 
         # ============================================
-        # SHOPIFY DATA - Inventory Value
+        # HUBSPOT DATA - Marketing/CRM KPIs
         # ============================================
         try:
-            shopify_products = await get_integration_data(
+            hs_contacts = await get_integration_data(
                 wallet_address=wallet_address,
-                integration="shopify",
-                data_type="products"
+                integration="hubspot",
+                data_type="contacts"
             )
 
-            if shopify_products:
-                data_sources.append("Shopify")
+            if hs_contacts:
+                data_sources.append("HubSpot") if "HubSpot" not in data_sources else None
 
-                # Calculate total inventory value
-                inventory_value = sum(
-                    float(prod.get("price", 0)) * int(prod.get("inventory_quantity", 0))
-                    for prod in shopify_products
-                )
+                contact_count = len(hs_contacts) if isinstance(hs_contacts, list) else 0
 
-                # Calculate historical comparison
-                # Get all historical product files to track inventory changes
-                try:
-                    all_product_files = await filecoin_service.list_customer_files(
-                        customer_wallet=wallet_address,
-                        integration="shopify",
-                        data_type="products",
-                        limit=100
-                    )
+                kpis.append(DynamicKPI(
+                    id="hs_contacts",
+                    title="HubSpot Contacts",
+                    value=str(contact_count),
+                    change_value=0.0,
+                    change_period="total",
+                    icon="Users",
+                    source="HubSpot",
+                    trend="neutral",
+                    color="orange"
+                ))
 
-                    # If we have historical data (more than 1 file), calculate change
-                    if len(all_product_files) > 1:
-                        # Get the previous sync (second most recent)
-                        previous_file = all_product_files[1]
-                        previous_encrypted = await filecoin_service.retrieve_data(previous_file["cid"])
-                        previous_decrypted = await encryption_service.decrypt_with_wallet(
-                            encrypted_data=previous_encrypted,
-                            customer_wallet=wallet_address
-                        )
+                logger.info(f"HubSpot: {contact_count} contacts")
 
-                        # Calculate previous inventory value
-                        previous_products = previous_decrypted if isinstance(previous_decrypted, list) else [previous_decrypted]
-                        previous_inventory = sum(
-                            float(prod.get("price", 0)) * int(prod.get("inventory_quantity", 0))
-                            for prod in previous_products
-                        )
+            hs_deals = await get_integration_data(
+                wallet_address=wallet_address,
+                integration="hubspot",
+                data_type="deals"
+            )
 
-                        inventory_change_percent = calculate_percentage_change(
-                            inventory_value, previous_inventory
-                        )
-                    else:
-                        # First sync, no historical data
-                        inventory_change_percent = 0.0
+            if hs_deals:
+                data_sources.append("HubSpot") if "HubSpot" not in data_sources else None
 
-                except Exception as hist_error:
-                    logger.warning(f"Could not calculate inventory change: {hist_error}")
-                    inventory_change_percent = 0.0
+                deal_count = len(hs_deals) if isinstance(hs_deals, list) else 0
+                deal_value = sum(
+                    float(deal.get("amount", 0))
+                    for deal in hs_deals
+                ) if isinstance(hs_deals, list) else 0
 
-                logger.info(f"Shopify: ${inventory_value} inventory value")
+                kpis.append(DynamicKPI(
+                    id="hs_deals",
+                    title="Deals",
+                    value=str(deal_count),
+                    change_value=0.0,
+                    change_period=f"${deal_value:,.0f} pipeline",
+                    icon="Handshake",
+                    source="HubSpot",
+                    trend="neutral",
+                    color="green"
+                ))
+
+                logger.info(f"HubSpot: {deal_count} deals, ${deal_value} pipeline")
+
+            hs_companies = await get_integration_data(
+                wallet_address=wallet_address,
+                integration="hubspot",
+                data_type="companies"
+            )
+
+            if hs_companies:
+                data_sources.append("HubSpot") if "HubSpot" not in data_sources else None
+
+                company_count = len(hs_companies) if isinstance(hs_companies, list) else 0
+
+                kpis.append(DynamicKPI(
+                    id="hs_companies",
+                    title="Companies",
+                    value=str(company_count),
+                    change_value=0.0,
+                    change_period="total",
+                    icon="Building",
+                    source="HubSpot",
+                    trend="neutral",
+                    color="orange"
+                ))
+
+                logger.info(f"HubSpot: {company_count} companies")
 
         except Exception as e:
-            logger.warning(f"Shopify data unavailable: {e}")
+            logger.warning(f"HubSpot data unavailable: {e}")
+
+        # Determine if we have any data
+        has_data = len(kpis) > 0
+
+        logger.info(f"Dashboard KPIs: {len(kpis)} KPIs from {len(data_sources)} integrations")
 
         return KPIMetricsResponse(
-            total_revenue=total_revenue,
-            revenue_change_percent=revenue_change_percent,
-            active_customers=active_customers,
-            customers_change_percent=customers_change_percent,
-            inventory_value=inventory_value,
-            inventory_change_percent=inventory_change_percent,
-            unpaid_invoices=unpaid_invoices,
-            invoices_change_percent=invoices_change_percent,
+            kpis=kpis,
             data_sources=data_sources,
+            has_data=has_data,
             last_updated=datetime.utcnow().isoformat()
         )
 
@@ -468,12 +835,15 @@ async def get_recent_activity(
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Get recent business activities
+    Get recent business activities from ALL 6 integrations
 
     Aggregates recent activities from all integrated tools:
-    - QuickBooks: New invoices, payments
-    - Salesforce: New leads, opportunities
-    - Shopify: New orders
+    - QuickBooks: Invoices, payments
+    - Google Workspace: Emails, calendar events
+    - Microsoft 365: Emails, calendar events
+    - Slack: Messages
+    - Salesforce: Leads, opportunities
+    - HubSpot: Contacts, deals
 
     Returns activities sorted by timestamp (most recent first).
     """
@@ -492,7 +862,7 @@ async def get_recent_activity(
                 data_type="invoices"
             )
 
-            for invoice in qb_invoices[:5]:  # Limit to recent 5
+            for invoice in qb_invoices[:5]:
                 activities.append(ActivityItem(
                     id=f"qb-invoice-{invoice.get('id')}",
                     type="invoice",
@@ -507,6 +877,105 @@ async def get_recent_activity(
             logger.warning(f"QuickBooks activities unavailable: {e}")
 
         # ============================================
+        # GOOGLE WORKSPACE ACTIVITIES
+        # ============================================
+        try:
+            # Gmail - Recent emails
+            gmail_data = await get_integration_data(
+                wallet_address=wallet_address,
+                integration="google",
+                data_type="gmail"
+            )
+
+            if gmail_data:
+                messages = gmail_data if isinstance(gmail_data, list) else gmail_data.get("messages", [])
+                for email in messages[:5]:
+                    activities.append(ActivityItem(
+                        id=f"gmail-{email.get('id')}",
+                        type="email",
+                        title=email.get('subject', '(No Subject)')[:50],
+                        description=f"From: {email.get('from', 'Unknown')[:40]}",
+                        amount=None,
+                        timestamp=email.get('date', datetime.utcnow().isoformat()),
+                        source="Google"
+                    ))
+
+            # Calendar - Upcoming events
+            calendar_data = await get_integration_data(
+                wallet_address=wallet_address,
+                integration="google",
+                data_type="calendar"
+            )
+
+            if calendar_data:
+                events = calendar_data if isinstance(calendar_data, list) else calendar_data.get("events", [])
+                for event in events[:3]:
+                    activities.append(ActivityItem(
+                        id=f"gcal-{event.get('id')}",
+                        type="event",
+                        title=event.get('summary', 'Untitled Event')[:50],
+                        description=f"Calendar event",
+                        amount=None,
+                        timestamp=event.get('start', {}).get('dateTime', datetime.utcnow().isoformat()) if isinstance(event.get('start'), dict) else datetime.utcnow().isoformat(),
+                        source="Google"
+                    ))
+
+        except Exception as e:
+            logger.warning(f"Google activities unavailable: {e}")
+
+        # ============================================
+        # MICROSOFT 365 ACTIVITIES
+        # ============================================
+        try:
+            outlook_data = await get_integration_data(
+                wallet_address=wallet_address,
+                integration="microsoft",
+                data_type="mail"
+            )
+
+            if outlook_data:
+                messages = outlook_data if isinstance(outlook_data, list) else outlook_data.get("messages", [])
+                for email in messages[:5]:
+                    activities.append(ActivityItem(
+                        id=f"outlook-{email.get('id')}",
+                        type="email",
+                        title=email.get('subject', '(No Subject)')[:50],
+                        description=f"From: {email.get('from', {}).get('emailAddress', {}).get('name', 'Unknown')[:40]}",
+                        amount=None,
+                        timestamp=email.get('receivedDateTime', datetime.utcnow().isoformat()),
+                        source="Microsoft"
+                    ))
+
+        except Exception as e:
+            logger.warning(f"Microsoft activities unavailable: {e}")
+
+        # ============================================
+        # SLACK ACTIVITIES
+        # ============================================
+        try:
+            slack_messages = await get_integration_data(
+                wallet_address=wallet_address,
+                integration="slack",
+                data_type="messages"
+            )
+
+            if slack_messages:
+                messages = slack_messages if isinstance(slack_messages, list) else slack_messages.get("messages", [])
+                for msg in messages[:5]:
+                    activities.append(ActivityItem(
+                        id=f"slack-{msg.get('ts', '')}",
+                        type="message",
+                        title=f"#{msg.get('channel', 'general')}",
+                        description=msg.get('text', '')[:60],
+                        amount=None,
+                        timestamp=msg.get('ts', datetime.utcnow().isoformat()),
+                        source="Slack"
+                    ))
+
+        except Exception as e:
+            logger.warning(f"Slack activities unavailable: {e}")
+
+        # ============================================
         # SALESFORCE ACTIVITIES
         # ============================================
         try:
@@ -516,7 +985,7 @@ async def get_recent_activity(
                 data_type="opportunities"
             )
 
-            for opp in sf_opportunities[:5]:  # Limit to recent 5
+            for opp in sf_opportunities[:5]:
                 activities.append(ActivityItem(
                     id=f"sf-opp-{opp.get('id')}",
                     type="opportunity",
@@ -531,28 +1000,30 @@ async def get_recent_activity(
             logger.warning(f"Salesforce activities unavailable: {e}")
 
         # ============================================
-        # SHOPIFY ACTIVITIES
+        # HUBSPOT ACTIVITIES
         # ============================================
         try:
-            shopify_orders = await get_integration_data(
+            hs_deals = await get_integration_data(
                 wallet_address=wallet_address,
-                integration="shopify",
-                data_type="orders"
+                integration="hubspot",
+                data_type="deals"
             )
 
-            for order in shopify_orders[:5]:  # Limit to recent 5
-                activities.append(ActivityItem(
-                    id=f"shopify-order-{order.get('id')}",
-                    type="order",
-                    title=f"Order #{order.get('order_number')}",
-                    description=f"New order from {order.get('customer_name')}",
-                    amount=float(order.get('total_price', 0)),
-                    timestamp=order.get('created_at', datetime.utcnow().isoformat()),
-                    source="Shopify"
-                ))
+            if hs_deals:
+                deals = hs_deals if isinstance(hs_deals, list) else []
+                for deal in deals[:5]:
+                    activities.append(ActivityItem(
+                        id=f"hs-deal-{deal.get('id')}",
+                        type="deal",
+                        title=deal.get('dealname', 'New Deal'),
+                        description=f"Stage: {deal.get('dealstage', 'Unknown')}",
+                        amount=float(deal.get('amount', 0)) if deal.get('amount') else None,
+                        timestamp=deal.get('createdate', datetime.utcnow().isoformat()),
+                        source="HubSpot"
+                    ))
 
         except Exception as e:
-            logger.warning(f"Shopify activities unavailable: {e}")
+            logger.warning(f"HubSpot activities unavailable: {e}")
 
         # Sort by timestamp (most recent first)
         activities.sort(key=lambda x: x.timestamp, reverse=True)

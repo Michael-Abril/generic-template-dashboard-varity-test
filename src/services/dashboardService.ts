@@ -2,12 +2,16 @@ import { logger } from '@/lib/logger';
 /**
  * Dashboard API Service
  * Handles all API calls to the dashboard backend
+ *
+ * Supports dynamic KPIs from all 6 integrations:
+ * - QuickBooks, Google Workspace, Microsoft 365, Slack, Salesforce, HubSpot
  */
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 
-// KPI Interfaces
+// KPI Interfaces - Dynamic format from backend
 export interface KPIData {
+  id: string;
   title: string;
   value: string;
   change: {
@@ -22,6 +26,8 @@ export interface KPIData {
 
 export interface KPIResponse {
   kpis: KPIData[];
+  data_sources: string[];
+  has_data: boolean;
   last_updated: string;
 }
 
@@ -41,12 +47,15 @@ export interface RevenueTrendResponse {
 
 // Recent Activity Interfaces
 export interface ActivityItem {
+  id: string;
+  type: string;
   icon: string;
   title: string;
   description: string;
   amount?: string;
   time: string;
   color: string;
+  source: string;
 }
 
 export interface RecentActivityResponse {
@@ -69,7 +78,7 @@ export interface TopCustomersResponse {
 
 /**
  * Fetch dashboard KPIs
- * Transforms flat backend response to KPIResponse format expected by frontend
+ * Returns dynamic KPIs from all connected integrations
  */
 export async function getKPIs(walletAddress: string): Promise<KPIResponse> {
   try {
@@ -84,47 +93,37 @@ export async function getKPIs(walletAddress: string): Promise<KPIResponse> {
 
     const data = await response.json();
 
-    // Transform flat backend response to expected KPIResponse format
-    const kpis: KPIData[] = [
-      {
-        title: 'Total Revenue',
-        value: `$${(data.total_revenue || 0).toLocaleString()}`,
-        change: { value: data.revenue_change_percent || 0, period: 'vs last month' },
-        icon: 'DollarSign',
-        source: 'QuickBooks',
-        trend: (data.revenue_change_percent || 0) >= 0 ? 'up' : 'down',
-        color: 'green'
+    // Transform backend KPIs to frontend format
+    const kpis: KPIData[] = (data.kpis || []).map((kpi: {
+      id: string;
+      title: string;
+      value: string;
+      change_value: number;
+      change_period: string;
+      icon: string;
+      source: string;
+      trend: string;
+      color: string;
+    }) => ({
+      id: kpi.id,
+      title: kpi.title,
+      value: kpi.value,
+      change: {
+        value: kpi.change_value || 0,
+        period: kpi.change_period || ''
       },
-      {
-        title: 'Active Customers',
-        value: (data.active_customers || 0).toLocaleString(),
-        change: { value: data.customers_change_percent || 0, period: 'vs last month' },
-        icon: 'Users',
-        source: 'QuickBooks',
-        trend: (data.customers_change_percent || 0) >= 0 ? 'up' : 'down',
-        color: 'blue'
-      },
-      {
-        title: 'Inventory Value',
-        value: `$${(data.inventory_value || 0).toLocaleString()}`,
-        change: { value: data.inventory_change_percent || 0, period: 'vs last month' },
-        icon: 'Package',
-        source: 'QuickBooks',
-        trend: (data.inventory_change_percent || 0) >= 0 ? 'up' : 'down',
-        color: 'orange'
-      },
-      {
-        title: 'Unpaid Invoices',
-        value: `$${(data.unpaid_invoices || 0).toLocaleString()}`,
-        change: { value: data.invoices_change_percent || 0, period: 'vs last month' },
-        icon: 'FileText',
-        source: 'QuickBooks',
-        trend: (data.invoices_change_percent || 0) <= 0 ? 'up' : 'down',
-        color: 'purple'
-      }
-    ];
+      icon: kpi.icon,
+      source: kpi.source,
+      trend: kpi.trend as 'up' | 'down' | 'neutral',
+      color: kpi.color as 'blue' | 'green' | 'orange' | 'purple' | 'red'
+    }));
 
-    return { kpis, last_updated: data.last_updated || new Date().toISOString() };
+    return {
+      kpis,
+      data_sources: data.data_sources || [],
+      has_data: data.has_data || false,
+      last_updated: data.last_updated || new Date().toISOString()
+    };
   } catch (error) {
     logger.error('Error fetching KPIs:', error);
     throw error;
@@ -153,8 +152,21 @@ export async function getRevenueTrend(walletAddress: string): Promise<RevenueTre
   }
 }
 
+// Activity type to icon/color mapping
+const ACTIVITY_TYPE_CONFIG: Record<string, { icon: string; color: string }> = {
+  invoice: { icon: '📄', color: 'text-green-600' },
+  email: { icon: '📧', color: 'text-blue-600' },
+  event: { icon: '📅', color: 'text-purple-600' },
+  message: { icon: '💬', color: 'text-pink-600' },
+  opportunity: { icon: '🎯', color: 'text-green-600' },
+  deal: { icon: '🤝', color: 'text-orange-600' },
+  lead: { icon: '👤', color: 'text-blue-600' },
+  order: { icon: '🛒', color: 'text-green-600' },
+  contact: { icon: '📇', color: 'text-blue-600' },
+};
+
 /**
- * Fetch recent activity
+ * Fetch recent activity from all integrations
  */
 export async function getRecentActivity(limit: number = 10, walletAddress: string): Promise<RecentActivityResponse> {
   try {
@@ -170,7 +182,35 @@ export async function getRecentActivity(limit: number = 10, walletAddress: strin
     }
 
     const data = await response.json();
-    return data;
+
+    // Transform backend activities to frontend format
+    const activities: ActivityItem[] = (data.activities || []).map((activity: {
+      id: string;
+      type: string;
+      title: string;
+      description: string;
+      amount?: number;
+      timestamp: string;
+      source: string;
+    }) => {
+      const config = ACTIVITY_TYPE_CONFIG[activity.type] || { icon: '📌', color: 'text-gray-600' };
+      return {
+        id: activity.id,
+        type: activity.type,
+        icon: config.icon,
+        title: activity.title,
+        description: activity.description,
+        amount: activity.amount ? `$${activity.amount.toLocaleString()}` : undefined,
+        time: activity.timestamp,
+        color: config.color,
+        source: activity.source,
+      };
+    });
+
+    return {
+      activities,
+      count: data.total_count || activities.length,
+    };
   } catch (error) {
     logger.error('Error fetching recent activity:', error);
     throw error;

@@ -68,8 +68,9 @@ export default function DashboardContent() {
   const [revenueError, setRevenueError] = useState<string | null>(null);
   const [activityError, setActivityError] = useState<string | null>(null);
 
-  // Check if any integration is connected (has data)
-  const hasIntegrations = kpisData && kpisData.kpis && kpisData.kpis.length > 0;
+  // Check if any integration is connected (has data) - use has_data from backend
+  const hasIntegrations = kpisData?.has_data || false;
+  const connectedSources = kpisData?.data_sources || [];
 
   // Redirect to login if not authenticated
   useEffect(() => {
@@ -158,9 +159,10 @@ export default function DashboardContent() {
 
   // Calculate AI insight based on KPI data
   const getAIInsight = () => {
-    if (!kpisData || !kpisData.kpis || kpisData.kpis.length === 0) return null;
+    if (!kpisData || !kpisData.has_data || kpisData.kpis.length === 0) return null;
 
-    const revenueKPI = kpisData.kpis.find(k => k.title.toLowerCase().includes('revenue'));
+    // Check for revenue KPI first (QuickBooks)
+    const revenueKPI = kpisData.kpis.find(k => k.title.toLowerCase().includes('revenue') && k.title.toLowerCase().includes('total'));
     if (revenueKPI && revenueKPI.change) {
       const change = revenueKPI.change.value;
       if (change > 0) {
@@ -175,8 +177,12 @@ export default function DashboardContent() {
         };
       }
     }
+
+    // If no revenue, show summary of connected integrations
+    const sources = connectedSources.join(', ');
+    const kpiCount = kpisData.kpis.length;
     return {
-      text: 'Your business metrics are stable. Check Analytics for detailed insights.',
+      text: `${kpiCount} metrics synced from ${sources}. Ask AI Assistant for detailed analysis.`,
       trend: 'neutral' as const,
     };
   };

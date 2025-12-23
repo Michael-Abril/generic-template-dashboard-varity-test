@@ -1193,8 +1193,9 @@ def aggregate_hourly_data():
     service = AnalyticsAggregationService()
     logger.info("Running hourly analytics aggregation")
 
-    # In production, get all active users
-    users = ['user1', 'user2']  # Mock data
+    # TODO: In production, query active users from database
+    # For MVP, skip aggregation if no users configured
+    users = []  # No mock data - aggregation skipped until database query implemented
 
     for user_id in users:
         try:

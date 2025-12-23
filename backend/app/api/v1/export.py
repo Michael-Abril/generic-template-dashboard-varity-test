@@ -119,7 +119,7 @@ async def export_dashboard_csv(
                     acc for acc in sf_accounts
                     if float(acc.get("annual_revenue", 0)) > 0
                 ])
-                customers_change_percent = 5.2  # Placeholder for historical comparison
+                customers_change_percent = 0.0  # Historical data not available for MVP
         except Exception as e:
             logger.warning(f"Salesforce data unavailable for export: {e}")
 
@@ -137,7 +137,7 @@ async def export_dashboard_csv(
                     float(prod.get("price", 0)) * int(prod.get("inventory_quantity", 0))
                     for prod in shopify_products
                 )
-                inventory_change_percent = -2.4  # Placeholder for historical comparison
+                inventory_change_percent = 0.0  # Historical data not available for MVP
         except Exception as e:
             logger.warning(f"Shopify data unavailable for export: {e}")
 
@@ -369,7 +369,7 @@ async def export_dashboard_pdf(
                     acc for acc in sf_accounts
                     if float(acc.get("annual_revenue", 0)) > 0
                 ])
-                customers_change_percent = 5.2
+                customers_change_percent = 0.0  # Historical data not available for MVP
         except Exception as e:
             logger.warning(f"Salesforce data unavailable for PDF: {e}")
 
@@ -387,7 +387,7 @@ async def export_dashboard_pdf(
                     float(prod.get("price", 0)) * int(prod.get("inventory_quantity", 0))
                     for prod in shopify_products
                 )
-                inventory_change_percent = -2.4
+                inventory_change_percent = 0.0  # Historical data not available for MVP
         except Exception as e:
             logger.warning(f"Shopify data unavailable for PDF: {e}")
 
@@ -555,7 +555,7 @@ async def export_dashboard_json(
                     acc for acc in sf_accounts
                     if float(acc.get("annual_revenue", 0)) > 0
                 ])
-                customers_change_percent = 5.2
+                customers_change_percent = 0.0  # Historical data not available for MVP
         except Exception as e:
             logger.warning(f"Salesforce data unavailable for JSON: {e}")
 
@@ -573,7 +573,7 @@ async def export_dashboard_json(
                     float(prod.get("price", 0)) * int(prod.get("inventory_quantity", 0))
                     for prod in shopify_products
                 )
-                inventory_change_percent = -2.4
+                inventory_change_percent = 0.0  # Historical data not available for MVP
         except Exception as e:
             logger.warning(f"Shopify data unavailable for JSON: {e}")
 
@@ -760,7 +760,7 @@ async def export_dashboard_excel(
                     acc for acc in sf_accounts
                     if float(acc.get("annual_revenue", 0)) > 0
                 ])
-                customers_change_percent = 5.2
+                customers_change_percent = 0.0  # Historical data not available for MVP
         except Exception as e:
             logger.warning(f"Salesforce data unavailable for Excel: {e}")
 
@@ -778,7 +778,7 @@ async def export_dashboard_excel(
                     float(prod.get("price", 0)) * int(prod.get("inventory_quantity", 0))
                     for prod in shopify_products
                 )
-                inventory_change_percent = -2.4
+                inventory_change_percent = 0.0  # Historical data not available for MVP
         except Exception as e:
             logger.warning(f"Shopify data unavailable for Excel: {e}")
 
@@ -1075,7 +1075,7 @@ async def export_analytics_json(
                     acc for acc in sf_accounts
                     if float(acc.get("annual_revenue", 0)) > 0
                 ])
-                customers_change_percent = 5.2
+                customers_change_percent = 0.0  # Historical data not available for MVP
         except Exception as e:
             logger.warning(f"Salesforce data unavailable for analytics JSON: {e}")
 
@@ -1093,7 +1093,7 @@ async def export_analytics_json(
                     float(prod.get("price", 0)) * int(prod.get("inventory_quantity", 0))
                     for prod in shopify_products
                 )
-                inventory_change_percent = -2.4
+                inventory_change_percent = 0.0  # Historical data not available for MVP
         except Exception as e:
             logger.warning(f"Shopify data unavailable for analytics JSON: {e}")
 
