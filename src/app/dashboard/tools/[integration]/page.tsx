@@ -2553,25 +2553,7 @@ export default function IntegrationToolPage() {
     );
   }
 
-  // Render QuickBooks-native UI for QuickBooks integration
-  if (integration === 'quickbooks') {
-    return (
-      <Layout>
-        <QuickBooksToolPage
-          walletAddress={address}
-          data={data}
-          loading={loading}
-          syncing={syncing}
-          error={error}
-          lastSync={lastSync}
-          onSync={syncData}
-          onRefresh={refreshData}
-        />
-      </Layout>
-    );
-  }
-
-  // Render QuickBooks Online native UI for QuickBooks integration
+  // Render simplified QuickBooks MVP UI
   if (integration === 'quickbooks') {
     // Transform data into format expected by QuickBooksPage
     const quickbooksData = data.reduce((acc, item) => {
