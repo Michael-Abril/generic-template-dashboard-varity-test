@@ -6,20 +6,22 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 interface Expense {
+  // Backend transformed format (snake_case)
   id?: string;
+  vendor_name?: string;
+  total_amount?: number;
+  txn_date?: string;
+  payment_type?: string;
+  account?: string;
+  doc_number?: string;
+  // Original QuickBooks API format (for fallback)
   Id?: string;
-  vendor?: string;
   EntityRef?: { name?: string };
-  category?: string;
   AccountRef?: { name?: string };
-  date?: string;
   TxnDate?: string;
-  amount?: number;
   TotalAmt?: number;
-  paymentMethod?: string;
-  PaymentMethodRef?: { name?: string };
   PaymentType?: string;
-  memo?: string;
+  PaymentMethodRef?: { name?: string };
   PrivateNote?: string;
 }
 
@@ -28,16 +30,16 @@ interface ExpensesListProps {
   expenses?: Expense[];
 }
 
-// Normalize expense data from QuickBooks API format
+// Normalize expense data - handles both backend transformed and raw QB formats
 function normalizeExpense(exp: Expense) {
   return {
     id: exp.id || exp.Id || String(Math.random()),
-    vendor: exp.vendor || exp.EntityRef?.name || 'Unknown Vendor',
-    category: exp.category || exp.AccountRef?.name || 'Uncategorized',
-    date: exp.date || exp.TxnDate || '',
-    amount: exp.amount ?? exp.TotalAmt ?? 0,
-    paymentMethod: exp.paymentMethod || exp.PaymentMethodRef?.name || exp.PaymentType || '-',
-    memo: exp.memo || exp.PrivateNote || '',
+    vendor: exp.vendor_name || exp.EntityRef?.name || 'Unknown Vendor',
+    category: exp.account || exp.AccountRef?.name || 'Uncategorized',
+    date: exp.txn_date || exp.TxnDate || '',
+    amount: exp.total_amount ?? exp.TotalAmt ?? 0,
+    paymentMethod: exp.payment_type || exp.PaymentMethodRef?.name || exp.PaymentType || '-',
+    memo: exp.PrivateNote || '',
   };
 }
 

@@ -16,6 +16,15 @@ import InvoiceForm from './InvoiceForm';
 
 interface Invoice {
   id: string;
+  // Backend snake_case format
+  doc_number?: string;
+  customer_name?: string;
+  txn_date?: string;
+  due_date?: string;
+  total_amount?: number;
+  balance?: number;
+  status?: string; // 'paid' or 'outstanding' from backend
+  // Original QuickBooks API format (fallback)
   number?: string;
   DocNumber?: string;
   customer?: string;
@@ -26,9 +35,7 @@ interface Invoice {
   DueDate?: string;
   amount?: number;
   TotalAmt?: number;
-  balance?: number;
   Balance?: number;
-  status?: 'paid' | 'open' | 'overdue' | 'draft';
 }
 
 interface InvoicesListProps {
@@ -38,6 +45,7 @@ interface InvoicesListProps {
 }
 
 // Helper function to normalize invoice data from QuickBooks API format
+// Backend uses snake_case: doc_number, customer_name, txn_date, due_date, total_amount, balance, status
 function normalizeInvoice(inv: Invoice): {
   id: string;
   number: string;
@@ -49,12 +57,13 @@ function normalizeInvoice(inv: Invoice): {
   status: 'paid' | 'open' | 'overdue' | 'draft';
 } {
   const balance = inv.balance ?? inv.Balance ?? 0;
-  const amount = inv.amount ?? inv.TotalAmt ?? 0;
-  const dueDate = inv.dueDate || inv.DueDate || '';
+  const amount = inv.total_amount ?? inv.amount ?? inv.TotalAmt ?? 0;
+  const dueDate = inv.due_date || inv.dueDate || inv.DueDate || '';
+  const backendStatus = inv.status; // 'paid' or 'outstanding' from backend
 
-  // Determine status based on balance and due date
+  // Determine status based on backend status, balance and due date
   let status: 'paid' | 'open' | 'overdue' | 'draft' = 'open';
-  if (balance === 0 && amount > 0) {
+  if (backendStatus === 'paid' || (balance === 0 && amount > 0)) {
     status = 'paid';
   } else if (dueDate && new Date(dueDate) < new Date()) {
     status = 'overdue';
@@ -62,13 +71,13 @@ function normalizeInvoice(inv: Invoice): {
 
   return {
     id: inv.id || String(Math.random()),
-    number: inv.number || inv.DocNumber || 'N/A',
-    customer: inv.customer || inv.CustomerRef?.name || 'Unknown Customer',
-    date: inv.date || inv.TxnDate || '',
+    number: inv.doc_number || inv.number || inv.DocNumber || 'N/A',
+    customer: inv.customer_name || inv.customer || inv.CustomerRef?.name || 'Unknown Customer',
+    date: inv.txn_date || inv.date || inv.TxnDate || '',
     dueDate: dueDate,
     amount: amount,
     balance: balance,
-    status: inv.status || status
+    status: status
   };
 }
 

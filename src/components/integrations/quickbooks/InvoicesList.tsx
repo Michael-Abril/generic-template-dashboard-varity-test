@@ -7,18 +7,21 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 
 interface Invoice {
+  // Backend transformed format (snake_case)
   id?: string;
-  number?: string;
-  DocNumber?: string;
-  customer?: string;
-  CustomerRef?: { name?: string; value?: string };
-  date?: string;
-  TxnDate?: string;
-  dueDate?: string;
-  DueDate?: string;
-  amount?: number;
-  TotalAmt?: number;
+  doc_number?: string;
+  customer_name?: string;
+  txn_date?: string;
+  due_date?: string;
+  total_amount?: number;
   balance?: number;
+  status?: string;
+  // Original QuickBooks API format (for fallback)
+  DocNumber?: string;
+  CustomerRef?: { name?: string; value?: string };
+  TxnDate?: string;
+  DueDate?: string;
+  TotalAmt?: number;
   Balance?: number;
 }
 
@@ -27,15 +30,17 @@ interface InvoicesListProps {
   invoices?: Invoice[];
 }
 
-// Normalize invoice data from QuickBooks API format
+// Normalize invoice data - handles both backend transformed and raw QB formats
 function normalizeInvoice(inv: Invoice) {
+  // Backend uses snake_case, QB API uses PascalCase
   const balance = inv.balance ?? inv.Balance ?? 0;
-  const amount = inv.amount ?? inv.TotalAmt ?? 0;
-  const dueDate = inv.dueDate || inv.DueDate || '';
+  const amount = inv.total_amount ?? inv.TotalAmt ?? 0;
+  const dueDate = inv.due_date || inv.DueDate || '';
+  const backendStatus = inv.status; // 'paid' or 'outstanding' from backend
 
-  // Determine status
+  // Determine display status
   let status: 'paid' | 'open' | 'overdue' = 'open';
-  if (balance === 0 && amount > 0) {
+  if (backendStatus === 'paid' || (balance === 0 && amount > 0)) {
     status = 'paid';
   } else if (dueDate && new Date(dueDate) < new Date()) {
     status = 'overdue';
@@ -43,9 +48,9 @@ function normalizeInvoice(inv: Invoice) {
 
   return {
     id: inv.id || String(Math.random()),
-    number: inv.number || inv.DocNumber || 'N/A',
-    customer: inv.customer || inv.CustomerRef?.name || 'Unknown Customer',
-    date: inv.date || inv.TxnDate || '',
+    number: inv.doc_number || inv.DocNumber || 'N/A',
+    customer: inv.customer_name || inv.CustomerRef?.name || 'Unknown Customer',
+    date: inv.txn_date || inv.TxnDate || '',
     dueDate,
     amount,
     balance,

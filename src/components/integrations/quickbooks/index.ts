@@ -1,7 +1,15 @@
-// MVP Components (simplified for launch)
+// QuickBooks Integration Components
+// Full-featured QuickBooks-style interface with sidebar navigation
 export { default as QuickBooksPage } from './QuickBooksPage';
-export { default as QuickBooksDashboard } from './QuickBooksDashboard';
-export { default as InvoicesList } from './InvoicesList';
-export { default as ExpensesList } from './ExpensesList';
 
-// Full-featured components available in ./_full/ folder for future use
+// Sub-components are imported directly by QuickBooksPage from ./_full/ folder
+// Available components in _full/:
+// - QuickBooksDashboardFull
+// - InvoicesListFull
+// - ExpensesListFull
+// - CustomersList
+// - VendorsList
+// - ReportViewer
+// - InvoiceForm
+// - CustomerForm
+// - ExpenseForm

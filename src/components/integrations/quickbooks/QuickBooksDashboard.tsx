@@ -27,12 +27,14 @@ export default function QuickBooksDashboard({ walletAddress, data }: QuickBooksD
     let overdueInvoices = 0;
     let paidInvoices = 0;
 
-    invoices.forEach((inv) => {
+    invoices.forEach((inv: any) => {
+      // Backend uses snake_case: total_amount, due_date, status
       const balance = inv.balance ?? inv.Balance ?? 0;
-      const amount = inv.amount ?? inv.TotalAmt ?? 0;
-      const dueDate = inv.dueDate || inv.DueDate;
+      const amount = inv.total_amount ?? inv.TotalAmt ?? 0;
+      const dueDate = inv.due_date || inv.DueDate;
+      const backendStatus = inv.status; // 'paid' or 'outstanding'
 
-      if (balance === 0 && amount > 0) {
+      if (backendStatus === 'paid' || (balance === 0 && amount > 0)) {
         paidInvoices++;
         totalIncome += amount;
       } else if (dueDate && new Date(dueDate) < now) {
@@ -42,9 +44,9 @@ export default function QuickBooksDashboard({ walletAddress, data }: QuickBooksD
       }
     });
 
-    // Calculate expense stats
-    const totalExpenses = expenses.reduce((sum, exp) => {
-      return sum + (exp.amount ?? exp.TotalAmt ?? 0);
+    // Calculate expense stats - backend uses total_amount
+    const totalExpenses = expenses.reduce((sum: number, exp: any) => {
+      return sum + (exp.total_amount ?? exp.TotalAmt ?? 0);
     }, 0);
 
     const netIncome = totalIncome - totalExpenses;

@@ -25,14 +25,16 @@ export default function QuickBooksDashboard({ walletAddress, data }: QuickBooksD
     const vendors = data?.vendors || [];
 
     // Calculate invoice stats
+    // Backend uses snake_case: total_amount, due_date, balance, status
     const now = new Date();
     const invoiceStats = invoices.reduce(
       (acc, inv) => {
         const balance = inv.balance ?? inv.Balance ?? 0;
-        const amount = inv.amount ?? inv.TotalAmt ?? 0;
-        const dueDate = inv.dueDate || inv.DueDate;
+        const amount = inv.total_amount ?? inv.amount ?? inv.TotalAmt ?? 0;
+        const dueDate = inv.due_date || inv.dueDate || inv.DueDate;
+        const backendStatus = inv.status; // 'paid' or 'outstanding' from backend
 
-        if (balance === 0 && amount > 0) {
+        if (backendStatus === 'paid' || (balance === 0 && amount > 0)) {
           acc.paid.count++;
           acc.paid.amount += amount;
         } else if (dueDate && new Date(dueDate) < now) {
@@ -52,12 +54,13 @@ export default function QuickBooksDashboard({ walletAddress, data }: QuickBooksD
     );
 
     // Calculate expense stats
+    // Backend uses snake_case: total_amount, txn_date
     const thisMonth = new Date();
     thisMonth.setDate(1);
     const expenseStats = expenses.reduce(
       (acc, exp) => {
-        const amount = exp.amount ?? exp.TotalAmt ?? 0;
-        const txnDate = exp.date || exp.TxnDate;
+        const amount = exp.total_amount ?? exp.amount ?? exp.TotalAmt ?? 0;
+        const txnDate = exp.txn_date || exp.date || exp.TxnDate;
         acc.total += amount;
         acc.count++;
         if (txnDate && new Date(txnDate) >= thisMonth) {

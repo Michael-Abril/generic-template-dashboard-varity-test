@@ -15,6 +15,14 @@ import {
 interface Expense {
   id?: string;
   Id?: string;
+  // Backend snake_case format
+  vendor_name?: string;
+  total_amount?: number;
+  txn_date?: string;
+  payment_type?: string;
+  account?: string;
+  doc_number?: string;
+  // Original QuickBooks API format (fallback)
   vendor?: string;
   EntityRef?: { name?: string };
   category?: string;
@@ -36,6 +44,7 @@ interface ExpensesListProps {
 }
 
 // Helper function to normalize expense data from QuickBooks API format
+// Backend uses snake_case: vendor_name, total_amount, txn_date, payment_type, account
 function normalizeExpense(exp: Expense): {
   id: string;
   vendor?: string;
@@ -47,11 +56,11 @@ function normalizeExpense(exp: Expense): {
 } {
   return {
     id: exp.id || exp.Id || String(Math.random()),
-    vendor: exp.vendor || exp.EntityRef?.name,
-    category: exp.category || exp.AccountRef?.name || 'Uncategorized',
-    date: exp.date || exp.TxnDate || '',
-    amount: exp.amount ?? exp.TotalAmt ?? 0,
-    paymentMethod: exp.paymentMethod || exp.PaymentMethodRef?.name || exp.PaymentType || 'Unknown',
+    vendor: exp.vendor_name || exp.vendor || exp.EntityRef?.name,
+    category: exp.account || exp.category || exp.AccountRef?.name || 'Uncategorized',
+    date: exp.txn_date || exp.date || exp.TxnDate || '',
+    amount: exp.total_amount ?? exp.amount ?? exp.TotalAmt ?? 0,
+    paymentMethod: exp.payment_type || exp.paymentMethod || exp.PaymentMethodRef?.name || exp.PaymentType || 'Unknown',
     memo: exp.memo || exp.PrivateNote
   };
 }
