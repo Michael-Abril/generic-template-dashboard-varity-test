@@ -2556,17 +2556,19 @@ export default function IntegrationToolPage() {
   // Render simplified QuickBooks MVP UI
   if (integration === 'quickbooks') {
     // Transform data into format expected by QuickBooksPage
-    const quickbooksData = data.reduce((acc, item) => {
+    const quickbooksData = (data || []).reduce((acc, item) => {
       acc[item.data_type] = item.data;
       return acc;
     }, {} as Record<string, any>);
 
     return (
-      <QuickBooksPage
-        walletAddress={address}
-        data={quickbooksData}
-        onRefresh={syncData}
-      />
+      <Layout>
+        <QuickBooksPage
+          walletAddress={address}
+          data={Object.keys(quickbooksData).length > 0 ? quickbooksData : null}
+          onRefresh={syncData}
+        />
+      </Layout>
     );
   }
 

@@ -51,17 +51,25 @@ class FilecoinService:
         integration: str,
         data_type: str,
         encrypted_data: dict,
-        metadata: Optional[dict] = None
+        metadata: Optional[dict] = None,
+        chunk_id: Optional[str] = None,
+        chunk_type: Optional[str] = None,
+        is_latest: bool = True,
+        record_count: Optional[int] = None
     ) -> str:
         """
-        Upload encrypted data to Filecoin/IPFS via Pinata
+        Upload encrypted data to Filecoin/IPFS via Pinata with chunking support
 
         Args:
             customer_wallet: Customer's wallet address
             integration: Integration name (e.g., 'google-workspace')
-            data_type: Type of data (e.g., 'emails', 'invoices')
+            data_type: Type of data (e.g., 'gmail', 'calendar')
             encrypted_data: Encrypted data payload
             metadata: Optional metadata for Pinata pinning
+            chunk_id: Chunk identifier (e.g., '2025-01', '2024-Q4', 'latest')
+            chunk_type: Chunking strategy ('monthly', 'quarterly', 'yearly', 'latest')
+            is_latest: Whether this is the latest chunk for this data type
+            record_count: Number of records in this chunk
 
         Returns:
             CID (Content Identifier) of the uploaded file
@@ -70,16 +78,21 @@ class FilecoinService:
         # This ensures data can be found when querying with the same wallet
         normalized_wallet = normalize_wallet_address(customer_wallet)
 
-        # Generate namespace
+        # Generate timestamp
         timestamp = datetime.utcnow().isoformat()
-        namespace = NamespaceConfig.build_namespace(
-            normalized_wallet,
-            integration,
-            data_type,
-            timestamp
-        )
 
-        # Prepare pinning data
+        # Build namespace with chunk_id if provided
+        if chunk_id:
+            namespace = f"customer-{normalized_wallet}/{integration}/{data_type}/{chunk_id}.json.enc"
+        else:
+            namespace = NamespaceConfig.build_namespace(
+                normalized_wallet,
+                integration,
+                data_type,
+                timestamp
+            )
+
+        # Prepare pinning data with enhanced metadata
         pin_data = {
             "pinataContent": encrypted_data,
             "pinataMetadata": {
@@ -95,6 +108,16 @@ class FilecoinService:
             }
         }
 
+        # Add chunk metadata if provided
+        if chunk_id:
+            pin_data["pinataMetadata"]["keyvalues"]["chunk_id"] = chunk_id
+        if chunk_type:
+            pin_data["pinataMetadata"]["keyvalues"]["chunk_type"] = chunk_type
+        if is_latest is not None:
+            pin_data["pinataMetadata"]["keyvalues"]["is_latest"] = "true" if is_latest else "false"
+        if record_count is not None:
+            pin_data["pinataMetadata"]["keyvalues"]["record_count"] = str(record_count)
+
         # Add custom metadata if provided
         if metadata:
             pin_data["pinataMetadata"]["keyvalues"].update(metadata)
@@ -106,7 +129,7 @@ class FilecoinService:
                     f"{self.api_url}/pinning/pinJSONToIPFS",
                     json=pin_data,
                     headers=self.headers,
-                    timeout=30.0
+                    timeout=60.0  # Increased timeout for large chunks
                 )
                 response.raise_for_status()
 
@@ -115,7 +138,8 @@ class FilecoinService:
 
                 logger.info(
                     f"Successfully uploaded to Filecoin/IPFS: "
-                    f"CID={cid}, namespace={namespace}"
+                    f"CID={cid}, namespace={namespace}, "
+                    f"chunk_id={chunk_id}, records={record_count}"
                 )
 
                 return cid
