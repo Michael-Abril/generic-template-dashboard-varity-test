@@ -79,12 +79,13 @@ export default function DashboardContent() {
     }
   }, [authenticated, ready, router]);
 
-  // Fetch dashboard data on mount
+  // Fetch dashboard data when authenticated AND wallet address is available
+  // CRITICAL: address must be in dependency array - it starts as null while wallet syncs
   useEffect(() => {
-    if (authenticated && ready) {
+    if (authenticated && ready && address) {
       fetchDashboardData();
     }
-  }, [authenticated, ready]);
+  }, [authenticated, ready, address]);
 
   const fetchDashboardData = async () => {
     fetchKPIs();
