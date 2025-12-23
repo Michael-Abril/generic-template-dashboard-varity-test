@@ -1,107 +1,112 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
-  LayoutDashboard, Landmark, DollarSign, Receipt,
-  UsersRound, BarChart3, FileCheck,
-  ChevronDown, ChevronRight, Plus, Settings, Search, Bell, RefreshCw
+  DollarSign,
+  RefreshCw,
+  Search,
+  Settings,
+  Bell,
+  Home,
+  FileText,
+  Receipt,
+  Users,
+  Building2,
+  TrendingUp,
+  TrendingDown,
+  AlertCircle,
+  CloudDownload,
+  X,
+  Plus
 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-
-// Import full-featured sub-components from _full folder
-import QuickBooksDashboard from './_full/QuickBooksDashboardFull';
-import InvoicesList from './_full/InvoicesListFull';
-import CustomersList from './_full/CustomersList';
-import ExpensesList from './_full/ExpensesListFull';
-import VendorsList from './_full/VendorsList';
-import ReportViewer from './_full/ReportViewer';
-import InvoiceForm from './_full/InvoiceForm';
-import CustomerForm from './_full/CustomerForm';
-import ExpenseForm from './_full/ExpenseForm';
 
 interface QuickBooksPageProps {
   walletAddress: string;
-  data: any;
+  data: {
+    invoices?: any[];
+    expenses?: any[];
+    customers?: any[];
+    vendors?: any[];
+  } | null;
   onRefresh?: () => void;
 }
 
-interface SidebarItem {
-  id: string;
-  label: string;
-  icon: any;
-  submenu?: Array<{ id: string; label: string }>;
-  comingSoon?: boolean;
-}
+type TabType = 'home' | 'invoices' | 'expenses' | 'customers' | 'vendors';
 
-// Simplified sidebar for SMBs - core features that small businesses use daily
-const QB_SIDEBAR_ITEMS: SidebarItem[] = [
-  { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  {
-    id: 'sales',
-    label: 'Sales',
-    icon: DollarSign,
-    submenu: [
-      { id: 'invoices', label: 'Invoices' },
-      { id: 'customers', label: 'Customers' },
-    ]
-  },
-  {
-    id: 'expenses',
-    label: 'Expenses',
-    icon: Receipt,
-    submenu: [
-      { id: 'expenses-list', label: 'Expenses' },
-      { id: 'vendors', label: 'Vendors' },
-    ]
-  },
-  // Coming Soon - core features businesses expect
-  { id: 'banking', label: 'Banking', icon: Landmark, comingSoon: true },
-  { id: 'reports', label: 'Reports', icon: BarChart3, comingSoon: true },
-  { id: 'taxes', label: 'Taxes', icon: FileCheck, comingSoon: true },
-  { id: 'payroll', label: 'Payroll', icon: UsersRound, comingSoon: true },
+const TABS = [
+  { id: 'home' as TabType, label: 'Overview', icon: Home },
+  { id: 'invoices' as TabType, label: 'Invoices', icon: FileText },
+  { id: 'expenses' as TabType, label: 'Expenses', icon: Receipt },
+  { id: 'customers' as TabType, label: 'Customers', icon: Users },
+  { id: 'vendors' as TabType, label: 'Vendors', icon: Building2 },
 ];
 
-const CREATE_MENU_ITEMS = {
-  customers: [
-    { label: 'Invoice', value: 'invoice' },
-    { label: 'Sales Receipt', value: 'sales-receipt' },
-    { label: 'Estimate', value: 'estimate' },
-    { label: 'Receive Payment', value: 'receive-payment' },
-    { label: 'Credit Memo', value: 'credit-memo' },
-  ],
-  vendors: [
-    { label: 'Expense', value: 'expense' },
-    { label: 'Check', value: 'check' },
-    { label: 'Bill', value: 'bill' },
-    { label: 'Purchase Order', value: 'purchase-order' },
-    { label: 'Vendor Credit', value: 'vendor-credit' },
-  ],
-  other: [
-    { label: 'Bank Deposit', value: 'bank-deposit' },
-    { label: 'Transfer', value: 'transfer' },
-    { label: 'Journal Entry', value: 'journal-entry' },
-  ]
-};
-
 export default function QuickBooksPage({ walletAddress, data, onRefresh }: QuickBooksPageProps) {
-  const [activeSection, setActiveSection] = useState('dashboard');
-  const [expandedItems, setExpandedItems] = useState<string[]>(['sales', 'expenses']);
-  const [showCreateMenu, setShowCreateMenu] = useState(false);
+  const [activeTab, setActiveTab] = useState<TabType>('home');
   const [searchQuery, setSearchQuery] = useState('');
   const [syncing, setSyncing] = useState(false);
+  const [showSettingsPanel, setShowSettingsPanel] = useState(false);
+  const [showNotifications, setShowNotifications] = useState(false);
 
-  const toggleExpanded = (itemId: string) => {
-    setExpandedItems(prev =>
-      prev.includes(itemId)
-        ? prev.filter(id => id !== itemId)
-        : [...prev, itemId]
-    );
-  };
+  // Calculate stats from real data
+  const stats = useMemo(() => {
+    const invoices = data?.invoices || [];
+    const expenses = data?.expenses || [];
+    const customers = data?.customers || [];
+    const vendors = data?.vendors || [];
 
-  const handleNavigation = (sectionId: string) => {
-    setActiveSection(sectionId);
-  };
+    const now = new Date();
+    let totalIncome = 0;
+    let openInvoices = 0;
+    let overdueInvoices = 0;
+    let paidInvoices = 0;
+    let openAmount = 0;
+    let overdueAmount = 0;
+
+    invoices.forEach((inv: any) => {
+      const balance = inv.balance ?? inv.Balance ?? 0;
+      const amount = inv.total_amount ?? inv.TotalAmt ?? 0;
+      const dueDate = inv.due_date || inv.DueDate;
+      const backendStatus = inv.status;
+
+      if (backendStatus === 'paid' || (balance === 0 && amount > 0)) {
+        paidInvoices++;
+        totalIncome += amount;
+      } else if (dueDate && new Date(dueDate) < now) {
+        overdueInvoices++;
+        overdueAmount += balance;
+      } else {
+        openInvoices++;
+        openAmount += balance;
+      }
+    });
+
+    const totalExpenses = expenses.reduce((sum: number, exp: any) => {
+      return sum + (exp.total_amount ?? exp.TotalAmt ?? 0);
+    }, 0);
+
+    return {
+      totalIncome,
+      totalExpenses,
+      netIncome: totalIncome - totalExpenses,
+      invoiceCount: invoices.length,
+      expenseCount: expenses.length,
+      customerCount: customers.length,
+      vendorCount: vendors.length,
+      openInvoices,
+      overdueInvoices,
+      paidInvoices,
+      openAmount,
+      overdueAmount,
+    };
+  }, [data]);
+
+  const hasData = data && (
+    (data.invoices?.length ?? 0) > 0 ||
+    (data.expenses?.length ?? 0) > 0 ||
+    (data.customers?.length ?? 0) > 0 ||
+    (data.vendors?.length ?? 0) > 0
+  );
 
   const handleSync = async () => {
     setSyncing(true);
@@ -112,357 +117,866 @@ export default function QuickBooksPage({ walletAddress, data, onRefresh }: Quick
     }
   };
 
-  const [showInvoiceForm, setShowInvoiceForm] = useState(false);
-  const [showCustomerForm, setShowCustomerForm] = useState(false);
-  const [showExpenseForm, setShowExpenseForm] = useState(false);
+  const handleGlobalSearch = () => {
+    if (!searchQuery.trim()) return;
+    const query = searchQuery.toLowerCase();
 
-  const handleCreateAction = (action: string) => {
-    setShowCreateMenu(false);
+    if (data?.invoices?.some((inv: any) =>
+      (inv.customer_name || inv.CustomerRef?.name || '').toLowerCase().includes(query) ||
+      (inv.doc_number || inv.DocNumber || '').toLowerCase().includes(query)
+    )) {
+      setActiveTab('invoices');
+      return;
+    }
 
-    // Open appropriate form based on action
-    switch(action) {
-      case 'invoice':
-        setShowInvoiceForm(true);
-        break;
-      case 'expense':
-        setShowExpenseForm(true);
-        break;
-      default:
-        console.log('Create action:', action);
+    if (data?.expenses?.some((exp: any) =>
+      (exp.vendor_name || exp.EntityRef?.name || '').toLowerCase().includes(query)
+    )) {
+      setActiveTab('expenses');
+      return;
+    }
+
+    if (data?.customers?.some((cust: any) =>
+      (cust.display_name || cust.DisplayName || '').toLowerCase().includes(query)
+    )) {
+      setActiveTab('customers');
+      return;
+    }
+
+    setActiveTab('invoices');
+  };
+
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(amount);
+  };
+
+  const formatDate = (dateStr: string) => {
+    if (!dateStr) return '-';
+    try {
+      return new Date(dateStr).toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric'
+      });
+    } catch {
+      return dateStr;
     }
   };
 
-  const renderActiveSection = () => {
-    switch (activeSection) {
-      case 'dashboard':
-        return <QuickBooksDashboard walletAddress={walletAddress} data={data} />;
+  // Render Overview/Home Tab
+  const renderHome = () => (
+    <div className="space-y-6">
+      {/* KPI Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div
+          className="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-lg hover:border-green-200 transition-all cursor-pointer"
+          onClick={() => setActiveTab('invoices')}
+        >
+          <div className="flex items-center gap-3 mb-3">
+            <div className="p-3 bg-green-100 rounded-xl">
+              <TrendingUp className="h-6 w-6 text-green-600" />
+            </div>
+            <h3 className="font-bold text-gray-900">Total Income</h3>
+          </div>
+          <p className="text-3xl font-bold text-gray-900">{formatCurrency(stats.totalIncome)}</p>
+          <p className="text-sm text-gray-600 mt-2">{stats.paidInvoices} paid invoices</p>
+        </div>
 
-      case 'invoices':
-        return <InvoicesList walletAddress={walletAddress} invoices={data?.invoices || []} onRefresh={onRefresh} />;
+        <div
+          className="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-lg hover:border-red-200 transition-all cursor-pointer"
+          onClick={() => setActiveTab('expenses')}
+        >
+          <div className="flex items-center gap-3 mb-3">
+            <div className="p-3 bg-red-100 rounded-xl">
+              <TrendingDown className="h-6 w-6 text-red-600" />
+            </div>
+            <h3 className="font-bold text-gray-900">Total Expenses</h3>
+          </div>
+          <p className="text-3xl font-bold text-gray-900">{formatCurrency(stats.totalExpenses)}</p>
+          <p className="text-sm text-gray-600 mt-2">{stats.expenseCount} expenses</p>
+        </div>
 
-      case 'customers':
-        return <CustomersList walletAddress={walletAddress} customers={data?.customers || []} />;
+        <div className="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-lg hover:border-blue-200 transition-all">
+          <div className="flex items-center gap-3 mb-3">
+            <div className="p-3 bg-blue-100 rounded-xl">
+              <DollarSign className="h-6 w-6 text-blue-600" />
+            </div>
+            <h3 className="font-bold text-gray-900">Net Income</h3>
+          </div>
+          <p className={`text-3xl font-bold ${stats.netIncome >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+            {formatCurrency(Math.abs(stats.netIncome))}
+            {stats.netIncome < 0 && <span className="text-lg ml-1">(Loss)</span>}
+          </p>
+          <p className="text-sm text-gray-600 mt-2">Income minus expenses</p>
+        </div>
 
-      case 'expenses-list':
-        return <ExpensesList walletAddress={walletAddress} expenses={data?.expenses || []} />;
+        <div
+          className="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-lg hover:border-purple-200 transition-all cursor-pointer"
+          onClick={() => setActiveTab('invoices')}
+        >
+          <div className="flex items-center gap-3 mb-3">
+            <div className="p-3 bg-purple-100 rounded-xl">
+              <FileText className="h-6 w-6 text-purple-600" />
+            </div>
+            <h3 className="font-bold text-gray-900">Invoices</h3>
+          </div>
+          <p className="text-3xl font-bold text-gray-900">{stats.invoiceCount}</p>
+          <div className="flex gap-2 mt-2 text-sm">
+            <span className="text-green-600">{stats.paidInvoices} paid</span>
+            <span className="text-gray-400">•</span>
+            <span className="text-blue-600">{stats.openInvoices} open</span>
+            {stats.overdueInvoices > 0 && (
+              <>
+                <span className="text-gray-400">•</span>
+                <span className="text-red-600">{stats.overdueInvoices} overdue</span>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
 
-      case 'vendors':
-        return <VendorsList walletAddress={walletAddress} vendors={data?.vendors || []} />;
-
-      case 'reports':
-        return <ReportViewer walletAddress={walletAddress} />;
-
-      default:
-        return (
-          <div className="flex items-center justify-center h-full">
-            <div className="text-center">
-              <p className="text-lg font-medium text-gray-900 dark:text-white">
-                {activeSection.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
-              </p>
-              <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
-                This section is under construction
-              </p>
+      {/* Overdue Alert */}
+      {stats.overdueInvoices > 0 && (
+        <div className="bg-red-50 border border-red-200 rounded-xl p-6">
+          <div className="flex items-start gap-4">
+            <div className="p-3 bg-red-100 rounded-lg">
+              <AlertCircle className="h-6 w-6 text-red-600" />
+            </div>
+            <div className="flex-1">
+              <h3 className="text-lg font-semibold text-gray-900">
+                {stats.overdueInvoices} Overdue Invoice{stats.overdueInvoices > 1 ? 's' : ''} ({formatCurrency(stats.overdueAmount)})
+              </h3>
+              <p className="text-gray-600 mt-1">Follow up with customers to ensure timely payment.</p>
+              <button
+                onClick={() => setActiveTab('invoices')}
+                className="mt-3 inline-flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm font-medium"
+              >
+                View Overdue Invoices
+              </button>
             </div>
           </div>
-        );
+        </div>
+      )}
+
+      {/* Quick Stats Row */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div
+          className="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-lg transition-all cursor-pointer"
+          onClick={() => setActiveTab('customers')}
+        >
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-500">Customers</p>
+              <p className="text-2xl font-bold text-gray-900 mt-1">{stats.customerCount}</p>
+            </div>
+            <div className="p-3 bg-orange-100 rounded-xl">
+              <Users className="h-6 w-6 text-orange-600" />
+            </div>
+          </div>
+        </div>
+
+        <div
+          className="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-lg transition-all cursor-pointer"
+          onClick={() => setActiveTab('vendors')}
+        >
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-500">Vendors</p>
+              <p className="text-2xl font-bold text-gray-900 mt-1">{stats.vendorCount}</p>
+            </div>
+            <div className="p-3 bg-indigo-100 rounded-xl">
+              <Building2 className="h-6 w-6 text-indigo-600" />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Recent Invoices */}
+      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <div className="px-6 py-4 border-b border-gray-200 bg-gray-50 flex items-center justify-between">
+          <h2 className="text-lg font-bold text-gray-900">Recent Invoices</h2>
+          <button
+            onClick={() => setActiveTab('invoices')}
+            className="text-sm text-green-600 hover:text-green-700 font-medium"
+          >
+            View All →
+          </button>
+        </div>
+        {(data?.invoices?.length ?? 0) > 0 ? (
+          <div className="divide-y divide-gray-100">
+            {data?.invoices?.slice(0, 5).map((invoice: any, index: number) => {
+              const amount = invoice.total_amount ?? invoice.TotalAmt ?? 0;
+              const balance = invoice.balance ?? invoice.Balance ?? 0;
+              const isPaid = invoice.status === 'paid' || balance === 0;
+
+              return (
+                <div key={index} className="p-4 hover:bg-gray-50 transition-colors">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="font-semibold text-gray-900">
+                        {invoice.customer_name || invoice.CustomerRef?.name || 'Unknown Customer'}
+                      </p>
+                      <p className="text-sm text-gray-500">
+                        Invoice #{invoice.doc_number || invoice.DocNumber || 'N/A'} • {formatDate(invoice.txn_date || invoice.TxnDate)}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-bold text-gray-900">{formatCurrency(amount)}</p>
+                      <span className={`text-xs px-2 py-1 rounded-full font-medium ${
+                        isPaid ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'
+                      }`}>
+                        {isPaid ? 'Paid' : 'Outstanding'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="p-8 text-center">
+            <FileText className="h-12 w-12 text-gray-300 mx-auto mb-3" />
+            <p className="text-gray-600 font-medium">No invoices yet</p>
+            <p className="text-sm text-gray-500 mt-1">Sync your QuickBooks data to see invoices</p>
+          </div>
+        )}
+      </div>
+
+      {/* Recent Expenses */}
+      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <div className="px-6 py-4 border-b border-gray-200 bg-gray-50 flex items-center justify-between">
+          <h2 className="text-lg font-bold text-gray-900">Recent Expenses</h2>
+          <button
+            onClick={() => setActiveTab('expenses')}
+            className="text-sm text-green-600 hover:text-green-700 font-medium"
+          >
+            View All →
+          </button>
+        </div>
+        {(data?.expenses?.length ?? 0) > 0 ? (
+          <div className="divide-y divide-gray-100">
+            {data?.expenses?.slice(0, 5).map((expense: any, index: number) => {
+              const amount = expense.total_amount ?? expense.TotalAmt ?? 0;
+
+              return (
+                <div key={index} className="p-4 hover:bg-gray-50 transition-colors">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="font-semibold text-gray-900">
+                        {expense.vendor_name || expense.EntityRef?.name || 'Unknown Vendor'}
+                      </p>
+                      <p className="text-sm text-gray-500">
+                        {expense.account || expense.AccountRef?.name || 'Uncategorized'} • {formatDate(expense.txn_date || expense.TxnDate)}
+                      </p>
+                    </div>
+                    <p className="font-bold text-red-600">-{formatCurrency(amount)}</p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="p-8 text-center">
+            <Receipt className="h-12 w-12 text-gray-300 mx-auto mb-3" />
+            <p className="text-gray-600 font-medium">No expenses yet</p>
+            <p className="text-sm text-gray-500 mt-1">Sync your QuickBooks data to see expenses</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
+  // Render Invoices Tab
+  const renderInvoices = () => {
+    const invoices = data?.invoices || [];
+    const filteredInvoices = searchQuery.trim()
+      ? invoices.filter((inv: any) =>
+          (inv.customer_name || inv.CustomerRef?.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+          (inv.doc_number || inv.DocNumber || '').toLowerCase().includes(searchQuery.toLowerCase())
+        )
+      : invoices;
+
+    return (
+      <div className="space-y-6">
+        {/* Stats Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="bg-white rounded-xl border border-gray-200 p-4">
+            <p className="text-sm text-gray-500">Total Invoiced</p>
+            <p className="text-2xl font-bold text-gray-900 mt-1">
+              {formatCurrency(invoices.reduce((sum: number, inv: any) => sum + (inv.total_amount ?? inv.TotalAmt ?? 0), 0))}
+            </p>
+          </div>
+          <div className="bg-white rounded-xl border border-gray-200 p-4">
+            <p className="text-sm text-gray-500">Open</p>
+            <p className="text-2xl font-bold text-blue-600 mt-1">{formatCurrency(stats.openAmount)}</p>
+          </div>
+          <div className="bg-white rounded-xl border border-gray-200 p-4">
+            <p className="text-sm text-gray-500">Overdue</p>
+            <p className="text-2xl font-bold text-red-600 mt-1">{formatCurrency(stats.overdueAmount)}</p>
+          </div>
+          <div className="bg-white rounded-xl border border-gray-200 p-4">
+            <p className="text-sm text-gray-500">Paid Count</p>
+            <p className="text-2xl font-bold text-green-600 mt-1">{stats.paidInvoices}</p>
+          </div>
+        </div>
+
+        {/* Invoices Table */}
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
+            <h2 className="text-lg font-bold text-gray-900">All Invoices ({filteredInvoices.length})</h2>
+          </div>
+          {filteredInvoices.length > 0 ? (
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Invoice #</th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Customer</th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Date</th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Due Date</th>
+                    <th className="text-right py-3 px-4 text-sm font-medium text-gray-500">Amount</th>
+                    <th className="text-right py-3 px-4 text-sm font-medium text-gray-500">Balance</th>
+                    <th className="text-center py-3 px-4 text-sm font-medium text-gray-500">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {filteredInvoices.map((invoice: any, index: number) => {
+                    const amount = invoice.total_amount ?? invoice.TotalAmt ?? 0;
+                    const balance = invoice.balance ?? invoice.Balance ?? 0;
+                    const dueDate = invoice.due_date || invoice.DueDate;
+                    const isPaid = invoice.status === 'paid' || balance === 0;
+                    const isOverdue = !isPaid && dueDate && new Date(dueDate) < new Date();
+
+                    return (
+                      <tr key={index} className="hover:bg-gray-50">
+                        <td className="py-3 px-4 text-sm font-medium text-gray-900">
+                          {invoice.doc_number || invoice.DocNumber || 'N/A'}
+                        </td>
+                        <td className="py-3 px-4 text-sm text-gray-700">
+                          {invoice.customer_name || invoice.CustomerRef?.name || 'Unknown'}
+                        </td>
+                        <td className="py-3 px-4 text-sm text-gray-500">
+                          {formatDate(invoice.txn_date || invoice.TxnDate)}
+                        </td>
+                        <td className="py-3 px-4 text-sm text-gray-500">
+                          {formatDate(dueDate)}
+                        </td>
+                        <td className="py-3 px-4 text-sm text-right font-medium text-gray-900">
+                          {formatCurrency(amount)}
+                        </td>
+                        <td className="py-3 px-4 text-sm text-right font-medium text-gray-900">
+                          {formatCurrency(balance)}
+                        </td>
+                        <td className="py-3 px-4 text-center">
+                          <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
+                            isPaid
+                              ? 'bg-green-100 text-green-700'
+                              : isOverdue
+                                ? 'bg-red-100 text-red-700'
+                                : 'bg-blue-100 text-blue-700'
+                          }`}>
+                            {isPaid ? 'Paid' : isOverdue ? 'Overdue' : 'Open'}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="p-12 text-center">
+              <FileText className="h-12 w-12 text-gray-300 mx-auto mb-3" />
+              <p className="text-gray-600 font-medium">No invoices found</p>
+              <p className="text-sm text-gray-500 mt-1">
+                {invoices.length === 0 ? 'Sync your QuickBooks data to see invoices' : 'Try a different search term'}
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  // Render Expenses Tab
+  const renderExpenses = () => {
+    const expenses = data?.expenses || [];
+    const filteredExpenses = searchQuery.trim()
+      ? expenses.filter((exp: any) =>
+          (exp.vendor_name || exp.EntityRef?.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+          (exp.account || exp.AccountRef?.name || '').toLowerCase().includes(searchQuery.toLowerCase())
+        )
+      : expenses;
+
+    const totalAmount = filteredExpenses.reduce((sum: number, exp: any) => sum + (exp.total_amount ?? exp.TotalAmt ?? 0), 0);
+
+    return (
+      <div className="space-y-6">
+        {/* Summary */}
+        <div className="bg-white rounded-xl border border-gray-200 p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-500">Total Expenses</p>
+              <p className="text-3xl font-bold text-gray-900 mt-1">{formatCurrency(totalAmount)}</p>
+            </div>
+            <div className="p-4 bg-red-100 rounded-xl">
+              <Receipt className="h-8 w-8 text-red-600" />
+            </div>
+          </div>
+        </div>
+
+        {/* Expenses Table */}
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
+            <h2 className="text-lg font-bold text-gray-900">All Expenses ({filteredExpenses.length})</h2>
+          </div>
+          {filteredExpenses.length > 0 ? (
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Date</th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Vendor</th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Category</th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Payment Method</th>
+                    <th className="text-right py-3 px-4 text-sm font-medium text-gray-500">Amount</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {filteredExpenses.map((expense: any, index: number) => (
+                    <tr key={index} className="hover:bg-gray-50">
+                      <td className="py-3 px-4 text-sm text-gray-500">
+                        {formatDate(expense.txn_date || expense.TxnDate)}
+                      </td>
+                      <td className="py-3 px-4 text-sm font-medium text-gray-900">
+                        {expense.vendor_name || expense.EntityRef?.name || 'Unknown'}
+                      </td>
+                      <td className="py-3 px-4 text-sm text-gray-700">
+                        {expense.account || expense.AccountRef?.name || 'Uncategorized'}
+                      </td>
+                      <td className="py-3 px-4 text-sm text-gray-500">
+                        {expense.payment_type || expense.PaymentType || '-'}
+                      </td>
+                      <td className="py-3 px-4 text-sm text-right font-medium text-red-600">
+                        -{formatCurrency(expense.total_amount ?? expense.TotalAmt ?? 0)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="p-12 text-center">
+              <Receipt className="h-12 w-12 text-gray-300 mx-auto mb-3" />
+              <p className="text-gray-600 font-medium">No expenses found</p>
+              <p className="text-sm text-gray-500 mt-1">
+                {expenses.length === 0 ? 'Sync your QuickBooks data to see expenses' : 'Try a different search term'}
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  // Render Customers Tab
+  const renderCustomers = () => {
+    const customers = data?.customers || [];
+    const filteredCustomers = searchQuery.trim()
+      ? customers.filter((cust: any) =>
+          (cust.display_name || cust.DisplayName || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+          (cust.primary_email || cust.PrimaryEmailAddr?.Address || '').toLowerCase().includes(searchQuery.toLowerCase())
+        )
+      : customers;
+
+    return (
+      <div className="space-y-6">
+        {/* Summary */}
+        <div className="bg-white rounded-xl border border-gray-200 p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-500">Total Customers</p>
+              <p className="text-3xl font-bold text-gray-900 mt-1">{customers.length}</p>
+            </div>
+            <div className="p-4 bg-orange-100 rounded-xl">
+              <Users className="h-8 w-8 text-orange-600" />
+            </div>
+          </div>
+        </div>
+
+        {/* Customers Table */}
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
+            <h2 className="text-lg font-bold text-gray-900">All Customers ({filteredCustomers.length})</h2>
+          </div>
+          {filteredCustomers.length > 0 ? (
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Name</th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Email</th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Phone</th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Company</th>
+                    <th className="text-right py-3 px-4 text-sm font-medium text-gray-500">Balance</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {filteredCustomers.map((customer: any, index: number) => (
+                    <tr key={index} className="hover:bg-gray-50">
+                      <td className="py-3 px-4 text-sm font-medium text-gray-900">
+                        {customer.display_name || customer.DisplayName || 'Unknown'}
+                      </td>
+                      <td className="py-3 px-4 text-sm text-gray-700">
+                        {customer.primary_email || customer.PrimaryEmailAddr?.Address || '-'}
+                      </td>
+                      <td className="py-3 px-4 text-sm text-gray-500">
+                        {customer.primary_phone || customer.PrimaryPhone?.FreeFormNumber || '-'}
+                      </td>
+                      <td className="py-3 px-4 text-sm text-gray-500">
+                        {customer.company_name || customer.CompanyName || '-'}
+                      </td>
+                      <td className="py-3 px-4 text-sm text-right font-medium text-gray-900">
+                        {formatCurrency(customer.balance ?? customer.Balance ?? 0)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="p-12 text-center">
+              <Users className="h-12 w-12 text-gray-300 mx-auto mb-3" />
+              <p className="text-gray-600 font-medium">No customers found</p>
+              <p className="text-sm text-gray-500 mt-1">
+                {customers.length === 0 ? 'Sync your QuickBooks data to see customers' : 'Try a different search term'}
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  // Render Vendors Tab
+  const renderVendors = () => {
+    const vendors = data?.vendors || [];
+    const filteredVendors = searchQuery.trim()
+      ? vendors.filter((v: any) =>
+          (v.display_name || v.DisplayName || '').toLowerCase().includes(searchQuery.toLowerCase())
+        )
+      : vendors;
+
+    return (
+      <div className="space-y-6">
+        {/* Summary */}
+        <div className="bg-white rounded-xl border border-gray-200 p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-500">Total Vendors</p>
+              <p className="text-3xl font-bold text-gray-900 mt-1">{vendors.length}</p>
+            </div>
+            <div className="p-4 bg-indigo-100 rounded-xl">
+              <Building2 className="h-8 w-8 text-indigo-600" />
+            </div>
+          </div>
+        </div>
+
+        {/* Vendors Table */}
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
+            <h2 className="text-lg font-bold text-gray-900">All Vendors ({filteredVendors.length})</h2>
+          </div>
+          {filteredVendors.length > 0 ? (
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Name</th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Email</th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Phone</th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Company</th>
+                    <th className="text-right py-3 px-4 text-sm font-medium text-gray-500">Balance</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {filteredVendors.map((vendor: any, index: number) => (
+                    <tr key={index} className="hover:bg-gray-50">
+                      <td className="py-3 px-4 text-sm font-medium text-gray-900">
+                        {vendor.display_name || vendor.DisplayName || 'Unknown'}
+                      </td>
+                      <td className="py-3 px-4 text-sm text-gray-700">
+                        {vendor.primary_email || vendor.PrimaryEmailAddr?.Address || '-'}
+                      </td>
+                      <td className="py-3 px-4 text-sm text-gray-500">
+                        {vendor.primary_phone || vendor.PrimaryPhone?.FreeFormNumber || '-'}
+                      </td>
+                      <td className="py-3 px-4 text-sm text-gray-500">
+                        {vendor.company_name || vendor.CompanyName || '-'}
+                      </td>
+                      <td className="py-3 px-4 text-sm text-right font-medium text-gray-900">
+                        {formatCurrency(vendor.balance ?? vendor.Balance ?? 0)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="p-12 text-center">
+              <Building2 className="h-12 w-12 text-gray-300 mx-auto mb-3" />
+              <p className="text-gray-600 font-medium">No vendors found</p>
+              <p className="text-sm text-gray-500 mt-1">
+                {vendors.length === 0 ? 'Sync your QuickBooks data to see vendors' : 'Try a different search term'}
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  const renderActiveTab = () => {
+    switch (activeTab) {
+      case 'home':
+        return renderHome();
+      case 'invoices':
+        return renderInvoices();
+      case 'expenses':
+        return renderExpenses();
+      case 'customers':
+        return renderCustomers();
+      case 'vendors':
+        return renderVendors();
+      default:
+        return renderHome();
     }
   };
 
   return (
-    <div className="flex h-screen bg-white dark:bg-gray-900">
-      {/* Left Sidebar - QuickBooks Navigation */}
-      <aside className="w-64 bg-gray-50 dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col">
-        {/* Company Header */}
-        <div className="p-4 border-b border-gray-200 dark:border-gray-700">
-          <div className="flex items-center space-x-2">
-            <div className="w-8 h-8 bg-green-600 rounded flex items-center justify-center">
-              <span className="text-white font-bold text-sm">QB</span>
-            </div>
-            <div className="flex-1">
-              <p className="text-sm font-semibold text-gray-900 dark:text-white">
-                My Company
-              </p>
-              <p className="text-xs text-gray-500 dark:text-gray-400">
-                QuickBooks Online
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* Navigation Items */}
-        <nav className="flex-1 overflow-y-auto py-4">
-          {QB_SIDEBAR_ITEMS.map((item) => (
-            <div key={item.id}>
-              <button
-                onClick={() => {
-                  if (item.comingSoon) return;
-                  if (item.submenu) {
-                    toggleExpanded(item.id);
-                  } else {
-                    handleNavigation(item.id);
-                  }
-                }}
-                disabled={item.comingSoon}
-                className={`w-full flex items-center justify-between px-4 py-2 text-sm ${
-                  item.comingSoon
-                    ? 'text-gray-400 dark:text-gray-500 cursor-not-allowed'
-                    : activeSection === item.id
-                      ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 font-medium'
-                      : 'text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
-                }`}
-              >
-                <div className="flex items-center space-x-3">
-                  <item.icon className={`w-5 h-5 ${item.comingSoon ? 'text-gray-300 dark:text-gray-600' : ''}`} />
-                  <span>{item.label}</span>
-                </div>
-                {item.comingSoon && (
-                  <span className="rounded-full bg-gray-100 dark:bg-gray-700 px-2 py-0.5 text-xs text-gray-500 dark:text-gray-400">
-                    Soon
-                  </span>
-                )}
-                {item.submenu && !item.comingSoon && (
-                  expandedItems.includes(item.id) ? (
-                    <ChevronDown className="w-4 h-4" />
-                  ) : (
-                    <ChevronRight className="w-4 h-4" />
-                  )
-                )}
-              </button>
-
-              {/* Submenu */}
-              {item.submenu && expandedItems.includes(item.id) && !item.comingSoon && (
-                <div className="ml-4 mt-1 space-y-1">
-                  {item.submenu.map((subItem) => (
-                    <button
-                      key={subItem.id}
-                      onClick={() => handleNavigation(subItem.id)}
-                      className={`w-full text-left px-4 py-1.5 text-sm hover:bg-gray-200 dark:hover:bg-gray-700 rounded ${
-                        activeSection === subItem.id
-                          ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 font-medium'
-                          : 'text-gray-600 dark:text-gray-400'
-                      }`}
-                    >
-                      {subItem.label}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          ))}
-        </nav>
-
-        {/* Bottom Actions */}
-        <div className="p-4 border-t border-gray-200 dark:border-gray-700">
-          <Button
-            variant="outline"
-            size="sm"
-            className="w-full"
-            onClick={() => window.location.href = '/settings'}
-          >
-            Settings
-          </Button>
-        </div>
-      </aside>
-
-      {/* Main Content Area */}
-      <main className="flex-1 flex flex-col overflow-hidden">
-        {/* Top Header */}
-        <header className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-6 py-3">
+    <div className="min-h-screen bg-gray-50">
+      {/* Header */}
+      <div className="bg-white border-b sticky top-0 z-10">
+        <div className="px-6 py-4">
           <div className="flex items-center justify-between">
-            {/* Search */}
-            <div className="flex-1 max-w-md">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-                <Input
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2">
+                <div className="p-2 bg-gradient-to-br from-green-600 to-emerald-600 rounded-lg">
+                  <DollarSign className="h-6 w-6 text-white" />
+                </div>
+                <h1 className="text-xl font-bold text-gray-900">QuickBooks</h1>
+              </div>
+
+              {/* Search Bar */}
+              <div className="hidden md:flex items-center gap-2 bg-gray-100 rounded-lg px-4 py-2 w-96 border border-gray-200 focus-within:border-green-400 focus-within:ring-2 focus-within:ring-green-100 transition-all">
+                <Search className="h-4 w-4 text-gray-500" />
+                <input
                   type="text"
-                  placeholder="Search transactions, customers, vendors..."
+                  placeholder="Search invoices, expenses, customers..."
+                  className="bg-transparent border-none outline-none text-sm w-full text-gray-900 placeholder:text-gray-500"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-10 pr-4"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      handleGlobalSearch();
+                    }
+                  }}
                 />
+                {searchQuery && (
+                  <button
+                    onClick={() => setSearchQuery('')}
+                    className="p-1 hover:bg-gray-200 rounded"
+                  >
+                    <X className="h-3 w-3 text-gray-500" />
+                  </button>
+                )}
               </div>
             </div>
 
-            {/* Right Actions */}
-            <div className="flex items-center space-x-4">
-              {/* Sync Button */}
-              <Button
+            <div className="flex items-center gap-2">
+              <button
                 onClick={handleSync}
                 disabled={syncing}
-                variant="outline"
-                className="flex items-center gap-2"
+                className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Sync data from QuickBooks"
               >
-                <RefreshCw className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} />
-                {syncing ? 'Syncing...' : 'Sync'}
-              </Button>
-
-              {/* Create Button (+ Menu) */}
+                <CloudDownload className={`h-4 w-4 ${syncing ? 'animate-pulse' : ''}`} />
+                <span className="font-medium">{syncing ? 'Syncing...' : 'Sync Data'}</span>
+              </button>
+              <button
+                onClick={() => onRefresh?.()}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                title="Refresh data"
+              >
+                <RefreshCw className={`h-5 w-5 text-gray-600 ${syncing ? 'animate-spin' : ''}`} />
+              </button>
               <div className="relative">
-                <Button
-                  onClick={() => setShowCreateMenu(!showCreateMenu)}
-                  className="bg-green-600 hover:bg-green-700 text-white"
+                <button
+                  onClick={() => setShowNotifications(!showNotifications)}
+                  className={`p-2 hover:bg-gray-100 rounded-lg transition-colors ${showNotifications ? 'bg-gray-100' : ''}`}
+                  title="Notifications"
                 >
-                  <Plus className="w-4 h-4 mr-2" />
-                  Create
-                </Button>
-
-                {/* Create Dropdown Menu */}
-                {showCreateMenu && (
-                  <div className="absolute right-0 mt-2 w-64 bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 z-50">
-                    <div className="p-2">
-                      <p className="px-3 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">
-                        Customers
-                      </p>
-                      {CREATE_MENU_ITEMS.customers.map((item) => (
-                        <button
-                          key={item.value}
-                          onClick={() => handleCreateAction(item.value)}
-                          className="w-full text-left px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
-                        >
-                          {item.label}
-                        </button>
-                      ))}
-
-                      <div className="my-2 border-t border-gray-200 dark:border-gray-700" />
-
-                      <p className="px-3 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">
-                        Vendors
-                      </p>
-                      {CREATE_MENU_ITEMS.vendors.map((item) => (
-                        <button
-                          key={item.value}
-                          onClick={() => handleCreateAction(item.value)}
-                          className="w-full text-left px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
-                        >
-                          {item.label}
-                        </button>
-                      ))}
-
-                      <div className="my-2 border-t border-gray-200 dark:border-gray-700" />
-
-                      <p className="px-3 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">
-                        Other
-                      </p>
-                      {CREATE_MENU_ITEMS.other.map((item) => (
-                        <button
-                          key={item.value}
-                          onClick={() => handleCreateAction(item.value)}
-                          className="w-full text-left px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
-                        >
-                          {item.label}
-                        </button>
-                      ))}
+                  <Bell className="h-5 w-5 text-gray-600" />
+                  {stats.overdueInvoices > 0 && (
+                    <span className="absolute -top-1 -right-1 h-4 w-4 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">
+                      {stats.overdueInvoices}
+                    </span>
+                  )}
+                </button>
+                {showNotifications && (
+                  <div className="absolute right-0 top-full mt-2 w-80 bg-white rounded-lg shadow-lg border z-50">
+                    <div className="px-4 py-3 border-b flex items-center justify-between">
+                      <h3 className="font-semibold text-gray-900">Notifications</h3>
+                      <button onClick={() => setShowNotifications(false)} className="p-1 hover:bg-gray-100 rounded">
+                        <X className="h-4 w-4 text-gray-500" />
+                      </button>
+                    </div>
+                    {stats.overdueInvoices > 0 ? (
+                      <div className="p-4">
+                        <div className="flex items-start gap-3">
+                          <AlertCircle className="h-5 w-5 text-red-600 mt-0.5" />
+                          <div>
+                            <p className="font-medium text-gray-900">{stats.overdueInvoices} overdue invoice{stats.overdueInvoices > 1 ? 's' : ''}</p>
+                            <p className="text-sm text-gray-500">Total: {formatCurrency(stats.overdueAmount)}</p>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="p-4 text-center">
+                        <Bell className="h-8 w-8 text-gray-300 mx-auto mb-2" />
+                        <p className="text-sm text-gray-500">No new notifications</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+              <div className="relative">
+                <button
+                  onClick={() => setShowSettingsPanel(!showSettingsPanel)}
+                  className={`p-2 hover:bg-gray-100 rounded-lg transition-colors ${showSettingsPanel ? 'bg-gray-100' : ''}`}
+                  title="Settings"
+                >
+                  <Settings className="h-5 w-5 text-gray-600" />
+                </button>
+                {showSettingsPanel && (
+                  <div className="absolute right-0 top-full mt-2 w-64 bg-white rounded-lg shadow-lg border z-50">
+                    <div className="px-4 py-3 border-b flex items-center justify-between">
+                      <h3 className="font-semibold text-gray-900">Settings</h3>
+                      <button onClick={() => setShowSettingsPanel(false)} className="p-1 hover:bg-gray-100 rounded">
+                        <X className="h-4 w-4 text-gray-500" />
+                      </button>
+                    </div>
+                    <div className="py-2">
+                      <button
+                        onClick={() => { setShowSettingsPanel(false); window.location.href = '/settings'; }}
+                        className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
+                      >
+                        Account Settings
+                      </button>
+                      <button
+                        onClick={() => { setShowSettingsPanel(false); window.location.href = '/integrations'; }}
+                        className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
+                      >
+                        Manage Integrations
+                      </button>
+                      <div className="border-t my-1" />
+                      <button
+                        onClick={() => { setShowSettingsPanel(false); handleSync(); }}
+                        className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
+                      >
+                        Re-sync QuickBooks Data
+                      </button>
                     </div>
                   </div>
                 )}
               </div>
-
-              {/* Notifications */}
-              <button className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full">
-                <Bell className="w-5 h-5 text-gray-600 dark:text-gray-400" />
-              </button>
-
-              {/* Settings */}
-              <button
-                className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full"
-                onClick={() => window.location.href = '/settings'}
-              >
-                <Settings className="w-5 h-5 text-gray-600 dark:text-gray-400" />
-              </button>
             </div>
           </div>
-        </header>
 
-        {/* Content Area */}
-        <div className="flex-1 overflow-y-auto bg-gray-50 dark:bg-gray-900">
-          {renderActiveSection()}
+          {/* Horizontal Tabs */}
+          <div className="flex items-center gap-1 mt-4 border-b border-gray-200 -mb-px">
+            {TABS.map((tab) => {
+              const Icon = tab.icon;
+              const isActive = activeTab === tab.id;
+              const count = tab.id === 'invoices' ? stats.invoiceCount
+                : tab.id === 'expenses' ? stats.expenseCount
+                : tab.id === 'customers' ? stats.customerCount
+                : tab.id === 'vendors' ? stats.vendorCount
+                : null;
+
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`
+                    flex items-center gap-2 px-4 py-2.5 border-b-2 transition-all rounded-t-lg
+                    ${isActive
+                      ? 'border-green-600 text-green-700 bg-green-50 font-semibold'
+                      : 'border-transparent text-gray-700 hover:bg-gray-100 hover:text-gray-900 font-medium'
+                    }
+                  `}
+                >
+                  <Icon className={`h-4 w-4 ${isActive ? 'text-green-600' : ''}`} />
+                  <span>{tab.label}</span>
+                  {count != null && count > 0 && (
+                    <span className={`ml-1 px-2 py-0.5 rounded-full text-xs ${
+                      isActive ? 'bg-green-200 text-green-800' : 'bg-gray-200 text-gray-600'
+                    }`}>
+                      {count}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
         </div>
-      </main>
+      </div>
 
-      {/* Form Modals */}
-      {showInvoiceForm && (
-        <InvoiceForm
-          onClose={() => setShowInvoiceForm(false)}
-          onSave={async (invoiceData) => {
-            try {
-              const response = await fetch(
-                `${process.env.NEXT_PUBLIC_API_URL}/api/v1/quickbooks/invoices?wallet_address=${walletAddress}`,
-                {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify(invoiceData)
-                }
-              );
-              const result = await response.json();
-              if (result.success) {
-                setShowInvoiceForm(false);
-                onRefresh?.();
-              } else {
-                alert('Failed to create invoice: ' + (result.detail || 'Unknown error'));
-              }
-            } catch (error) {
-              console.error('Error creating invoice:', error);
-              alert('Failed to create invoice');
-            }
-          }}
-        />
-      )}
+      {/* Content */}
+      <div className="p-6">
+        {/* No Data Banner */}
+        {!hasData && !syncing && (
+          <div className="mb-6 bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-xl p-6">
+            <div className="flex items-start gap-4">
+              <div className="p-3 bg-green-100 rounded-lg">
+                <AlertCircle className="h-6 w-6 text-green-600" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-lg font-semibold text-gray-900 mb-1">No Data Synced Yet</h3>
+                <p className="text-gray-600 mb-4">
+                  Click <strong>"Sync Data"</strong> to fetch your invoices, expenses, customers, and vendors from QuickBooks.
+                  Your data will be securely stored and available for AI-powered insights.
+                </p>
+                <button
+                  onClick={handleSync}
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                >
+                  <CloudDownload className="h-4 w-4" />
+                  <span className="font-medium">Sync My QuickBooks Data</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
-      {showCustomerForm && (
-        <CustomerForm
-          onClose={() => setShowCustomerForm(false)}
-          onSave={async (customerData) => {
-            try {
-              const response = await fetch(
-                `${process.env.NEXT_PUBLIC_API_URL}/api/v1/quickbooks/customers?wallet_address=${walletAddress}`,
-                {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify(customerData)
-                }
-              );
-              const result = await response.json();
-              if (result.success) {
-                setShowCustomerForm(false);
-                onRefresh?.();
-              } else {
-                alert('Failed to create customer: ' + (result.detail || 'Unknown error'));
-              }
-            } catch (error) {
-              console.error('Error creating customer:', error);
-              alert('Failed to create customer');
-            }
-          }}
-        />
-      )}
+        {/* Syncing State */}
+        {syncing && (
+          <div className="flex items-center justify-center py-12">
+            <div className="text-center">
+              <CloudDownload className="h-8 w-8 text-green-600 animate-pulse mx-auto mb-4" />
+              <p className="text-gray-600 font-medium">Syncing data from QuickBooks...</p>
+              <p className="text-sm text-gray-500 mt-2">This may take a moment. Please wait.</p>
+            </div>
+          </div>
+        )}
 
-      {showExpenseForm && (
-        <ExpenseForm
-          onClose={() => setShowExpenseForm(false)}
-          onSave={async (expenseData) => {
-            try {
-              const response = await fetch(
-                `${process.env.NEXT_PUBLIC_API_URL}/api/v1/quickbooks/expenses?wallet_address=${walletAddress}`,
-                {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify(expenseData)
-                }
-              );
-              const result = await response.json();
-              if (result.success) {
-                setShowExpenseForm(false);
-                onRefresh?.();
-              } else {
-                alert('Failed to create expense: ' + (result.detail || 'Unknown error'));
-              }
-            } catch (error) {
-              console.error('Error creating expense:', error);
-              alert('Failed to create expense');
-            }
-          }}
-        />
-      )}
+        {!syncing && renderActiveTab()}
+      </div>
     </div>
   );
 }
