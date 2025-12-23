@@ -526,10 +526,22 @@ async def sync_tool_data(
                         rag_failed_count += 1
         elif result and result.get("data"):
             for data_type, data_info in result.get("data", {}).items():
-                if data_info.get("status") == "success" and data_info.get("cid"):
+                if data_info.get("status") != "success":
+                    continue
+
+                # Handle both old format (single cid) and new chunked format (dict of cids)
+                cids_to_index = []
+                if data_info.get("cid"):
+                    # Old format: single CID
+                    cids_to_index = [("latest", data_info["cid"])]
+                elif data_info.get("chunks"):
+                    # New chunked format: dict of chunk_id: cid pairs
+                    cids_to_index = list(data_info["chunks"].items())
+
+                for chunk_id, cid in cids_to_index:
                     try:
                         # Retrieve the encrypted data from Pinata
-                        encrypted = await filecoin_service.retrieve_data(data_info["cid"])
+                        encrypted = await filecoin_service.retrieve_data(cid)
 
                         # Decrypt the data
                         decrypted = await encryption_service.decrypt_with_wallet(
@@ -543,21 +555,21 @@ async def sync_tool_data(
                         # Index in Qdrant for RAG
                         await rag_service.index_business_data(
                             business_wallet=wallet_address,
-                            cid=data_info["cid"],
+                            cid=cid,
                             data=decrypted,
                             integration=normalized_tool,
                             data_type=data_type
                         )
                         rag_indexed_count += 1
                         logger.info(
-                            f"RAG indexed {data_type} for {wallet_address[:10]}..., "
-                            f"CID: {data_info['cid']}, records: {len(records)}"
+                            f"RAG indexed {data_type}/{chunk_id} for {wallet_address[:10]}..., "
+                            f"CID: {cid}, records: {len(records)}"
                         )
                     except Exception as e:
                         rag_failed_count += 1
-                        error_msg = f"Failed to index {data_type}: {str(e)}"
+                        error_msg = f"Failed to index {data_type}/{chunk_id}: {str(e)}"
                         rag_errors.append(error_msg)
-                        logger.warning(f"Failed to index {data_type} in RAG: {e}")
+                        logger.warning(f"Failed to index {data_type}/{chunk_id} in RAG: {e}")
                         # Don't fail the whole sync if RAG indexing fails
                         continue
 
