@@ -15,6 +15,7 @@ from datetime import datetime
 import logging
 
 from ..core.config import settings, NamespaceConfig
+from .encryption_service import normalize_wallet_address
 
 logger = logging.getLogger(__name__)
 
@@ -65,8 +66,9 @@ class FilecoinService:
         Returns:
             CID (Content Identifier) of the uploaded file
         """
-        # Normalize wallet address to lowercase for consistent storage/querying
-        normalized_wallet = customer_wallet.lower()
+        # CRITICAL: Use normalize_wallet_address for consistent storage/querying
+        # This ensures data can be found when querying with the same wallet
+        normalized_wallet = normalize_wallet_address(customer_wallet)
 
         # Generate namespace
         timestamp = datetime.utcnow().isoformat()
@@ -148,8 +150,8 @@ class FilecoinService:
         Returns:
             CID of the uploaded file
         """
-        # Normalize wallet address to lowercase for consistent storage/querying
-        normalized_wallet = customer_wallet.lower()
+        # CRITICAL: Use normalize_wallet_address for consistent storage/querying
+        normalized_wallet = normalize_wallet_address(customer_wallet)
 
         # Generate namespace
         timestamp = datetime.utcnow().isoformat()
@@ -295,11 +297,20 @@ class FilecoinService:
         Returns:
             List of file metadata
         """
+        # CRITICAL: Normalize wallet address for consistent querying
+        # Data is stored with normalized wallet, so we must query with normalized wallet
+        normalized_wallet = normalize_wallet_address(customer_wallet)
+
+        logger.info(
+            f"Pinata query: wallet={normalized_wallet}, "
+            f"integration={integration}, data_type={data_type}"
+        )
+
         # Build query filters using Pinata's object format
         # Pinata requires: {"value": "yourValue", "op": "eq"}
         filters = {
             "status": "pinned",
-            "metadata[keyvalues][customer_wallet]": json.dumps({"value": customer_wallet.lower(), "op": "eq"})
+            "metadata[keyvalues][customer_wallet]": json.dumps({"value": normalized_wallet, "op": "eq"})
         }
 
         if integration:
@@ -307,6 +318,8 @@ class FilecoinService:
 
         if data_type:
             filters["metadata[keyvalues][data_type]"] = json.dumps({"value": data_type, "op": "eq"})
+
+        logger.debug(f"Pinata query filters: {filters}")
 
         async with httpx.AsyncClient() as client:
             try:
@@ -332,16 +345,27 @@ class FilecoinService:
                     files.append(file_info)
 
                 logger.info(
-                    f"Listed {len(files)} files for customer {customer_wallet}"
+                    f"Pinata returned {len(files)} files for wallet={normalized_wallet}, "
+                    f"integration={integration}, data_type={data_type}"
                 )
+
+                # Log warning if no files found - helps debug pipeline issues
+                if len(files) == 0:
+                    logger.warning(
+                        f"No files found in Pinata for wallet={normalized_wallet}, "
+                        f"integration={integration}. This may indicate a sync issue."
+                    )
 
                 return files
 
             except httpx.HTTPStatusError as e:
-                logger.error(f"Pinata list error: {e.response.text}")
+                logger.error(
+                    f"Pinata list error: {e.response.text}, "
+                    f"wallet={normalized_wallet}, integration={integration}"
+                )
                 raise Exception(f"Failed to list files: {e.response.text}")
             except Exception as e:
-                logger.error(f"List error: {str(e)}")
+                logger.error(f"Pinata list error: {str(e)}, wallet={normalized_wallet}")
                 raise
 
     async def unpin_file(self, cid: str) -> bool:

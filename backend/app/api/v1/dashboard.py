@@ -20,7 +20,7 @@ import json
 
 from app.core.database import get_db
 from app.services.filecoin_service import FilecoinService
-from app.services.encryption_service import EncryptionService
+from app.services.encryption_service import EncryptionService, normalize_wallet_address
 
 logger = logging.getLogger(__name__)
 
@@ -149,21 +149,45 @@ async def get_integration_data(
     Returns:
         List of decrypted data records
     """
+    # CRITICAL: Normalize wallet address for consistent queries
+    normalized_wallet = normalize_wallet_address(wallet_address)
+
     try:
-        # List files for this integration
+        # List files for this integration - use latest_only for faster loading
         files = await filecoin_service.list_customer_files(
-            customer_wallet=wallet_address,
+            customer_wallet=normalized_wallet,
             integration=integration,
             data_type=data_type,
-            limit=1000
+            limit=100  # Reduced from 1000 since we use latest_only pattern
         )
 
         if not files:
-            logger.info(f"No data found for {integration} integration")
+            logger.info(
+                f"No data found for {integration} integration, "
+                f"wallet={normalized_wallet[:15]}..."
+            )
             return []
+
+        # Filter to keep only the most recent file per data_type (latest_only pattern)
+        files_by_type: Dict[str, Any] = {}
+        for file in files:
+            file_data_type = file.get("metadata", {}).get("data_type", "unknown")
+            file_timestamp = file.get("timestamp", "")
+
+            if file_data_type not in files_by_type:
+                files_by_type[file_data_type] = file
+            else:
+                existing_timestamp = files_by_type[file_data_type].get("timestamp", "")
+                if file_timestamp > existing_timestamp:
+                    files_by_type[file_data_type] = file
+
+        files = list(files_by_type.values())
+        logger.info(f"Using {len(files)} latest files for {integration}")
 
         # Retrieve and decrypt each file
         all_data = []
+        decryption_errors = 0
+
         for file in files:
             try:
                 # Retrieve encrypted data
@@ -172,7 +196,7 @@ async def get_integration_data(
                 # Decrypt with wallet
                 decrypted = await encryption_service.decrypt_with_wallet(
                     encrypted_data=encrypted,
-                    customer_wallet=wallet_address
+                    customer_wallet=normalized_wallet
                 )
 
                 # Handle both single record and list of records
@@ -182,14 +206,27 @@ async def get_integration_data(
                     all_data.append(decrypted)
 
             except Exception as e:
-                logger.warning(f"Failed to decrypt file {file.get('cid')}: {e}")
+                decryption_errors += 1
+                logger.error(
+                    f"DECRYPTION FAILED for {integration} file CID={file.get('cid')}: {str(e)}. "
+                    f"Wallet={normalized_wallet[:15]}..., Exception type={type(e).__name__}"
+                )
                 continue
+
+        if decryption_errors > 0:
+            logger.warning(
+                f"Dashboard data retrieval: {decryption_errors}/{len(files)} files failed to decrypt "
+                f"for {integration}"
+            )
 
         logger.info(f"Retrieved {len(all_data)} records from {integration}")
         return all_data
 
     except Exception as e:
-        logger.error(f"Failed to get {integration} data: {e}")
+        logger.error(
+            f"FAILED to get {integration} data for wallet={normalized_wallet[:15]}...: {str(e)}. "
+            f"Exception type={type(e).__name__}"
+        )
         return []
 
 
@@ -1236,3 +1273,118 @@ async def get_dashboard_analytics(
     except Exception as e:
         logger.error(f"Error fetching analytics: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to fetch analytics")
+
+
+@router.get("/debug/data-pipeline")
+async def debug_data_pipeline(
+    wallet_address: str = Query(..., description="User's wallet address"),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Debug endpoint to verify the data pipeline for a wallet.
+
+    This endpoint checks:
+    1. Wallet address normalization
+    2. Pinata files for each integration
+    3. Decryption status
+    4. Data counts
+
+    Use this to diagnose why dashboard shows no data.
+    """
+    try:
+        normalized_wallet = normalize_wallet_address(wallet_address)
+
+        logger.info(f"DEBUG: Checking data pipeline for wallet={normalized_wallet}")
+
+        results = {
+            "wallet_original": wallet_address,
+            "wallet_normalized": normalized_wallet,
+            "timestamp": datetime.utcnow().isoformat(),
+            "integrations": {},
+            "summary": {
+                "total_files": 0,
+                "successful_decryptions": 0,
+                "failed_decryptions": 0,
+                "integrations_with_data": []
+            },
+            "errors": []
+        }
+
+        for integration in SUPPORTED_INTEGRATIONS:
+            integration_result = {
+                "files_found": 0,
+                "files_by_type": {},
+                "decryption_success": 0,
+                "decryption_failed": 0,
+                "sample_data": None,
+                "errors": []
+            }
+
+            try:
+                # List files for this integration
+                files = await filecoin_service.list_customer_files(
+                    customer_wallet=normalized_wallet,
+                    integration=integration,
+                    limit=50
+                )
+
+                integration_result["files_found"] = len(files)
+                results["summary"]["total_files"] += len(files)
+
+                # Group by data_type
+                for file in files:
+                    data_type = file.get("metadata", {}).get("data_type", "unknown")
+                    if data_type not in integration_result["files_by_type"]:
+                        integration_result["files_by_type"][data_type] = 0
+                    integration_result["files_by_type"][data_type] += 1
+
+                # Try to decrypt the first file to verify decryption works
+                if files:
+                    try:
+                        first_file = files[0]
+                        encrypted = await filecoin_service.retrieve_data(first_file["cid"])
+                        decrypted = await encryption_service.decrypt_with_wallet(
+                            encrypted_data=encrypted,
+                            customer_wallet=normalized_wallet
+                        )
+                        integration_result["decryption_success"] = 1
+                        results["summary"]["successful_decryptions"] += 1
+
+                        # Include sample data (truncated)
+                        if isinstance(decrypted, dict):
+                            integration_result["sample_data"] = {
+                                "type": "dict",
+                                "keys": list(decrypted.keys())[:10],
+                                "record_count": len(decrypted.get("records", [])) if "records" in decrypted else "N/A"
+                            }
+                        elif isinstance(decrypted, list):
+                            integration_result["sample_data"] = {
+                                "type": "list",
+                                "count": len(decrypted)
+                            }
+
+                        results["summary"]["integrations_with_data"].append(integration)
+
+                    except Exception as e:
+                        integration_result["decryption_failed"] = 1
+                        integration_result["errors"].append(f"Decryption failed: {str(e)}")
+                        results["summary"]["failed_decryptions"] += 1
+                        results["errors"].append(f"{integration}: {str(e)}")
+
+            except Exception as e:
+                integration_result["errors"].append(f"Query failed: {str(e)}")
+                results["errors"].append(f"{integration} query: {str(e)}")
+
+            results["integrations"][integration] = integration_result
+
+        logger.info(
+            f"DEBUG complete: {results['summary']['total_files']} files, "
+            f"{results['summary']['successful_decryptions']} decrypted, "
+            f"{len(results['summary']['integrations_with_data'])} integrations with data"
+        )
+
+        return results
+
+    except Exception as e:
+        logger.error(f"Debug endpoint error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Debug failed: {str(e)}")

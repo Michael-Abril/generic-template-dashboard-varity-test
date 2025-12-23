@@ -24,6 +24,33 @@ from ..core.config import settings
 logger = logging.getLogger(__name__)
 
 
+def normalize_wallet_address(wallet_address: str) -> str:
+    """
+    Normalize wallet address for consistent storage/retrieval.
+
+    CRITICAL: This function MUST be used everywhere wallet addresses are
+    compared or used as keys. Inconsistent normalization will cause data
+    to be stored under one key and queried under a different key.
+
+    Normalization rules:
+    - Convert to lowercase
+    - Strip whitespace
+    - Add "0x" prefix if missing
+
+    Args:
+        wallet_address: The wallet address to normalize
+
+    Returns:
+        Normalized wallet address (lowercase with 0x prefix)
+    """
+    if not wallet_address:
+        return ""
+    wallet = wallet_address.lower().strip()
+    if not wallet.startswith("0x"):
+        wallet = f"0x{wallet}"
+    return wallet
+
+
 class EncryptionService:
     """
     Service for encrypting/decrypting data using AES-256-GCM with wallet-derived keys.

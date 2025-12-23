@@ -19,7 +19,7 @@ import httpx
 from datetime import timedelta
 
 from app.services.filecoin_service import FilecoinService
-from app.services.encryption_service import EncryptionService
+from app.services.encryption_service import EncryptionService, normalize_wallet_address
 from app.services.rag_service import BusinessRAGService
 from app.core.database import get_db
 from app.core.config import settings
@@ -332,13 +332,16 @@ async def sync_tool_data(
         # Normalize integration name (e.g., "microsoft 365" -> "microsoft")
         normalized_tool = normalize_integration_name(tool)
 
+        # CRITICAL: Normalize wallet address for consistent storage/retrieval
+        normalized_wallet = normalize_wallet_address(request.wallet_address)
+
         logger.info(
-            f"Syncing data for {tool} (normalized: {normalized_tool}), wallet={request.wallet_address}, "
-            f"force={request.force}"
+            f"Syncing data for {tool} (normalized: {normalized_tool}), "
+            f"wallet={normalized_wallet}, force={request.force}"
         )
 
-        # Normalize wallet address and provider
-        wallet_address = request.wallet_address.lower()
+        # Use normalized wallet and provider
+        wallet_address = normalized_wallet
         provider = normalized_tool
 
         # Get OAuth token from database
@@ -455,6 +458,54 @@ async def sync_tool_data(
         oauth_token.last_sync_at = datetime.utcnow()
         await db.commit()
 
+        # =====================================================================
+        # VERIFICATION: Confirm data was stored correctly in Pinata
+        # =====================================================================
+        verification_results = []
+        if result and result.get("data"):
+            for data_type, data_info in result.get("data", {}).items():
+                if data_info.get("status") == "success" and data_info.get("cid"):
+                    try:
+                        # Verify the data can be retrieved from Pinata
+                        verification = await filecoin_service.list_customer_files(
+                            customer_wallet=wallet_address,
+                            integration=normalized_tool,
+                            data_type=data_type,
+                            limit=1
+                        )
+                        if verification:
+                            logger.info(
+                                f"VERIFIED: {data_type} data stored and retrievable, "
+                                f"CID={data_info['cid']}, wallet={wallet_address[:15]}..."
+                            )
+                            verification_results.append({
+                                "data_type": data_type,
+                                "cid": data_info["cid"],
+                                "verified": True
+                            })
+                        else:
+                            logger.error(
+                                f"VERIFICATION FAILED: {data_type} data uploaded (CID={data_info['cid']}) "
+                                f"but NOT retrievable! wallet={wallet_address[:15]}..."
+                            )
+                            verification_results.append({
+                                "data_type": data_type,
+                                "cid": data_info["cid"],
+                                "verified": False,
+                                "error": "Data uploaded but not retrievable from Pinata"
+                            })
+                    except Exception as e:
+                        logger.error(
+                            f"VERIFICATION ERROR for {data_type}: {str(e)}, "
+                            f"CID={data_info['cid']}, wallet={wallet_address[:15]}..."
+                        )
+                        verification_results.append({
+                            "data_type": data_type,
+                            "cid": data_info.get("cid"),
+                            "verified": False,
+                            "error": str(e)
+                        })
+
         # Index synced data in Qdrant for RAG queries
         rag_indexed_count = 0
         rag_failed_count = 0
@@ -533,11 +584,21 @@ async def sync_tool_data(
         else:
             message = f"Successfully synced {tool} data and indexed {rag_indexed_count} data types for AI queries"
 
+        # Include verification info in response
+        verified_count = sum(1 for v in verification_results if v.get("verified"))
+        failed_verification = sum(1 for v in verification_results if not v.get("verified"))
+
         return {
             "success": True,
             "integration": tool,
             "wallet_address": request.wallet_address,
+            "wallet_normalized": wallet_address,  # Show normalized wallet for debugging
             "sync_result": result,
+            "verification": {
+                "verified": verified_count,
+                "failed": failed_verification,
+                "details": verification_results
+            },
             "rag_indexed": rag_indexed_count,
             "rag_failed": rag_failed_count,
             "rag_status": rag_status,
