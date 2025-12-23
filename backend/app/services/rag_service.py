@@ -24,7 +24,8 @@ from qdrant_client.models import (
     PointStruct,
     Filter,
     FieldCondition,
-    MatchValue
+    MatchValue,
+    PayloadSchemaType
 )
 
 from ..core.config import settings
@@ -180,8 +181,25 @@ class BusinessRAGService:
                 )
             )
 
+            # Create payload indexes for filtering (required by Qdrant for filtered queries)
+            self.qdrant.create_payload_index(
+                collection_name=collection_name,
+                field_name="integration",
+                field_schema=PayloadSchemaType.KEYWORD
+            )
+            self.qdrant.create_payload_index(
+                collection_name=collection_name,
+                field_name="data_type",
+                field_schema=PayloadSchemaType.KEYWORD
+            )
+            self.qdrant.create_payload_index(
+                collection_name=collection_name,
+                field_name="business_wallet",
+                field_schema=PayloadSchemaType.KEYWORD
+            )
+
             logger.info(
-                f"Created business collection: {collection_name} "
+                f"Created business collection with indexes: {collection_name} "
                 f"for wallet {business_wallet[:10]}..."
             )
 
@@ -195,6 +213,32 @@ class BusinessRAGService:
 
             logger.error(f"Failed to create collection {collection_name}: {str(e)}")
             raise
+
+    def _ensure_payload_indexes(self, collection_name: str) -> None:
+        """
+        Ensure payload indexes exist on collection (for existing collections)
+        Safe to call multiple times - will skip if index already exists
+        """
+        try:
+            # Get collection info to check existing indexes
+            collection_info = self.qdrant.get_collection(collection_name)
+            existing_indexes = collection_info.payload_schema or {}
+
+            for field_name in ["integration", "data_type", "business_wallet"]:
+                if field_name not in existing_indexes:
+                    try:
+                        self.qdrant.create_payload_index(
+                            collection_name=collection_name,
+                            field_name=field_name,
+                            field_schema=PayloadSchemaType.KEYWORD
+                        )
+                        logger.info(f"Created payload index: {collection_name}.{field_name}")
+                    except Exception as idx_err:
+                        # Index might already exist
+                        if "already exists" not in str(idx_err).lower():
+                            logger.warning(f"Failed to create index {field_name}: {idx_err}")
+        except Exception as e:
+            logger.warning(f"Failed to check/create payload indexes: {e}")
 
     async def index_business_data(
         self,
@@ -301,7 +345,11 @@ class BusinessRAGService:
                 )
                 return []
 
-            # Embed query using Ollama API
+            # Ensure payload indexes exist for filtering (handles existing collections)
+            if integration or data_type:
+                self._ensure_payload_indexes(collection_name)
+
+            # Embed query using Together.ai (primary) or Ollama (fallback)
             query_embedding = await self._generate_embedding(query)
 
             # Build filter for integration/data_type if provided
