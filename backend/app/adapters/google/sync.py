@@ -196,30 +196,27 @@ class GoogleWorkspaceSync:
         """
         Sync Google Workspace data to Pinata storage.
 
-        NOTE: Gmail is intentionally EXCLUDED - it uses live API calls instead.
-        Only Calendar, Drive, and Contacts are synced to storage.
+        NOTE: Only Drive and Contacts are synced to storage.
+        Gmail and Calendar use live API calls instead.
 
         Returns:
             Dictionary containing all synced data categorized by service
         """
-        logger.info("Starting Google Workspace sync (Calendar, Drive, Contacts - Gmail excluded)")
+        logger.info("Starting Google Workspace sync (Drive, Contacts only)")
 
         try:
-            # Sync data from storage-appropriate services only
-            # Gmail is excluded - uses live API calls instead
-            calendar_data = await self.sync_calendar()
+            # Sync only Drive and Contacts to storage
+            # Gmail and Calendar use live API calls instead
             drive_data = await self.sync_drive()
             contacts_data = await self.sync_contacts()
 
             synced_data = {
                 "integration": "google",
                 "sync_timestamp": datetime.utcnow().isoformat(),
-                "calendar": calendar_data,
                 "drive": drive_data,
                 "contacts": contacts_data,
                 "total_records": (
-                    len(calendar_data.get("events", []))
-                    + len(drive_data.get("files", []))
+                    len(drive_data.get("files", []))
                     + len(contacts_data.get("contacts", []))
                 ),
             }
@@ -576,16 +573,16 @@ class GoogleWorkspaceSync:
         """
         Get data types to sync to Pinata storage.
 
-        NOTE: Gmail is intentionally EXCLUDED from storage sync because:
-        1. Emails are too large (tens of thousands per business)
-        2. Storage is limited (50GB Business, 200GB Pro plans)
-        3. Most emails are noise (newsletters, notifications)
-        4. Gmail inbox UI uses live API calls instead
-        5. AI reply context is passed just-in-time, not stored
+        NOTE: Only Drive and Contacts are synced to storage.
 
-        Gmail data is accessed via live API calls in the Gmail UI.
+        EXCLUDED from storage:
+        - Gmail: Too large (tens of thousands of emails), uses live API calls
+        - Calendar: Low RAG value (just metadata), AI Notetakers will provide
+          actual meeting content in the future
+
+        Gmail and Calendar data are accessed via live Google API calls in the UI.
         """
-        return ["calendar", "drive", "contacts"]
+        return ["drive", "contacts"]
 
     async def fetch_data(self, data_type: str) -> Dict[str, Any]:
         """
