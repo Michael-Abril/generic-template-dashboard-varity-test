@@ -194,16 +194,19 @@ class GoogleWorkspaceSync:
 
     async def sync_all(self) -> Dict[str, Any]:
         """
-        Sync all Google Workspace data
+        Sync Google Workspace data to Pinata storage.
+
+        NOTE: Gmail is intentionally EXCLUDED - it uses live API calls instead.
+        Only Calendar, Drive, and Contacts are synced to storage.
 
         Returns:
             Dictionary containing all synced data categorized by service
         """
-        logger.info("Starting Google Workspace sync")
+        logger.info("Starting Google Workspace sync (Calendar, Drive, Contacts - Gmail excluded)")
 
         try:
-            # Sync data from all services
-            gmail_data = await self.sync_gmail()
+            # Sync data from storage-appropriate services only
+            # Gmail is excluded - uses live API calls instead
             calendar_data = await self.sync_calendar()
             drive_data = await self.sync_drive()
             contacts_data = await self.sync_contacts()
@@ -211,13 +214,11 @@ class GoogleWorkspaceSync:
             synced_data = {
                 "integration": "google",
                 "sync_timestamp": datetime.utcnow().isoformat(),
-                "gmail": gmail_data,
                 "calendar": calendar_data,
                 "drive": drive_data,
                 "contacts": contacts_data,
                 "total_records": (
-                    len(gmail_data.get("messages", []))
-                    + len(calendar_data.get("events", []))
+                    len(calendar_data.get("events", []))
                     + len(drive_data.get("files", []))
                     + len(contacts_data.get("contacts", []))
                 ),
@@ -572,8 +573,19 @@ class GoogleWorkspaceSync:
             return False
 
     def get_data_types(self) -> List[str]:
-        """Get available data types for Google Workspace"""
-        return ["gmail", "calendar", "drive", "contacts"]
+        """
+        Get data types to sync to Pinata storage.
+
+        NOTE: Gmail is intentionally EXCLUDED from storage sync because:
+        1. Emails are too large (tens of thousands per business)
+        2. Storage is limited (50GB Business, 200GB Pro plans)
+        3. Most emails are noise (newsletters, notifications)
+        4. Gmail inbox UI uses live API calls instead
+        5. AI reply context is passed just-in-time, not stored
+
+        Gmail data is accessed via live API calls in the Gmail UI.
+        """
+        return ["calendar", "drive", "contacts"]
 
     async def fetch_data(self, data_type: str) -> Dict[str, Any]:
         """
