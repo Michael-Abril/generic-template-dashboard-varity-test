@@ -219,26 +219,21 @@ class BusinessRAGService:
         Ensure payload indexes exist on collection (for existing collections)
         Safe to call multiple times - will skip if index already exists
         """
-        try:
-            # Get collection info to check existing indexes
-            collection_info = self.qdrant.get_collection(collection_name)
-            existing_indexes = collection_info.payload_schema or {}
-
-            for field_name in ["integration", "data_type", "business_wallet"]:
-                if field_name not in existing_indexes:
-                    try:
-                        self.qdrant.create_payload_index(
-                            collection_name=collection_name,
-                            field_name=field_name,
-                            field_schema=PayloadSchemaType.KEYWORD
-                        )
-                        logger.info(f"Created payload index: {collection_name}.{field_name}")
-                    except Exception as idx_err:
-                        # Index might already exist
-                        if "already exists" not in str(idx_err).lower():
-                            logger.warning(f"Failed to create index {field_name}: {idx_err}")
-        except Exception as e:
-            logger.warning(f"Failed to check/create payload indexes: {e}")
+        for field_name in ["integration", "data_type", "business_wallet"]:
+            try:
+                self.qdrant.create_payload_index(
+                    collection_name=collection_name,
+                    field_name=field_name,
+                    field_schema=PayloadSchemaType.KEYWORD
+                )
+                logger.info(f"Created payload index: {collection_name}.{field_name}")
+            except Exception as idx_err:
+                # Index might already exist - that's fine
+                err_str = str(idx_err).lower()
+                if "already exists" in err_str or "already indexed" in err_str:
+                    logger.debug(f"Index already exists: {collection_name}.{field_name}")
+                else:
+                    logger.warning(f"Failed to create index {field_name}: {idx_err}")
 
     async def index_business_data(
         self,
