@@ -6,11 +6,8 @@ import {
   Users,
   Building,
   DollarSign,
-  Megaphone,
   Headphones,
-  Zap,
   BarChart3,
-  MessageSquare,
   Plus,
   Search,
   Settings,
@@ -20,27 +17,20 @@ import {
   Clock,
   TrendingUp,
   AlertCircle,
-  FileText,
-  Calendar,
-  Mail,
-  Phone,
-  MapPin,
   Edit3,
   Trash2,
   Eye,
   Filter,
   Download,
-  Upload,
   RefreshCw,
   Grid3X3,
   List,
   Sparkles,
-  Target,
-  Award,
-  Activity,
-  ChevronRight,
   ChevronDown,
-  X
+  Calendar,
+  FileText,
+  Megaphone,
+  Mail
 } from 'lucide-react';
 
 interface HubSpotPageProps {
@@ -67,8 +57,16 @@ interface HubSpotPageProps {
   onDeleteTicket?: (ticketId: string) => void;
 }
 
-// HubSpot CRM Sidebar Navigation
-const HS_SIDEBAR_ITEMS = [
+// Simplified HubSpot CRM Sidebar Navigation - Core CRM features for SMBs
+interface SidebarItem {
+  id: string;
+  label: string;
+  icon: any;
+  submenu?: Array<{ id: string; label: string }>;
+  comingSoon?: boolean;
+}
+
+const HS_SIDEBAR_ITEMS: SidebarItem[] = [
   { id: 'home', label: 'Home', icon: Home },
   {
     id: 'contacts',
@@ -85,45 +83,15 @@ const HS_SIDEBAR_ITEMS = [
     icon: DollarSign,
     submenu: [
       { id: 'deals', label: 'Deals' },
-      { id: 'tasks', label: 'Tasks' },
-      { id: 'documents', label: 'Documents' },
-      { id: 'meetings', label: 'Meetings' },
-      { id: 'quotes', label: 'Quotes' },
-      { id: 'playbooks', label: 'Playbooks' },
     ]
   },
-  {
-    id: 'marketing',
-    label: 'Marketing',
-    icon: Megaphone,
-    submenu: [
-      { id: 'campaigns', label: 'Campaigns' },
-      { id: 'email', label: 'Email' },
-      { id: 'forms', label: 'Forms' },
-      { id: 'landing-pages', label: 'Landing Pages' },
-    ]
-  },
-  {
-    id: 'service',
-    label: 'Service',
-    icon: Headphones,
-    submenu: [
-      { id: 'tickets', label: 'Tickets' },
-      { id: 'knowledge-base', label: 'Knowledge Base' },
-      { id: 'feedback', label: 'Feedback Surveys' },
-    ]
-  },
-  {
-    id: 'automation',
-    label: 'Automation',
-    icon: Zap,
-    submenu: [
-      { id: 'workflows', label: 'Workflows' },
-      { id: 'sequences', label: 'Sequences' },
-    ]
-  },
-  { id: 'reports', label: 'Reports', icon: BarChart3 },
-  { id: 'conversations', label: 'Conversations', icon: MessageSquare },
+  { id: 'tickets', label: 'Tickets', icon: Headphones },
+  // Coming Soon - feature businesses expect
+  { id: 'reports', label: 'Reports', icon: BarChart3, comingSoon: true },
+  // Hidden: Tasks, Documents, Meetings, Quotes, Playbooks (Sales Hub extras)
+  // Hidden: Marketing Hub (Campaigns, Email, Forms, Landing Pages)
+  // Hidden: Service Hub (Knowledge Base, Feedback Surveys)
+  // Hidden: Automation (Workflows, Sequences), Conversations
 ];
 
 // Create Menu Items
@@ -736,6 +704,7 @@ export function HubSpotPage({
             <div key={item.id} className="mb-1">
               <button
                 onClick={() => {
+                  if (item.comingSoon) return;
                   if (item.submenu) {
                     setActiveSubmenu(activeSubmenu === item.id ? null : item.id);
                   } else {
@@ -743,27 +712,32 @@ export function HubSpotPage({
                     setActiveSubmenu(null);
                   }
                 }}
+                disabled={item.comingSoon}
                 className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  activeSection === item.id
-                    ? 'bg-blue-50 text-blue-700'
-                    : 'text-gray-700 hover:bg-gray-100'
+                  item.comingSoon
+                    ? 'text-gray-400 cursor-not-allowed'
+                    : activeSection === item.id
+                      ? 'bg-blue-50 text-blue-700'
+                      : 'text-gray-700 hover:bg-gray-100'
                 }`}
               >
                 <div className="flex items-center space-x-3">
-                  <item.icon className="w-5 h-5" />
+                  <item.icon className={`w-5 h-5 ${item.comingSoon ? 'text-gray-300' : ''}`} />
                   <span>{item.label}</span>
                 </div>
-                {item.submenu && (
+                {item.comingSoon ? (
+                  <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-500">Soon</span>
+                ) : item.submenu ? (
                   <ChevronDown
                     className={`w-4 h-4 transition-transform ${
                       activeSubmenu === item.id ? 'rotate-180' : ''
                     }`}
                   />
-                )}
+                ) : null}
               </button>
 
               {/* Submenu */}
-              {item.submenu && activeSubmenu === item.id && (
+              {item.submenu && !item.comingSoon && activeSubmenu === item.id && (
                 <div className="ml-8 mt-1 space-y-1">
                   {item.submenu.map((subitem) => (
                     <button

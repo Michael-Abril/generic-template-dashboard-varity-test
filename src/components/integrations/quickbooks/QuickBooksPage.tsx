@@ -2,8 +2,8 @@
 
 import React, { useState, useEffect } from 'react';
 import {
-  LayoutDashboard, Star, Landmark, DollarSign, Receipt, Briefcase,
-  UsersRound, BarChart3, FileCheck, Car, BookOpen, UserCheck, Grid3X3,
+  LayoutDashboard, Landmark, DollarSign, Receipt,
+  UsersRound, BarChart3, FileCheck,
   ChevronDown, ChevronRight, Plus, Settings, Search, Bell
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -31,23 +31,19 @@ interface SidebarItem {
   label: string;
   icon: any;
   submenu?: Array<{ id: string; label: string }>;
+  comingSoon?: boolean;
 }
 
+// Simplified sidebar for SMBs - core features that small businesses use daily
 const QB_SIDEBAR_ITEMS: SidebarItem[] = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { id: 'bookmarks', label: 'Bookmarks', icon: Star },
-  { id: 'banking', label: 'Banking', icon: Landmark },
   {
     id: 'sales',
     label: 'Sales',
     icon: DollarSign,
     submenu: [
-      { id: 'overview', label: 'Overview' },
-      { id: 'all-sales', label: 'All Sales' },
       { id: 'invoices', label: 'Invoices' },
-      { id: 'payment-links', label: 'Payment Links' },
       { id: 'customers', label: 'Customers' },
-      { id: 'products', label: 'Products & Services' },
     ]
   },
   {
@@ -57,33 +53,14 @@ const QB_SIDEBAR_ITEMS: SidebarItem[] = [
     submenu: [
       { id: 'expenses-list', label: 'Expenses' },
       { id: 'vendors', label: 'Vendors' },
-      { id: 'bills', label: 'Bills' },
     ]
   },
-  { id: 'projects', label: 'Projects', icon: Briefcase },
-  {
-    id: 'workers',
-    label: 'Workers',
-    icon: UsersRound,
-    submenu: [
-      { id: 'payroll', label: 'Payroll' },
-      { id: 'contractors', label: 'Contractors' },
-    ]
-  },
-  { id: 'reports', label: 'Reports', icon: BarChart3 },
-  { id: 'taxes', label: 'Taxes', icon: FileCheck },
-  { id: 'mileage', label: 'Mileage', icon: Car },
-  {
-    id: 'accounting',
-    label: 'Accounting',
-    icon: BookOpen,
-    submenu: [
-      { id: 'chart-of-accounts', label: 'Chart of Accounts' },
-      { id: 'reconcile', label: 'Reconcile' },
-    ]
-  },
-  { id: 'my-accountant', label: 'My Accountant', icon: UserCheck },
-  { id: 'apps', label: 'Apps', icon: Grid3X3 },
+  // Coming Soon - core features businesses expect
+  { id: 'banking', label: 'Banking', icon: Landmark, comingSoon: true },
+  { id: 'reports', label: 'Reports', icon: BarChart3, comingSoon: true },
+  { id: 'taxes', label: 'Taxes', icon: FileCheck, comingSoon: true },
+  { id: 'payroll', label: 'Payroll', icon: UsersRound, comingSoon: true },
+  // Hidden: Bookmarks, Projects, Mileage, Accounting, My Accountant, Apps (enterprise features)
 ];
 
 const CREATE_MENU_ITEMS = {
@@ -210,23 +187,32 @@ export default function QuickBooksPage({ walletAddress, data, onRefresh }: Quick
             <div key={item.id}>
               <button
                 onClick={() => {
+                  if (item.comingSoon) return; // Disabled for coming soon items
                   if (item.submenu) {
                     toggleExpanded(item.id);
                   } else {
                     handleNavigation(item.id);
                   }
                 }}
-                className={`w-full flex items-center justify-between px-4 py-2 text-sm hover:bg-gray-200 dark:hover:bg-gray-700 ${
-                  activeSection === item.id
-                    ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 font-medium'
-                    : 'text-gray-700 dark:text-gray-300'
+                disabled={item.comingSoon}
+                className={`w-full flex items-center justify-between px-4 py-2 text-sm ${
+                  item.comingSoon
+                    ? 'text-gray-400 dark:text-gray-500 cursor-not-allowed'
+                    : activeSection === item.id
+                      ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 font-medium'
+                      : 'text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
                 }`}
               >
                 <div className="flex items-center space-x-3">
-                  <item.icon className="w-5 h-5" />
+                  <item.icon className={`w-5 h-5 ${item.comingSoon ? 'text-gray-300 dark:text-gray-600' : ''}`} />
                   <span>{item.label}</span>
                 </div>
-                {item.submenu && (
+                {item.comingSoon && (
+                  <span className="rounded-full bg-gray-100 dark:bg-gray-700 px-2 py-0.5 text-xs text-gray-500 dark:text-gray-400">
+                    Soon
+                  </span>
+                )}
+                {item.submenu && !item.comingSoon && (
                   expandedItems.includes(item.id) ? (
                     <ChevronDown className="w-4 h-4" />
                   ) : (
@@ -236,7 +222,7 @@ export default function QuickBooksPage({ walletAddress, data, onRefresh }: Quick
               </button>
 
               {/* Submenu */}
-              {item.submenu && expandedItems.includes(item.id) && (
+              {item.submenu && expandedItems.includes(item.id) && !item.comingSoon && (
                 <div className="ml-4 mt-1 space-y-1">
                   {item.submenu.map((subItem) => (
                     <button

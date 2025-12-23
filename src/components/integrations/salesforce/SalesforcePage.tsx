@@ -5,15 +5,9 @@ import {
   Home,
   TrendingUp,
   Headphones,
-  Megaphone,
   BarChart3,
   LayoutDashboard,
-  MessageSquare,
-  FolderOpen,
-  Package,
-  FileText,
   CheckCircle,
-  Calendar,
   Search,
   Plus,
   Bell,
@@ -32,11 +26,10 @@ import {
   AlertCircle,
   Activity,
   Clock,
-  Phone,
-  Mail,
   Edit3,
   Trash2,
-  Eye
+  Megaphone,
+  Calendar
 } from 'lucide-react';
 import KanbanBoard from './KanbanBoard';
 import LeadForm from './LeadForm';
@@ -50,8 +43,16 @@ interface SalesforcePageProps {
   onRefresh: () => void;
 }
 
-// Salesforce sidebar navigation items
-const SF_SIDEBAR_ITEMS = [
+// Simplified sidebar for SMBs - core Sales Cloud features
+interface SidebarItem {
+  id: string;
+  label: string;
+  icon: any;
+  submenu?: Array<{ id: string; label: string }>;
+  comingSoon?: boolean;
+}
+
+const SF_SIDEBAR_ITEMS: SidebarItem[] = [
   { id: 'home', label: 'Home', icon: Home },
   {
     id: 'sales',
@@ -62,35 +63,13 @@ const SF_SIDEBAR_ITEMS = [
       { id: 'accounts', label: 'Accounts' },
       { id: 'contacts', label: 'Contacts' },
       { id: 'opportunities', label: 'Opportunities' },
-      { id: 'forecasts', label: 'Forecasts' },
     ]
   },
-  {
-    id: 'service',
-    label: 'Service',
-    icon: Headphones,
-    submenu: [
-      { id: 'cases', label: 'Cases' },
-      { id: 'knowledge', label: 'Knowledge' },
-    ]
-  },
-  {
-    id: 'marketing',
-    label: 'Marketing',
-    icon: Megaphone,
-    submenu: [
-      { id: 'campaigns', label: 'Campaigns' },
-      { id: 'campaign-members', label: 'Campaign Members' },
-    ]
-  },
-  { id: 'reports', label: 'Reports', icon: BarChart3 },
-  { id: 'dashboards', label: 'Dashboards', icon: LayoutDashboard },
-  { id: 'chatter', label: 'Chatter', icon: MessageSquare },
-  { id: 'files', label: 'Files', icon: FolderOpen },
-  { id: 'products', label: 'Products', icon: Package },
-  { id: 'quotes', label: 'Quotes', icon: FileText },
-  { id: 'tasks', label: 'Tasks', icon: CheckCircle },
-  { id: 'events', label: 'Events', icon: Calendar },
+  // Coming Soon - features SMBs expect
+  { id: 'cases', label: 'Cases', icon: Headphones, comingSoon: true },
+  { id: 'reports', label: 'Reports', icon: BarChart3, comingSoon: true },
+  { id: 'dashboards', label: 'Dashboards', icon: LayoutDashboard, comingSoon: true },
+  // Hidden: Forecasts, Marketing, Knowledge, Chatter, Files, Products, Quotes, Tasks, Events (enterprise features)
 ];
 
 // Create menu items
@@ -462,18 +441,25 @@ export default function SalesforcePage({ walletAddress, data, onRefresh }: Sales
             {item.submenu ? (
               <>
                 <button
-                  onClick={() => toggleMenu(item.id)}
-                  className="w-full px-4 py-2.5 flex items-center gap-3 hover:bg-white/5 transition-colors text-sm"
+                  onClick={() => !item.comingSoon && toggleMenu(item.id)}
+                  disabled={item.comingSoon}
+                  className={`w-full px-4 py-2.5 flex items-center gap-3 transition-colors text-sm ${
+                    item.comingSoon
+                      ? 'text-white/40 cursor-not-allowed'
+                      : 'hover:bg-white/5'
+                  }`}
                 >
-                  <item.icon className="w-4 h-4" />
+                  <item.icon className={`w-4 h-4 ${item.comingSoon ? 'opacity-40' : ''}`} />
                   <span className="flex-1 text-left">{item.label}</span>
-                  {expandedMenus.includes(item.id) ? (
+                  {item.comingSoon ? (
+                    <span className="rounded-full bg-white/10 px-2 py-0.5 text-xs">Soon</span>
+                  ) : expandedMenus.includes(item.id) ? (
                     <ChevronDown className="w-4 h-4" />
                   ) : (
                     <ChevronRight className="w-4 h-4" />
                   )}
                 </button>
-                {expandedMenus.includes(item.id) && (
+                {!item.comingSoon && expandedMenus.includes(item.id) && (
                   <div className="bg-white/5">
                     {item.submenu.map(subItem => (
                       <button
@@ -491,13 +477,21 @@ export default function SalesforcePage({ walletAddress, data, onRefresh }: Sales
               </>
             ) : (
               <button
-                onClick={() => setActiveSection(item.id)}
-                className={`w-full px-4 py-2.5 flex items-center gap-3 hover:bg-white/5 transition-colors text-sm ${
-                  activeSection === item.id ? 'bg-white/10 border-l-2 border-blue-400' : ''
+                onClick={() => !item.comingSoon && setActiveSection(item.id)}
+                disabled={item.comingSoon}
+                className={`w-full px-4 py-2.5 flex items-center gap-3 transition-colors text-sm ${
+                  item.comingSoon
+                    ? 'text-white/40 cursor-not-allowed'
+                    : activeSection === item.id
+                      ? 'bg-white/10 border-l-2 border-blue-400'
+                      : 'hover:bg-white/5'
                 }`}
               >
-                <item.icon className="w-4 h-4" />
-                <span>{item.label}</span>
+                <item.icon className={`w-4 h-4 ${item.comingSoon ? 'opacity-40' : ''}`} />
+                <span className="flex-1 text-left">{item.label}</span>
+                {item.comingSoon && (
+                  <span className="rounded-full bg-white/10 px-2 py-0.5 text-xs">Soon</span>
+                )}
               </button>
             )}
           </div>

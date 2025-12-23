@@ -8,15 +8,8 @@ import {
   Users,
   CheckCircle,
   MessageSquare,
-  Globe,
-  BookOpen,
   Home,
-  RefreshCw,
-  Settings,
-  Plus,
-  Search,
-  Bell,
-  HelpCircle
+  RefreshCw
 } from 'lucide-react';
 import OutlookInbox from './OutlookInbox';
 import EmailComposer from './EmailComposer';
@@ -64,9 +57,8 @@ const M365_SIDEBAR_ITEMS = [
   },
   { id: 'contacts', label: 'Contacts', icon: Users },
   { id: 'tasks', label: 'To Do', icon: CheckCircle },
-  { id: 'teams', label: 'Teams', icon: MessageSquare },
-  { id: 'sharepoint', label: 'SharePoint', icon: Globe },
-  { id: 'onenote', label: 'OneNote', icon: BookOpen }
+  { id: 'teams', label: 'Teams', icon: MessageSquare, comingSoon: true }
+  // SharePoint and OneNote hidden - enterprise features not typically used by SMBs
 ];
 
 interface Microsoft365PageProps {
@@ -281,22 +273,9 @@ export default function Microsoft365Page({ walletAddress, data, onSync }: Micros
               Microsoft Teams
             </h3>
             <p className="mt-2 text-gray-600">Teams integration coming soon</p>
-          </div>
-        );
-      case 'sharepoint':
-        return (
-          <div className="rounded-lg border border-gray-200 bg-white p-8 text-center">
-            <Globe className="mx-auto h-12 w-12 text-gray-400" />
-            <h3 className="mt-4 text-lg font-semibold text-gray-900">SharePoint</h3>
-            <p className="mt-2 text-gray-600">SharePoint integration coming soon</p>
-          </div>
-        );
-      case 'onenote':
-        return (
-          <div className="rounded-lg border border-gray-200 bg-white p-8 text-center">
-            <BookOpen className="mx-auto h-12 w-12 text-gray-400" />
-            <h3 className="mt-4 text-lg font-semibold text-gray-900">OneNote</h3>
-            <p className="mt-2 text-gray-600">OneNote integration coming soon</p>
+            <p className="mt-4 text-sm text-gray-500">
+              Chat, video calls, and team collaboration will be available here.
+            </p>
           </div>
         );
       default:
@@ -323,6 +302,7 @@ export default function Microsoft365Page({ walletAddress, data, onSync }: Micros
               <div key={item.id}>
                 <button
                   onClick={() => {
+                    if (item.comingSoon) return; // Disabled for coming soon items
                     if (item.submenu) {
                       toggleMenu(item.id);
                     } else {
@@ -330,13 +310,21 @@ export default function Microsoft365Page({ walletAddress, data, onSync }: Micros
                     }
                   }}
                   className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-                    activeSection === item.id
-                      ? 'bg-blue-50 text-blue-600'
-                      : 'text-gray-700 hover:bg-gray-50'
+                    item.comingSoon
+                      ? 'text-gray-400 cursor-not-allowed'
+                      : activeSection === item.id
+                        ? 'bg-blue-50 text-blue-600'
+                        : 'text-gray-700 hover:bg-gray-50'
                   }`}
+                  disabled={item.comingSoon}
                 >
-                  <item.icon className="h-4 w-4" />
+                  <item.icon className={`h-4 w-4 ${item.comingSoon ? 'text-gray-300' : ''}`} />
                   <span className="flex-1 text-left">{item.label}</span>
+                  {item.comingSoon && (
+                    <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-500">
+                      Soon
+                    </span>
+                  )}
                   {item.id === 'outlook' && unreadCount > 0 && (
                     <span className="rounded-full bg-blue-600 px-2 py-0.5 text-xs text-white">
                       {unreadCount}

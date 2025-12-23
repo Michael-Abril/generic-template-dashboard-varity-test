@@ -6,30 +6,27 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Layout } from '@/components/Layout';
 import { KPICard } from '@/components/KPICard';
-import { AIChat } from '@/components/AIChat';
 import { useWalletSync } from '@/hooks/useWalletSync';
 import { logger } from '@/lib/logger';
 import {
   getKPIs,
   getRevenueTrend,
   getRecentActivity,
-  getTopCustomers,
   KPIResponse,
   RevenueTrendResponse,
   RecentActivityResponse,
-  TopCustomersResponse,
 } from '@/services/dashboardService';
 import {
   Plug,
   AlertTriangle,
-  Shield,
-  Check,
-  Settings,
   BarChart3,
-  MessageSquare,
   ClipboardList,
-  Users,
-  ArrowRight
+  ArrowRight,
+  Sparkles,
+  RefreshCw,
+  Clock,
+  TrendingUp,
+  TrendingDown,
 } from 'lucide-react';
 import { FeedbackNotification } from '@/components/feedback';
 import {
@@ -44,7 +41,7 @@ import {
 } from 'recharts';
 
 export default function DashboardContent() {
-  const { authenticated, ready, login } = usePrivy();
+  const { authenticated, ready } = usePrivy();
   const { address } = useWalletSync();
   const router = useRouter();
 
@@ -52,7 +49,6 @@ export default function DashboardContent() {
   const [kpisData, setKpisData] = useState<KPIResponse | null>(null);
   const [revenueTrendData, setRevenueTrendData] = useState<RevenueTrendResponse | null>(null);
   const [recentActivityData, setRecentActivityData] = useState<RecentActivityResponse | null>(null);
-  const [topCustomersData, setTopCustomersData] = useState<TopCustomersResponse | null>(null);
 
   // User settings for feedback notifications
   const [userSettings, setUserSettings] = useState<{
@@ -65,13 +61,15 @@ export default function DashboardContent() {
   const [isLoadingKPIs, setIsLoadingKPIs] = useState(true);
   const [isLoadingRevenue, setIsLoadingRevenue] = useState(true);
   const [isLoadingActivity, setIsLoadingActivity] = useState(true);
-  const [isLoadingCustomers, setIsLoadingCustomers] = useState(true);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   // Error states
   const [kpisError, setKpisError] = useState<string | null>(null);
   const [revenueError, setRevenueError] = useState<string | null>(null);
   const [activityError, setActivityError] = useState<string | null>(null);
-  const [customersError, setCustomersError] = useState<string | null>(null);
+
+  // Check if any integration is connected (has data)
+  const hasIntegrations = kpisData && kpisData.kpis && kpisData.kpis.length > 0;
 
   // Redirect to login if not authenticated
   useEffect(() => {
@@ -88,53 +86,23 @@ export default function DashboardContent() {
   }, [authenticated, ready]);
 
   const fetchDashboardData = async () => {
-    // Fetch KPIs
     fetchKPIs();
-    // Fetch Revenue Trend
     fetchRevenueTrend();
-    // Fetch Recent Activity
     fetchRecentActivity();
-    // Fetch Top Customers
-    fetchTopCustomers();
-    // Fetch User Settings (for feedback notifications)
     fetchUserSettings();
-  };
-
-  const fetchUserSettings = async () => {
-    if (!address) return;
-    try {
-      const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-      const response = await fetch(
-        `${backendUrl}/api/v1/settings?wallet_address=${address}`
-      );
-      if (response.ok) {
-        const data = await response.json();
-        setUserSettings({
-          companyName: data.company_name,
-          trialStartDate: data.trial_start_date,
-          trialDays: data.trial_end_date && data.trial_start_date
-            ? Math.ceil(
-                (new Date(data.trial_end_date).getTime() - new Date(data.trial_start_date).getTime()) /
-                (1000 * 60 * 60 * 24)
-              )
-            : 30,
-        });
-      }
-    } catch (error) {
-      console.error('Error fetching user settings:', error);
-    }
   };
 
   const fetchKPIs = async () => {
     if (!address) return;
+    setIsLoadingKPIs(true);
+    setKpisError(null);
     try {
-      setIsLoadingKPIs(true);
-      setKpisError(null);
       const data = await getKPIs(address);
       setKpisData(data);
+      setLastUpdated(new Date());
     } catch (error) {
-      console.error('Error fetching KPIs:', error);
-      setKpisError('Failed to load KPIs from backend.');
+      logger.error('Error fetching KPIs:', error);
+      setKpisError('Unable to load KPIs. Please try again.');
     } finally {
       setIsLoadingKPIs(false);
     }
@@ -142,14 +110,14 @@ export default function DashboardContent() {
 
   const fetchRevenueTrend = async () => {
     if (!address) return;
+    setIsLoadingRevenue(true);
+    setRevenueError(null);
     try {
-      setIsLoadingRevenue(true);
-      setRevenueError(null);
       const data = await getRevenueTrend(address);
       setRevenueTrendData(data);
     } catch (error) {
-      console.error('Error fetching revenue trend:', error);
-      setRevenueError('Failed to load revenue data from backend.');
+      logger.error('Error fetching revenue trend:', error);
+      setRevenueError('Unable to load revenue trend.');
     } finally {
       setIsLoadingRevenue(false);
     }
@@ -157,57 +125,133 @@ export default function DashboardContent() {
 
   const fetchRecentActivity = async () => {
     if (!address) return;
+    setIsLoadingActivity(true);
+    setActivityError(null);
     try {
-      setIsLoadingActivity(true);
-      setActivityError(null);
-      const data = await getRecentActivity(4, address);
+      const data = await getRecentActivity(10, address);
       setRecentActivityData(data);
     } catch (error) {
-      console.error('Error fetching recent activity:', error);
-      setActivityError('Failed to load recent activity from backend.');
+      logger.error('Error fetching recent activity:', error);
+      setActivityError('Unable to load recent activity.');
     } finally {
       setIsLoadingActivity(false);
     }
   };
 
-  const fetchTopCustomers = async () => {
+  const fetchUserSettings = async () => {
     if (!address) return;
     try {
-      setIsLoadingCustomers(true);
-      setCustomersError(null);
-      const data = await getTopCustomers(5, address);
-      setTopCustomersData(data);
+      const apiBase = process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
+      const res = await fetch(`${apiBase}/api/v1/settings?wallet_address=${address}`);
+      if (res.ok) {
+        const data = await res.json();
+        setUserSettings(data);
+      }
     } catch (error) {
-      console.error('Error fetching top customers:', error);
-      setCustomersError('Failed to load customer data from backend.');
-    } finally {
-      setIsLoadingCustomers(false);
+      logger.error('Error fetching user settings:', error);
     }
   };
 
+  const handleRefresh = () => {
+    fetchDashboardData();
+  };
+
+  // Calculate AI insight based on KPI data
+  const getAIInsight = () => {
+    if (!kpisData || !kpisData.kpis || kpisData.kpis.length === 0) return null;
+
+    const revenueKPI = kpisData.kpis.find(k => k.title.toLowerCase().includes('revenue'));
+    if (revenueKPI && revenueKPI.change) {
+      const change = revenueKPI.change.value;
+      if (change > 0) {
+        return {
+          text: `Your revenue is up ${change.toFixed(1)}% compared to last month.`,
+          trend: 'up' as const,
+        };
+      } else if (change < 0) {
+        return {
+          text: `Your revenue is down ${Math.abs(change).toFixed(1)}% compared to last month.`,
+          trend: 'down' as const,
+        };
+      }
+    }
+    return {
+      text: 'Your business metrics are stable. Check Analytics for detailed insights.',
+      trend: 'neutral' as const,
+    };
+  };
+
+  const aiInsight = getAIInsight();
+
+  // Loading state while checking authentication
   if (!ready || !authenticated) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
           <div className="w-16 h-16 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-gray-600 font-medium">Loading dashboard...</p>
+          <p className="text-gray-600 font-medium">Loading Dashboard...</p>
         </div>
       </div>
+    );
+  }
+
+  // Empty state when no integrations connected
+  if (!isLoadingKPIs && !hasIntegrations) {
+    return (
+      <Layout>
+        <div className="min-h-[calc(100vh-80px)] bg-gray-50 flex items-center justify-center p-6">
+          <div className="max-w-md text-center">
+            <div className="w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-6">
+              <Plug className="w-10 h-10 text-blue-600" />
+            </div>
+            <h1 className="text-2xl font-bold text-gray-900 mb-3">
+              Welcome to Your Dashboard
+            </h1>
+            <p className="text-gray-600 mb-8">
+              Connect your first business tool to start seeing real-time insights,
+              KPIs, and AI-powered analytics.
+            </p>
+            <Link
+              href="/marketplace"
+              className="inline-flex items-center gap-2 bg-blue-600 text-white px-8 py-4 rounded-xl font-semibold hover:bg-blue-700 hover:shadow-lg transition-all duration-200"
+            >
+              Connect Your First Integration
+              <ArrowRight className="w-5 h-5" />
+            </Link>
+            <p className="text-sm text-gray-500 mt-6">
+              Popular integrations: QuickBooks, Google Workspace, Salesforce
+            </p>
+          </div>
+        </div>
+      </Layout>
     );
   }
 
   return (
     <Layout>
       <div className="min-h-screen bg-gray-50">
-        <div className="px-4 sm:px-6 py-6">
+        <div className="px-4 sm:px-6 py-6 max-w-7xl mx-auto">
           {/* Header */}
-          <div className="mb-8">
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">
-              Business Overview
-            </h1>
-            <p className="text-gray-600">
-              Your unified view across all connected tools
-            </p>
+          <div className="flex items-center justify-between mb-8">
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900">
+                Business Overview
+              </h1>
+              {lastUpdated && (
+                <p className="text-sm text-gray-500 flex items-center gap-1 mt-1">
+                  <Clock className="w-3.5 h-3.5" />
+                  Last updated: {lastUpdated.toLocaleTimeString()}
+                </p>
+              )}
+            </div>
+            <button
+              onClick={handleRefresh}
+              disabled={isLoadingKPIs}
+              className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
+            >
+              <RefreshCw className={`w-4 h-4 ${isLoadingKPIs ? 'animate-spin' : ''}`} />
+              Refresh
+            </button>
           </div>
 
           {/* Feedback Notification - Shows at Day 7, 25, 30 of trial */}
@@ -220,54 +264,33 @@ export default function DashboardContent() {
             />
           )}
 
-          {/* KPI Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+          {/* KPI Cards - Clickable to Analytics */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
             {isLoadingKPIs ? (
-              // Loading state for KPIs
               <>
                 {[1, 2, 3, 4].map((i) => (
-                  <div key={i} className="bg-white border border-gray-200 rounded-xl p-6 animate-pulse">
-                    <div className="h-4 bg-gray-200 rounded w-3/4 mb-3"></div>
+                  <div key={i} className="bg-white border border-gray-200 rounded-xl p-5 animate-pulse">
+                    <div className="h-4 bg-gray-200 rounded w-2/3 mb-3"></div>
                     <div className="h-8 bg-gray-200 rounded w-1/2 mb-2"></div>
-                    <div className="h-3 bg-gray-200 rounded w-2/3"></div>
+                    <div className="h-3 bg-gray-200 rounded w-1/3"></div>
                   </div>
                 ))}
               </>
-            ) : kpisData && kpisData.kpis.length > 0 ? (
-              // Success state - render dynamic KPIs
+            ) : kpisData && kpisData.kpis && kpisData.kpis.length > 0 ? (
               kpisData.kpis.map((kpi, index) => (
-                <KPICard
-                  key={index}
-                  title={kpi.title}
-                  value={kpi.value}
-                  change={kpi.change}
-                  icon={kpi.icon}
-                  source={kpi.source}
-                  trend={kpi.trend as 'up' | 'down' | 'neutral'}
-                  color={kpi.color as 'blue' | 'green' | 'orange' | 'purple' | 'red'}
-                />
-              ))
-            ) : (
-              // Empty state - no integrations connected
-              <div className="col-span-4 bg-blue-50 border border-blue-200 rounded-xl p-8 text-center">
-                <div className="flex justify-center mb-3">
-                  <Plug className="w-10 h-10 text-blue-500" />
-                </div>
-                <h3 className="text-lg font-bold text-gray-900 mb-2">
-                  No Integrations Connected
-                </h3>
-                <p className="text-gray-600 mb-4">
-                  Connect your business tools to see real-time KPIs and insights
-                </p>
-                <Link
-                  href="/marketplace"
-                  className="inline-flex items-center gap-2 bg-blue-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-blue-700 hover:shadow-md hover:scale-[1.02] active:scale-[0.98] transition-all duration-200"
-                >
-                  Browse Integrations
-                  <ArrowRight className="w-4 h-4" />
+                <Link key={index} href="/analytics" className="block group">
+                  <KPICard
+                    title={kpi.title}
+                    value={kpi.value}
+                    change={kpi.change}
+                    icon={kpi.icon}
+                    source={kpi.source}
+                    trend={kpi.trend as 'up' | 'down' | 'neutral'}
+                    color={kpi.color as 'blue' | 'green' | 'orange' | 'purple' | 'red'}
+                  />
                 </Link>
-              </div>
-            )}
+              ))
+            ) : null}
           </div>
 
           {/* Error notification for KPIs */}
@@ -278,7 +301,7 @@ export default function DashboardContent() {
                 <p className="text-sm text-yellow-800">{kpisError}</p>
                 <button
                   onClick={fetchKPIs}
-                  className="ml-auto text-sm text-yellow-700 hover:text-yellow-800 hover:underline font-semibold transition-all duration-150"
+                  className="ml-auto text-sm text-yellow-700 hover:text-yellow-800 font-medium"
                 >
                   Retry
                 </button>
@@ -286,344 +309,159 @@ export default function DashboardContent() {
             </div>
           )}
 
-          {/* Security & Quick Actions Row */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-            {/* Security Status Widget */}
-            <div className="lg:col-span-1 bg-gradient-to-br from-purple-600 to-blue-600 rounded-xl p-6 text-white hover:shadow-xl hover:-translate-y-1 transition-all duration-200">
-              <div className="flex items-center gap-2 mb-4">
-                <Shield className="w-6 h-6" />
-                <h2 className="text-lg font-bold">Data Security</h2>
+          {/* AI Insight Widget + Revenue Chart Row */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+            {/* AI Insight Widget */}
+            <div className="lg:col-span-1 bg-gradient-to-br from-indigo-600 to-purple-600 rounded-xl p-5 text-white">
+              <div className="flex items-center gap-2 mb-3">
+                <Sparkles className="w-5 h-5" />
+                <h3 className="font-semibold">AI Insight</h3>
               </div>
-              <div className="space-y-3">
-                <div className="flex items-center gap-2 text-sm">
-                  <Check className="w-4 h-4 text-green-300" />
-                  <span>End-to-End Encrypted</span>
-                </div>
-                <div className="flex items-center gap-2 text-sm">
-                  <Check className="w-4 h-4 text-green-300" />
-                  <span>Distributed Secure Storage</span>
-                </div>
-                <div className="flex items-center gap-2 text-sm">
-                  <Check className="w-4 h-4 text-green-300" />
-                  <span>License Verified</span>
-                </div>
-              </div>
-              <Link
-                href="/integrations"
-                className="mt-4 block w-full bg-white/20 hover:bg-white/30 text-center py-2 rounded-lg text-sm font-semibold transition-all"
-              >
-                View Security Details
-              </Link>
+              {aiInsight ? (
+                <>
+                  <div className="flex items-start gap-2 mb-4">
+                    {aiInsight.trend === 'up' && <TrendingUp className="w-5 h-5 text-green-300 flex-shrink-0 mt-0.5" />}
+                    {aiInsight.trend === 'down' && <TrendingDown className="w-5 h-5 text-red-300 flex-shrink-0 mt-0.5" />}
+                    <p className="text-sm text-white/90">{aiInsight.text}</p>
+                  </div>
+                  <Link
+                    href="/ai-assistant"
+                    className="inline-flex items-center gap-1 text-sm font-medium text-white/80 hover:text-white transition-colors"
+                  >
+                    Ask AI for more insights
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </Link>
+                </>
+              ) : (
+                <p className="text-sm text-white/80">Connect integrations to get AI-powered insights.</p>
+              )}
             </div>
 
-            {/* Quick Actions */}
-            <div className="lg:col-span-2 bg-white border border-gray-200 rounded-xl p-6 hover:shadow-lg hover:border-gray-300 transition-all duration-200">
-              <h2 className="text-lg font-bold text-gray-900 mb-4">Quick Actions</h2>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <Link
-                  href="/integrations"
-                  className="flex flex-col items-center gap-2 p-4 bg-purple-50 hover:bg-purple-100 hover:scale-[1.02] rounded-lg transition-all duration-200"
-                >
-                  <Settings className="w-6 h-6 text-purple-600" />
-                  <span className="text-sm font-medium text-purple-700">My Integrations</span>
-                </Link>
-                <Link
-                  href="/marketplace"
-                  className="flex flex-col items-center gap-2 p-4 bg-blue-50 hover:bg-blue-100 hover:scale-[1.02] rounded-lg transition-all duration-200"
-                >
-                  <Plug className="w-6 h-6 text-blue-600" />
-                  <span className="text-sm font-medium text-blue-700">Add Integration</span>
-                </Link>
+            {/* Revenue Trend Chart */}
+            <div className="lg:col-span-2 bg-white border border-gray-200 rounded-xl p-5">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h3 className="font-semibold text-gray-900">Revenue Trend</h3>
+                  <p className="text-sm text-gray-500">
+                    {revenueTrendData ? revenueTrendData.period : 'Last 6 months'}
+                  </p>
+                </div>
                 <Link
                   href="/analytics"
-                  className="flex flex-col items-center gap-2 p-4 bg-orange-50 hover:bg-orange-100 hover:scale-[1.02] rounded-lg transition-all duration-200"
+                  className="text-sm font-medium text-blue-600 hover:text-blue-700 flex items-center gap-1"
                 >
-                  <BarChart3 className="w-6 h-6 text-orange-600" />
-                  <span className="text-sm font-medium text-orange-700">View Analytics</span>
-                </Link>
-                <Link
-                  href="/ai-assistant"
-                  className="flex flex-col items-center gap-2 p-4 bg-green-50 hover:bg-green-100 hover:scale-[1.02] rounded-lg transition-all duration-200"
-                >
-                  <MessageSquare className="w-6 h-6 text-green-600" />
-                  <span className="text-sm font-medium text-green-700">AI Assistant</span>
+                  View details
+                  <ArrowRight className="w-3.5 h-3.5" />
                 </Link>
               </div>
+
+              {isLoadingRevenue ? (
+                <div className="h-48 flex items-center justify-center">
+                  <div className="flex items-end gap-3">
+                    {[1, 2, 3, 4, 5, 6].map((i) => (
+                      <div key={i} className="w-10 bg-gray-200 animate-pulse rounded-t" style={{ height: `${30 + i * 12}px` }} />
+                    ))}
+                  </div>
+                </div>
+              ) : revenueTrendData && revenueTrendData.data.length > 0 ? (
+                <div className="h-48">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={revenueTrendData.data} margin={{ top: 5, right: 5, left: 0, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+                      <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#6b7280' }} />
+                      <YAxis
+                        axisLine={false}
+                        tickLine={false}
+                        tick={{ fontSize: 11, fill: '#6b7280' }}
+                        tickFormatter={(value) => `$${(value / 1000).toFixed(0)}K`}
+                        width={50}
+                      />
+                      <Tooltip
+                        formatter={(value) => [`$${(value ?? 0).toLocaleString()}`, 'Revenue']}
+                        contentStyle={{ backgroundColor: '#fff', border: '1px solid #e5e7eb', borderRadius: '8px' }}
+                      />
+                      <Bar dataKey="value" radius={[4, 4, 0, 0]} maxBarSize={50}>
+                        {revenueTrendData.data.map((_, index, arr) => (
+                          <Cell key={`cell-${index}`} fill={index === arr.length - 1 ? '#3b82f6' : '#e5e7eb'} />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                <div className="h-48 flex items-center justify-center text-gray-400">
+                  <div className="text-center">
+                    <BarChart3 className="w-8 h-8 mx-auto mb-2" />
+                    <p className="text-sm">No revenue data available</p>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
-          {/* Revenue Trend Chart */}
-          <div className="bg-white border border-gray-200 rounded-xl p-6 mb-8 hover:shadow-lg hover:border-gray-300 transition-all duration-200">
-            <div className="flex items-center justify-between mb-6">
-              <div>
-                <h2 className="text-lg font-bold text-gray-900 mb-1">Revenue Trend</h2>
-                <p className="text-sm text-gray-600">
-                  {revenueTrendData ? revenueTrendData.period : 'Last 6 months performance'}
-                </p>
-              </div>
+          {/* Recent Activity */}
+          <div className="bg-white border border-gray-200 rounded-xl p-5">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold text-gray-900">Recent Activity</h3>
               <Link
                 href="/analytics"
-                className="text-blue-600 hover:text-blue-700 text-sm font-semibold flex items-center gap-1"
+                className="text-sm font-medium text-blue-600 hover:text-blue-700 flex items-center gap-1"
               >
-                View Full Analytics
-                <span>→</span>
+                View all
+                <ArrowRight className="w-3.5 h-3.5" />
               </Link>
             </div>
 
-            {isLoadingRevenue ? (
-              // Loading state
-              <div className="h-64 flex items-center justify-center">
-                <div className="flex items-end gap-4">
-                  {[1, 2, 3, 4, 5, 6].map((i) => (
-                    <div key={i} className="w-12 bg-gray-200 animate-pulse rounded-t-md" style={{ height: `${40 + i * 15}px` }} />
-                  ))}
-                </div>
+            {isLoadingActivity ? (
+              <div className="space-y-3">
+                {[1, 2, 3, 4, 5].map((i) => (
+                  <div key={i} className="flex items-center gap-3 animate-pulse">
+                    <div className="w-9 h-9 bg-gray-200 rounded-lg"></div>
+                    <div className="flex-1">
+                      <div className="h-4 bg-gray-200 rounded w-1/3 mb-1"></div>
+                      <div className="h-3 bg-gray-200 rounded w-1/2"></div>
+                    </div>
+                    <div className="h-4 bg-gray-200 rounded w-16"></div>
+                  </div>
+                ))}
               </div>
-            ) : revenueTrendData && revenueTrendData.data.length > 0 ? (
-              // Success state - render Recharts with dynamic data
-              <div className="h-64">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart
-                    data={revenueTrendData.data}
-                    margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
-                  >
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
-                    <XAxis
-                      dataKey="month"
-                      axisLine={false}
-                      tickLine={false}
-                      tick={{ fontSize: 12, fill: '#6b7280' }}
-                    />
-                    <YAxis
-                      axisLine={false}
-                      tickLine={false}
-                      tick={{ fontSize: 12, fill: '#6b7280' }}
-                      tickFormatter={(value) => `$${(value / 1000).toFixed(0)}K`}
-                      width={60}
-                    />
-                    <Tooltip
-                      formatter={(value) => [`$${(value ?? 0).toLocaleString()}`, 'Revenue']}
-                      contentStyle={{
-                        backgroundColor: '#fff',
-                        border: '1px solid #e5e7eb',
-                        borderRadius: '8px',
-                        boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
-                      }}
-                      cursor={{ fill: 'rgba(59, 130, 246, 0.1)' }}
-                    />
-                    <Bar
-                      dataKey="value"
-                      radius={[4, 4, 0, 0]}
-                      maxBarSize={60}
-                    >
-                      {revenueTrendData.data.map((_, index, arr) => (
-                        <Cell
-                          key={`cell-${index}`}
-                          fill={index === arr.length - 1 ? '#3b82f6' : '#d1d5db'}
-                        />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
+            ) : recentActivityData && recentActivityData.activities.length > 0 ? (
+              <div className="space-y-2">
+                {recentActivityData.activities.slice(0, 7).map((activity, i) => (
+                  <div key={i} className="flex items-center gap-3 p-2 -mx-2 rounded-lg hover:bg-gray-50 transition-colors cursor-pointer">
+                    <div className="w-9 h-9 bg-gray-100 rounded-lg flex items-center justify-center text-lg flex-shrink-0">
+                      {activity.icon}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-900 truncate">{activity.title}</p>
+                      <p className="text-xs text-gray-500 truncate">{activity.description}</p>
+                    </div>
+                    {activity.amount && (
+                      <span className={`text-sm font-semibold ${activity.color} flex-shrink-0`}>
+                        {activity.amount}
+                      </span>
+                    )}
+                  </div>
+                ))}
               </div>
             ) : (
-              // Empty state - no revenue data
-              <div className="flex items-center justify-center h-64 text-gray-400">
-                <div className="text-center">
-                  <BarChart3 className="w-10 h-10 mx-auto mb-2" />
-                  <p className="text-sm">
-                    {revenueError ? 'Unable to load revenue data' : 'No revenue data available'}
-                  </p>
-                  <Link
-                    href="/marketplace"
-                    className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-700 text-sm font-medium mt-2"
-                  >
-                    Connect an integration to see data
-                    <ArrowRight className="w-3 h-3" />
-                  </Link>
-                </div>
+              <div className="py-8 text-center text-gray-400">
+                <ClipboardList className="w-8 h-8 mx-auto mb-2" />
+                <p className="text-sm">No recent activity</p>
               </div>
             )}
 
-            {/* Error notification for Revenue */}
-            {revenueError && (
+            {activityError && (
               <div className="mt-4 bg-yellow-50 border border-yellow-200 rounded-lg p-3">
                 <div className="flex items-center gap-2">
                   <AlertTriangle className="w-4 h-4 text-yellow-600" />
-                  <p className="text-xs text-yellow-800">{revenueError}</p>
-                  <button
-                    onClick={fetchRevenueTrend}
-                    className="ml-auto text-xs text-yellow-700 hover:text-yellow-800 hover:underline font-semibold transition-all duration-150"
-                  >
+                  <p className="text-xs text-yellow-800">{activityError}</p>
+                  <button onClick={fetchRecentActivity} className="ml-auto text-xs text-yellow-700 font-medium">
                     Retry
                   </button>
                 </div>
               </div>
             )}
-          </div>
-
-          {/* Two Column Layout */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-            {/* Recent Activity */}
-            <div className="bg-white border border-gray-200 rounded-xl p-6 hover:shadow-lg hover:border-gray-300 transition-all duration-200">
-              <h2 className="text-lg font-bold text-gray-900 mb-4">Recent Activity</h2>
-
-              {isLoadingActivity ? (
-                // Loading state
-                <div className="space-y-4">
-                  {[1, 2, 3, 4].map((i) => (
-                    <div key={i} className="flex items-start gap-3 pb-4 border-b border-gray-100 last:border-0 animate-pulse">
-                      <div className="w-10 h-10 bg-gray-200 rounded-lg"></div>
-                      <div className="flex-1">
-                        <div className="h-4 bg-gray-200 rounded w-1/3 mb-2"></div>
-                        <div className="h-3 bg-gray-200 rounded w-2/3 mb-1"></div>
-                        <div className="h-3 bg-gray-200 rounded w-1/4"></div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : recentActivityData && recentActivityData.activities.length > 0 ? (
-                // Success state - dynamic data
-                <div className="space-y-4">
-                  {recentActivityData.activities.map((activity, i) => (
-                    <div key={i} className="flex items-start gap-3 pb-4 border-b border-gray-100 last:border-0 -mx-2 px-2 py-1 rounded-lg hover:bg-gray-50 transition-colors duration-150 cursor-pointer">
-                      <div className="w-10 h-10 bg-gray-50 rounded-lg flex items-center justify-center text-xl flex-shrink-0">
-                        {activity.icon}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-start justify-between gap-2">
-                          <div>
-                            <p className="text-sm font-medium text-gray-900">{activity.title}</p>
-                            <p className="text-sm text-gray-600">{activity.description}</p>
-                          </div>
-                          {activity.amount && (
-                            <span className={`text-sm font-semibold ${activity.color} flex-shrink-0`}>
-                              {activity.amount}
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-xs text-gray-500 mt-1">{activity.time}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                // Empty or error state without fallback data
-                <div className="flex flex-col items-center justify-center py-8 text-gray-400">
-                  <ClipboardList className="w-10 h-10 mb-2" />
-                  <p className="text-sm">
-                    {activityError ? 'Unable to load recent activity' : 'No recent activity'}
-                  </p>
-                </div>
-              )}
-
-              {/* Error notification for Activity */}
-              {activityError && (
-                <div className="mt-4 bg-yellow-50 border border-yellow-200 rounded-lg p-3">
-                  <div className="flex items-center gap-2">
-                    <AlertTriangle className="w-4 h-4 text-yellow-600" />
-                    <p className="text-xs text-yellow-800">{activityError}</p>
-                    <button
-                      onClick={fetchRecentActivity}
-                      className="ml-auto text-xs text-yellow-700 hover:text-yellow-800 hover:underline font-semibold transition-all duration-150"
-                    >
-                      Retry
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Top Customers */}
-            <div className="bg-white border border-gray-200 rounded-xl p-6 hover:shadow-lg hover:border-gray-300 transition-all duration-200">
-              <h2 className="text-lg font-bold text-gray-900 mb-4">Top Customers</h2>
-
-              {isLoadingCustomers ? (
-                // Loading state
-                <div className="space-y-4">
-                  {[1, 2, 3, 4, 5].map((i) => (
-                    <div key={i} className="animate-pulse">
-                      <div className="flex items-center justify-between mb-1">
-                        <div className="h-4 bg-gray-200 rounded w-1/3"></div>
-                        <div className="h-4 bg-gray-200 rounded w-1/4"></div>
-                      </div>
-                      <div className="w-full bg-gray-100 rounded-full h-2">
-                        <div className="bg-gray-200 h-2 rounded-full" style={{ width: '50%' }}></div>
-                      </div>
-                      <div className="h-3 bg-gray-200 rounded w-1/4 mt-1"></div>
-                    </div>
-                  ))}
-                </div>
-              ) : topCustomersData && topCustomersData.customers.length > 0 ? (
-                // Success state - dynamic data
-                <div className="space-y-4">
-                  {topCustomersData.customers.map((customer, i) => (
-                    <div key={i} className="-mx-2 px-2 py-2 rounded-lg hover:bg-gray-50 transition-colors duration-150 cursor-pointer">
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-sm font-medium text-gray-900">{customer.name}</span>
-                        <span className="text-sm font-semibold text-gray-900">{customer.revenue}</span>
-                      </div>
-                      <div className="w-full bg-gray-100 rounded-full h-2">
-                        <div
-                          className="bg-blue-600 h-2 rounded-full transition-all duration-500"
-                          style={{ width: `${customer.percent}%` }}
-                        ></div>
-                      </div>
-                      <p className="text-xs text-gray-500 mt-1">{customer.percent}% of total revenue</p>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                // Empty or error state without fallback data
-                <div className="flex flex-col items-center justify-center py-8 text-gray-400">
-                  <Users className="w-10 h-10 mb-2" />
-                  <p className="text-sm">
-                    {customersError ? 'Unable to load customer data' : 'No customer data available'}
-                  </p>
-                </div>
-              )}
-
-              {/* Error notification for Customers */}
-              {customersError && (
-                <div className="mt-4 bg-yellow-50 border border-yellow-200 rounded-lg p-3">
-                  <div className="flex items-center gap-2">
-                    <AlertTriangle className="w-4 h-4 text-yellow-600" />
-                    <p className="text-xs text-yellow-800">{customersError}</p>
-                    <button
-                      onClick={fetchTopCustomers}
-                      className="ml-auto text-xs text-yellow-700 hover:text-yellow-800 hover:underline font-semibold transition-all duration-150"
-                    >
-                      Retry
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* AI Chat Assistant */}
-          <div className="mb-8">
-            <h2 className="text-lg font-bold text-gray-900 mb-4">AI Business Assistant</h2>
-            <AIChat />
-          </div>
-
-          {/* Footer CTA */}
-          <div className="bg-gradient-to-br from-blue-600 to-purple-600 rounded-xl p-8 text-white hover:shadow-xl hover:-translate-y-1 transition-all duration-200">
-            <div className="max-w-2xl">
-              <h2 className="text-2xl font-bold mb-2">
-                Unlock More Insights with Additional Integrations
-              </h2>
-              <p className="text-blue-100 mb-6">
-                Connect more business tools to get a complete view of your operations. Our AI assistant becomes smarter with each integration.
-              </p>
-              <Link
-                href="/marketplace"
-                className="inline-flex items-center gap-2 bg-white text-blue-600 px-6 py-3 rounded-lg font-semibold hover:bg-blue-50 transition-colors"
-              >
-                <span>Browse Marketplace</span>
-                <ArrowRight className="w-4 h-4" />
-              </Link>
-            </div>
           </div>
         </div>
       </div>
