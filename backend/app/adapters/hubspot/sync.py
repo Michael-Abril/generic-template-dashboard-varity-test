@@ -17,6 +17,13 @@ logger = logging.getLogger(__name__)
 class HubSpotSync:
     """Sync adapter for HubSpot integration with multi-tenant encrypted storage"""
 
+    # All HubSpot CRM data types go to RAG - CRM data is highly searchable
+    RAG_ENABLED_TYPES = ["contacts", "deals", "companies", "emails", "tickets"]
+
+    def should_index_in_rag(self, data_type: str) -> bool:
+        """Check if data type should be indexed in Qdrant"""
+        return data_type.lower() in [t.lower() for t in self.RAG_ENABLED_TYPES]
+
     def __init__(self, credentials: dict):
         """
         Initialize HubSpot sync adapter

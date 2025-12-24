@@ -20,6 +20,14 @@ logger = logging.getLogger(__name__)
 class GoogleWorkspaceSync:
     """Adapter for syncing data from Google Workspace APIs with multi-tenant encrypted storage"""
 
+    # Data types that will be synced to Pinata AND indexed in Qdrant
+    # Gmail and Calendar are intentionally excluded to avoid RAG clutter
+    RAG_ENABLED_TYPES = ["drive", "contacts"]
+
+    def should_index_in_rag(self, data_type: str) -> bool:
+        """Check if data type should be indexed in Qdrant"""
+        return data_type.lower() in [t.lower() for t in self.RAG_ENABLED_TYPES]
+
     def __init__(self, credentials: dict):
         """
         Initialize Google Workspace sync adapter

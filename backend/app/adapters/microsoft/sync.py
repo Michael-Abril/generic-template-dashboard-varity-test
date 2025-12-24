@@ -16,6 +16,13 @@ logger = logging.getLogger(__name__)
 class MicrosoftSync:
     """Adapter for syncing data from Microsoft 365 via Microsoft Graph API with multi-tenant encrypted storage"""
 
+    # Only OneDrive and Contacts go to RAG - Mail/Calendar are excluded
+    RAG_ENABLED_TYPES = ["onedrive", "contacts"]
+
+    def should_index_in_rag(self, data_type: str) -> bool:
+        """Check if data type should be indexed in Qdrant"""
+        return data_type.lower() in [t.lower() for t in self.RAG_ENABLED_TYPES]
+
     def __init__(self, credentials: dict):
         """
         Initialize Microsoft 365 sync adapter

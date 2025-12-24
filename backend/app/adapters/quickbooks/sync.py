@@ -16,6 +16,13 @@ logger = logging.getLogger(__name__)
 class QuickBooksSync:
     """Sync adapter for QuickBooks integration with multi-tenant encrypted storage"""
 
+    # All QuickBooks data types go to RAG - financial data is highly searchable
+    RAG_ENABLED_TYPES = ["invoices", "expenses", "customers", "vendors", "payments"]
+
+    def should_index_in_rag(self, data_type: str) -> bool:
+        """Check if data type should be indexed in Qdrant"""
+        return data_type.lower() in [t.lower() for t in self.RAG_ENABLED_TYPES]
+
     def __init__(self, credentials: dict):
         """
         Initialize QuickBooks sync adapter

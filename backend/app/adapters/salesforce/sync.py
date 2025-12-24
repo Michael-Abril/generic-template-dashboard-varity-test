@@ -16,6 +16,13 @@ logger = logging.getLogger(__name__)
 class SalesforceSync:
     """Sync adapter for Salesforce integration with multi-tenant encrypted storage"""
 
+    # All Salesforce data types go to RAG - CRM data is highly searchable
+    RAG_ENABLED_TYPES = ["contacts", "opportunities", "accounts", "leads", "tasks"]
+
+    def should_index_in_rag(self, data_type: str) -> bool:
+        """Check if data type should be indexed in Qdrant"""
+        return data_type.lower() in [t.lower() for t in self.RAG_ENABLED_TYPES]
+
     def __init__(self, credentials: dict):
         """
         Initialize Salesforce sync adapter

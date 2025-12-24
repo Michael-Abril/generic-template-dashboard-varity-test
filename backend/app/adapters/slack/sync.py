@@ -17,6 +17,13 @@ logger = logging.getLogger(__name__)
 class SlackSync:
     """Sync adapter for Slack integration with multi-tenant encrypted storage"""
 
+    # Only files go to RAG - messages/channels/users are not indexed
+    RAG_ENABLED_TYPES = ["files"]
+
+    def should_index_in_rag(self, data_type: str) -> bool:
+        """Check if data type should be indexed in Qdrant"""
+        return data_type.lower() in [t.lower() for t in self.RAG_ENABLED_TYPES]
+
     def __init__(self, credentials: dict):
         """
         Initialize Slack sync adapter
