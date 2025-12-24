@@ -372,12 +372,14 @@ class BusinessRAGService:
                     query_filter = Filter(must=must_conditions)
 
             # Search in THIS business's collection ONLY
-            results = self.qdrant.search(
+            # Use query_points for qdrant-client>=1.12.0 compatibility
+            search_result = self.qdrant.query_points(
                 collection_name=collection_name,
-                query_vector=query_embedding,
+                query=query_embedding,
                 limit=limit,
                 query_filter=query_filter
             )
+            results = search_result.points
 
             # Format results
             formatted_results = []

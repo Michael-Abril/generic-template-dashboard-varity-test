@@ -2806,11 +2806,13 @@ export default function IntegrationToolPage() {
 
     const googleData = data.reduce((acc, item) => {
       const propertyName = dataTypeToPropertyMap[item.data_type] || 'records';
-      const newRecords = item.data?.records || item.data?.[propertyName] || [];
+      const rawRecords = item.data?.records ?? item.data?.[propertyName];
+      const newRecords: unknown[] = Array.isArray(rawRecords) ? rawRecords : [];
 
       // AGGREGATE records when multiple chunks have the same data_type (e.g., Drive quarterly chunks)
-      if (acc[item.data_type] && acc[item.data_type][propertyName]) {
-        acc[item.data_type][propertyName] = [...acc[item.data_type][propertyName], ...newRecords];
+      const existingRecords = acc[item.data_type]?.[propertyName];
+      if (Array.isArray(existingRecords)) {
+        acc[item.data_type][propertyName] = [...existingRecords, ...newRecords];
       } else {
         acc[item.data_type] = {
           [propertyName]: newRecords
@@ -2850,8 +2852,9 @@ export default function IntegrationToolPage() {
       const newRecords = item.data?.records || item.data?.[propertyName] || [];
 
       // AGGREGATE records when multiple chunks have the same data_type
-      if (acc[item.data_type] && acc[item.data_type][propertyName]) {
-        acc[item.data_type][propertyName] = [...acc[item.data_type][propertyName], ...newRecords];
+      const existingRecords = acc[item.data_type]?.[propertyName];
+      if (Array.isArray(existingRecords)) {
+        acc[item.data_type][propertyName] = [...existingRecords, ...newRecords];
       } else {
         acc[item.data_type] = {
           [propertyName]: newRecords
