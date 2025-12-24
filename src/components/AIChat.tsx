@@ -14,6 +14,7 @@ import {
 import ReactMarkdown from 'react-markdown';
 import { ContextPicker } from './ai/ContextPicker';
 import { SuggestedPrompts } from './ai/SuggestedPrompts';
+import { CodeBlock } from './ai/CodeBlock';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 
@@ -1919,7 +1920,11 @@ export function AIChat() {
                               <code className="block bg-gray-100 text-gray-800 p-3 rounded-lg text-sm font-mono overflow-x-auto my-2">{children}</code>
                             );
                           },
-                          pre: ({ children }) => <pre className="bg-gray-100 rounded-lg overflow-x-auto my-2">{children}</pre>,
+                          pre: ({ children, className }) => (
+                            <CodeBlock className={className}>
+                              {children}
+                            </CodeBlock>
+                          ),
                           a: ({ href, children }) => (
                             <a href={href} target="_blank" rel="noopener noreferrer" className={`underline ${msg.role === 'user' ? 'text-white hover:text-white/80' : 'text-blue-600 hover:text-blue-800'}`}>
                               {children}
