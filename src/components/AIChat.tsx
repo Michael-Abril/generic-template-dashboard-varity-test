@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { ContextPicker } from './ai/ContextPicker';
+import { SuggestedPrompts } from './ai/SuggestedPrompts';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 
@@ -1786,48 +1787,58 @@ export function AIChat() {
               </p>
               {installedTools.length > 0 && (
                 <div className="max-w-lg mx-auto">
-                  <p className="text-xs font-medium text-gray-700 mb-3">
-                    {aiMode === 'deep_research' ? 'Research prompts:' :
-                     aiMode === 'analyze' ? 'Analysis prompts:' :
-                     aiMode === 'document' ? 'Document prompts:' :
-                     'Try asking:'}
-                  </p>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    {suggestedQuestions.map((item, i) => (
-                      <button
-                        key={i}
-                        onClick={() => setInput(item.question)}
-                        className="text-left text-xs p-3 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 hover:border-blue-300 transition-colors group flex items-start gap-2"
-                      >
-                        {item.icon && <span className="text-base flex-shrink-0">{item.icon}</span>}
-                        <div className="flex-1">
-                          <span className="block leading-snug">{item.question}</span>
-                          {item.integration && (
-                            <span className={`text-[10px] mt-1 inline-block px-1.5 py-0.5 rounded ${
-                              item.integration === 'quickbooks' ? 'bg-green-100 text-green-700' :
-                              item.integration === 'google' ? 'bg-red-100 text-red-700' :
-                              item.integration === 'microsoft' ? 'bg-blue-100 text-blue-700' :
-                              item.integration === 'salesforce' ? 'bg-sky-100 text-sky-700' :
-                              item.integration === 'slack' ? 'bg-purple-100 text-purple-700' :
-                              item.integration === 'hubspot' ? 'bg-orange-100 text-orange-700' :
-                              'bg-gray-100 text-gray-700'
-                            }`}>
-                              {item.integration}
-                            </span>
-                          )}
-                          {item.category && !item.integration && (
-                            <span className={`text-[10px] mt-1 inline-block px-1.5 py-0.5 rounded ${
-                              item.category === 'research' ? 'bg-purple-100 text-purple-700' :
-                              item.category === 'analysis' ? 'bg-blue-100 text-blue-700' :
-                              'bg-gray-100 text-gray-700'
-                            }`}>
-                              {item.category}
-                            </span>
-                          )}
-                        </div>
-                      </button>
-                    ))}
-                  </div>
+                  {/* For standard mode, use backend-driven suggested prompts */}
+                  {aiMode === 'standard' && address ? (
+                    <SuggestedPrompts
+                      walletAddress={address}
+                      onPromptClick={(prompt) => setInput(prompt)}
+                    />
+                  ) : (
+                    <>
+                      <p className="text-xs font-medium text-gray-700 mb-3">
+                        {aiMode === 'deep_research' ? 'Research prompts:' :
+                         aiMode === 'analyze' ? 'Analysis prompts:' :
+                         aiMode === 'document' ? 'Document prompts:' :
+                         'Try asking:'}
+                      </p>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        {suggestedQuestions.map((item, i) => (
+                          <button
+                            key={i}
+                            onClick={() => setInput(item.question)}
+                            className="text-left text-xs p-3 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 hover:border-blue-300 transition-colors group flex items-start gap-2"
+                          >
+                            {item.icon && <span className="text-base flex-shrink-0">{item.icon}</span>}
+                            <div className="flex-1">
+                              <span className="block leading-snug">{item.question}</span>
+                              {item.integration && (
+                                <span className={`text-[10px] mt-1 inline-block px-1.5 py-0.5 rounded ${
+                                  item.integration === 'quickbooks' ? 'bg-green-100 text-green-700' :
+                                  item.integration === 'google' ? 'bg-red-100 text-red-700' :
+                                  item.integration === 'microsoft' ? 'bg-blue-100 text-blue-700' :
+                                  item.integration === 'salesforce' ? 'bg-sky-100 text-sky-700' :
+                                  item.integration === 'slack' ? 'bg-purple-100 text-purple-700' :
+                                  item.integration === 'hubspot' ? 'bg-orange-100 text-orange-700' :
+                                  'bg-gray-100 text-gray-700'
+                                }`}>
+                                  {item.integration}
+                                </span>
+                              )}
+                              {item.category && !item.integration && (
+                                <span className={`text-[10px] mt-1 inline-block px-1.5 py-0.5 rounded ${
+                                  item.category === 'research' ? 'bg-purple-100 text-purple-700' :
+                                  item.category === 'analysis' ? 'bg-blue-100 text-blue-700' :
+                                  'bg-gray-100 text-gray-700'
+                                }`}>
+                                  {item.category}
+                                </span>
+                              )}
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
             </div>

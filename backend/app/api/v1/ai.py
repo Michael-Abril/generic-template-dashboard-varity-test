@@ -914,6 +914,124 @@ async def debug_data_pipeline(
     return result
 
 
+# ==================== Suggested Prompts ====================
+
+class SuggestedPrompt(BaseModel):
+    """A suggested prompt based on connected integrations"""
+    text: str
+    category: str
+    integration: str
+    icon: str
+
+
+class SuggestedPromptsResponse(BaseModel):
+    """Response with suggested prompts"""
+    prompts: List[SuggestedPrompt]
+    integrations: List[str]
+
+
+# Prompt templates per integration
+INTEGRATION_PROMPTS = {
+    "google": [
+        {"text": "Summarize my recent emails about {topic}", "category": "email", "icon": "mail"},
+        {"text": "What meetings do I have this week?", "category": "calendar", "icon": "calendar"},
+        {"text": "Find documents related to {topic}", "category": "drive", "icon": "file"},
+        {"text": "Who have I been emailing most frequently?", "category": "email", "icon": "users"},
+        {"text": "What are the key action items from my recent emails?", "category": "email", "icon": "check"},
+    ],
+    "quickbooks": [
+        {"text": "Show me overdue invoices", "category": "invoices", "icon": "alert"},
+        {"text": "What's my total revenue this month?", "category": "invoices", "icon": "dollar"},
+        {"text": "List my top customers by revenue", "category": "customers", "icon": "users"},
+        {"text": "Summarize my expenses by category", "category": "expenses", "icon": "chart"},
+        {"text": "Which invoices are unpaid?", "category": "invoices", "icon": "clock"},
+    ],
+    "salesforce": [
+        {"text": "What deals are closing this month?", "category": "opportunities", "icon": "target"},
+        {"text": "Show me my pipeline value", "category": "opportunities", "icon": "dollar"},
+        {"text": "List my most recent leads", "category": "leads", "icon": "users"},
+        {"text": "What accounts need follow-up?", "category": "accounts", "icon": "building"},
+    ],
+    "hubspot": [
+        {"text": "Show me recent deal activity", "category": "deals", "icon": "activity"},
+        {"text": "Who are my top contacts?", "category": "contacts", "icon": "users"},
+        {"text": "What companies have I been working with?", "category": "companies", "icon": "building"},
+    ],
+    "microsoft": [
+        {"text": "Summarize my Outlook inbox", "category": "mail", "icon": "mail"},
+        {"text": "What's on my calendar today?", "category": "calendar", "icon": "calendar"},
+        {"text": "Find files in OneDrive about {topic}", "category": "onedrive", "icon": "file"},
+    ],
+    "slack": [
+        {"text": "Summarize recent Slack conversations", "category": "messages", "icon": "message"},
+        {"text": "What files have been shared recently?", "category": "files", "icon": "file"},
+    ],
+}
+
+
+@router.get("/suggested-prompts", response_model=SuggestedPromptsResponse)
+async def get_suggested_prompts(
+    wallet_address: str = Query(..., description="User's wallet address"),
+    limit: int = Query(6, description="Maximum number of prompts to return"),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Get suggested prompts based on user's connected integrations.
+
+    Returns context-aware prompts that users can click to start a conversation.
+    Only includes prompts for integrations the user has connected.
+
+    Args:
+        wallet_address: User's wallet address
+        limit: Maximum prompts to return
+        db: Database session
+
+    Returns:
+        List of suggested prompts with metadata
+    """
+    prompts = []
+    connected_integrations = []
+
+    try:
+        # Get connected integrations from OAuthToken table
+        tokens_result = await db.execute(
+            select(OAuthToken).where(
+                and_(
+                    OAuthToken.user_address == wallet_address.lower(),
+                    OAuthToken.is_active == True  # noqa: E712
+                )
+            )
+        )
+        tokens = tokens_result.scalars().all()
+
+        for token in tokens:
+            provider = token.provider.lower()
+            connected_integrations.append(provider)
+
+            # Get prompts for this integration
+            if provider in INTEGRATION_PROMPTS:
+                for prompt_template in INTEGRATION_PROMPTS[provider]:
+                    prompts.append(SuggestedPrompt(
+                        text=prompt_template["text"],
+                        category=prompt_template["category"],
+                        integration=provider,
+                        icon=prompt_template["icon"]
+                    ))
+
+        # Shuffle and limit prompts for variety
+        import random
+        random.shuffle(prompts)
+        prompts = prompts[:limit]
+
+    except Exception as e:
+        logger.error(f"Failed to get suggested prompts: {e}")
+
+    return SuggestedPromptsResponse(
+        prompts=prompts,
+        integrations=connected_integrations
+    )
+
+
 # ==================== Live Email Helpers (OAuth-based, NOT stored in Pinata) ====================
 
 async def fetch_live_gmail_emails(
