@@ -208,69 +208,65 @@ export default function QuickBooksPage({ walletAddress, data, onRefresh }: Quick
       {/* KPI Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <div
-          className="bg-white rounded-lg border border-gray-200 p-5 hover:border-emerald-400 hover:shadow-md transition-all cursor-pointer relative overflow-hidden group"
+          className="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-lg hover:border-blue-300 hover:-translate-y-1 transition-all cursor-pointer"
           onClick={() => setActiveTab('invoices')}
         >
-          <div className="absolute left-0 top-0 w-1 h-full bg-emerald-500 group-hover:bg-emerald-600 transition-colors" />
           <div className="flex items-center gap-3 mb-3">
-            <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-md">
-              <TrendingUp className="h-5 w-5 text-emerald-600" />
+            <div className="p-3 bg-green-50 rounded-lg">
+              <TrendingUp className="h-6 w-6 text-green-600" />
             </div>
-            <h3 className="font-semibold text-gray-700 text-sm uppercase tracking-wide">Total Income</h3>
+            <h3 className="font-semibold text-gray-900">Total Income</h3>
           </div>
-          <p className="text-2xl font-bold text-gray-900">{formatCurrency(stats.totalIncome)}</p>
+          <p className="text-3xl font-bold text-gray-900">{formatCurrency(stats.totalIncome)}</p>
           <p className="text-sm text-gray-500 mt-2">{stats.paidInvoices} paid invoices</p>
         </div>
 
         <div
-          className="bg-white rounded-lg border border-gray-200 p-5 hover:border-red-400 hover:shadow-md transition-all cursor-pointer relative overflow-hidden group"
+          className="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-lg hover:border-blue-300 hover:-translate-y-1 transition-all cursor-pointer"
           onClick={() => setActiveTab('expenses')}
         >
-          <div className="absolute left-0 top-0 w-1 h-full bg-red-500 group-hover:bg-red-600 transition-colors" />
           <div className="flex items-center gap-3 mb-3">
-            <div className="p-2.5 bg-red-50 border border-red-200 rounded-md">
-              <TrendingDown className="h-5 w-5 text-red-600" />
+            <div className="p-3 bg-red-50 rounded-lg">
+              <TrendingDown className="h-6 w-6 text-red-600" />
             </div>
-            <h3 className="font-semibold text-gray-700 text-sm uppercase tracking-wide">Total Expenses</h3>
+            <h3 className="font-semibold text-gray-900">Total Expenses</h3>
           </div>
-          <p className="text-2xl font-bold text-gray-900">{formatCurrency(stats.totalExpenses)}</p>
+          <p className="text-3xl font-bold text-gray-900">{formatCurrency(stats.totalExpenses)}</p>
           <p className="text-sm text-gray-500 mt-2">{stats.expenseCount} expenses</p>
         </div>
 
-        <div className="bg-white rounded-lg border border-gray-200 p-5 hover:border-blue-400 hover:shadow-md transition-all relative overflow-hidden group">
-          <div className="absolute left-0 top-0 w-1 h-full bg-blue-500 group-hover:bg-blue-600 transition-colors" />
+        <div className="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-lg hover:border-blue-300 hover:-translate-y-1 transition-all">
           <div className="flex items-center gap-3 mb-3">
-            <div className="p-2.5 bg-blue-50 border border-blue-200 rounded-md">
-              <DollarSign className="h-5 w-5 text-blue-600" />
+            <div className="p-3 bg-blue-50 rounded-lg">
+              <DollarSign className="h-6 w-6 text-blue-600" />
             </div>
-            <h3 className="font-semibold text-gray-700 text-sm uppercase tracking-wide">Net Income</h3>
+            <h3 className="font-semibold text-gray-900">Net Income</h3>
           </div>
-          <p className={`text-2xl font-bold ${stats.netIncome >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+          <p className={`text-3xl font-bold ${stats.netIncome >= 0 ? 'text-green-600' : 'text-red-600'}`}>
             {formatCurrency(Math.abs(stats.netIncome))}
-            {stats.netIncome < 0 && <span className="text-base ml-1">(Loss)</span>}
+            {stats.netIncome < 0 && <span className="text-lg ml-1">(Loss)</span>}
           </p>
           <p className="text-sm text-gray-500 mt-2">Income minus expenses</p>
         </div>
 
         <div
-          className="bg-white rounded-lg border border-gray-200 p-5 hover:border-indigo-400 hover:shadow-md transition-all cursor-pointer relative overflow-hidden group"
+          className="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-lg hover:border-blue-300 hover:-translate-y-1 transition-all cursor-pointer"
           onClick={() => setActiveTab('invoices')}
         >
-          <div className="absolute left-0 top-0 w-1 h-full bg-indigo-500 group-hover:bg-indigo-600 transition-colors" />
           <div className="flex items-center gap-3 mb-3">
-            <div className="p-2.5 bg-indigo-50 border border-indigo-200 rounded-md">
-              <FileText className="h-5 w-5 text-indigo-600" />
+            <div className="p-3 bg-purple-50 rounded-lg">
+              <FileText className="h-6 w-6 text-purple-600" />
             </div>
-            <h3 className="font-semibold text-gray-700 text-sm uppercase tracking-wide">Invoices</h3>
+            <h3 className="font-semibold text-gray-900">Invoices</h3>
           </div>
-          <p className="text-2xl font-bold text-gray-900">{stats.invoiceCount}</p>
+          <p className="text-3xl font-bold text-gray-900">{stats.invoiceCount}</p>
           <div className="flex gap-2 mt-2 text-sm">
-            <span className="text-emerald-600 font-medium">{stats.paidInvoices} paid</span>
-            <span className="text-gray-300">•</span>
+            <span className="text-green-600 font-medium">{stats.paidInvoices} paid</span>
+            <span className="text-gray-400">•</span>
             <span className="text-blue-600 font-medium">{stats.openInvoices} open</span>
             {stats.overdueInvoices > 0 && (
               <>
-                <span className="text-gray-300">•</span>
+                <span className="text-gray-400">•</span>
                 <span className="text-red-600 font-medium">{stats.overdueInvoices} overdue</span>
               </>
             )}
@@ -541,15 +537,15 @@ export default function QuickBooksPage({ walletAddress, data, onRefresh }: Quick
           {filteredInvoices.length > 0 ? (
             <div className="overflow-x-auto">
               <table className="w-full">
-                <thead className="bg-gray-100 border-b border-gray-200">
+                <thead className="bg-gray-50">
                   <tr>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Invoice #</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Customer</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Date</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Due Date</th>
-                    <th className="text-right py-3 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Amount</th>
-                    <th className="text-right py-3 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Balance</th>
-                    <th className="text-center py-3 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Status</th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Invoice #</th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Customer</th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Date</th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Due Date</th>
+                    <th className="text-right py-3 px-4 text-sm font-medium text-gray-500">Amount</th>
+                    <th className="text-right py-3 px-4 text-sm font-medium text-gray-500">Balance</th>
+                    <th className="text-center py-3 px-4 text-sm font-medium text-gray-500">Status</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
@@ -584,12 +580,12 @@ export default function QuickBooksPage({ walletAddress, data, onRefresh }: Quick
                           {formatCurrency(balance)}
                         </td>
                         <td className="py-3 px-4 text-center">
-                          <span className={`inline-flex px-2.5 py-1 text-xs font-semibold rounded-md border ${
+                          <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
                             status === 'paid'
-                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                              ? 'bg-green-100 text-green-700'
                               : status === 'overdue'
-                                ? 'bg-red-50 text-red-700 border-red-200'
-                                : 'bg-blue-50 text-blue-700 border-blue-200'
+                                ? 'bg-red-100 text-red-700'
+                                : 'bg-blue-100 text-blue-700'
                           }`}>
                             {status === 'paid' ? 'Paid' : status === 'overdue' ? 'Overdue' : 'Open'}
                           </span>
@@ -661,13 +657,13 @@ export default function QuickBooksPage({ walletAddress, data, onRefresh }: Quick
           {filteredExpenses.length > 0 ? (
             <div className="overflow-x-auto">
               <table className="w-full">
-                <thead className="bg-gray-100 border-b border-gray-200">
+                <thead className="bg-gray-50">
                   <tr>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Date</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Vendor</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Category</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Payment Method</th>
-                    <th className="text-right py-3 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Amount</th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Date</th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Vendor</th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Category</th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Payment Method</th>
+                    <th className="text-right py-3 px-4 text-sm font-medium text-gray-500">Amount</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
@@ -744,13 +740,13 @@ export default function QuickBooksPage({ walletAddress, data, onRefresh }: Quick
           {filteredCustomers.length > 0 ? (
             <div className="overflow-x-auto">
               <table className="w-full">
-                <thead className="bg-gray-100 border-b border-gray-200">
+                <thead className="bg-gray-50">
                   <tr>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Name</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Email</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Phone</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Company</th>
-                    <th className="text-right py-3 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Balance</th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Name</th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Email</th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Phone</th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Company</th>
+                    <th className="text-right py-3 px-4 text-sm font-medium text-gray-500">Balance</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
@@ -822,13 +818,13 @@ export default function QuickBooksPage({ walletAddress, data, onRefresh }: Quick
           {filteredVendors.length > 0 ? (
             <div className="overflow-x-auto">
               <table className="w-full">
-                <thead className="bg-gray-100 border-b border-gray-200">
+                <thead className="bg-gray-50">
                   <tr>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Name</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Email</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Phone</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Company</th>
-                    <th className="text-right py-3 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Balance</th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Name</th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Email</th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Phone</th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Company</th>
+                    <th className="text-right py-3 px-4 text-sm font-medium text-gray-500">Balance</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
@@ -1050,16 +1046,16 @@ export default function QuickBooksPage({ walletAddress, data, onRefresh }: Quick
                   className={`
                     flex items-center gap-2 px-4 py-2.5 border-b-2 transition-all rounded-t-lg
                     ${isActive
-                      ? 'border-green-600 text-green-700 bg-green-50 font-semibold'
-                      : 'border-transparent text-gray-700 hover:bg-gray-100 hover:text-gray-900 font-medium'
+                      ? 'border-blue-600 text-blue-700 bg-blue-50 font-semibold'
+                      : 'border-transparent text-gray-600 hover:bg-gray-100 hover:text-gray-900 font-medium'
                     }
                   `}
                 >
-                  <Icon className={`h-4 w-4 ${isActive ? 'text-green-600' : ''}`} />
+                  <Icon className={`h-4 w-4 ${isActive ? 'text-blue-600' : ''}`} />
                   <span>{tab.label}</span>
                   {count != null && count > 0 && (
                     <span className={`ml-1 px-2 py-0.5 rounded-full text-xs ${
-                      isActive ? 'bg-green-200 text-green-800' : 'bg-gray-200 text-gray-600'
+                      isActive ? 'bg-blue-100 text-blue-700' : 'bg-gray-200 text-gray-600'
                     }`}>
                       {count}
                     </span>
@@ -1075,10 +1071,10 @@ export default function QuickBooksPage({ walletAddress, data, onRefresh }: Quick
       <div className="p-6">
         {/* No Data Banner */}
         {!hasData && !syncing && (
-          <div className="mb-6 bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-xl p-6">
+          <div className="mb-6 bg-blue-50 border border-blue-200 rounded-xl p-6">
             <div className="flex items-start gap-4">
-              <div className="p-3 bg-green-100 rounded-lg">
-                <AlertCircle className="h-6 w-6 text-green-600" />
+              <div className="p-3 bg-blue-100 rounded-lg">
+                <AlertCircle className="h-6 w-6 text-blue-600" />
               </div>
               <div className="flex-1">
                 <h3 className="text-lg font-semibold text-gray-900 mb-1">No Data Synced Yet</h3>

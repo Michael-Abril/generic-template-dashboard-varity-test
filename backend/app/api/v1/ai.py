@@ -25,8 +25,9 @@ from sqlalchemy.orm import selectinload  # type: ignore[import]
 
 from app.core.database import get_db
 from app.core.config import settings
-from app.models.purchase import Purchase
+from app.models.purchase import Purchase, OAuthToken
 from app.models.marketplace import Product
+import httpx
 
 from app.services.ai_query_service import ai_query_service
 from app.services.filecoin_service import FilecoinService, FilecoinMultiTenantService
@@ -913,6 +914,198 @@ async def debug_data_pipeline(
     return result
 
 
+# ==================== Live Email Helpers (OAuth-based, NOT stored in Pinata) ====================
+
+async def fetch_live_gmail_emails(
+    access_token: str,
+    limit: int = 20
+) -> List[Dict[str, Any]]:
+    """
+    Fetch recent Gmail emails via OAuth (ephemeral, not stored in Pinata).
+
+    These emails are fetched live and used as context for AI queries,
+    but are NOT indexed into Qdrant or stored in Filecoin.
+
+    Args:
+        access_token: Google OAuth access token
+        limit: Maximum number of emails to fetch
+
+    Returns:
+        List of email summaries with id, subject, from, snippet
+    """
+    emails = []
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            # Get list of recent messages
+            list_resp = await client.get(
+                "https://gmail.googleapis.com/gmail/v1/users/me/messages",
+                headers={"Authorization": f"Bearer {access_token}"},
+                params={"maxResults": limit, "labelIds": "INBOX"}
+            )
+
+            if list_resp.status_code != 200:
+                logger.warning(f"Gmail list failed: {list_resp.status_code}")
+                return []
+
+            message_refs = list_resp.json().get("messages", [])
+
+            # Fetch metadata for each message (limited to avoid slow API calls)
+            for msg_ref in message_refs[:limit]:
+                try:
+                    msg_resp = await client.get(
+                        f"https://gmail.googleapis.com/gmail/v1/users/me/messages/{msg_ref['id']}",
+                        headers={"Authorization": f"Bearer {access_token}"},
+                        params={"format": "metadata", "metadataHeaders": ["From", "Subject", "Date"]}
+                    )
+
+                    if msg_resp.status_code == 200:
+                        msg_data = msg_resp.json()
+                        headers = {h["name"]: h["value"] for h in msg_data.get("payload", {}).get("headers", [])}
+
+                        emails.append({
+                            "id": msg_ref["id"],
+                            "subject": headers.get("Subject", "(No Subject)"),
+                            "from": headers.get("From", "Unknown"),
+                            "date": headers.get("Date", ""),
+                            "snippet": msg_data.get("snippet", "")[:200]
+                        })
+                except Exception as e:
+                    logger.warning(f"Failed to fetch Gmail message {msg_ref['id']}: {e}")
+
+    except Exception as e:
+        logger.error(f"Gmail fetch failed: {e}")
+
+    return emails
+
+
+async def fetch_live_outlook_emails(
+    access_token: str,
+    limit: int = 20
+) -> List[Dict[str, Any]]:
+    """
+    Fetch recent Outlook emails via Microsoft Graph API (ephemeral, not stored).
+
+    Args:
+        access_token: Microsoft OAuth access token
+        limit: Maximum number of emails to fetch
+
+    Returns:
+        List of email summaries with id, subject, from, snippet
+    """
+    emails = []
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.get(
+                "https://graph.microsoft.com/v1.0/me/messages",
+                headers={"Authorization": f"Bearer {access_token}"},
+                params={
+                    "$top": limit,
+                    "$select": "id,subject,from,receivedDateTime,bodyPreview",
+                    "$orderby": "receivedDateTime desc"
+                }
+            )
+
+            if resp.status_code != 200:
+                logger.warning(f"Outlook fetch failed: {resp.status_code}")
+                return []
+
+            messages = resp.json().get("value", [])
+
+            for msg in messages:
+                from_info = msg.get("from", {}).get("emailAddress", {})
+                emails.append({
+                    "id": msg["id"],
+                    "subject": msg.get("subject", "(No Subject)"),
+                    "from": f"{from_info.get('name', '')} <{from_info.get('address', '')}>",
+                    "date": msg.get("receivedDateTime", ""),
+                    "snippet": msg.get("bodyPreview", "")[:200]
+                })
+
+    except Exception as e:
+        logger.error(f"Outlook fetch failed: {e}")
+
+    return emails
+
+
+async def fetch_live_email_content(
+    provider: str,
+    email_id: str,
+    access_token: str
+) -> Optional[Dict[str, Any]]:
+    """
+    Fetch full content of a specific email for AI context.
+
+    Args:
+        provider: "google" or "microsoft"
+        email_id: The email's unique ID
+        access_token: OAuth access token
+
+    Returns:
+        Full email content including body
+    """
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            if provider == "google":
+                resp = await client.get(
+                    f"https://gmail.googleapis.com/gmail/v1/users/me/messages/{email_id}",
+                    headers={"Authorization": f"Bearer {access_token}"},
+                    params={"format": "full"}
+                )
+
+                if resp.status_code == 200:
+                    msg = resp.json()
+                    headers = {h["name"]: h["value"] for h in msg.get("payload", {}).get("headers", [])}
+
+                    # Extract body (simplified - just get snippet for now)
+                    body = msg.get("snippet", "")
+
+                    # Try to get full body from parts
+                    payload = msg.get("payload", {})
+                    if "body" in payload and payload["body"].get("data"):
+                        import base64
+                        body = base64.urlsafe_b64decode(payload["body"]["data"]).decode("utf-8", errors="ignore")
+                    elif "parts" in payload:
+                        for part in payload["parts"]:
+                            if part.get("mimeType") == "text/plain" and part.get("body", {}).get("data"):
+                                import base64
+                                body = base64.urlsafe_b64decode(part["body"]["data"]).decode("utf-8", errors="ignore")
+                                break
+
+                    return {
+                        "id": email_id,
+                        "subject": headers.get("Subject", "(No Subject)"),
+                        "from": headers.get("From", "Unknown"),
+                        "to": headers.get("To", ""),
+                        "date": headers.get("Date", ""),
+                        "body": body[:5000]  # Limit body size for context
+                    }
+
+            elif provider == "microsoft":
+                resp = await client.get(
+                    f"https://graph.microsoft.com/v1.0/me/messages/{email_id}",
+                    headers={"Authorization": f"Bearer {access_token}"},
+                    params={"$select": "id,subject,from,toRecipients,receivedDateTime,body"}
+                )
+
+                if resp.status_code == 200:
+                    msg = resp.json()
+                    from_info = msg.get("from", {}).get("emailAddress", {})
+
+                    return {
+                        "id": email_id,
+                        "subject": msg.get("subject", "(No Subject)"),
+                        "from": f"{from_info.get('name', '')} <{from_info.get('address', '')}>",
+                        "to": ", ".join([r["emailAddress"]["address"] for r in msg.get("toRecipients", [])]),
+                        "date": msg.get("receivedDateTime", ""),
+                        "body": msg.get("body", {}).get("content", "")[:5000]
+                    }
+
+    except Exception as e:
+        logger.error(f"Failed to fetch email content: {e}")
+
+    return None
+
+
 # ==================== Context Selection ====================
 
 class ContextItem(BaseModel):
@@ -939,7 +1132,9 @@ async def get_context_items(
     integration: Optional[str] = Query(None, description="Filter by integration"),
     category: Optional[str] = Query(None, description="Filter by category (drive, gmail, invoices, etc.)"),
     search: Optional[str] = Query(None, description="Search query to filter items"),
-    limit: int = Query(50, description="Maximum number of items to return")
+    limit: int = Query(50, description="Maximum number of items to return"),
+    include_live: bool = Query(True, description="Include live emails from Gmail/Outlook"),
+    db: AsyncSession = Depends(get_db)
 ):
     """
     Get available context items for selection.
@@ -1021,9 +1216,103 @@ async def get_context_items(
     except Exception as e:
         logger.error(f"Failed to get indexed items: {e}")
 
-    # TODO: Add live items (Gmail, Calendar) via Google/Microsoft API
-    # This would require OAuth tokens and live API calls
-    # For MVP, we'll only include indexed items
+    # Add live emails from Gmail/Outlook (ephemeral, not stored in Pinata)
+    if include_live and (integration is None or integration in ["google", "microsoft"]):
+        # Check for Google OAuth token
+        if integration is None or integration == "google":
+            try:
+                google_token = await db.execute(
+                    select(OAuthToken).where(
+                        and_(
+                            OAuthToken.user_address == wallet_address.lower(),
+                            OAuthToken.provider == "google",
+                            OAuthToken.is_active == True  # noqa: E712
+                        )
+                    )
+                )
+                google_token = google_token.scalar_one_or_none()
+
+                if google_token and google_token.access_token:
+                    # Fetch live Gmail emails
+                    gmail_emails = await fetch_live_gmail_emails(
+                        access_token=google_token.access_token,
+                        limit=min(10, limit)  # Limit live emails to avoid slow API
+                    )
+
+                    for email in gmail_emails:
+                        # Apply search filter if provided
+                        if search:
+                            search_lower = search.lower()
+                            if (search_lower not in email["subject"].lower() and
+                                search_lower not in email["from"].lower() and
+                                search_lower not in email.get("snippet", "").lower()):
+                                continue
+
+                        items.append(ContextItem(
+                            id=f"live:google:gmail:{email['id']}",
+                            type="google",
+                            category="gmail",
+                            title=email["subject"],
+                            description=f"From: {email['from'][:50]}",
+                            source="live",
+                            metadata={
+                                "from": email["from"],
+                                "date": email["date"],
+                                "snippet": email.get("snippet", "")
+                            }
+                        ))
+                        integrations_found.add("google")
+
+            except Exception as e:
+                logger.warning(f"Failed to fetch live Gmail emails: {e}")
+
+        # Check for Microsoft OAuth token
+        if integration is None or integration == "microsoft":
+            try:
+                ms_token = await db.execute(
+                    select(OAuthToken).where(
+                        and_(
+                            OAuthToken.user_address == wallet_address.lower(),
+                            OAuthToken.provider == "microsoft",
+                            OAuthToken.is_active == True  # noqa: E712
+                        )
+                    )
+                )
+                ms_token = ms_token.scalar_one_or_none()
+
+                if ms_token and ms_token.access_token:
+                    # Fetch live Outlook emails
+                    outlook_emails = await fetch_live_outlook_emails(
+                        access_token=ms_token.access_token,
+                        limit=min(10, limit)
+                    )
+
+                    for email in outlook_emails:
+                        # Apply search filter if provided
+                        if search:
+                            search_lower = search.lower()
+                            if (search_lower not in email["subject"].lower() and
+                                search_lower not in email["from"].lower() and
+                                search_lower not in email.get("snippet", "").lower()):
+                                continue
+
+                        items.append(ContextItem(
+                            id=f"live:microsoft:outlook:{email['id']}",
+                            type="microsoft",
+                            category="outlook",
+                            title=email["subject"],
+                            description=f"From: {email['from'][:50]}",
+                            source="live",
+                            metadata={
+                                "from": email["from"],
+                                "date": email["date"],
+                                "snippet": email.get("snippet", "")
+                            }
+                        ))
+                        integrations_found.add("microsoft")
+
+            except Exception as e:
+                logger.warning(f"Failed to fetch live Outlook emails: {e}")
 
     return ContextItemsResponse(
         items=items[:limit],
@@ -1035,46 +1324,121 @@ async def get_context_items(
 @router.post("/context/fetch")
 async def fetch_context_by_ids(
     wallet_address: str = Query(..., description="User's wallet address"),
-    item_ids: List[str] = Query(..., description="List of context item IDs to fetch")
+    item_ids: List[str] = Query(..., description="List of context item IDs to fetch"),
+    db: AsyncSession = Depends(get_db)
 ):
     """
     Fetch full content for selected context items.
 
-    Given a list of item IDs (CIDs), retrieve and decrypt the full content
-    to be used as AI context.
+    Given a list of item IDs, retrieve the full content to be used as AI context.
+    Supports both:
+    - Indexed items (CIDs) - Retrieved and decrypted from Pinata
+    - Live items (live:provider:category:id) - Fetched via OAuth API
 
     Args:
         wallet_address: User's wallet address
-        item_ids: List of CIDs to fetch
+        item_ids: List of item IDs (CIDs or live:* format)
+        db: Database session for OAuth token lookup
 
     Returns:
         Full content for each item, ready for AI context
     """
     context_data = []
 
-    for cid in item_ids:
+    # Cache OAuth tokens to avoid repeated DB queries
+    oauth_tokens = {}
+
+    for item_id in item_ids:
         try:
-            # Retrieve and decrypt from Pinata
-            encrypted = await filecoin_service.retrieve_data(cid)
-            decrypted = await encryption_service.decrypt_with_wallet(
-                encrypted_data=encrypted,
-                customer_wallet=wallet_address
-            )
+            # Check if this is a live item (format: live:provider:category:id)
+            if item_id.startswith("live:"):
+                parts = item_id.split(":", 3)  # Split into max 4 parts
+                if len(parts) < 4:
+                    logger.warning(f"Invalid live item ID format: {item_id}")
+                    context_data.append({
+                        "id": item_id,
+                        "data": None,
+                        "success": False,
+                        "error": "Invalid live item ID format"
+                    })
+                    continue
 
-            if isinstance(decrypted, str):
-                data = json.loads(decrypted)
+                _, provider, category, email_id = parts
+
+                # Get OAuth token (cached)
+                if provider not in oauth_tokens:
+                    token_result = await db.execute(
+                        select(OAuthToken).where(
+                            and_(
+                                OAuthToken.user_address == wallet_address.lower(),
+                                OAuthToken.provider == provider,
+                                OAuthToken.is_active == True  # noqa: E712
+                            )
+                        )
+                    )
+                    oauth_tokens[provider] = token_result.scalar_one_or_none()
+
+                token = oauth_tokens.get(provider)
+                if not token or not token.access_token:
+                    context_data.append({
+                        "id": item_id,
+                        "data": None,
+                        "success": False,
+                        "error": f"No OAuth token for {provider}"
+                    })
+                    continue
+
+                # Fetch live email content
+                email_content = await fetch_live_email_content(
+                    provider=provider,
+                    email_id=email_id,
+                    access_token=token.access_token
+                )
+
+                if email_content:
+                    context_data.append({
+                        "id": item_id,
+                        "data": {
+                            "type": "email",
+                            "provider": provider,
+                            "category": category,
+                            "content": email_content
+                        },
+                        "source": "live",
+                        "success": True
+                    })
+                else:
+                    context_data.append({
+                        "id": item_id,
+                        "data": None,
+                        "success": False,
+                        "error": "Failed to fetch email content"
+                    })
+
             else:
-                data = decrypted
+                # This is an indexed item (CID) - retrieve from Pinata
+                encrypted = await filecoin_service.retrieve_data(item_id)
+                decrypted = await encryption_service.decrypt_with_wallet(
+                    encrypted_data=encrypted,
+                    customer_wallet=wallet_address
+                )
 
-            context_data.append({
-                "id": cid,
-                "data": data,
-                "success": True
-            })
+                if isinstance(decrypted, str):
+                    data = json.loads(decrypted)
+                else:
+                    data = decrypted
+
+                context_data.append({
+                    "id": item_id,
+                    "data": data,
+                    "source": "indexed",
+                    "success": True
+                })
+
         except Exception as e:
-            logger.warning(f"Failed to fetch context for {cid}: {e}")
+            logger.warning(f"Failed to fetch context for {item_id}: {e}")
             context_data.append({
-                "id": cid,
+                "id": item_id,
                 "data": None,
                 "success": False,
                 "error": str(e)
@@ -1131,7 +1495,7 @@ async def general_chat(request: GeneralChatRequest, db: AsyncSession = Depends(g
 
         # Check if user selected specific context items
         if request.selected_context_ids and len(request.selected_context_ids) > 0:
-            # User selected specific items - fetch those directly from Pinata
+            # User selected specific items - fetch from Pinata (indexed) or OAuth API (live)
             logger.info(
                 f"Using {len(request.selected_context_ids)} selected context items "
                 f"for {request.wallet_address[:10]}..."
@@ -1140,44 +1504,100 @@ async def general_chat(request: GeneralChatRequest, db: AsyncSession = Depends(g
             context_parts = []
             total_chars = 0
 
-            for idx, cid in enumerate(request.selected_context_ids, 1):
+            # Cache OAuth tokens for live items
+            oauth_tokens = {}
+
+            for idx, item_id in enumerate(request.selected_context_ids, 1):
                 if total_chars >= MAX_TOTAL_CHARS:
                     logger.info(f"Selected context limit reached at {total_chars} chars")
                     break
 
                 try:
-                    # Retrieve and decrypt from Pinata
-                    encrypted = await filecoin_service.retrieve_data(cid)
-                    decrypted = await encryption_service.decrypt_with_wallet(
-                        encrypted_data=encrypted,
-                        customer_wallet=request.wallet_address
-                    )
+                    # Check if this is a live item (format: live:provider:category:id)
+                    if item_id.startswith("live:"):
+                        parts = item_id.split(":", 3)
+                        if len(parts) < 4:
+                            logger.warning(f"Invalid live item ID format: {item_id}")
+                            continue
 
-                    if isinstance(decrypted, str):
-                        data = json.loads(decrypted)
+                        _, provider, category, email_id = parts
+
+                        # Get OAuth token (cached)
+                        if provider not in oauth_tokens:
+                            token_result = await db.execute(
+                                select(OAuthToken).where(
+                                    and_(
+                                        OAuthToken.user_address == request.wallet_address.lower(),
+                                        OAuthToken.provider == provider,
+                                        OAuthToken.is_active == True  # noqa: E712
+                                    )
+                                )
+                            )
+                            oauth_tokens[provider] = token_result.scalar_one_or_none()
+
+                        token = oauth_tokens.get(provider)
+                        if not token or not token.access_token:
+                            logger.warning(f"No OAuth token for {provider}")
+                            continue
+
+                        # Fetch live email content
+                        email_content = await fetch_live_email_content(
+                            provider=provider,
+                            email_id=email_id,
+                            access_token=token.access_token
+                        )
+
+                        if email_content:
+                            # Format email for context
+                            email_str = f"""Subject: {email_content.get('subject', 'No Subject')}
+From: {email_content.get('from', 'Unknown')}
+To: {email_content.get('to', '')}
+Date: {email_content.get('date', '')}
+
+{email_content.get('body', '')[:MAX_CHARS_PER_ENTRY]}"""
+
+                            context_entry = f"""
+--- Selected Email (from {provider} - {category}) ---
+{email_str}
+"""
+                            context_parts.append(context_entry.strip())
+                            rag_sources.append(item_id)
+                            total_chars += len(context_entry)
+                            context_used = True
+
                     else:
-                        data = decrypted
+                        # This is an indexed item (CID) - retrieve from Pinata
+                        encrypted = await filecoin_service.retrieve_data(item_id)
+                        decrypted = await encryption_service.decrypt_with_wallet(
+                            encrypted_data=encrypted,
+                            customer_wallet=request.wallet_address
+                        )
 
-                    # Extract metadata
-                    integration = data.get("integration", "unknown")
-                    data_type = data.get("data_type", "unknown")
+                        if isinstance(decrypted, str):
+                            data = json.loads(decrypted)
+                        else:
+                            data = decrypted
 
-                    # Truncate data if too large
-                    data_str = json.dumps(data, indent=2, default=str)
-                    if len(data_str) > MAX_CHARS_PER_ENTRY:
-                        data_str = data_str[:MAX_CHARS_PER_ENTRY] + "\n... [truncated]"
+                        # Extract metadata
+                        integration = data.get("integration", "unknown")
+                        data_type = data.get("data_type", "unknown")
 
-                    context_entry = f"""
+                        # Truncate data if too large
+                        data_str = json.dumps(data, indent=2, default=str)
+                        if len(data_str) > MAX_CHARS_PER_ENTRY:
+                            data_str = data_str[:MAX_CHARS_PER_ENTRY] + "\n... [truncated]"
+
+                        context_entry = f"""
 --- Selected Context {idx} (from {integration} - {data_type}) ---
 {data_str}
 """
-                    context_parts.append(context_entry.strip())
-                    rag_sources.append(cid)
-                    total_chars += len(context_entry)
-                    context_used = True
+                        context_parts.append(context_entry.strip())
+                        rag_sources.append(item_id)
+                        total_chars += len(context_entry)
+                        context_used = True
 
                 except Exception as e:
-                    logger.warning(f"Failed to fetch selected context {cid}: {e}")
+                    logger.warning(f"Failed to fetch selected context {item_id}: {e}")
 
             rag_context = "\n\n".join(context_parts)
 
