@@ -130,6 +130,7 @@ class GeneralChatRequest(BaseModel):
     conversation_id: Optional[str] = None
     temperature: float = 0.7
     max_tokens: int = 2048
+    selected_context_ids: Optional[List[str]] = None  # CIDs of selected context items
 
 
 class GeneralChatResponse(BaseModel):
@@ -139,6 +140,8 @@ class GeneralChatResponse(BaseModel):
     mode: str = "general"
     provider: str
     model: str
+    rag_sources: List[str] = []  # CIDs of data used as context
+    context_used: bool = False  # Whether business data was used
     metadata: Dict[str, Any]
 
 
@@ -762,29 +765,349 @@ async def rag_health_check():
         }
 
 
+@router.get("/debug/pipeline")
+async def debug_data_pipeline(
+    wallet_address: str = Query(..., description="User's wallet address")
+):
+    """
+    Debug endpoint to verify the entire data pipeline for a user.
+
+    This endpoint is critical for troubleshooting why the AI Assistant
+    might not be returning business-specific answers. It checks:
+
+    1. Files stored in Pinata (Filecoin/IPFS)
+    2. Documents indexed in Qdrant (RAG)
+    3. Data availability per integration
+
+    Use this when:
+    - AI responses seem generic (not using business data)
+    - User reports their data isn't showing up
+    - After sync to verify data was properly indexed
+
+    Args:
+        wallet_address: User's wallet address
+
+    Returns:
+        Comprehensive pipeline status including files, collections, and sample data
+    """
+    result = {
+        "wallet_address": wallet_address,
+        "timestamp": datetime.now().isoformat(),
+        "pinata": {
+            "status": "unknown",
+            "files": [],
+            "file_count": 0,
+            "integrations": []
+        },
+        "qdrant": {
+            "status": "unknown",
+            "collection_exists": False,
+            "document_count": 0,
+            "sample_query_results": 0
+        },
+        "summary": {
+            "data_available": False,
+            "issues": [],
+            "recommendations": []
+        }
+    }
+
+    # Check Pinata files
+    try:
+        files = await filecoin_service.list_customer_files(
+            customer_wallet=wallet_address,
+            limit=50
+        )
+        integrations_found = set()
+
+        file_list = []
+        for f in files:
+            metadata = f.get("metadata", {})
+            integration = metadata.get("integration", "unknown")
+            data_type = metadata.get("data_type", "unknown")
+            integrations_found.add(integration)
+
+            file_list.append({
+                "cid": f.get("cid"),
+                "integration": integration,
+                "data_type": data_type,
+                "timestamp": f.get("timestamp"),
+                "size": f.get("size")
+            })
+
+        result["pinata"]["status"] = "healthy"
+        result["pinata"]["files"] = file_list[:20]  # Limit to 20 for response size
+        result["pinata"]["file_count"] = len(files)
+        result["pinata"]["integrations"] = list(integrations_found)
+
+        if len(files) == 0:
+            result["summary"]["issues"].append("No files found in Pinata for this wallet")
+            result["summary"]["recommendations"].append(
+                "Connect an integration and sync data from the Marketplace page"
+            )
+
+    except Exception as e:
+        result["pinata"]["status"] = "error"
+        result["pinata"]["error"] = str(e)
+        result["summary"]["issues"].append(f"Pinata query failed: {str(e)}")
+
+    # Check Qdrant collection
+    if rag_service is not None:
+        try:
+            stats = await rag_service.get_collection_stats(wallet_address)
+            result["qdrant"]["status"] = "healthy"
+            result["qdrant"]["collection_exists"] = stats.get("exists", False)
+            result["qdrant"]["document_count"] = stats.get("count", 0)
+
+            if stats.get("exists"):
+                # Try a sample query to verify RAG is working
+                sample_results = await rag_service.query_business_rag(
+                    business_wallet=wallet_address,
+                    query="summary of my business data",
+                    limit=3
+                )
+                result["qdrant"]["sample_query_results"] = len(sample_results)
+
+                if len(sample_results) == 0:
+                    result["summary"]["issues"].append(
+                        "Qdrant collection exists but sample query returned no results"
+                    )
+            else:
+                result["summary"]["issues"].append(
+                    "No Qdrant collection found for this wallet"
+                )
+                result["summary"]["recommendations"].append(
+                    "Sync your connected integrations to index data for AI queries"
+                )
+
+        except Exception as e:
+            result["qdrant"]["status"] = "error"
+            result["qdrant"]["error"] = str(e)
+            result["summary"]["issues"].append(f"Qdrant query failed: {str(e)}")
+    else:
+        result["qdrant"]["status"] = "disabled"
+        result["summary"]["issues"].append("RAG service not configured (Qdrant unavailable)")
+        result["summary"]["recommendations"].append(
+            "Configure QDRANT_URL and QDRANT_API_KEY in Railway"
+        )
+
+    # Determine overall data availability
+    pinata_ok = result["pinata"]["file_count"] > 0
+    qdrant_ok = result["qdrant"]["document_count"] > 0
+
+    result["summary"]["data_available"] = pinata_ok and qdrant_ok
+
+    if pinata_ok and not qdrant_ok:
+        result["summary"]["issues"].append(
+            "Data in Pinata but not indexed in Qdrant - RAG queries won't work"
+        )
+        result["summary"]["recommendations"].append(
+            "Re-sync your integrations to re-index data in Qdrant"
+        )
+
+    if not result["summary"]["issues"]:
+        result["summary"]["recommendations"].append(
+            "Pipeline looks healthy! AI Assistant should use your business data."
+        )
+
+    return result
+
+
+# ==================== Context Selection ====================
+
+class ContextItem(BaseModel):
+    """A selectable context item for AI queries"""
+    id: str  # Unique identifier (CID for indexed, API ID for live)
+    type: str  # Integration type (google, quickbooks, etc.)
+    category: str  # Data category (drive, gmail, invoices, etc.)
+    title: str  # Display title
+    description: Optional[str] = None  # Brief description
+    source: str = "indexed"  # "indexed" or "live"
+    metadata: Dict[str, Any] = {}
+
+
+class ContextItemsResponse(BaseModel):
+    """Response with available context items"""
+    items: List[ContextItem]
+    total: int
+    integrations: List[str]
+
+
+@router.get("/context/items", response_model=ContextItemsResponse)
+async def get_context_items(
+    wallet_address: str = Query(..., description="User's wallet address"),
+    integration: Optional[str] = Query(None, description="Filter by integration"),
+    category: Optional[str] = Query(None, description="Filter by category (drive, gmail, invoices, etc.)"),
+    search: Optional[str] = Query(None, description="Search query to filter items"),
+    limit: int = Query(50, description="Maximum number of items to return")
+):
+    """
+    Get available context items for selection.
+
+    Like Cursor AI's context picker, this returns items the user can select
+    to include as context for their AI query.
+
+    Items are returned from:
+    1. Indexed data (Pinata/Qdrant) - Drive files, Contacts, Invoices, etc.
+    2. Live API (future) - Recent Gmail emails, Calendar events
+
+    Args:
+        wallet_address: User's wallet address
+        integration: Optional filter by integration (google, quickbooks, etc.)
+        category: Optional filter by category (drive, gmail, invoices, etc.)
+        search: Optional search query
+        limit: Maximum items to return
+
+    Returns:
+        List of selectable context items grouped by integration
+    """
+    items: List[ContextItem] = []
+    integrations_found: set = set()
+
+    # Get indexed items from Pinata
+    try:
+        files = await filecoin_service.list_customer_files(
+            customer_wallet=wallet_address,
+            integration=integration,
+            data_type=category,
+            limit=limit * 2  # Get more to allow for filtering
+        )
+
+        for f in files:
+            metadata = f.get("metadata", {})
+            file_integration = metadata.get("integration", "unknown")
+            file_category = metadata.get("data_type", "unknown")
+            integrations_found.add(file_integration)
+
+            # Try to get a meaningful title
+            cid = f.get("cid", "")
+            title = f"{file_category.title()} data from {file_integration}"
+
+            # For Drive files, try to get better metadata
+            if file_category == "drive":
+                title = f"Google Drive files ({metadata.get('chunk_id', 'latest')})"
+            elif file_category == "contacts":
+                title = f"Google Contacts"
+            elif file_category == "invoices":
+                title = f"QuickBooks Invoices"
+            elif file_category == "customers":
+                title = f"QuickBooks Customers"
+            elif file_category == "expenses":
+                title = f"QuickBooks Expenses"
+
+            # Apply search filter if provided
+            if search:
+                search_lower = search.lower()
+                if search_lower not in title.lower() and search_lower not in file_category.lower():
+                    continue
+
+            items.append(ContextItem(
+                id=cid,
+                type=file_integration,
+                category=file_category,
+                title=title,
+                description=f"Last synced: {f.get('timestamp', 'unknown')}",
+                source="indexed",
+                metadata={
+                    "size": f.get("size"),
+                    "chunk_id": metadata.get("chunk_id"),
+                    "timestamp": f.get("timestamp")
+                }
+            ))
+
+            if len(items) >= limit:
+                break
+
+    except Exception as e:
+        logger.error(f"Failed to get indexed items: {e}")
+
+    # TODO: Add live items (Gmail, Calendar) via Google/Microsoft API
+    # This would require OAuth tokens and live API calls
+    # For MVP, we'll only include indexed items
+
+    return ContextItemsResponse(
+        items=items[:limit],
+        total=len(items),
+        integrations=list(integrations_found)
+    )
+
+
+@router.post("/context/fetch")
+async def fetch_context_by_ids(
+    wallet_address: str = Query(..., description="User's wallet address"),
+    item_ids: List[str] = Query(..., description="List of context item IDs to fetch")
+):
+    """
+    Fetch full content for selected context items.
+
+    Given a list of item IDs (CIDs), retrieve and decrypt the full content
+    to be used as AI context.
+
+    Args:
+        wallet_address: User's wallet address
+        item_ids: List of CIDs to fetch
+
+    Returns:
+        Full content for each item, ready for AI context
+    """
+    context_data = []
+
+    for cid in item_ids:
+        try:
+            # Retrieve and decrypt from Pinata
+            encrypted = await filecoin_service.retrieve_data(cid)
+            decrypted = await encryption_service.decrypt_with_wallet(
+                encrypted_data=encrypted,
+                customer_wallet=wallet_address
+            )
+
+            if isinstance(decrypted, str):
+                data = json.loads(decrypted)
+            else:
+                data = decrypted
+
+            context_data.append({
+                "id": cid,
+                "data": data,
+                "success": True
+            })
+        except Exception as e:
+            logger.warning(f"Failed to fetch context for {cid}: {e}")
+            context_data.append({
+                "id": cid,
+                "data": None,
+                "success": False,
+                "error": str(e)
+            })
+
+    return {
+        "items": context_data,
+        "fetched": len([c for c in context_data if c["success"]]),
+        "failed": len([c for c in context_data if not c["success"]])
+    }
+
+
 # ==================== General LLM Chat (Works Without Integrations) ====================
 
 @router.post("/chat/general", response_model=GeneralChatResponse)
 async def general_chat(request: GeneralChatRequest, db: AsyncSession = Depends(get_db)):
     """
-    General LLM chat that works WITHOUT any software integrations
+    Smart LLM chat that automatically uses business data when available
 
-    This endpoint provides a general-purpose AI assistant that can help with:
-    - Business questions and advice
-    - Writing and editing documents
-    - Analysis and problem-solving
-    - Research and information synthesis
-    - Planning and strategy discussions
+    This endpoint provides an AI assistant that:
+    - Uses RAG context from connected integrations when available
+    - Falls back to general LLM mode when no integrations are connected
+    - Personalizes responses based on industry and company profile
 
-    No data from integrations is used - this is pure LLM capability.
-    Industry context from user settings is used to personalize responses.
+    The AI automatically includes relevant business data context without
+    the user needing to switch modes.
 
     Args:
         request: Chat request with message
         db: Database session for fetching user context
 
     Returns:
-        AI-generated response with industry-specific expertise
+        AI-generated response with business context when available
     """
     try:
         logger.info(
@@ -797,12 +1120,122 @@ async def general_chat(request: GeneralChatRequest, db: AsyncSession = Depends(g
         industry = user_context.get("industry")
         company_name = user_context.get("company_name")
 
+        # Get RAG context - either from selected items or auto-query
+        rag_context = ""
+        rag_sources = []
+        context_used = False
+
+        # Context building settings
+        MAX_CHARS_PER_ENTRY = 2000
+        MAX_TOTAL_CHARS = 15000
+
+        # Check if user selected specific context items
+        if request.selected_context_ids and len(request.selected_context_ids) > 0:
+            # User selected specific items - fetch those directly from Pinata
+            logger.info(
+                f"Using {len(request.selected_context_ids)} selected context items "
+                f"for {request.wallet_address[:10]}..."
+            )
+
+            context_parts = []
+            total_chars = 0
+
+            for idx, cid in enumerate(request.selected_context_ids, 1):
+                if total_chars >= MAX_TOTAL_CHARS:
+                    logger.info(f"Selected context limit reached at {total_chars} chars")
+                    break
+
+                try:
+                    # Retrieve and decrypt from Pinata
+                    encrypted = await filecoin_service.retrieve_data(cid)
+                    decrypted = await encryption_service.decrypt_with_wallet(
+                        encrypted_data=encrypted,
+                        customer_wallet=request.wallet_address
+                    )
+
+                    if isinstance(decrypted, str):
+                        data = json.loads(decrypted)
+                    else:
+                        data = decrypted
+
+                    # Extract metadata
+                    integration = data.get("integration", "unknown")
+                    data_type = data.get("data_type", "unknown")
+
+                    # Truncate data if too large
+                    data_str = json.dumps(data, indent=2, default=str)
+                    if len(data_str) > MAX_CHARS_PER_ENTRY:
+                        data_str = data_str[:MAX_CHARS_PER_ENTRY] + "\n... [truncated]"
+
+                    context_entry = f"""
+--- Selected Context {idx} (from {integration} - {data_type}) ---
+{data_str}
+"""
+                    context_parts.append(context_entry.strip())
+                    rag_sources.append(cid)
+                    total_chars += len(context_entry)
+                    context_used = True
+
+                except Exception as e:
+                    logger.warning(f"Failed to fetch selected context {cid}: {e}")
+
+            rag_context = "\n\n".join(context_parts)
+
+        elif rag_service is not None:
+            # Auto-query Qdrant for relevant business data
+            try:
+                rag_results = await rag_service.query_business_rag(
+                    business_wallet=request.wallet_address,
+                    query=request.message,
+                    limit=5  # Get top 5 relevant documents
+                )
+
+                if rag_results:
+                    context_used = True
+                    context_parts = []
+                    total_chars = 0
+
+                    for idx, result in enumerate(rag_results, 1):
+                        if total_chars >= MAX_TOTAL_CHARS:
+                            logger.info(f"RAG context limit reached at {total_chars} chars")
+                            break
+
+                        data = result.get("data", {})
+                        cid = result.get("cid", "")
+                        integration = result.get("integration", "unknown")
+                        data_type = result.get("data_type", "unknown")
+
+                        # Truncate data if too large
+                        data_str = json.dumps(data, indent=2, default=str)
+                        if len(data_str) > MAX_CHARS_PER_ENTRY:
+                            data_str = data_str[:MAX_CHARS_PER_ENTRY] + "\n... [truncated]"
+
+                        context_entry = f"""
+--- Business Data Source {idx} (from {integration} - {data_type}) ---
+{data_str}
+"""
+                        context_parts.append(context_entry.strip())
+                        if cid:
+                            rag_sources.append(cid)
+                        total_chars += len(context_entry)
+
+                    rag_context = "\n\n".join(context_parts)
+                    logger.info(
+                        f"RAG context built for {request.wallet_address[:10]}...: "
+                        f"{len(rag_results)} sources, {total_chars} chars"
+                    )
+
+            except Exception as e:
+                logger.warning(f"RAG query failed, continuing without context: {e}")
+                # Continue without RAG context - don't fail the request
+
         provider = get_llm_provider()
 
         if provider == "together" and os.getenv("TOGETHER_API_KEY"):
-            # Use Together.ai with industry context
+            # Use Together.ai with industry context AND RAG context
             response = await together_service.query(
                 prompt=request.message,
+                context=rag_context,  # NEW: Pass RAG context
                 temperature=request.temperature,
                 max_tokens=request.max_tokens,
                 industry=industry,
@@ -819,16 +1252,23 @@ async def general_chat(request: GeneralChatRequest, db: AsyncSession = Depends(g
             model_used = os.getenv("OLLAMA_MODEL", "mistral")
             provider = "ollama"
 
+        # Determine actual mode based on context usage
+        actual_mode = "rag" if context_used else "general"
+
         return GeneralChatResponse(
             response=response,
             conversation_id=request.conversation_id or f"general-{datetime.now().timestamp()}",
-            mode="general",
+            mode=actual_mode,
             provider=provider,
             model=model_used,
+            rag_sources=rag_sources,
+            context_used=context_used,
             metadata={
                 "wallet_address": request.wallet_address,
                 "temperature": request.temperature,
                 "max_tokens": request.max_tokens,
+                "sources_count": len(rag_sources),
+                "context_chars": len(rag_context),
                 "timestamp": datetime.now().isoformat()
             }
         )

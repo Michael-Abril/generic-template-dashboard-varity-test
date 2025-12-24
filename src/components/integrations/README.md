@@ -67,12 +67,12 @@ The `params.integration` value determines which native UI to render:
 
 | URL Parameter | Integration Page |
 |---------------|------------------|
-| `quickbooks` | QuickBooks Online |
-| `salesforce` | Salesforce CRM |
-| `hubspot` | HubSpot CRM |
+| `quickbooks`  | QuickBooks Online|
+| `salesforce`  | Salesforce CRM   |
+| `hubspot`     | HubSpot CRM |
 | `google` or `google_workspace` | Google Workspace |
 | `microsoft` or `microsoft365` | Microsoft 365 |
-| `slack` | Slack |
+| `slack`       | Slack |
 
 ### Data Flow
 

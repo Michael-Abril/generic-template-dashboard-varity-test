@@ -12,6 +12,7 @@ import {
   RefreshCw, Square, RotateCcw, Pencil
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
+import { ContextPicker } from './ai/ContextPicker';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 
@@ -60,6 +61,7 @@ interface Message {
   sources?: string[];
   rag_sources?: string[];
   web_sources?: Array<{ title: string; url: string }>;
+  context_used?: boolean;  // Whether business data was used in this response
   timestamp: Date;
 }
 
@@ -124,6 +126,19 @@ export function AIChat() {
   const [showIntegrationFilter, setShowIntegrationFilter] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // RAG status state - shows if business data is available
+  const [ragStatus, setRagStatus] = useState<{
+    dataAvailable: boolean;
+    documentCount: number;
+    integrations: string[];
+    loading: boolean;
+  }>({
+    dataAvailable: false,
+    documentCount: 0,
+    integrations: [],
+    loading: true
+  });
+
   // Action panel state (for sending emails, creating documents)
   const [showActionPanel, setShowActionPanel] = useState(false);
   const [actionType, setActionType] = useState<ActionType>('email');
@@ -144,6 +159,10 @@ export function AIChat() {
   const [editedContent, setEditedContent] = useState('');
   const [hoveredMessageIdx, setHoveredMessageIdx] = useState<number | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Context picker state (like Cursor AI - select specific files/emails for context)
+  const [showContextPicker, setShowContextPicker] = useState(false);
+  const [selectedContextIds, setSelectedContextIds] = useState<string[]>([]);
 
   // Scroll to bottom on new messages
   useEffect(() => {
@@ -168,6 +187,32 @@ export function AIChat() {
       .catch(error => {
         logger.error('Failed to fetch installed tools:', error);
         setInstalledTools([]);
+      });
+  }, [address]);
+
+  // Fetch RAG/pipeline status to show data availability
+  useEffect(() => {
+    if (!address) {
+      setRagStatus(prev => ({ ...prev, loading: false }));
+      return;
+    }
+
+    fetch(`${API_BASE_URL}/api/v1/ai/debug/pipeline?wallet_address=${encodeURIComponent(address)}`)
+      .then(res => {
+        if (!res.ok) throw new Error(`Failed to fetch pipeline status: ${res.status}`);
+        return res.json();
+      })
+      .then(data => {
+        setRagStatus({
+          dataAvailable: data.summary?.data_available || false,
+          documentCount: data.qdrant?.document_count || 0,
+          integrations: data.pinata?.integrations || [],
+          loading: false
+        });
+      })
+      .catch(error => {
+        logger.error('Failed to fetch RAG status:', error);
+        setRagStatus(prev => ({ ...prev, loading: false }));
       });
   }, [address]);
 
@@ -835,6 +880,7 @@ export function AIChat() {
         rag_sources?: string[];
         web_sources?: Array<{ title: string; url: string }>;
         sources?: string[];
+        context_used?: boolean;
       };
 
       // Prepare integration filter (only include if not 'all')
@@ -851,6 +897,7 @@ export function AIChat() {
             message: messageContent,
             wallet_address: address,
             integration: integrationFilter, // Filter to specific integration
+            selected_context_ids: selectedContextIds.length > 0 ? selectedContextIds : undefined, // Selected context items
             temperature: 0.7,
             max_tokens: 2048
           }),
@@ -932,6 +979,7 @@ export function AIChat() {
         sources: sourceNames,
         rag_sources: responseData.rag_sources || [],
         web_sources: responseData.web_sources || [],
+        context_used: responseData.context_used || ((responseData.rag_sources?.length ?? 0) > 0),
         timestamp: new Date()
       };
 
@@ -1333,6 +1381,29 @@ export function AIChat() {
                 <Shield className="w-3.5 h-3.5 text-green-300" />
                 <span className="text-xs text-white/90">On-Chain Secure</span>
               </div>
+
+              {/* Data Status Indicator */}
+              {!ragStatus.loading && (
+                <div
+                  className={`hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full ${
+                    ragStatus.dataAvailable
+                      ? 'bg-green-500/20 text-green-100'
+                      : 'bg-yellow-500/20 text-yellow-100'
+                  }`}
+                  title={
+                    ragStatus.dataAvailable
+                      ? `${ragStatus.documentCount} documents indexed from ${ragStatus.integrations.join(', ')}`
+                      : 'Sync your integrations to enable AI access to your business data'
+                  }
+                >
+                  <Database className="w-3.5 h-3.5" />
+                  <span className="text-xs">
+                    {ragStatus.dataAvailable
+                      ? `${ragStatus.documentCount} docs indexed`
+                      : 'No data synced'}
+                  </span>
+                </div>
+              )}
 
               {/* Actions Button - Send Email, Create Doc */}
               {(isProviderConnected('google') || isProviderConnected('microsoft')) && (
@@ -1809,6 +1880,12 @@ export function AIChat() {
                           <Bot className="w-4 h-4 text-white" />
                         </div>
                         <span className="text-sm font-semibold text-gray-800">Varity AI</span>
+                        {msg.context_used && (
+                          <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full flex items-center gap-1">
+                            <Database className="w-3 h-3" />
+                            Using your data
+                          </span>
+                        )}
                       </div>
                     )}
                     <div className={`prose prose-sm max-w-none leading-relaxed ${msg.role === 'user' ? 'prose-invert' : ''}`}>
@@ -2231,10 +2308,31 @@ export function AIChat() {
               </div>
             )}
 
+            {/* Context Picker Toggle (like Cursor AI) */}
+            {aiMode !== 'document' && ragStatus.dataAvailable && (
+              <button
+                onClick={() => setShowContextPicker(!showContextPicker)}
+                className={`flex items-center gap-2 text-xs px-3 py-1.5 rounded-lg transition-colors ${
+                  selectedContextIds.length > 0
+                    ? 'bg-purple-100 text-purple-700 hover:bg-purple-200'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+              >
+                <Database className="w-3.5 h-3.5" />
+                <span>
+                  {selectedContextIds.length > 0
+                    ? `${selectedContextIds.length} Selected`
+                    : 'Select Context'}
+                </span>
+              </button>
+            )}
+
             {/* Mode description */}
             <span className="text-xs text-gray-500">
               {aiMode === 'standard' && (
-                selectedIntegration !== 'all'
+                selectedContextIds.length > 0
+                  ? `Using ${selectedContextIds.length} selected item${selectedContextIds.length > 1 ? 's' : ''}`
+                  : selectedIntegration !== 'all'
                   ? `Querying ${selectedIntegration} data only`
                   : 'Quick answers from your connected integrations'
               )}
@@ -2251,6 +2349,19 @@ export function AIChat() {
               {aiMode === 'document' && 'Upload any document for AI analysis'}
             </span>
           </div>
+
+          {/* Context Picker Modal */}
+          {showContextPicker && address && (
+            <div className="mb-4">
+              <ContextPicker
+                walletAddress={address}
+                selectedIds={selectedContextIds}
+                onSelectionChange={setSelectedContextIds}
+                onClose={() => setShowContextPicker(false)}
+                maxSelections={10}
+              />
+            </div>
+          )}
 
           {/* Professional multi-line input area */}
           <div className="relative bg-white border border-gray-200 rounded-2xl shadow-sm focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-transparent transition-all">

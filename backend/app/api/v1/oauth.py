@@ -1118,3 +1118,72 @@ async def disconnect_oauth(
     except Exception as e:
         logger.error(f"Failed to disconnect OAuth: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/credentials/{integration}")
+async def get_integration_credentials(
+    integration: str,
+    wallet_address: str = Query(..., description="User's wallet address")
+):
+    """
+    Get non-sensitive OAuth metadata for an integration (like realm_id for QuickBooks).
+    This endpoint returns only safe metadata, not access/refresh tokens.
+
+    Args:
+        integration: Integration name (e.g., 'quickbooks')
+        wallet_address: User's wallet address
+
+    Returns:
+        Integration metadata like realm_id, company_id, etc.
+    """
+    try:
+        # List OAuth credentials for this integration
+        files = await filecoin_service.list_customer_files(
+            customer_wallet=wallet_address,
+            integration=integration,
+            data_type="oauth-credentials",
+            limit=1
+        )
+
+        if not files:
+            return {
+                "success": False,
+                "integration": integration,
+                "message": "No OAuth credentials found"
+            }
+
+        # Retrieve and decrypt the credentials
+        encrypted_data = await filecoin_service.retrieve_data(files[0]["cid"])
+        credentials = await encryption_service.decrypt_with_wallet(
+            encrypted_data=encrypted_data,
+            customer_wallet=wallet_address
+        )
+
+        # Return only safe metadata (never tokens!)
+        safe_metadata = {}
+
+        # QuickBooks: realm_id (company ID)
+        if integration == "quickbooks" and credentials.get("realm_id"):
+            safe_metadata["realm_id"] = credentials["realm_id"]
+
+        # Salesforce: instance_url
+        if integration == "salesforce" and credentials.get("instance_url"):
+            safe_metadata["instance_url"] = credentials["instance_url"]
+
+        # Shopify: shop domain
+        if integration == "shopify" and credentials.get("shop"):
+            safe_metadata["shop"] = credentials["shop"]
+
+        # HubSpot: portal_id
+        if integration == "hubspot" and credentials.get("hub_id"):
+            safe_metadata["hub_id"] = credentials["hub_id"]
+
+        return {
+            "success": True,
+            "integration": integration,
+            **safe_metadata
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to get integration credentials metadata: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
