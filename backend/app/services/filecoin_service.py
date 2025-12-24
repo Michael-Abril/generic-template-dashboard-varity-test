@@ -92,7 +92,9 @@ class FilecoinService:
                 timestamp
             )
 
-        # Prepare pinning data with enhanced metadata
+        # Prepare pinning data with minimal metadata (Pinata has 10 key limit)
+        # Essential keys only: wallet, integration, data_type, timestamp + chunk info
+        # Removed: "encrypted" (always true), "layer" (always customer-data)
         pin_data = {
             "pinataContent": encrypted_data,
             "pinataMetadata": {
@@ -101,9 +103,7 @@ class FilecoinService:
                     "customer_wallet": normalized_wallet,
                     "integration": integration,
                     "data_type": data_type,
-                    "timestamp": timestamp,
-                    "encrypted": "true",
-                    "layer": "customer-data"
+                    "timestamp": timestamp
                 }
             }
         }
@@ -118,8 +118,13 @@ class FilecoinService:
         if record_count is not None:
             pin_data["pinataMetadata"]["keyvalues"]["record_count"] = str(record_count)
 
-        # Add custom metadata if provided
+        # Add custom metadata if provided (max 10 keys total in Pinata)
         if metadata:
+            current_count = len(pin_data["pinataMetadata"]["keyvalues"])
+            max_custom = 10 - current_count
+            if len(metadata) > max_custom:
+                logger.warning(f"Custom metadata truncated: {len(metadata)} keys > {max_custom} available")
+                metadata = dict(list(metadata.items())[:max_custom])
             pin_data["pinataMetadata"]["keyvalues"].update(metadata)
 
         # Pin to IPFS via Pinata
