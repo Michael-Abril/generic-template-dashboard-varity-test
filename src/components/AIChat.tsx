@@ -2019,6 +2019,38 @@ export function AIChat() {
                             <RotateCcw className="w-3.5 h-3.5" />
                           </button>
                         )}
+
+                        {/* Quick Actions - Send as Email */}
+                        {(isProviderConnected('google') || isProviderConnected('microsoft')) && (
+                          <button
+                            onClick={() => {
+                              setActionType('email');
+                              setEmailBody(msg.content);
+                              setEmailSubject('AI Assistant Response');
+                              setShowActionPanel(true);
+                            }}
+                            className="p-1.5 rounded-lg hover:bg-blue-100 text-gray-400 hover:text-blue-600 transition-colors"
+                            title="Send as email"
+                          >
+                            <Mail className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+
+                        {/* Quick Actions - Save as Document */}
+                        {(isProviderConnected('google') || isProviderConnected('microsoft')) && (
+                          <button
+                            onClick={() => {
+                              setActionType('document');
+                              setDocContent(msg.content);
+                              setDocTitle(`AI Response - ${new Date().toLocaleDateString()}`);
+                              setShowActionPanel(true);
+                            }}
+                            className="p-1.5 rounded-lg hover:bg-green-100 text-gray-400 hover:text-green-600 transition-colors"
+                            title="Save as document"
+                          >
+                            <FilePlus className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                       </>
                     )}
 
