@@ -15,6 +15,10 @@ import ReactMarkdown from 'react-markdown';
 import { ContextPicker } from './ai/ContextPicker';
 import { SuggestedPrompts } from './ai/SuggestedPrompts';
 import { CodeBlock } from './ai/CodeBlock';
+import { ProjectSidebar } from './ai/ProjectSidebar';
+import { ProjectEditor } from './ai/ProjectEditor';
+import { ProjectHeader } from './ai/ProjectHeader';
+import { Project, ProjectFile } from '@/types/project';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 
@@ -166,6 +170,14 @@ export function AIChat() {
   const [showContextPicker, setShowContextPicker] = useState(false);
   const [selectedContextIds, setSelectedContextIds] = useState<string[]>([]);
 
+  // Project state (like Claude Projects - organize conversations with custom instructions)
+  const [currentProjectId, setCurrentProjectId] = useState<number | null>(null);
+  const [currentProject, setCurrentProject] = useState<Project | null>(null);
+  const [projectFiles, setProjectFiles] = useState<ProjectFile[]>([]);
+  const [showProjectEditor, setShowProjectEditor] = useState(false);
+  const [editingProject, setEditingProject] = useState<Project | null>(null);
+  const [projectSidebarRefresh, setProjectSidebarRefresh] = useState(0);
+
   // Scroll to bottom on new messages
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -217,6 +229,32 @@ export function AIChat() {
         setRagStatus(prev => ({ ...prev, loading: false }));
       });
   }, [address]);
+
+  // Fetch project details when currentProjectId changes
+  useEffect(() => {
+    if (!currentProjectId || !address) {
+      setCurrentProject(null);
+      setProjectFiles([]);
+      return;
+    }
+
+    const fetchProject = async () => {
+      try {
+        const response = await fetch(
+          `${API_BASE_URL}/api/v1/projects/${currentProjectId}?wallet_address=${address}`
+        );
+        if (response.ok) {
+          const data = await response.json();
+          setCurrentProject(data);
+          setProjectFiles(data.files || []);
+        }
+      } catch (error) {
+        logger.error('Failed to fetch project:', error);
+      }
+    };
+
+    fetchProject();
+  }, [currentProjectId, address]);
 
   // Load conversations for the wallet
   const loadConversations = useCallback(async () => {
@@ -275,7 +313,7 @@ export function AIChat() {
   };
 
   // Create a new conversation
-  const createNewConversation = async (initialTitle?: string) => {
+  const createNewConversation = async (initialTitle?: string, projectId?: number | null) => {
     if (!address) return null;
 
     try {
@@ -284,7 +322,8 @@ export function AIChat() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           wallet_address: address,
-          title: initialTitle || 'New Conversation'
+          title: initialTitle || 'New Conversation',
+          project_id: projectId || currentProjectId || null
         })
       });
       if (!response.ok) throw new Error('Failed to create conversation');
@@ -900,6 +939,7 @@ export function AIChat() {
             wallet_address: address,
             integration: integrationFilter, // Filter to specific integration
             selected_context_ids: selectedContextIds.length > 0 ? selectedContextIds : undefined, // Selected context items
+            project_id: currentProjectId || undefined, // Include project context
             temperature: 0.7,
             max_tokens: 2048
           }),
@@ -1018,7 +1058,60 @@ export function AIChat() {
   };
 
   // Start new chat
-  const startNewChat = () => {
+  const startNewChat = (projectId?: number | null) => {
+    setCurrentConversationId(null);
+    setMessages([]);
+    // If projectId is explicitly passed, use it; otherwise keep current project
+    if (projectId !== undefined) {
+      setCurrentProjectId(projectId);
+    }
+  };
+
+  // Project handlers
+  const handleSelectProject = (projectId: number | null) => {
+    setCurrentProjectId(projectId);
+    setCurrentConversationId(null);
+    setMessages([]);
+  };
+
+  const handleSelectConversation = (conversationId: number | null, projectId: number | null) => {
+    setCurrentProjectId(projectId);
+    if (conversationId) {
+      loadConversation(conversationId);
+    } else {
+      setCurrentConversationId(null);
+      setMessages([]);
+    }
+  };
+
+  const handleEditProject = (project: Project) => {
+    setEditingProject(project);
+    setShowProjectEditor(true);
+  };
+
+  const handleNewProject = () => {
+    setEditingProject(null);
+    setShowProjectEditor(true);
+  };
+
+  const handleProjectSaved = (project: Project) => {
+    setProjectSidebarRefresh(prev => prev + 1);
+    if (editingProject) {
+      // If editing current project, update it
+      if (currentProjectId === project.id) {
+        setCurrentProject(project);
+      }
+    } else {
+      // New project - select it
+      setCurrentProjectId(project.id);
+      setCurrentProject(project);
+    }
+  };
+
+  const handleCloseProject = () => {
+    setCurrentProjectId(null);
+    setCurrentProject(null);
+    setProjectFiles([]);
     setCurrentConversationId(null);
     setMessages([]);
   };
@@ -1176,157 +1269,31 @@ export function AIChat() {
 
   return (
     <div className="flex h-full border border-gray-200 rounded-xl overflow-hidden bg-white shadow-sm">
-      {/* Sidebar - Conversation History */}
+      {/* Project Editor Modal */}
+      <ProjectEditor
+        isOpen={showProjectEditor}
+        onClose={() => {
+          setShowProjectEditor(false);
+          setEditingProject(null);
+        }}
+        walletAddress={address}
+        project={editingProject}
+        onSave={handleProjectSaved}
+      />
+
+      {/* Sidebar - Projects + Conversations */}
       {showSidebar && (
-        <div className="w-64 bg-gray-50 border-r border-gray-200 flex flex-col">
-          {/* Sidebar Header */}
-          <div className="p-3 border-b border-gray-200">
-            <button
-              onClick={startNewChat}
-              className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg hover:shadow-lg transition-all text-sm font-medium"
-            >
-              <Plus className="w-4 h-4" />
-              New Chat
-            </button>
-          </div>
-
-          {/* Conversation List */}
-          <div className="flex-1 overflow-y-auto">
-            {loadingConversations ? (
-              <div className="p-4 text-center text-gray-500 text-sm">Loading...</div>
-            ) : conversations.length === 0 ? (
-              <div className="p-4 text-center text-gray-500 text-sm">No conversations yet</div>
-            ) : (
-              <div className="py-2">
-                {conversations.map(conv => (
-                  <div
-                    key={conv.id}
-                    className={`group relative mx-2 mb-1 rounded-lg cursor-pointer transition-colors ${
-                      currentConversationId === conv.id
-                        ? 'bg-blue-100 border border-blue-200'
-                        : 'hover:bg-gray-100'
-                    }`}
-                  >
-                    <div
-                      className="p-3"
-                      onClick={() => loadConversation(conv.id)}
-                    >
-                      {editingTitle === conv.id ? (
-                        <div className="flex items-center gap-1">
-                          <input
-                            type="text"
-                            value={newTitle}
-                            onChange={(e) => setNewTitle(e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') renameConversation(conv.id, newTitle);
-                              if (e.key === 'Escape') setEditingTitle(null);
-                            }}
-                            className="flex-1 px-2 py-1 text-sm border rounded text-gray-900 bg-white"
-                            autoFocus
-                            onClick={(e) => e.stopPropagation()}
-                          />
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              renameConversation(conv.id, newTitle);
-                            }}
-                            className="p-1 text-green-600 hover:bg-green-100 rounded"
-                          >
-                            <Check className="w-3 h-3" />
-                          </button>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setEditingTitle(null);
-                            }}
-                            className="p-1 text-gray-600 hover:bg-gray-200 rounded"
-                          >
-                            <X className="w-3 h-3" />
-                          </button>
-                        </div>
-                      ) : (
-                        <>
-                          <div className="flex items-center gap-2">
-                            {conv.is_pinned && <Pin className="w-3 h-3 text-blue-600" />}
-                            <span className="text-sm font-medium text-gray-900 truncate flex-1">
-                              {conv.title}
-                            </span>
-                          </div>
-                          <div className="text-xs text-gray-500 mt-1">
-                            {conv.message_count} messages
-                          </div>
-                        </>
-                      )}
-                    </div>
-
-                    {/* Actions Menu */}
-                    <div className="absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setMenuOpenId(menuOpenId === conv.id ? null : conv.id);
-                        }}
-                        className="p-1 hover:bg-gray-200 rounded"
-                      >
-                        <MoreVertical className="w-4 h-4 text-gray-500" />
-                      </button>
-
-                      {menuOpenId === conv.id && (
-                        <div className="absolute right-0 top-6 w-36 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-10">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setEditingTitle(conv.id);
-                              setNewTitle(conv.title);
-                              setMenuOpenId(null);
-                            }}
-                            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                          >
-                            <Edit2 className="w-4 h-4" /> Rename
-                          </button>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              togglePin(conv.id, conv.is_pinned);
-                              setMenuOpenId(null);
-                            }}
-                            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                          >
-                            {conv.is_pinned ? (
-                              <><PinOff className="w-4 h-4" /> Unpin</>
-                            ) : (
-                              <><Pin className="w-4 h-4" /> Pin</>
-                            )}
-                          </button>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              archiveConversation(conv.id);
-                              setMenuOpenId(null);
-                            }}
-                            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                          >
-                            <Archive className="w-4 h-4" /> Archive
-                          </button>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              deleteConversation(conv.id);
-                              setMenuOpenId(null);
-                            }}
-                            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50"
-                          >
-                            <Trash2 className="w-4 h-4" /> Delete
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
+        <ProjectSidebar
+          walletAddress={address}
+          currentConversationId={currentConversationId}
+          currentProjectId={currentProjectId}
+          onSelectConversation={handleSelectConversation}
+          onSelectProject={handleSelectProject}
+          onNewChat={startNewChat}
+          onEditProject={handleEditProject}
+          onNewProject={handleNewProject}
+          refreshTrigger={projectSidebarRefresh}
+        />
       )}
 
       {/* Main Chat Area */}
@@ -1478,6 +1445,16 @@ export function AIChat() {
               </button>
             </div>
           </div>
+        )}
+
+        {/* Project Header - Shows when a project is selected */}
+        {currentProject && (
+          <ProjectHeader
+            project={currentProject}
+            files={projectFiles}
+            onEdit={() => handleEditProject(currentProject)}
+            onClose={handleCloseProject}
+          />
         )}
 
         {/* Action Panel - Compose Email or Create Document */}

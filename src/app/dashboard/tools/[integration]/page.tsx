@@ -2403,8 +2403,11 @@ export default function IntegrationToolPage() {
 
     try {
       const apiBase = process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
+      // For integrations with chunked data (Google Drive has quarterly chunks),
+      // pass latest_only=false to get ALL chunks
+      const latestOnlyParam = integration === 'google' ? '&latest_only=false' : '';
       const res = await fetch(
-        `${apiBase}/api/v1/integrations/${integration}/data?wallet_address=${address}`
+        `${apiBase}/api/v1/integrations/${integration}/data?wallet_address=${address}${latestOnlyParam}`
       );
 
       if (!res.ok) {
@@ -2793,6 +2796,7 @@ export default function IntegrationToolPage() {
     // Transform data into format expected by GoogleWorkspacePage
     // Backend stores: { data_type: "gmail", data: { records: [...] } }
     // Frontend expects: { gmail: { messages: [...] } }
+    // NOTE: Drive data comes in multiple quarterly chunks, so we AGGREGATE them
     const dataTypeToPropertyMap: Record<string, string> = {
       'gmail': 'messages',
       'calendar': 'events',
@@ -2802,10 +2806,16 @@ export default function IntegrationToolPage() {
 
     const googleData = data.reduce((acc, item) => {
       const propertyName = dataTypeToPropertyMap[item.data_type] || 'records';
-      // Transform records array to expected property name
-      acc[item.data_type] = {
-        [propertyName]: item.data?.records || item.data?.[propertyName] || []
-      };
+      const newRecords = item.data?.records || item.data?.[propertyName] || [];
+
+      // AGGREGATE records when multiple chunks have the same data_type (e.g., Drive quarterly chunks)
+      if (acc[item.data_type] && acc[item.data_type][propertyName]) {
+        acc[item.data_type][propertyName] = [...acc[item.data_type][propertyName], ...newRecords];
+      } else {
+        acc[item.data_type] = {
+          [propertyName]: newRecords
+        };
+      }
       return acc;
     }, {} as Record<string, any>);
 
@@ -2827,6 +2837,7 @@ export default function IntegrationToolPage() {
     // Transform data into format expected by Microsoft365Page
     // Backend stores: { data_type: "mail", data: { records: [...] } }
     // Frontend expects: { mail: { messages: [...] } }
+    // NOTE: OneDrive data may come in multiple chunks, so we AGGREGATE them
     const msDataTypeToPropertyMap: Record<string, string> = {
       'mail': 'messages',
       'calendar': 'events',
@@ -2836,10 +2847,16 @@ export default function IntegrationToolPage() {
 
     const microsoftData = data.reduce((acc, item) => {
       const propertyName = msDataTypeToPropertyMap[item.data_type] || 'records';
-      // Transform records array to expected property name
-      acc[item.data_type] = {
-        [propertyName]: item.data?.records || item.data?.[propertyName] || []
-      };
+      const newRecords = item.data?.records || item.data?.[propertyName] || [];
+
+      // AGGREGATE records when multiple chunks have the same data_type
+      if (acc[item.data_type] && acc[item.data_type][propertyName]) {
+        acc[item.data_type][propertyName] = [...acc[item.data_type][propertyName], ...newRecords];
+      } else {
+        acc[item.data_type] = {
+          [propertyName]: newRecords
+        };
+      }
       return acc;
     }, {} as Record<string, any>);
 

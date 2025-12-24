@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   Calendar as CalendarIcon,
   ChevronLeft,
@@ -65,11 +65,25 @@ export function CalendarView({ walletAddress, data }: CalendarViewProps) {
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [loading, setLoading] = useState(false);
 
-  // Load events from data prop (already fetched by parent)
-  useEffect(() => {
-    if (data?.events) {
-      // Data is already synced from Google - use the data prop
-      const parsedEvents = data.events.map((event: any) => ({
+  // Fetch events from live Calendar API
+  const fetchEventsFromAPI = useCallback(async () => {
+    if (!walletAddress) return;
+
+    setLoading(true);
+    try {
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/integrations/google/events?wallet_address=${walletAddress}&max_results=100`
+      );
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch events: ${response.status}`);
+      }
+
+      const result = await response.json();
+      const eventsData = result.events || [];
+
+      // Parse events from API response
+      const parsedEvents = eventsData.map((event: any) => ({
         id: event.id || `event-${Math.random().toString(36).substr(2, 9)}`,
         summary: event.summary || '(No Title)',
         description: event.description || '',
@@ -80,19 +94,41 @@ export function CalendarView({ walletAddress, data }: CalendarViewProps) {
         status: event.status || 'confirmed',
         colorId: event.colorId
       }));
+
       setEvents(parsedEvents);
-      setLoading(false);
-    } else {
-      // No data synced yet
-      setEvents([]);
+    } catch (error) {
+      console.error('Failed to fetch events from API:', error);
+      // Fall back to data prop if API fails
+      if (data?.events) {
+        const parsedEvents = data.events.map((event: any) => ({
+          id: event.id || `event-${Math.random().toString(36).substr(2, 9)}`,
+          summary: event.summary || '(No Title)',
+          description: event.description || '',
+          start: event.start || new Date().toISOString(),
+          end: event.end || new Date().toISOString(),
+          location: event.location || '',
+          attendees: event.attendees || [],
+          status: event.status || 'confirmed',
+          colorId: event.colorId
+        }));
+        setEvents(parsedEvents);
+      } else {
+        setEvents([]);
+      }
+    } finally {
       setLoading(false);
     }
-  }, [data]);
+  }, [walletAddress, data]);
+
+  // Fetch events on mount and when wallet changes
+  useEffect(() => {
+    fetchEventsFromAPI();
+  }, [fetchEventsFromAPI]);
 
   const loadEvents = async () => {
-    // Refresh by calling parent's onRefresh if available
     setLoading(true);
-    setTimeout(() => setLoading(false), 500);
+    await fetchEventsFromAPI();
+    setLoading(false);
   };
 
   const handleDeleteEvent = async (eventId: string) => {

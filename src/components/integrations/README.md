@@ -1,7 +1,7 @@
 # Software Integration Pages - Comprehensive Guide
 
-**Last Updated:** December 23, 2025
-**Status:** MVP Launch Preparation
+**Last Updated:** December 24, 2025
+**Status:** MVP Launch - Priority Focus on Google, Microsoft, Slack
 **Live Site:** https://app.varity.so
 
 This folder contains the frontend UI components for each software integration in the Generic Template Dashboard. Each integration page displays data synced from external software (QuickBooks, Salesforce, HubSpot, Google Workspace, Microsoft 365, Slack) in a clean, professional interface.
@@ -97,6 +97,189 @@ The `params.integration` value determines which native UI to render:
 │                                                                      │
 └─────────────────────────────────────────────────────────────────────┘
 ```
+
+---
+
+## Data Pipeline Architecture
+
+### Universal Base Adapter Pattern
+
+All integration adapters inherit from `BaseDataAdapter` (`backend/app/adapters/base_adapter.py`) which provides:
+
+1. **Pagination** - Generic pagination handling for different API styles (cursor, offset, page)
+2. **Chunking** - Date-based grouping (monthly/quarterly/yearly) for efficient storage
+3. **RAG Configuration** - `RAG_ENABLED_TYPES` defines what gets indexed in Qdrant
+
+```python
+# Example: Google Adapter (backend/app/adapters/google/sync.py)
+class GoogleWorkspaceSync(BaseDataAdapter):
+    RAG_ENABLED_TYPES = ["drive", "contacts"]  # Only these go to Qdrant
+```
+
+### Hybrid Data Model (RAG Storage vs Live API)
+
+**CRITICAL:** Not all data is stored in Pinata/RAG. Some data types are fetched via live API calls.
+
+| Integration | RAG Storage (Pinata + Qdrant) | Live API Calls | Status |
+|-------------|------------------------------|----------------|--------|
+| **Google Workspace** | Drive files, Contacts | Gmail, Calendar | PRIORITY |
+| **Microsoft 365** | OneDrive files, Contacts | Mail, Calendar | PRIORITY |
+| **Slack** | Files | Channels, Messages, Users | PRIORITY |
+| **QuickBooks** | TBD - needs research | TBD | Later |
+| **Salesforce** | TBD - needs research | TBD | Later |
+| **HubSpot** | TBD - needs research | TBD | Later |
+
+### Why This Hybrid Approach?
+
+**RAG Storage (Pinata + Qdrant) is best for:**
+- Documents that need full-text search
+- Data that AI should "remember" and answer questions about
+- Files that don't change frequently
+- Data small enough to embed (<10K records per sync)
+
+**Live API Calls are best for:**
+- Frequently changing data (emails, calendar events)
+- Large volumes (thousands of emails)
+- Time-sensitive data (real-time inbox)
+- Metadata-heavy data with low RAG value
+
+### Data Flow Diagram (Detailed)
+
+```
+┌────────────────────────────────────────────────────────────────────────────┐
+│                            DATA PIPELINE                                   │
+├────────────────────────────────────────────────────────────────────────────┤
+│                                                                            │
+│  RAG STORAGE PATH (Drive, Contacts, OneDrive, Files)                       │
+│  ════════════════════════════════════════════════════                      │
+│                                                                            │
+│  1. Sync Trigger → 2. Fetch from API → 3. Transform → 4. Chunk by Date    │
+│                                           │                                │
+│                                           ▼                                │
+│  5. Encrypt (AES-256-GCM) → 6. Upload to Pinata → 7. Index in Qdrant      │
+│                                           │               │                │
+│                                           │               ▼                │
+│  8. Frontend calls GET /integrations/{provider}/data                       │
+│                     ↓                                                      │
+│  9. Backend retrieves from Pinata → 10. Decrypt → 11. Return JSON          │
+│                                                                            │
+│                                                                            │
+│  LIVE API PATH (Gmail, Calendar, Outlook Mail, Slack Messages)             │
+│  ══════════════════════════════════════════════════════════════            │
+│                                                                            │
+│  1. Frontend calls GET /integrations/google/emails (or /events)            │
+│                     ↓                                                      │
+│  2. Backend retrieves OAuth token from DB                                  │
+│                     ↓                                                      │
+│  3. Backend calls Gmail/Calendar/Outlook API directly                      │
+│                     ↓                                                      │
+│  4. Returns JSON (NOT stored in Pinata, NOT indexed in RAG)                │
+│                                                                            │
+└────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Backend Endpoints by Data Path
+
+**RAG Storage Path:**
+```
+POST /api/v1/integrations/{provider}/sync    → Triggers full sync to Pinata
+GET  /api/v1/integrations/{provider}/data    → Retrieves decrypted data from Pinata
+```
+
+**Live API Path (Google):**
+```
+GET  /api/v1/integrations/google/emails      → Live Gmail API call
+GET  /api/v1/integrations/google/events      → Live Calendar API call
+```
+
+**Live API Path (Microsoft):**
+```
+GET  /api/v1/integrations/microsoft/mail     → Live Outlook API call
+GET  /api/v1/integrations/microsoft/calendar → Live Calendar API call
+```
+
+**Live API Path (Slack):**
+```
+GET  /api/v1/slack/channels                  → Live Slack API call
+GET  /api/v1/slack/messages                  → Live Slack API call
+```
+
+### Frontend Implementation Pattern
+
+**For RAG-stored data (Drive, Contacts, OneDrive):**
+```tsx
+// Data comes from parent via props (fetched from Pinata)
+function DriveExplorer({ walletAddress, data }) {
+  // data?.files contains files from Pinata sync
+  const files = data?.files || [];
+  // Render files...
+}
+```
+
+**For Live API data (Gmail, Calendar, Outlook Mail):**
+```tsx
+// Data fetched directly via API call
+function GmailInbox({ walletAddress }) {
+  const [emails, setEmails] = useState([]);
+
+  useEffect(() => {
+    const fetchEmails = async () => {
+      const res = await fetch(
+        `${API_URL}/api/v1/integrations/google/emails?wallet_address=${walletAddress}&max_results=100`
+      );
+      const data = await res.json();
+      setEmails(data.emails || []);
+    };
+    fetchEmails();
+  }, [walletAddress]);
+
+  // Render emails...
+}
+```
+
+### Adapter RAG Configuration Reference
+
+Each adapter defines which data types get indexed in Qdrant via `RAG_ENABLED_TYPES`:
+
+```python
+# backend/app/adapters/google/sync.py
+class GoogleWorkspaceSync:
+    RAG_ENABLED_TYPES = ["drive", "contacts"]
+
+# backend/app/adapters/microsoft/sync.py
+class MicrosoftSync:
+    RAG_ENABLED_TYPES = ["onedrive", "contacts"]
+
+# backend/app/adapters/slack/sync.py
+class SlackSync:
+    RAG_ENABLED_TYPES = ["files"]
+
+# backend/app/adapters/quickbooks/sync.py (TBD - needs research)
+class QuickBooksDataAdapter:
+    RAG_ENABLED_TYPES = ["invoices", "expenses", "customers", "vendors", "payments"]
+
+# backend/app/adapters/salesforce/sync.py (TBD - needs research)
+class SalesforceSync:
+    RAG_ENABLED_TYPES = ["contacts", "opportunities", "accounts", "leads", "tasks"]
+
+# backend/app/adapters/hubspot/sync.py (TBD - needs research)
+class HubSpotSync:
+    RAG_ENABLED_TYPES = ["contacts", "deals", "companies", "emails", "tickets"]
+```
+
+### Key Files Reference
+
+| File | Purpose |
+|------|---------|
+| `backend/app/adapters/base_adapter.py` | Universal base class with pagination/chunking |
+| `backend/app/adapters/google/sync.py` | Google Workspace sync (reference implementation) |
+| `backend/app/api/v1/integrations.py` | Sync orchestration + RAG indexing logic |
+| `backend/app/api/v1/google.py` | Live API endpoints for Gmail/Calendar |
+| `backend/app/services/filecoin_service.py` | Pinata storage operations |
+| `backend/app/services/rag_service.py` | Qdrant vector indexing |
+| `backend/app/services/encryption_service.py` | AES-256-GCM encryption |
+
+---
 
 ### Component Architecture Pattern (MVP)
 

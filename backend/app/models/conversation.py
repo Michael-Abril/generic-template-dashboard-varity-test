@@ -41,6 +41,9 @@ class Conversation(Base):
     # Optional: link to specific integration context
     integration = Column(String, nullable=True)
 
+    # Optional: link to project
+    project_id = Column(Integer, ForeignKey("projects.id", ondelete="SET NULL"), nullable=True, index=True)
+
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
@@ -48,6 +51,7 @@ class Conversation(Base):
 
     # Relationships
     messages = relationship("Message", back_populates="conversation", cascade="all, delete-orphan", order_by="Message.created_at")
+    project = relationship("Project", back_populates="conversations")
 
     def __repr__(self):
         return f"<Conversation(id={self.id}, title='{self.title}', wallet={self.wallet_address[:10]}...)>"
@@ -120,6 +124,7 @@ class ConversationCreate(BaseModel):
     wallet_address: str
     title: Optional[str] = "New Conversation"
     integration: Optional[str] = None
+    project_id: Optional[int] = None
 
 
 class ConversationUpdate(BaseModel):
@@ -127,6 +132,7 @@ class ConversationUpdate(BaseModel):
     title: Optional[str] = None
     is_pinned: Optional[bool] = None
     is_archived: Optional[bool] = None
+    project_id: Optional[int] = None
 
 
 class ConversationResponse(BaseModel):
@@ -137,6 +143,7 @@ class ConversationResponse(BaseModel):
     is_pinned: bool
     is_archived: bool
     integration: Optional[str]
+    project_id: Optional[int]
     created_at: datetime
     updated_at: datetime
     last_message_at: Optional[datetime]

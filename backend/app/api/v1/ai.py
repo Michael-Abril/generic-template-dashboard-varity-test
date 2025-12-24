@@ -27,6 +27,7 @@ from app.core.database import get_db
 from app.core.config import settings
 from app.models.purchase import Purchase, OAuthToken
 from app.models.marketplace import Product
+from app.models.project import Project, ProjectFile
 import httpx
 
 from app.services.ai_query_service import ai_query_service
@@ -132,6 +133,7 @@ class GeneralChatRequest(BaseModel):
     temperature: float = 0.7
     max_tokens: int = 2048
     selected_context_ids: Optional[List[str]] = None  # CIDs of selected context items
+    project_id: Optional[int] = None  # Project ID for custom instructions and pinned files
 
 
 class GeneralChatResponse(BaseModel):
@@ -1602,6 +1604,74 @@ async def general_chat(request: GeneralChatRequest, db: AsyncSession = Depends(g
         industry = user_context.get("industry")
         company_name = user_context.get("company_name")
 
+        # Fetch project context if project_id is provided
+        project_instructions = ""
+        project_files_context = ""
+        project_name = None
+
+        if request.project_id:
+            try:
+                # Get project with files
+                project_result = await db.execute(
+                    select(Project)
+                    .where(
+                        and_(
+                            Project.id == request.project_id,
+                            Project.wallet_address == request.wallet_address.lower()
+                        )
+                    )
+                    .options(selectinload(Project.files))
+                )
+                project = project_result.scalar_one_or_none()
+
+                if project:
+                    project_name = project.name
+                    logger.info(f"Using project '{project_name}' context for chat")
+
+                    # Get custom instructions
+                    if project.custom_instructions:
+                        project_instructions = project.custom_instructions
+                        logger.info(f"Loaded custom instructions for project {project.id}")
+
+                    # Get pinned files content
+                    if project.files:
+                        file_contents = []
+                        for pf in project.files:
+                            try:
+                                if pf.cid:
+                                    # Retrieve file content from Pinata
+                                    encrypted = await filecoin_service.retrieve_data(pf.cid)
+                                    decrypted = await encryption_service.decrypt_with_wallet(
+                                        encrypted_data=encrypted,
+                                        customer_wallet=request.wallet_address
+                                    )
+
+                                    if isinstance(decrypted, str):
+                                        content = decrypted[:2000]  # Limit per file
+                                    elif isinstance(decrypted, dict):
+                                        content = json.dumps(decrypted, indent=2, default=str)[:2000]
+                                    else:
+                                        content = str(decrypted)[:2000]
+
+                                    file_contents.append(
+                                        f"--- Pinned File: {pf.file_name} ---\n{content}"
+                                    )
+                                elif pf.content_preview:
+                                    # Use content preview if no CID
+                                    file_contents.append(
+                                        f"--- Pinned File: {pf.file_name} ---\n{pf.content_preview}"
+                                    )
+                            except Exception as e:
+                                logger.warning(f"Failed to load project file {pf.file_name}: {e}")
+
+                        if file_contents:
+                            project_files_context = "\n\n".join(file_contents)
+                            logger.info(f"Loaded {len(file_contents)} pinned files for project")
+                else:
+                    logger.warning(f"Project {request.project_id} not found for wallet {request.wallet_address[:10]}...")
+            except Exception as e:
+                logger.warning(f"Failed to load project context: {e}")
+
         # Get RAG context - either from selected items or auto-query
         rag_context = ""
         rag_sources = []
@@ -1767,13 +1837,41 @@ Date: {email_content.get('date', '')}
                 logger.warning(f"RAG query failed, continuing without context: {e}")
                 # Continue without RAG context - don't fail the request
 
+        # Combine all context: project files + RAG sources
+        combined_context_parts = []
+
+        # Add project files context first (highest priority)
+        if project_files_context:
+            combined_context_parts.append(
+                f"=== PROJECT PINNED FILES ===\n{project_files_context}"
+            )
+            context_used = True
+
+        # Add RAG context
+        if rag_context:
+            combined_context_parts.append(
+                f"=== BUSINESS DATA CONTEXT ===\n{rag_context}"
+            )
+
+        combined_context = "\n\n".join(combined_context_parts)
+
+        # Add project instructions to the prompt if available
+        enhanced_prompt = request.message
+        if project_instructions:
+            enhanced_prompt = f"""[PROJECT INSTRUCTIONS]
+{project_instructions}
+
+[USER MESSAGE]
+{request.message}"""
+            logger.info(f"Enhanced prompt with project instructions")
+
         provider = get_llm_provider()
 
         if provider == "together" and os.getenv("TOGETHER_API_KEY"):
-            # Use Together.ai with industry context AND RAG context
+            # Use Together.ai with industry context, project context, AND RAG context
             response = await together_service.query(
-                prompt=request.message,
-                context=rag_context,  # NEW: Pass RAG context
+                prompt=enhanced_prompt,
+                context=combined_context,
                 temperature=request.temperature,
                 max_tokens=request.max_tokens,
                 industry=industry,
@@ -1785,13 +1883,13 @@ Date: {email_content.get('date', '')}
             from app.services.ollama_service import OllamaService
             ollama_service = OllamaService()
             response = await ollama_service.query(
-                prompt=request.message
+                prompt=enhanced_prompt
             )
             model_used = os.getenv("OLLAMA_MODEL", "mistral")
             provider = "ollama"
 
         # Determine actual mode based on context usage
-        actual_mode = "rag" if context_used else "general"
+        actual_mode = "project" if request.project_id else ("rag" if context_used else "general")
 
         return GeneralChatResponse(
             response=response,
@@ -1806,7 +1904,10 @@ Date: {email_content.get('date', '')}
                 "temperature": request.temperature,
                 "max_tokens": request.max_tokens,
                 "sources_count": len(rag_sources),
-                "context_chars": len(rag_context),
+                "context_chars": len(combined_context),
+                "project_id": request.project_id,
+                "project_name": project_name,
+                "has_project_instructions": bool(project_instructions),
                 "timestamp": datetime.now().isoformat()
             }
         )

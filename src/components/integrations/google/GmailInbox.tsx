@@ -192,12 +192,26 @@ export function GmailInbox({ walletAddress, data }: GmailInboxProps) {
     setCurrentPage(0);
   }, [searchQuery, selectedLabel]);
 
-  // Load emails from data prop (already fetched by parent)
-  useEffect(() => {
-    if (data?.messages) {
-      // Data is already synced from Google - use the data prop
-      const parsedEmails = data.messages.map((msg: any) => {
-        // Decode email body from payload
+  // Fetch emails from live Gmail API
+  const fetchEmailsFromAPI = useCallback(async () => {
+    if (!walletAddress) return;
+
+    setLoading(true);
+    try {
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/integrations/google/emails?wallet_address=${walletAddress}&max_results=100`
+      );
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch emails: ${response.status}`);
+      }
+
+      const result = await response.json();
+      const emailsData = result.emails || [];
+
+      // Parse emails from API response
+      const parsedEmails = emailsData.map((msg: any) => {
+        // Decode email body from payload if present
         const { text, html } = decodeEmailBody(msg.payload);
 
         return {
@@ -217,20 +231,49 @@ export function GmailInbox({ walletAddress, data }: GmailInboxProps) {
           payload: msg.payload
         };
       });
+
       setEmails(parsedEmails);
-      setLoading(false);
-    } else {
-      // No data synced yet
-      setEmails([]);
+    } catch (error) {
+      console.error('Failed to fetch emails from API:', error);
+      // Fall back to data prop if API fails
+      if (data?.messages) {
+        const parsedEmails = data.messages.map((msg: any) => {
+          const { text, html } = decodeEmailBody(msg.payload);
+          return {
+            id: msg.id || `email-${Math.random().toString(36).substr(2, 9)}`,
+            threadId: msg.threadId || msg.id,
+            from: msg.from || 'Unknown Sender',
+            to: msg.to || '',
+            subject: msg.subject || '(No Subject)',
+            snippet: msg.snippet || '',
+            body: text || msg.body || msg.snippet || '',
+            bodyHtml: html || msg.bodyHtml || '',
+            date: msg.date || new Date().toLocaleString(),
+            starred: msg.starred || false,
+            unread: msg.unread !== false,
+            hasAttachment: msg.hasAttachment || false,
+            labels: msg.labels || ['INBOX'],
+            payload: msg.payload
+          };
+        });
+        setEmails(parsedEmails);
+      } else {
+        setEmails([]);
+      }
+    } finally {
       setLoading(false);
     }
-  }, [data]);
+  }, [walletAddress, data]);
+
+  // Fetch emails on mount and when wallet changes
+  useEffect(() => {
+    fetchEmailsFromAPI();
+  }, [fetchEmailsFromAPI]);
 
   const loadEmails = async () => {
-    // Refresh by calling parent's onRefresh if available
-    // For now, just use the data prop
     setRefreshing(true);
-    setTimeout(() => setRefreshing(false), 500);
+    await fetchEmailsFromAPI();
+    setRefreshing(false);
   };
 
   // Keyboard shortcuts

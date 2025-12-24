@@ -433,11 +433,22 @@ class BusinessRAGService:
             # Get collection info
             collection_info = self.qdrant.get_collection(collection_name)
 
+            # Handle Qdrant API compatibility - vectors_count moved in newer versions
+            vectors_count = 0
+            indexed_vectors_count = 0
+            try:
+                vectors_count = getattr(collection_info, 'vectors_count', 0) or collection_info.points_count
+                indexed_vectors_count = getattr(collection_info, 'indexed_vectors_count', 0) or collection_info.points_count
+            except AttributeError:
+                # Newer Qdrant versions don't have these attributes
+                vectors_count = collection_info.points_count
+                indexed_vectors_count = collection_info.points_count
+
             stats = {
                 "exists": True,
                 "count": collection_info.points_count,
-                "vectors_count": collection_info.vectors_count,
-                "indexed_vectors_count": collection_info.indexed_vectors_count,
+                "vectors_count": vectors_count,
+                "indexed_vectors_count": indexed_vectors_count,
                 "status": collection_info.status
             }
 

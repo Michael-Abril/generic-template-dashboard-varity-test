@@ -47,6 +47,16 @@ from app.models.team import (
     TeamRole,
     InvitationStatus
 )
+from app.models.project import (
+    Project,
+    ProjectFile,
+    ProjectCreate,
+    ProjectUpdate,
+    ProjectResponse,
+    ProjectWithFiles,
+    ProjectFileCreate,
+    ProjectFileResponse
+)
 
 __all__ = [
     "Category",
@@ -83,5 +93,13 @@ __all__ = [
     "TeamMember",
     "TeamInvitation",
     "TeamRole",
-    "InvitationStatus"
+    "InvitationStatus",
+    "Project",
+    "ProjectFile",
+    "ProjectCreate",
+    "ProjectUpdate",
+    "ProjectResponse",
+    "ProjectWithFiles",
+    "ProjectFileCreate",
+    "ProjectFileResponse"
 ]
