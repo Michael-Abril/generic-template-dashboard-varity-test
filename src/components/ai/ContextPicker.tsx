@@ -2,9 +2,10 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import {
-  Database, Search, ChevronDown, ChevronRight, Check,
+  Search, ChevronRight, ChevronLeft, Check,
   FileText, Mail, Users, Calendar, DollarSign, Briefcase,
-  X, Loader2, RefreshCw
+  X, Loader2, Folder, Cloud, Database, Building2,
+  MessageSquare, HardDrive, ShoppingCart
 } from 'lucide-react';
 import { logger } from '@/lib/logger';
 
@@ -28,49 +29,65 @@ interface ContextPickerProps {
   maxSelections?: number;
 }
 
-// Icon mapping for different categories
-const getCategoryIcon = (category: string) => {
-  switch (category.toLowerCase()) {
-    case 'drive':
-      return <FileText className="w-4 h-4" />;
-    case 'gmail':
-    case 'mail':
-      return <Mail className="w-4 h-4" />;
-    case 'contacts':
-      return <Users className="w-4 h-4" />;
-    case 'calendar':
-      return <Calendar className="w-4 h-4" />;
-    case 'invoices':
-    case 'expenses':
-      return <DollarSign className="w-4 h-4" />;
-    case 'customers':
-    case 'leads':
-    case 'opportunities':
-      return <Briefcase className="w-4 h-4" />;
-    default:
-      return <Database className="w-4 h-4" />;
+// Integration display names and icons
+const INTEGRATION_CONFIG: Record<string, { displayName: string; icon: React.ReactNode; color: string; bgColor: string }> = {
+  google: {
+    displayName: 'Google Workspace',
+    icon: <Cloud className="w-5 h-5" />,
+    color: 'text-red-600',
+    bgColor: 'bg-red-50 hover:bg-red-100 border-red-200'
+  },
+  microsoft: {
+    displayName: 'Microsoft 365',
+    icon: <Cloud className="w-5 h-5" />,
+    color: 'text-blue-600',
+    bgColor: 'bg-blue-50 hover:bg-blue-100 border-blue-200'
+  },
+  quickbooks: {
+    displayName: 'QuickBooks',
+    icon: <DollarSign className="w-5 h-5" />,
+    color: 'text-green-600',
+    bgColor: 'bg-green-50 hover:bg-green-100 border-green-200'
+  },
+  salesforce: {
+    displayName: 'Salesforce',
+    icon: <Building2 className="w-5 h-5" />,
+    color: 'text-sky-600',
+    bgColor: 'bg-sky-50 hover:bg-sky-100 border-sky-200'
+  },
+  hubspot: {
+    displayName: 'HubSpot',
+    icon: <Briefcase className="w-5 h-5" />,
+    color: 'text-orange-600',
+    bgColor: 'bg-orange-50 hover:bg-orange-100 border-orange-200'
+  },
+  slack: {
+    displayName: 'Slack',
+    icon: <MessageSquare className="w-5 h-5" />,
+    color: 'text-purple-600',
+    bgColor: 'bg-purple-50 hover:bg-purple-100 border-purple-200'
   }
 };
 
-// Color mapping for integrations
-const getIntegrationColor = (integration: string) => {
-  switch (integration.toLowerCase()) {
-    case 'google':
-      return 'bg-red-50 text-red-700 border-red-200';
-    case 'quickbooks':
-      return 'bg-green-50 text-green-700 border-green-200';
-    case 'salesforce':
-      return 'bg-blue-50 text-blue-700 border-blue-200';
-    case 'hubspot':
-      return 'bg-orange-50 text-orange-700 border-orange-200';
-    case 'slack':
-      return 'bg-purple-50 text-purple-700 border-purple-200';
-    case 'microsoft':
-      return 'bg-cyan-50 text-cyan-700 border-cyan-200';
-    default:
-      return 'bg-gray-50 text-gray-700 border-gray-200';
-  }
+// Category display names and icons
+const CATEGORY_CONFIG: Record<string, { displayName: string; icon: React.ReactNode }> = {
+  gmail: { displayName: 'Email', icon: <Mail className="w-5 h-5" /> },
+  mail: { displayName: 'Email', icon: <Mail className="w-5 h-5" /> },
+  drive: { displayName: 'Drive Files', icon: <HardDrive className="w-5 h-5" /> },
+  onedrive: { displayName: 'OneDrive', icon: <HardDrive className="w-5 h-5" /> },
+  calendar: { displayName: 'Calendar', icon: <Calendar className="w-5 h-5" /> },
+  contacts: { displayName: 'Contacts', icon: <Users className="w-5 h-5" /> },
+  invoices: { displayName: 'Invoices', icon: <FileText className="w-5 h-5" /> },
+  expenses: { displayName: 'Expenses', icon: <DollarSign className="w-5 h-5" /> },
+  customers: { displayName: 'Customers', icon: <Users className="w-5 h-5" /> },
+  leads: { displayName: 'Leads', icon: <Briefcase className="w-5 h-5" /> },
+  opportunities: { displayName: 'Opportunities', icon: <ShoppingCart className="w-5 h-5" /> },
+  deals: { displayName: 'Deals', icon: <ShoppingCart className="w-5 h-5" /> },
+  messages: { displayName: 'Messages', icon: <MessageSquare className="w-5 h-5" /> },
+  channels: { displayName: 'Channels', icon: <MessageSquare className="w-5 h-5" /> }
 };
+
+type ViewType = 'integrations' | 'categories' | 'items';
 
 export function ContextPicker({
   walletAddress,
@@ -82,7 +99,11 @@ export function ContextPicker({
   const [items, setItems] = useState<ContextItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [expandedIntegrations, setExpandedIntegrations] = useState<Set<string>>(new Set());
+
+  // Navigation state
+  const [currentView, setCurrentView] = useState<ViewType>('integrations');
+  const [selectedIntegration, setSelectedIntegration] = useState<string | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
 
   // Fetch available context items
   useEffect(() => {
@@ -96,9 +117,6 @@ export function ContextPicker({
       })
       .then(data => {
         setItems(data.items || []);
-        // Expand all integrations by default
-        const integrations = new Set<string>(data.items?.map((item: ContextItem) => item.type) || []);
-        setExpandedIntegrations(integrations);
       })
       .catch(error => {
         logger.error('Failed to fetch context items:', error);
@@ -107,41 +125,61 @@ export function ContextPicker({
       .finally(() => setLoading(false));
   }, [walletAddress]);
 
-  // Group items by integration
-  const groupedItems = useMemo(() => {
-    const groups: Record<string, ContextItem[]> = {};
+  // Get unique integrations with item counts
+  const integrations = useMemo(() => {
+    const integrationMap: Record<string, { name: string; itemCount: number; categories: Set<string> }> = {};
 
-    const filteredItems = items.filter(item => {
-      if (!searchQuery.trim()) return true;
+    items.forEach(item => {
+      if (!integrationMap[item.type]) {
+        integrationMap[item.type] = { name: item.type, itemCount: 0, categories: new Set() };
+      }
+      integrationMap[item.type].itemCount++;
+      integrationMap[item.type].categories.add(item.category);
+    });
+
+    return Object.values(integrationMap);
+  }, [items]);
+
+  // Get categories for selected integration
+  const categories = useMemo(() => {
+    if (!selectedIntegration) return [];
+
+    const categoryMap: Record<string, { name: string; itemCount: number }> = {};
+
+    items
+      .filter(item => item.type === selectedIntegration)
+      .forEach(item => {
+        if (!categoryMap[item.category]) {
+          categoryMap[item.category] = { name: item.category, itemCount: 0 };
+        }
+        categoryMap[item.category].itemCount++;
+      });
+
+    return Object.values(categoryMap);
+  }, [items, selectedIntegration]);
+
+  // Get items for selected category
+  const filteredItems = useMemo(() => {
+    let result = items;
+
+    if (selectedIntegration) {
+      result = result.filter(item => item.type === selectedIntegration);
+    }
+
+    if (selectedCategory) {
+      result = result.filter(item => item.category === selectedCategory);
+    }
+
+    if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
-      return (
+      result = result.filter(item =>
         item.title.toLowerCase().includes(query) ||
-        item.category.toLowerCase().includes(query) ||
-        item.type.toLowerCase().includes(query)
+        (item.description?.toLowerCase().includes(query))
       );
-    });
+    }
 
-    filteredItems.forEach(item => {
-      if (!groups[item.type]) {
-        groups[item.type] = [];
-      }
-      groups[item.type].push(item);
-    });
-
-    return groups;
-  }, [items, searchQuery]);
-
-  const toggleIntegration = (integration: string) => {
-    setExpandedIntegrations(prev => {
-      const next = new Set(prev);
-      if (next.has(integration)) {
-        next.delete(integration);
-      } else {
-        next.add(integration);
-      }
-      return next;
-    });
-  };
+    return result;
+  }, [items, selectedIntegration, selectedCategory, searchQuery]);
 
   const toggleItem = (itemId: string) => {
     if (selectedIds.includes(itemId)) {
@@ -151,161 +189,318 @@ export function ContextPicker({
     }
   };
 
-  const selectAll = () => {
-    const allIds = items.slice(0, maxSelections).map(item => item.id);
-    onSelectionChange(allIds);
+  const handleIntegrationClick = (integration: string) => {
+    setSelectedIntegration(integration);
+    setCurrentView('categories');
+    setSearchQuery('');
   };
 
-  const clearAll = () => {
-    onSelectionChange([]);
+  const handleCategoryClick = (category: string) => {
+    setSelectedCategory(category);
+    setCurrentView('items');
+    setSearchQuery('');
+  };
+
+  const handleBack = () => {
+    if (currentView === 'items') {
+      setSelectedCategory(null);
+      setCurrentView('categories');
+    } else if (currentView === 'categories') {
+      setSelectedIntegration(null);
+      setCurrentView('integrations');
+    }
+    setSearchQuery('');
+  };
+
+  const getIntegrationConfig = (name: string) => {
+    return INTEGRATION_CONFIG[name.toLowerCase()] || {
+      displayName: name.charAt(0).toUpperCase() + name.slice(1),
+      icon: <Folder className="w-5 h-5" />,
+      color: 'text-gray-600',
+      bgColor: 'bg-gray-50 hover:bg-gray-100 border-gray-200'
+    };
+  };
+
+  const getCategoryConfig = (name: string) => {
+    return CATEGORY_CONFIG[name.toLowerCase()] || {
+      displayName: name.charAt(0).toUpperCase() + name.slice(1),
+      icon: <Database className="w-5 h-5" />
+    };
   };
 
   if (loading) {
     return (
-      <div className="bg-white rounded-xl border border-gray-200 shadow-lg p-6">
-        <div className="flex items-center justify-center gap-2 text-gray-500">
-          <Loader2 className="w-5 h-5 animate-spin" />
-          <span>Loading available context...</span>
+      <div className="bg-white rounded-xl border border-gray-200 shadow-xl p-8">
+        <div className="flex items-center justify-center gap-3 text-gray-500">
+          <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
+          <span className="font-medium">Loading your data sources...</span>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 shadow-lg max-h-[500px] flex flex-col">
-      {/* Header */}
-      <div className="p-4 border-b border-gray-100 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Database className="w-5 h-5 text-blue-600" />
-          <h3 className="font-semibold text-gray-900">Select Context</h3>
-          <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
-            {selectedIds.length}/{maxSelections} selected
-          </span>
-        </div>
-        {onClose && (
-          <button
-            onClick={onClose}
-            className="p-1 hover:bg-gray-100 rounded-lg transition-colors"
-          >
-            <X className="w-5 h-5 text-gray-500" />
-          </button>
-        )}
-      </div>
-
-      {/* Search */}
-      <div className="p-3 border-b border-gray-100">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-          <input
-            type="text"
-            placeholder="Search files, emails, data..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-          />
-        </div>
-      </div>
-
-      {/* Quick Actions */}
-      <div className="px-4 py-2 border-b border-gray-100 flex gap-2">
-        <button
-          onClick={selectAll}
-          className="text-xs text-blue-600 hover:text-blue-800 font-medium"
-        >
-          Select All
-        </button>
-        <span className="text-gray-300">|</span>
-        <button
-          onClick={clearAll}
-          className="text-xs text-gray-600 hover:text-gray-800 font-medium"
-        >
-          Clear All
-        </button>
-      </div>
-
-      {/* Items List */}
-      <div className="flex-1 overflow-y-auto p-2">
-        {Object.keys(groupedItems).length === 0 ? (
-          <div className="text-center py-8 text-gray-500">
-            <Database className="w-12 h-12 mx-auto mb-3 text-gray-300" />
-            <p className="text-sm">No context items available</p>
-            <p className="text-xs text-gray-400 mt-1">
-              Connect integrations and sync data to add context
-            </p>
-          </div>
-        ) : (
-          Object.entries(groupedItems).map(([integration, integrationItems]) => (
-            <div key={integration} className="mb-2">
-              {/* Integration Header */}
+    <div className="bg-white rounded-xl border border-gray-200 shadow-xl max-h-[480px] flex flex-col overflow-hidden">
+      {/* Header with Breadcrumb */}
+      <div className="px-4 py-3 border-b border-gray-100 bg-gradient-to-r from-gray-50 to-white">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            {currentView !== 'integrations' && (
               <button
-                onClick={() => toggleIntegration(integration)}
-                className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left transition-colors ${getIntegrationColor(integration)}`}
+                onClick={handleBack}
+                className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
               >
-                {expandedIntegrations.has(integration) ? (
-                  <ChevronDown className="w-4 h-4" />
-                ) : (
-                  <ChevronRight className="w-4 h-4" />
-                )}
-                <span className="font-medium capitalize">{integration}</span>
-                <span className="text-xs opacity-70">({integrationItems.length} items)</span>
+                <ChevronLeft className="w-5 h-5 text-gray-600" />
+              </button>
+            )}
+
+            {/* Breadcrumb */}
+            <div className="flex items-center gap-1 text-sm">
+              <button
+                onClick={() => {
+                  setSelectedIntegration(null);
+                  setSelectedCategory(null);
+                  setCurrentView('integrations');
+                  setSearchQuery('');
+                }}
+                className={`font-medium ${currentView === 'integrations' ? 'text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}
+              >
+                Data Sources
               </button>
 
-              {/* Items */}
-              {expandedIntegrations.has(integration) && (
-                <div className="ml-4 mt-1 space-y-1">
-                  {integrationItems.map(item => (
-                    <button
-                      key={item.id}
-                      onClick={() => toggleItem(item.id)}
-                      className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors ${
-                        selectedIds.includes(item.id)
-                          ? 'bg-blue-50 border border-blue-200'
-                          : 'hover:bg-gray-50 border border-transparent'
-                      }`}
-                    >
-                      <div className={`w-5 h-5 rounded border flex items-center justify-center ${
-                        selectedIds.includes(item.id)
-                          ? 'bg-blue-600 border-blue-600'
-                          : 'border-gray-300'
-                      }`}>
-                        {selectedIds.includes(item.id) && (
-                          <Check className="w-3 h-3 text-white" />
-                        )}
-                      </div>
-                      <div className="flex items-center gap-2 flex-1 min-w-0">
-                        {getCategoryIcon(item.category)}
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-gray-900 truncate">
-                            {item.title}
-                          </p>
-                          {item.description && (
-                            <p className="text-xs text-gray-500 truncate">
-                              {item.description}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                      <span className={`text-xs px-2 py-0.5 rounded-full ${
-                        item.source === 'indexed'
-                          ? 'bg-green-100 text-green-700'
-                          : 'bg-yellow-100 text-yellow-700'
-                      }`}>
-                        {item.source}
-                      </span>
-                    </button>
-                  ))}
-                </div>
+              {selectedIntegration && (
+                <>
+                  <ChevronRight className="w-4 h-4 text-gray-400" />
+                  <button
+                    onClick={() => {
+                      setSelectedCategory(null);
+                      setCurrentView('categories');
+                      setSearchQuery('');
+                    }}
+                    className={`font-medium ${currentView === 'categories' ? 'text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}
+                  >
+                    {getIntegrationConfig(selectedIntegration).displayName}
+                  </button>
+                </>
+              )}
+
+              {selectedCategory && (
+                <>
+                  <ChevronRight className="w-4 h-4 text-gray-400" />
+                  <span className="font-medium text-gray-900">
+                    {getCategoryConfig(selectedCategory).displayName}
+                  </span>
+                </>
               )}
             </div>
-          ))
+          </div>
+
+          <div className="flex items-center gap-3">
+            {selectedIds.length > 0 && (
+              <span className="text-xs font-medium bg-blue-100 text-blue-700 px-2.5 py-1 rounded-full">
+                {selectedIds.length} selected
+              </span>
+            )}
+            {onClose && (
+              <button
+                onClick={onClose}
+                className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5 text-gray-500" />
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Search (only on items view) */}
+      {currentView === 'items' && (
+        <div className="px-4 py-3 border-b border-gray-100">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input
+              type="text"
+              placeholder={`Search in ${getCategoryConfig(selectedCategory || '').displayName}...`}
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-10 pr-4 py-2.5 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-gray-50"
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Content */}
+      <div className="flex-1 overflow-y-auto">
+        {/* Integrations View */}
+        {currentView === 'integrations' && (
+          <div className="p-3 space-y-2">
+            {integrations.length === 0 ? (
+              <div className="text-center py-12">
+                <Folder className="w-16 h-16 mx-auto mb-4 text-gray-200" />
+                <p className="text-gray-600 font-medium">No data sources connected</p>
+                <p className="text-sm text-gray-400 mt-1">
+                  Connect integrations in the Marketplace to add context
+                </p>
+              </div>
+            ) : (
+              integrations.map((integration) => {
+                const config = getIntegrationConfig(integration.name);
+                const selectedCount = selectedIds.filter(id =>
+                  items.find(item => item.id === id && item.type === integration.name)
+                ).length;
+
+                return (
+                  <button
+                    key={integration.name}
+                    onClick={() => handleIntegrationClick(integration.name)}
+                    className={`w-full flex items-center gap-4 p-4 rounded-xl border transition-all ${config.bgColor}`}
+                  >
+                    <div className={`p-2.5 rounded-lg bg-white shadow-sm ${config.color}`}>
+                      {config.icon}
+                    </div>
+                    <div className="flex-1 text-left">
+                      <p className="font-semibold text-gray-900">{config.displayName}</p>
+                      <p className="text-sm text-gray-500">
+                        {integration.itemCount} items available
+                      </p>
+                    </div>
+                    {selectedCount > 0 && (
+                      <span className="text-xs font-medium bg-blue-600 text-white px-2 py-1 rounded-full">
+                        {selectedCount}
+                      </span>
+                    )}
+                    <ChevronRight className="w-5 h-5 text-gray-400" />
+                  </button>
+                );
+              })
+            )}
+          </div>
+        )}
+
+        {/* Categories View */}
+        {currentView === 'categories' && selectedIntegration && (
+          <div className="p-3 space-y-2">
+            {categories.length === 0 ? (
+              <div className="text-center py-12">
+                <Database className="w-16 h-16 mx-auto mb-4 text-gray-200" />
+                <p className="text-gray-600 font-medium">No data categories available</p>
+              </div>
+            ) : (
+              categories.map((category) => {
+                const config = getCategoryConfig(category.name);
+                const integrationConfig = getIntegrationConfig(selectedIntegration);
+                const selectedCount = selectedIds.filter(id =>
+                  items.find(item => item.id === id && item.type === selectedIntegration && item.category === category.name)
+                ).length;
+
+                return (
+                  <button
+                    key={category.name}
+                    onClick={() => handleCategoryClick(category.name)}
+                    className="w-full flex items-center gap-4 p-4 rounded-xl border border-gray-200 hover:bg-gray-50 transition-all"
+                  >
+                    <div className={`p-2.5 rounded-lg bg-gray-100 ${integrationConfig.color}`}>
+                      {config.icon}
+                    </div>
+                    <div className="flex-1 text-left">
+                      <p className="font-semibold text-gray-900">{config.displayName}</p>
+                      <p className="text-sm text-gray-500">
+                        {category.itemCount} items
+                      </p>
+                    </div>
+                    {selectedCount > 0 && (
+                      <span className="text-xs font-medium bg-blue-600 text-white px-2 py-1 rounded-full">
+                        {selectedCount}
+                      </span>
+                    )}
+                    <ChevronRight className="w-5 h-5 text-gray-400" />
+                  </button>
+                );
+              })
+            )}
+          </div>
+        )}
+
+        {/* Items View */}
+        {currentView === 'items' && (
+          <div className="p-3 space-y-1">
+            {filteredItems.length === 0 ? (
+              <div className="text-center py-12">
+                <Search className="w-16 h-16 mx-auto mb-4 text-gray-200" />
+                <p className="text-gray-600 font-medium">No items found</p>
+                <p className="text-sm text-gray-400 mt-1">
+                  Try adjusting your search
+                </p>
+              </div>
+            ) : (
+              filteredItems.map((item) => {
+                const isSelected = selectedIds.includes(item.id);
+                const config = getCategoryConfig(item.category);
+
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => toggleItem(item.id)}
+                    disabled={!isSelected && selectedIds.length >= maxSelections}
+                    className={`w-full flex items-center gap-3 p-3 rounded-lg text-left transition-all ${
+                      isSelected
+                        ? 'bg-blue-50 border-2 border-blue-300'
+                        : 'hover:bg-gray-50 border border-gray-100'
+                    } ${!isSelected && selectedIds.length >= maxSelections ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  >
+                    <div className={`w-6 h-6 rounded-md border-2 flex items-center justify-center transition-colors ${
+                      isSelected
+                        ? 'bg-blue-600 border-blue-600'
+                        : 'border-gray-300 bg-white'
+                    }`}>
+                      {isSelected && <Check className="w-4 h-4 text-white" />}
+                    </div>
+                    <div className="text-gray-400">
+                      {config.icon}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-900 truncate">
+                        {item.title}
+                      </p>
+                      {item.description && (
+                        <p className="text-xs text-gray-500 truncate mt-0.5">
+                          {item.description}
+                        </p>
+                      )}
+                    </div>
+                    <span className={`text-xs px-2 py-1 rounded-md font-medium ${
+                      item.source === 'indexed'
+                        ? 'bg-green-100 text-green-700'
+                        : 'bg-amber-100 text-amber-700'
+                    }`}>
+                      {item.source === 'indexed' ? 'Indexed' : 'Live'}
+                    </span>
+                  </button>
+                );
+              })
+            )}
+          </div>
         )}
       </div>
 
       {/* Footer */}
-      <div className="p-3 border-t border-gray-100 bg-gray-50 rounded-b-xl">
-        <p className="text-xs text-gray-500 text-center">
-          Selected items will be used as context for your AI query
-        </p>
+      <div className="px-4 py-3 border-t border-gray-100 bg-gradient-to-r from-gray-50 to-white">
+        <div className="flex items-center justify-between">
+          <p className="text-xs text-gray-500">
+            {currentView === 'items'
+              ? `${filteredItems.length} items available`
+              : 'Select items to include as context for your query'
+            }
+          </p>
+          {selectedIds.length > 0 && onClose && (
+            <button
+              onClick={onClose}
+              className="text-sm font-medium text-blue-600 hover:text-blue-700 px-3 py-1.5 rounded-lg hover:bg-blue-50 transition-colors"
+            >
+              Done
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );

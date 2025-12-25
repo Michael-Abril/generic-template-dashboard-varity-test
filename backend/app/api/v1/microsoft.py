@@ -370,6 +370,31 @@ async def create_event(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.delete("/calendar/events/{event_id}")
+async def delete_event(
+    event_id: str,
+    wallet_address: str = Query(...),
+    db: AsyncSession = Depends(get_db)
+):
+    """Delete a calendar event"""
+    access_token = await get_access_token_from_db(wallet_address, db)
+    if not access_token:
+        raise HTTPException(status_code=401, detail="Not authenticated with Microsoft 365")
+
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.delete(
+                f"{GRAPH_API_BASE}/me/calendar/events/{event_id}",
+                headers={"Authorization": f"Bearer {access_token}"}
+            )
+            response.raise_for_status()
+            return {"success": True, "message": "Event deleted successfully"}
+
+    except Exception as e:
+        logger.error(f"Error deleting calendar event: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ============================================================================
 # ONEDRIVE ENDPOINTS
 # ============================================================================
@@ -527,6 +552,31 @@ async def create_contact(
 
     except Exception as e:
         logger.error(f"Error creating contact: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/contacts/{contact_id}")
+async def delete_contact(
+    contact_id: str,
+    wallet_address: str = Query(...),
+    db: AsyncSession = Depends(get_db)
+):
+    """Delete a contact"""
+    access_token = await get_access_token_from_db(wallet_address, db)
+    if not access_token:
+        raise HTTPException(status_code=401, detail="Not authenticated with Microsoft 365")
+
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.delete(
+                f"{GRAPH_API_BASE}/me/contacts/{contact_id}",
+                headers={"Authorization": f"Bearer {access_token}"}
+            )
+            response.raise_for_status()
+            return {"success": True, "message": "Contact deleted successfully"}
+
+    except Exception as e:
+        logger.error(f"Error deleting contact: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

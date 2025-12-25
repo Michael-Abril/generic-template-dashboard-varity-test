@@ -312,7 +312,7 @@ class FilecoinService:
         customer_wallet: str,
         integration: Optional[str] = None,
         data_type: Optional[str] = None,
-        limit: int = 100
+        limit: int = 1000
     ) -> List[Dict[str, Any]]:
         """
         List all files for a customer

@@ -1,12 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   ChevronLeft,
   ChevronRight,
   Plus,
-  Search,
-  Filter,
+  RefreshCw,
   Calendar as CalendarIcon,
   Clock,
   MapPin,
@@ -15,8 +14,7 @@ import {
   X,
   Edit3,
   Trash2,
-  Copy,
-  ExternalLink
+  Loader2
 } from 'lucide-react';
 
 interface CalendarEvent {
@@ -36,10 +34,16 @@ interface CalendarEvent {
 interface CalendarViewProps {
   walletAddress: string;
   view: 'day' | 'week' | 'month';
-  events: CalendarEvent[];
+  events?: CalendarEvent[];
+  onDataChange?: () => void;
 }
 
-export default function CalendarView({ walletAddress, view, events }: CalendarViewProps) {
+type ViewType = 'day' | 'week' | 'month';
+
+export default function CalendarView({ walletAddress, view: initialView, events: initialEvents = [], onDataChange }: CalendarViewProps) {
+  const [events, setEvents] = useState<CalendarEvent[]>(initialEvents);
+  const [loading, setLoading] = useState(true);
+  const [currentView, setCurrentView] = useState<ViewType>(initialView);
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
   const [showEventModal, setShowEventModal] = useState(false);
@@ -54,11 +58,37 @@ export default function CalendarView({ walletAddress, view, events }: CalendarVi
     isOnlineMeeting: false
   });
 
+  // Fetch events from live API
+  const fetchEvents = async () => {
+    setLoading(true);
+    try {
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/integrations/microsoft/calendar/events?wallet_address=${walletAddress}`
+      );
+      if (response.ok) {
+        const data = await response.json();
+        setEvents(data.events || []);
+      } else {
+        console.error('Failed to fetch events:', response.status);
+        setEvents(initialEvents);
+      }
+    } catch (error) {
+      console.error('Error fetching events:', error);
+      setEvents(initialEvents);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchEvents();
+  }, [walletAddress]);
+
   const goToPrevious = () => {
     const newDate = new Date(currentDate);
-    if (view === 'day') {
+    if (currentView === 'day') {
       newDate.setDate(newDate.getDate() - 1);
-    } else if (view === 'week') {
+    } else if (currentView === 'week') {
       newDate.setDate(newDate.getDate() - 7);
     } else {
       newDate.setMonth(newDate.getMonth() - 1);
@@ -68,9 +98,9 @@ export default function CalendarView({ walletAddress, view, events }: CalendarVi
 
   const goToNext = () => {
     const newDate = new Date(currentDate);
-    if (view === 'day') {
+    if (currentView === 'day') {
       newDate.setDate(newDate.getDate() + 1);
-    } else if (view === 'week') {
+    } else if (currentView === 'week') {
       newDate.setDate(newDate.getDate() + 7);
     } else {
       newDate.setMonth(newDate.getMonth() + 1);
@@ -83,14 +113,14 @@ export default function CalendarView({ walletAddress, view, events }: CalendarVi
   };
 
   const getDateRangeText = () => {
-    if (view === 'day') {
+    if (currentView === 'day') {
       return currentDate.toLocaleDateString('en-US', {
         weekday: 'long',
         month: 'long',
         day: 'numeric',
         year: 'numeric'
       });
-    } else if (view === 'week') {
+    } else if (currentView === 'week') {
       const weekStart = new Date(currentDate);
       weekStart.setDate(weekStart.getDate() - weekStart.getDay());
       const weekEnd = new Date(weekStart);
@@ -164,8 +194,8 @@ export default function CalendarView({ walletAddress, view, events }: CalendarVi
           location: '',
           isOnlineMeeting: false
         });
-        // Refresh page to load new event
-        window.location.reload();
+        // Refresh to load new event
+        onDataChange?.();
       } else {
         const error = await response.json();
         alert(`Error: ${error.detail || 'Failed to create event'}`);
@@ -392,26 +422,26 @@ export default function CalendarView({ walletAddress, view, events }: CalendarVi
   };
 
   return (
-    <div className="flex h-full flex-col rounded-lg border border-gray-200 bg-white shadow-sm">
+    <div className="flex h-[calc(100vh-220px)] flex-col rounded-lg border border-gray-200 bg-white shadow-sm overflow-hidden">
       {/* Toolbar */}
       <div className="flex items-center justify-between border-b border-gray-200 p-4">
         <div className="flex items-center gap-3">
           <button
             onClick={goToToday}
-            className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium hover:bg-gray-50"
+            className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
           >
             Today
           </button>
           <div className="flex items-center gap-1">
             <button
               onClick={goToPrevious}
-              className="rounded-lg p-2 hover:bg-gray-100"
+              className="rounded-lg p-2 hover:bg-gray-100 transition-colors"
             >
               <ChevronLeft className="h-5 w-5 text-gray-600" />
             </button>
             <button
               onClick={goToNext}
-              className="rounded-lg p-2 hover:bg-gray-100"
+              className="rounded-lg p-2 hover:bg-gray-100 transition-colors"
             >
               <ChevronRight className="h-5 w-5 text-gray-600" />
             </button>
@@ -419,20 +449,56 @@ export default function CalendarView({ walletAddress, view, events }: CalendarVi
           <h2 className="text-lg font-semibold text-gray-900">{getDateRangeText()}</h2>
         </div>
 
-        <button
-          onClick={() => setShowNewEventForm(true)}
-          className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
-        >
-          <Plus className="h-4 w-4" />
-          New Event
-        </button>
+        <div className="flex items-center gap-3">
+          {/* View Switcher */}
+          <div className="flex rounded-lg border border-gray-300 overflow-hidden">
+            {(['day', 'week', 'month'] as ViewType[]).map((viewOption) => (
+              <button
+                key={viewOption}
+                onClick={() => setCurrentView(viewOption)}
+                className={`px-3 py-1.5 text-sm font-medium capitalize transition-colors ${
+                  currentView === viewOption
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-white text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                {viewOption}
+              </button>
+            ))}
+          </div>
+
+          {/* Refresh Button */}
+          <button
+            onClick={fetchEvents}
+            className="rounded-lg p-2 hover:bg-gray-100 transition-colors"
+            title="Refresh"
+          >
+            <RefreshCw className={`h-5 w-5 text-gray-600 ${loading ? 'animate-spin' : ''}`} />
+          </button>
+
+          <button
+            onClick={() => setShowNewEventForm(true)}
+            className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 transition-colors"
+          >
+            <Plus className="h-4 w-4" />
+            New Event
+          </button>
+        </div>
       </div>
 
       {/* Calendar Content */}
       <div className="flex-1 overflow-hidden">
-        {view === 'day' && renderDayView()}
-        {view === 'week' && renderWeekView()}
-        {view === 'month' && renderMonthView()}
+        {loading ? (
+          <div className="flex items-center justify-center h-full">
+            <Loader2 className="h-8 w-8 text-blue-600 animate-spin" />
+          </div>
+        ) : (
+          <>
+            {currentView === 'day' && renderDayView()}
+            {currentView === 'week' && renderWeekView()}
+            {currentView === 'month' && renderMonthView()}
+          </>
+        )}
       </div>
 
       {/* Event Detail Modal */}
@@ -515,7 +581,7 @@ export default function CalendarView({ walletAddress, view, events }: CalendarVi
                     if (response.ok) {
                       alert('Event deleted successfully!');
                       setShowEventModal(false);
-                      window.location.reload();
+                      onDataChange?.();
                     } else {
                       const error = await response.json();
                       alert(`Error: ${error.detail || 'Failed to delete event'}`);

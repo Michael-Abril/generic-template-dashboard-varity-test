@@ -104,16 +104,36 @@ The `params.integration` value determines which native UI to render:
 
 ### Universal Base Adapter Pattern
 
-All integration adapters inherit from `BaseDataAdapter` (`backend/app/adapters/base_adapter.py`) which provides:
+All integration adapters inherit from `BaseDataAdapter` (`backend/app/adapters/base_adapter.py`) which provides the **COMPLETE** data pipeline:
 
-1. **Pagination** - Generic pagination handling for different API styles (cursor, offset, page)
-2. **Chunking** - Date-based grouping (monthly/quarterly/yearly) for efficient storage
-3. **RAG Configuration** - `RAG_ENABLED_TYPES` defines what gets indexed in Qdrant
+1. **Wallet Normalization** - Consistent wallet address format for storage/retrieval
+2. **Pagination** - Generic pagination handling for different API styles (cursor, offset, page)
+3. **Chunking** - Date-based grouping (monthly/quarterly/yearly) for efficient storage
+4. **Encryption** - AES-256-GCM with wallet-derived key
+5. **Pinata Upload** - Automatic upload to Filecoin/IPFS
+6. **RAG Configuration** - `RAG_ENABLED_TYPES` defines what gets indexed in Qdrant
+
+Each adapter only needs to implement:
+- `INTEGRATION_NAME` - The integration identifier (e.g., "slack")
+- `RAG_ENABLED_TYPES` - Data types to index in Qdrant
+- `get_data_types()` - Available data types
+- `fetch_data(data_type)` - Fetch from external API
+- `transform_data(data_type, raw_data)` - Transform to common schema
 
 ```python
-# Example: Google Adapter (backend/app/adapters/google/sync.py)
-class GoogleWorkspaceSync(BaseDataAdapter):
-    RAG_ENABLED_TYPES = ["drive", "contacts"]  # Only these go to Qdrant
+# Example: Slack Adapter (backend/app/adapters/slack/sync.py)
+class SlackSync(BaseDataAdapter):
+    INTEGRATION_NAME = "slack"
+    RAG_ENABLED_TYPES = ["files"]  # Only files go to Qdrant
+
+    def get_data_types(self) -> List[str]:
+        return ["channels", "messages", "users", "files"]
+
+    async def fetch_data(self, data_type: str, **kwargs) -> Dict[str, Any]:
+        # Call Slack API...
+
+    def transform_data(self, data_type: str, raw_data: Dict) -> List[Dict]:
+        # Transform to common schema...
 ```
 
 ### Hybrid Data Model (RAG Storage vs Live API)
@@ -239,31 +259,40 @@ function GmailInbox({ walletAddress }) {
 
 ### Adapter RAG Configuration Reference
 
-Each adapter defines which data types get indexed in Qdrant via `RAG_ENABLED_TYPES`:
+Each adapter inherits from `BaseDataAdapter` and defines which data types get indexed in Qdrant via `RAG_ENABLED_TYPES`:
 
 ```python
+# All adapters inherit from BaseDataAdapter for consistent data pipeline
+from app.adapters.base_adapter import BaseDataAdapter
+
 # backend/app/adapters/google/sync.py
-class GoogleWorkspaceSync:
+class GoogleWorkspaceSync(BaseDataAdapter):
+    INTEGRATION_NAME = "google"
     RAG_ENABLED_TYPES = ["drive", "contacts"]
 
 # backend/app/adapters/microsoft/sync.py
-class MicrosoftSync:
+class MicrosoftSync(BaseDataAdapter):
+    INTEGRATION_NAME = "microsoft"
     RAG_ENABLED_TYPES = ["onedrive", "contacts"]
 
 # backend/app/adapters/slack/sync.py
-class SlackSync:
+class SlackSync(BaseDataAdapter):
+    INTEGRATION_NAME = "slack"
     RAG_ENABLED_TYPES = ["files"]
 
-# backend/app/adapters/quickbooks/sync.py (TBD - needs research)
-class QuickBooksDataAdapter:
+# backend/app/adapters/quickbooks/sync.py
+class QuickBooksSync(BaseDataAdapter):
+    INTEGRATION_NAME = "quickbooks"
     RAG_ENABLED_TYPES = ["invoices", "expenses", "customers", "vendors", "payments"]
 
-# backend/app/adapters/salesforce/sync.py (TBD - needs research)
-class SalesforceSync:
+# backend/app/adapters/salesforce/sync.py
+class SalesforceSync(BaseDataAdapter):
+    INTEGRATION_NAME = "salesforce"
     RAG_ENABLED_TYPES = ["contacts", "opportunities", "accounts", "leads", "tasks"]
 
-# backend/app/adapters/hubspot/sync.py (TBD - needs research)
-class HubSpotSync:
+# backend/app/adapters/hubspot/sync.py
+class HubSpotSync(BaseDataAdapter):
+    INTEGRATION_NAME = "hubspot"
     RAG_ENABLED_TYPES = ["contacts", "deals", "companies", "emails", "tickets"]
 ```
 

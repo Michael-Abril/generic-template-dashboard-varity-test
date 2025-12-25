@@ -1,61 +1,70 @@
 """
 Slack Sync Adapter
-Fetches workspace data from Slack API with multi-tenant Filecoin storage
+Inherits from BaseDataAdapter for consistent data pipeline handling.
+
+Fetches workspace data from Slack API:
+- Channels (public + private)
+- Messages (from channels)
+- Users (workspace members)
+- Files (shared files)
+
+Only "files" are indexed in RAG for AI queries.
 """
 import httpx
-import time
-from typing import List, Dict, Any, Optional
 import logging
+from typing import List, Dict, Any, Optional
 from datetime import datetime
 
-from app.services.filecoin_service import FilecoinService
-from app.services.encryption_service import EncryptionService
+from app.adapters.base_adapter import BaseDataAdapter
 
 logger = logging.getLogger(__name__)
 
 
-class SlackSync:
-    """Sync adapter for Slack integration with multi-tenant encrypted storage"""
+class SlackSync(BaseDataAdapter):
+    """
+    Sync adapter for Slack integration.
+
+    Inherits from BaseDataAdapter which handles:
+    - Wallet normalization
+    - Encryption
+    - Pinata storage
+    - Chunking
+    """
+
+    # Integration identifier
+    INTEGRATION_NAME = "slack"
 
     # Only files go to RAG - messages/channels/users are not indexed
     RAG_ENABLED_TYPES = ["files"]
 
-    def should_index_in_rag(self, data_type: str) -> bool:
-        """Check if data type should be indexed in Qdrant"""
-        return data_type.lower() in [t.lower() for t in self.RAG_ENABLED_TYPES]
-
     def __init__(self, credentials: dict):
         """
-        Initialize Slack sync adapter
+        Initialize Slack adapter.
 
         Args:
             credentials: OAuth credentials with access_token (bot token)
         """
-        self.access_token = credentials.get("access_token")
+        super().__init__(credentials)
         self.api_base = "https://slack.com/api"
 
-        if not self.access_token:
-            raise ValueError("Missing Slack access token")
-
-        # Initialize storage services
-        self.filecoin = FilecoinService()
-        self.encryption = EncryptionService()
+    # ==================== REQUIRED IMPLEMENTATIONS ====================
 
     def get_data_types(self) -> List[str]:
         """Get available data types for Slack"""
         return ["channels", "messages", "users", "files"]
 
-    async def fetch_data(self, data_type: str, limit: int = 100) -> List[Dict[str, Any]]:
+    async def fetch_data(self, data_type: str, **kwargs) -> Dict[str, Any]:
         """
-        Fetch data from Slack API
+        Fetch data from Slack API.
 
         Args:
             data_type: Type of data to fetch
-            limit: Maximum records to fetch
+            **kwargs: Additional options (limit, etc.)
 
         Returns:
-            List of records from Slack
+            Raw data from Slack API
         """
+        limit = kwargs.get("limit", 100)
         headers = {
             "Authorization": f"Bearer {self.access_token}",
             "Content-Type": "application/json; charset=utf-8"
@@ -63,113 +72,29 @@ class SlackSync:
 
         all_records = []
 
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=30.0) as client:
             try:
                 if data_type == "channels":
-                    # Fetch all public channels
-                    response = await client.get(
-                        f"{self.api_base}/conversations.list",
-                        params={"types": "public_channel,private_channel", "limit": limit},
-                        headers=headers,
-                        timeout=30.0
-                    )
-                    response.raise_for_status()
-                    result = response.json()
-
-                    if not result.get("ok"):
-                        raise Exception(f"Slack API error: {result.get('error')}")
-
-                    all_records = result.get("channels", [])
+                    all_records = await self._fetch_channels(client, headers, limit)
 
                 elif data_type == "messages":
-                    # Fetch messages from all channels
-                    channels_response = await client.get(
-                        f"{self.api_base}/conversations.list",
-                        params={"types": "public_channel,private_channel", "limit": 100},
-                        headers=headers,
-                        timeout=30.0
-                    )
-                    channels_response.raise_for_status()
-                    channels_result = channels_response.json()
-
-                    if not channels_result.get("ok"):
-                        raise Exception(f"Slack API error: {channels_result.get('error')}")
-
-                    channels = channels_result.get("channels", [])
-
-                    # Fetch messages from each channel
-                    for channel in channels[:10]:  # Limit to first 10 channels for MVP
-                        channel_id = channel.get("id")
-
-                        try:
-                            messages_response = await client.get(
-                                f"{self.api_base}/conversations.history",
-                                params={"channel": channel_id, "limit": min(limit, 100)},
-                                headers=headers,
-                                timeout=30.0
-                            )
-                            messages_response.raise_for_status()
-                            messages_result = messages_response.json()
-
-                            if messages_result.get("ok"):
-                                messages = messages_result.get("messages", [])
-                                for msg in messages:
-                                    msg["channel_id"] = channel_id
-                                    msg["channel_name"] = channel.get("name")
-                                all_records.extend(messages)
-                        except Exception as e:
-                            logger.warning(f"Failed to fetch messages from channel {channel_id}: {e}")
-                            continue
+                    all_records = await self._fetch_messages(client, headers, limit)
 
                 elif data_type == "users":
-                    # Fetch all workspace users
-                    cursor = None
-                    while len(all_records) < limit:
-                        params = {"limit": min(100, limit - len(all_records))}
-                        if cursor:
-                            params["cursor"] = cursor
-
-                        response = await client.get(
-                            f"{self.api_base}/users.list",
-                            params=params,
-                            headers=headers,
-                            timeout=30.0
-                        )
-                        response.raise_for_status()
-                        result = response.json()
-
-                        if not result.get("ok"):
-                            raise Exception(f"Slack API error: {result.get('error')}")
-
-                        members = result.get("members", [])
-                        if not members:
-                            break
-
-                        all_records.extend(members)
-
-                        # Check for pagination
-                        cursor = result.get("response_metadata", {}).get("next_cursor")
-                        if not cursor:
-                            break
+                    all_records = await self._fetch_users(client, headers, limit)
 
                 elif data_type == "files":
-                    # Fetch workspace files
-                    response = await client.get(
-                        f"{self.api_base}/files.list",
-                        params={"count": min(limit, 100)},
-                        headers=headers,
-                        timeout=30.0
-                    )
-                    response.raise_for_status()
-                    result = response.json()
+                    all_records = await self._fetch_files(client, headers, limit)
 
-                    if not result.get("ok"):
-                        raise Exception(f"Slack API error: {result.get('error')}")
-
-                    all_records = result.get("files", [])
+                else:
+                    raise ValueError(f"Unsupported data type: {data_type}")
 
                 logger.info(f"Fetched {len(all_records)} {data_type} from Slack")
-                return all_records
+
+                return {
+                    "records": all_records,
+                    "total_count": len(all_records)
+                }
 
             except httpx.HTTPStatusError as e:
                 logger.error(f"Slack API error: {e.response.text}")
@@ -178,35 +103,22 @@ class SlackSync:
                 logger.error(f"Failed to fetch {data_type}: {e}")
                 raise
 
-    async def generate_embeddings(self, data: List[Dict[str, Any]]) -> List[List[float]]:
-        """
-        Generate embeddings for RAG indexing
-
-        Args:
-            data: List of transformed data records
-
-        Returns:
-            List of embedding vectors (empty for now, RAG service handles this)
-        """
-        # Embeddings are generated by the RAG service when indexing
-        # This is a placeholder for the sync interface
-        return []
-
     def transform_data(
         self,
         data_type: str,
-        records: List[Dict[str, Any]]
+        raw_data: Dict[str, Any]
     ) -> List[Dict[str, Any]]:
         """
-        Transform Slack data to common schema
+        Transform Slack data to common schema.
 
         Args:
-            data_type: Type of data
-            records: Raw records from Slack
+            data_type: Type of data being transformed
+            raw_data: Raw data from fetch_data()
 
         Returns:
-            Transformed records with common schema
+            List of transformed records
         """
+        records = raw_data.get("records", [])
         transformed = []
 
         for record in records:
@@ -214,10 +126,12 @@ class SlackSync:
                 transformed.append({
                     "id": record.get("id"),
                     "type": "channel",
+                    "integration": self.INTEGRATION_NAME,
                     "name": record.get("name"),
                     "is_private": record.get("is_private", False),
                     "is_archived": record.get("is_archived", False),
                     "created": record.get("created"),
+                    "created_at": self._timestamp_to_iso(record.get("created")),
                     "creator": record.get("creator"),
                     "num_members": record.get("num_members", 0),
                     "topic": record.get("topic", {}).get("value"),
@@ -228,11 +142,13 @@ class SlackSync:
                 transformed.append({
                     "id": record.get("ts"),
                     "type": "message",
+                    "integration": self.INTEGRATION_NAME,
                     "channel_id": record.get("channel_id"),
                     "channel_name": record.get("channel_name"),
                     "user": record.get("user"),
                     "text": record.get("text"),
                     "timestamp": record.get("ts"),
+                    "created_at": self._timestamp_to_iso(record.get("ts")),
                     "thread_ts": record.get("thread_ts"),
                     "reply_count": record.get("reply_count", 0),
                     "attachments": record.get("attachments", [])
@@ -247,6 +163,7 @@ class SlackSync:
                 transformed.append({
                     "id": record.get("id"),
                     "type": "user",
+                    "integration": self.INTEGRATION_NAME,
                     "name": record.get("name"),
                     "real_name": record.get("real_name"),
                     "display_name": profile.get("display_name"),
@@ -255,18 +172,21 @@ class SlackSync:
                     "is_admin": record.get("is_admin", False),
                     "is_owner": record.get("is_owner", False),
                     "status_text": profile.get("status_text"),
-                    "timezone": record.get("tz")
+                    "timezone": record.get("tz"),
+                    "created_at": datetime.utcnow().isoformat()
                 })
 
             elif data_type == "files":
                 transformed.append({
                     "id": record.get("id"),
                     "type": "file",
+                    "integration": self.INTEGRATION_NAME,
                     "name": record.get("name"),
                     "title": record.get("title"),
                     "mimetype": record.get("mimetype"),
                     "size": record.get("size", 0),
                     "created": record.get("created"),
+                    "created_at": self._timestamp_to_iso(record.get("created")),
                     "user": record.get("user"),
                     "url_private": record.get("url_private"),
                     "is_public": record.get("is_public", False)
@@ -274,95 +194,193 @@ class SlackSync:
 
         return transformed
 
-    async def sync_data(
-        self,
-        business_wallet: str,
-        data_types: Optional[List[str]] = None
-    ) -> Dict[str, Any]:
-        """
-        Sync all Slack data with multi-tenant Filecoin storage
+    # ==================== OPTIONAL OVERRIDES ====================
 
-        Args:
-            business_wallet: Business wallet address (for encryption key)
-            data_types: Optional list of specific data types to sync
+    def get_chunk_strategy(self, data_type: str) -> str:
+        """Get chunking strategy for each data type"""
+        strategies = {
+            "channels": "latest",   # Channels don't change often
+            "messages": "monthly",  # Messages chunked by month
+            "users": "latest",      # Users as single chunk
+            "files": "quarterly"    # Files chunked by quarter
+        }
+        return strategies.get(data_type, "latest")
 
-        Returns:
-            Sync results with CIDs for each data type
-        """
-        if data_types is None:
-            data_types = self.get_data_types()
+    def get_date_field(self, data_type: str) -> str:
+        """Get date field for chunking"""
+        return "created_at"
 
-        results = {
-            "business_wallet": business_wallet,
-            "integration": "slack",
-            "synced_at": datetime.utcnow().isoformat(),
-            "data": {}
+    async def test_connection(self) -> bool:
+        """Test if the Slack connection is valid"""
+        headers = {
+            "Authorization": f"Bearer {self.access_token}",
+            "Content-Type": "application/json"
         }
 
-        for data_type in data_types:
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.get(
+                    f"{self.api_base}/auth.test",
+                    headers=headers
+                )
+                response.raise_for_status()
+                result = response.json()
+
+                if result.get("ok"):
+                    logger.info(
+                        f"Slack connection valid for team: {result.get('team')}"
+                    )
+                    return True
+                else:
+                    logger.error(f"Slack auth test failed: {result.get('error')}")
+                    return False
+
+        except Exception as e:
+            logger.error(f"Slack connection test failed: {e}")
+            return False
+
+    # ==================== PRIVATE HELPERS ====================
+
+    async def _fetch_channels(
+        self,
+        client: httpx.AsyncClient,
+        headers: dict,
+        limit: int
+    ) -> List[Dict[str, Any]]:
+        """Fetch all channels (public + private)"""
+        response = await client.get(
+            f"{self.api_base}/conversations.list",
+            params={"types": "public_channel,private_channel", "limit": limit},
+            headers=headers
+        )
+        response.raise_for_status()
+        result = response.json()
+
+        if not result.get("ok"):
+            raise Exception(f"Slack API error: {result.get('error')}")
+
+        return result.get("channels", [])
+
+    async def _fetch_messages(
+        self,
+        client: httpx.AsyncClient,
+        headers: dict,
+        limit: int
+    ) -> List[Dict[str, Any]]:
+        """Fetch messages from all channels"""
+        # First get channels
+        channels_response = await client.get(
+            f"{self.api_base}/conversations.list",
+            params={"types": "public_channel,private_channel", "limit": 100},
+            headers=headers
+        )
+        channels_response.raise_for_status()
+        channels_result = channels_response.json()
+
+        if not channels_result.get("ok"):
+            raise Exception(f"Slack API error: {channels_result.get('error')}")
+
+        channels = channels_result.get("channels", [])
+        all_messages = []
+
+        # Fetch messages from each channel (limit to first 10 for MVP)
+        for channel in channels[:10]:
+            channel_id = channel.get("id")
+
             try:
-                # 1. Fetch data from Slack
-                raw_data = await self.fetch_data(data_type)
-
-                # 2. Transform to common schema
-                transformed_data = self.transform_data(data_type, raw_data)
-
-                # 3. Prepare data package
-                data_package = {
-                    "data_type": data_type,
-                    "integration": "slack",
-                    "records": transformed_data,
-                    "record_count": len(transformed_data),
-                    "synced_at": datetime.utcnow().isoformat(),
-                    "metadata": {
-                        "source": "slack_api",
-                        "version": "v1"
-                    }
-                }
-
-                # 4. Encrypt with Lit Protocol (business wallet as key)
-                encrypted_data = await self.encryption.encrypt_for_customer(
-                    data=data_package,
-                    customer_wallet=business_wallet,
-                    additional_metadata={
-                        "integration": "slack",
-                        "data_type": data_type
-                    }
+                messages_response = await client.get(
+                    f"{self.api_base}/conversations.history",
+                    params={"channel": channel_id, "limit": min(limit, 100)},
+                    headers=headers
                 )
+                messages_response.raise_for_status()
+                messages_result = messages_response.json()
 
-                # 5. Upload to Filecoin (multi-tenant namespace)
-                cid = await self.filecoin.upload_encrypted_data(
-                    customer_wallet=business_wallet,
-                    integration="slack",
-                    data_type=data_type,
-                    encrypted_data=encrypted_data,
-                    metadata={
-                        "integration": "slack",
-                        "data_type": data_type,
-                        "record_count": len(transformed_data),
-                        "storage_layer": "customer-data"
-                    }
-                )
-
-                results["data"][data_type] = {
-                    "cid": cid,
-                    "record_count": len(transformed_data),
-                    "status": "success"
-                }
-
-                logger.info(
-                    f"Synced {len(transformed_data)} {data_type} records to Filecoin, "
-                    f"CID: {cid}, wallet: {business_wallet}"
-                )
-
+                if messages_result.get("ok"):
+                    messages = messages_result.get("messages", [])
+                    for msg in messages:
+                        msg["channel_id"] = channel_id
+                        msg["channel_name"] = channel.get("name")
+                    all_messages.extend(messages)
             except Exception as e:
-                logger.error(f"Failed to sync {data_type}: {e}")
-                results["data"][data_type] = {
-                    "status": "failed",
-                    "error": str(e)
-                }
+                logger.warning(f"Failed to fetch messages from channel {channel_id}: {e}")
+                continue
 
-        return results
+        return all_messages
+
+    async def _fetch_users(
+        self,
+        client: httpx.AsyncClient,
+        headers: dict,
+        limit: int
+    ) -> List[Dict[str, Any]]:
+        """Fetch all workspace users with pagination"""
+        all_users = []
+        cursor = None
+
+        while len(all_users) < limit:
+            params = {"limit": min(100, limit - len(all_users))}
+            if cursor:
+                params["cursor"] = cursor
+
+            response = await client.get(
+                f"{self.api_base}/users.list",
+                params=params,
+                headers=headers
+            )
+            response.raise_for_status()
+            result = response.json()
+
+            if not result.get("ok"):
+                raise Exception(f"Slack API error: {result.get('error')}")
+
+            members = result.get("members", [])
+            if not members:
+                break
+
+            all_users.extend(members)
+
+            # Check for pagination
+            cursor = result.get("response_metadata", {}).get("next_cursor")
+            if not cursor:
+                break
+
+        return all_users
+
+    async def _fetch_files(
+        self,
+        client: httpx.AsyncClient,
+        headers: dict,
+        limit: int
+    ) -> List[Dict[str, Any]]:
+        """Fetch workspace files"""
+        response = await client.get(
+            f"{self.api_base}/files.list",
+            params={"count": min(limit, 100)},
+            headers=headers
+        )
+        response.raise_for_status()
+        result = response.json()
+
+        if not result.get("ok"):
+            raise Exception(f"Slack API error: {result.get('error')}")
+
+        return result.get("files", [])
+
+    def _timestamp_to_iso(self, ts: Any) -> str:
+        """Convert Slack timestamp to ISO format"""
+        if not ts:
+            return datetime.utcnow().isoformat()
+
+        try:
+            # Slack timestamps are Unix timestamps (can be string or float)
+            if isinstance(ts, str):
+                ts = float(ts.split(".")[0])
+            return datetime.fromtimestamp(ts).isoformat()
+        except (ValueError, TypeError):
+            return datetime.utcnow().isoformat()
+
+    # ==================== ACTION METHODS ====================
 
     async def send_message(
         self,
@@ -372,7 +390,7 @@ class SlackSync:
         reply_broadcast: bool = False
     ) -> Dict[str, Any]:
         """
-        Send a message to a Slack channel
+        Send a message to a Slack channel.
 
         Args:
             channel: Channel ID to send message to
@@ -398,13 +416,12 @@ class SlackSync:
             if reply_broadcast:
                 payload["reply_broadcast"] = True
 
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=30.0) as client:
             try:
                 response = await client.post(
                     f"{self.api_base}/chat.postMessage",
                     json=payload,
-                    headers=headers,
-                    timeout=30.0
+                    headers=headers
                 )
                 response.raise_for_status()
                 result = response.json()
@@ -429,7 +446,7 @@ class SlackSync:
         emoji: str
     ) -> Dict[str, Any]:
         """
-        Add a reaction emoji to a message
+        Add a reaction emoji to a message.
 
         Args:
             channel: Channel ID containing the message
@@ -450,13 +467,12 @@ class SlackSync:
             "name": emoji
         }
 
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=30.0) as client:
             try:
                 response = await client.post(
                     f"{self.api_base}/reactions.add",
                     json=payload,
-                    headers=headers,
-                    timeout=30.0
+                    headers=headers
                 )
                 response.raise_for_status()
                 result = response.json()
@@ -475,55 +491,4 @@ class SlackSync:
                 raise Exception(f"Failed to add reaction: {e.response.text}")
             except Exception as e:
                 logger.error(f"Failed to add reaction: {e}")
-                raise
-
-    async def get_thread_replies(
-        self,
-        channel: str,
-        thread_ts: str,
-        limit: int = 100
-    ) -> List[Dict[str, Any]]:
-        """
-        Get replies in a message thread
-
-        Args:
-            channel: Channel ID
-            thread_ts: Thread timestamp (parent message)
-            limit: Maximum number of replies to fetch
-
-        Returns:
-            List of thread reply messages
-        """
-        headers = {
-            "Authorization": f"Bearer {self.access_token}",
-            "Content-Type": "application/json"
-        }
-
-        async with httpx.AsyncClient() as client:
-            try:
-                response = await client.get(
-                    f"{self.api_base}/conversations.replies",
-                    params={
-                        "channel": channel,
-                        "ts": thread_ts,
-                        "limit": limit
-                    },
-                    headers=headers,
-                    timeout=30.0
-                )
-                response.raise_for_status()
-                result = response.json()
-
-                if not result.get("ok"):
-                    raise Exception(f"Slack API error: {result.get('error')}")
-
-                messages = result.get("messages", [])
-                logger.info(f"Retrieved {len(messages)} thread replies")
-                return messages
-
-            except httpx.HTTPStatusError as e:
-                logger.error(f"Slack API error: {e.response.text}")
-                raise Exception(f"Failed to get thread replies: {e.response.text}")
-            except Exception as e:
-                logger.error(f"Failed to get thread replies: {e}")
                 raise

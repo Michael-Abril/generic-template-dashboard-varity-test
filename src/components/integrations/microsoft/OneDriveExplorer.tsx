@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import {
   FolderOpen,
   File,
@@ -13,7 +13,6 @@ import {
   Upload,
   Share2,
   Trash2,
-  Star,
   MoreVertical,
   Search,
   Grid3X3,
@@ -23,14 +22,9 @@ import {
   Users,
   Clock,
   X,
-  Eye,
-  Edit3,
-  Copy,
-  Move,
-  Link,
   ExternalLink,
-  Filter,
-  SortAsc
+  RefreshCw,
+  Loader2
 } from 'lucide-react';
 
 interface DriveFile {
@@ -49,13 +43,25 @@ interface OneDriveExplorerProps {
   walletAddress: string;
   view: 'files' | 'shared' | 'recent' | 'recycle';
   files: DriveFile[];
+  onDataChange?: () => void;
 }
+
+type SectionType = 'files' | 'shared' | 'recent' | 'recycle';
+
+const SECTIONS = [
+  { id: 'files' as SectionType, label: 'My Files', icon: Home },
+  { id: 'shared' as SectionType, label: 'Shared', icon: Users },
+  { id: 'recent' as SectionType, label: 'Recent', icon: Clock },
+  { id: 'recycle' as SectionType, label: 'Recycle Bin', icon: Trash2 },
+];
 
 export default function OneDriveExplorer({
   walletAddress,
-  view,
-  files
+  view: initialView,
+  files,
+  onDataChange
 }: OneDriveExplorerProps) {
+  const [currentSection, setCurrentSection] = useState<SectionType>(initialView);
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
   const [currentFolder, setCurrentFolder] = useState<string | null>(null);
@@ -63,13 +69,9 @@ export default function OneDriveExplorer({
   const [sortBy, setSortBy] = useState<'name' | 'modified' | 'size'>('modified');
   const [showFilePreview, setShowFilePreview] = useState(false);
   const [selectedFile, setSelectedFile] = useState<DriveFile | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
 
-  const viewTitles: Record<string, string> = {
-    files: 'My Files',
-    shared: 'Shared with me',
-    recent: 'Recent',
-    recycle: 'Recycle bin'
-  };
+  const currentSectionConfig = SECTIONS.find(s => s.id === currentSection) || SECTIONS[0];
 
   const getFileIcon = (file: DriveFile) => {
     if (file.isFolder) return <FolderOpen className="h-8 w-8 text-blue-500" />;
@@ -104,22 +106,28 @@ export default function OneDriveExplorer({
     });
   };
 
-  const filteredAndSortedFiles = files
-    .filter((file) => {
-      if (searchQuery) {
-        return file.name.toLowerCase().includes(searchQuery.toLowerCase());
-      }
-      return true;
-    })
-    .sort((a, b) => {
-      if (sortBy === 'name') {
-        return a.name.localeCompare(b.name);
-      } else if (sortBy === 'modified') {
-        return new Date(b.lastModifiedDateTime).getTime() - new Date(a.lastModifiedDateTime).getTime();
-      } else {
-        return b.size - a.size;
-      }
-    });
+  const filteredAndSortedFiles = useMemo(() => {
+    return files
+      .filter((file) => {
+        if (searchQuery) {
+          return file.name.toLowerCase().includes(searchQuery.toLowerCase());
+        }
+        return true;
+      })
+      .sort((a, b) => {
+        // Folders always come first
+        if (a.isFolder && !b.isFolder) return -1;
+        if (!a.isFolder && b.isFolder) return 1;
+
+        if (sortBy === 'name') {
+          return a.name.localeCompare(b.name);
+        } else if (sortBy === 'modified') {
+          return new Date(b.lastModifiedDateTime).getTime() - new Date(a.lastModifiedDateTime).getTime();
+        } else {
+          return b.size - a.size;
+        }
+      });
+  }, [files, searchQuery, sortBy]);
 
   const toggleSelectFile = (fileId: string) => {
     setSelectedFiles((prev) => {
@@ -181,7 +189,7 @@ export default function OneDriveExplorer({
 
             if (response.ok) {
               alert(`File "${file.name}" uploaded successfully!`);
-              window.location.reload();
+              onDataChange?.();
             } else {
               const error = await response.json();
               alert(`Error uploading "${file.name}": ${error.detail || 'Failed'}`);
@@ -341,11 +349,51 @@ export default function OneDriveExplorer({
   );
 
   return (
-    <div className="flex h-full flex-col rounded-lg border border-gray-200 bg-white shadow-sm">
-      {/* Toolbar */}
-      <div className="border-b border-gray-200 p-4">
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-xl font-semibold text-gray-900">{viewTitles[view]}</h2>
+    <div className="flex h-[calc(100vh-220px)] gap-4">
+      {/* Section Sidebar */}
+      <div className="w-56 flex-shrink-0 rounded-lg border border-gray-200 bg-white shadow-sm overflow-hidden">
+        <div className="p-4 border-b border-gray-100">
+          <button
+            onClick={handleUpload}
+            disabled={isUploading}
+            className="w-full flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700 transition-colors disabled:opacity-50"
+          >
+            {isUploading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Upload className="h-4 w-4" />
+            )}
+            {isUploading ? 'Uploading...' : 'Upload'}
+          </button>
+        </div>
+        <div className="py-2">
+          {SECTIONS.map((section) => {
+            const Icon = section.icon;
+            const isActive = currentSection === section.id;
+            return (
+              <button
+                key={section.id}
+                onClick={() => setCurrentSection(section.id)}
+                className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors ${
+                  isActive
+                    ? 'bg-blue-50 text-blue-700 font-medium border-r-2 border-blue-600'
+                    : 'text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                <Icon className={`h-4 w-4 ${isActive ? 'text-blue-600' : 'text-gray-500'}`} />
+                <span className="flex-1 text-left">{section.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Main Content */}
+      <div className="flex-1 flex flex-col rounded-lg border border-gray-200 bg-white shadow-sm overflow-hidden">
+        {/* Toolbar */}
+        <div className="border-b border-gray-200 p-4">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-xl font-semibold text-gray-900">{currentSectionConfig.label}</h2>
           <div className="flex items-center gap-2">
             <div className="flex items-center gap-1 rounded-lg border border-gray-300 p-1">
               <button
@@ -506,6 +554,7 @@ export default function OneDriveExplorer({
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }

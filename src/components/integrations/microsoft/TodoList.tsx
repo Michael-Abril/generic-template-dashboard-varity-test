@@ -34,9 +34,10 @@ interface TodoListType {
 
 interface TodoListProps {
   walletAddress: string;
+  onDataChange?: () => void;
 }
 
-export default function TodoList({ walletAddress }: TodoListProps) {
+export default function TodoList({ walletAddress, onDataChange }: TodoListProps) {
   const [tasks, setTasks] = useState<TodoTask[]>([]);
   const [lists, setLists] = useState<TodoListType[]>([
     { id: '1', name: 'My Tasks', taskCount: 0 },

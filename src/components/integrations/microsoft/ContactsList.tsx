@@ -29,9 +29,10 @@ interface Contact {
 interface ContactsListProps {
   walletAddress: string;
   contacts: Contact[];
+  onDataChange?: () => void;
 }
 
-export default function ContactsList({ walletAddress, contacts }: ContactsListProps) {
+export default function ContactsList({ walletAddress, contacts, onDataChange }: ContactsListProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
   const [showContactForm, setShowContactForm] = useState(false);
@@ -76,7 +77,7 @@ export default function ContactsList({ walletAddress, contacts }: ContactsListPr
         setShowContactForm(false);
         setFormData({ name: '', email: '', phone: '', company: '', jobTitle: '' });
         // Refresh contacts list
-        window.location.reload();
+        onDataChange?.();
       } else {
         const error = await response.json();
         alert(`Error: ${error.detail || 'Failed to create contact'}`);
@@ -192,7 +193,7 @@ export default function ContactsList({ walletAddress, contacts }: ContactsListPr
                       if (response.ok) {
                         alert('Contact deleted successfully!');
                         setSelectedContact(null);
-                        window.location.reload();
+                        onDataChange?.();
                       } else {
                         const error = await response.json();
                         alert(`Error: ${error.detail || 'Failed to delete contact'}`);

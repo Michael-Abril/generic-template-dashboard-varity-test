@@ -29,6 +29,7 @@ from qdrant_client.models import (
 )
 
 from ..core.config import settings
+from .encryption_service import normalize_wallet_address
 
 logger = logging.getLogger(__name__)
 

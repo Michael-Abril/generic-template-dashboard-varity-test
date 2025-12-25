@@ -1,20 +1,34 @@
 """
 BaseDataAdapter - Universal base class for all integration adapters
 
-This provides a consistent interface for:
-- Pagination with rate limiting
-- Date-based chunking (monthly, quarterly, yearly)
-- RAG storage configuration via RAG_ENABLED_TYPES
+This provides a COMPLETE data pipeline:
+1. Wallet normalization (consistent storage/retrieval)
+2. Data fetching (abstract - each adapter implements)
+3. Data transformation (abstract - each adapter implements)
+4. Encryption (AES-256-GCM with wallet-derived key)
+5. Pinata upload (IPFS/Filecoin storage)
+6. RAG indexing configuration
 
-All adapters should inherit from this class and override RAG_ENABLED_TYPES
-to specify which data types should be indexed in Qdrant.
+All adapters MUST inherit from this class and implement:
+- INTEGRATION_NAME: str - The integration identifier (e.g., "google", "slack")
+- RAG_ENABLED_TYPES: List[str] - Data types to index in Qdrant
+- get_data_types() -> List[str] - Available data types
+- fetch_data(data_type) -> Dict - Fetch from external API
+- transform_data(data_type, raw_data) -> List[Dict] - Transform to common schema
 
 Example:
-    class QuickBooksAdapter(BaseDataAdapter):
-        RAG_ENABLED_TYPES = ["invoices", "expenses", "customers"]
+    class SlackAdapter(BaseDataAdapter):
+        INTEGRATION_NAME = "slack"
+        RAG_ENABLED_TYPES = ["files"]
 
-        async def sync_data(self, wallet_address: str) -> Dict[str, Any]:
-            # Implementation...
+        def get_data_types(self) -> List[str]:
+            return ["channels", "messages", "users", "files"]
+
+        async def fetch_data(self, data_type: str) -> Dict[str, Any]:
+            # Call Slack API...
+
+        def transform_data(self, data_type: str, raw_data: Dict) -> List[Dict]:
+            # Transform Slack data to common schema...
 """
 
 from abc import ABC, abstractmethod
@@ -24,26 +38,419 @@ from collections import defaultdict
 import asyncio
 import logging
 
+from app.services.filecoin_service import FilecoinService
+from app.services.encryption_service import EncryptionService, normalize_wallet_address
+
 logger = logging.getLogger(__name__)
 
 
 class BaseDataAdapter(ABC):
-    """Universal base adapter for all integrations"""
+    """
+    Universal base adapter for all integrations.
 
-    # Override in subclass - data types to sync to Pinata AND index in Qdrant
-    # Data types NOT in this list will be skipped entirely
+    Handles the complete data pipeline:
+    - Wallet normalization
+    - API pagination
+    - Data chunking
+    - Encryption
+    - Pinata storage
+    - RAG configuration
+    """
+
+    # ==================== MUST OVERRIDE IN SUBCLASS ====================
+
+    # Integration identifier (e.g., "google", "slack", "quickbooks")
+    INTEGRATION_NAME: str = ""
+
+    # Data types to sync to Pinata AND index in Qdrant
+    # Data types NOT in this list will still be synced but NOT indexed for AI
     RAG_ENABLED_TYPES: List[str] = []
 
-    def __init__(self, access_token: str, **kwargs):
+    # ==================== INITIALIZATION ====================
+
+    def __init__(self, credentials: dict):
         """
-        Initialize adapter with OAuth access token.
+        Initialize adapter with OAuth credentials and storage services.
 
         Args:
-            access_token: OAuth access token for the integration
-            **kwargs: Additional adapter-specific config
+            credentials: OAuth credentials dict with access_token (required)
+                        and optional refresh_token, provider_data
         """
-        self.access_token = access_token
-        self.refresh_token = kwargs.get("refresh_token")
+        self.access_token = credentials.get("access_token")
+        self.refresh_token = credentials.get("refresh_token")
+        self.provider_data = credentials.get("provider_data", {})
+
+        if not self.access_token:
+            raise ValueError(f"Missing access token for {self.INTEGRATION_NAME}")
+
+        # Initialize storage services (shared across all adapters)
+        self.filecoin = FilecoinService()
+        self.encryption = EncryptionService()
+
+        logger.info(f"Initialized {self.INTEGRATION_NAME} adapter")
+
+    # ==================== ABSTRACT METHODS (Must Implement) ====================
+
+    @abstractmethod
+    def get_data_types(self) -> List[str]:
+        """
+        Get list of data types this adapter can sync.
+
+        Returns:
+            List of data type identifiers (e.g., ["channels", "messages", "files"])
+        """
+        pass
+
+    @abstractmethod
+    async def fetch_data(self, data_type: str, **kwargs) -> Dict[str, Any]:
+        """
+        Fetch data from the external API.
+
+        Args:
+            data_type: Type of data to fetch (e.g., "channels", "invoices")
+            **kwargs: Additional fetch options (limit, date_range, etc.)
+
+        Returns:
+            Raw data from the API, typically:
+            {
+                "records": [...],  # or specific key like "messages", "files"
+                "total_count": int,
+                "chunks": {...}  # Optional pre-chunked data
+            }
+        """
+        pass
+
+    @abstractmethod
+    def transform_data(
+        self,
+        data_type: str,
+        raw_data: Dict[str, Any]
+    ) -> List[Dict[str, Any]]:
+        """
+        Transform raw API data to common schema.
+
+        Args:
+            data_type: Type of data being transformed
+            raw_data: Raw data from fetch_data()
+
+        Returns:
+            List of transformed records with common schema:
+            [
+                {
+                    "id": str,
+                    "type": str,  # e.g., "email", "invoice", "contact"
+                    "integration": str,  # e.g., "google", "slack"
+                    ...other fields
+                }
+            ]
+        """
+        pass
+
+    # ==================== OPTIONAL OVERRIDES ====================
+
+    def get_chunk_strategy(self, data_type: str) -> str:
+        """
+        Get chunking strategy for a data type.
+
+        Override to customize chunking per data type.
+
+        Args:
+            data_type: The data type
+
+        Returns:
+            One of: "monthly", "quarterly", "yearly", "latest"
+        """
+        return "latest"  # Default: no chunking, single file
+
+    def get_date_field(self, data_type: str) -> str:
+        """
+        Get the date field used for chunking.
+
+        Override to specify which field contains the date for chunking.
+
+        Args:
+            data_type: The data type
+
+        Returns:
+            Field name (e.g., "created_at", "date", "timestamp")
+        """
+        return "created_at"
+
+    def get_data_type_name(self, data_type: str) -> str:
+        """
+        Get human-readable name for a data type.
+
+        Override for custom display names.
+
+        Args:
+            data_type: Internal data type key
+
+        Returns:
+            Human-readable name (e.g., "invoices" -> "Invoices")
+        """
+        return data_type.replace("_", " ").title()
+
+    # ==================== SYNC (Main Entry Point) ====================
+
+    async def sync_data(
+        self,
+        wallet_address: str,
+        data_types: Optional[List[str]] = None
+    ) -> Dict[str, Any]:
+        """
+        Sync all data from the integration with multi-tenant Filecoin storage.
+
+        This is the main entry point. It handles:
+        1. Wallet normalization (CRITICAL for consistent storage/retrieval)
+        2. Fetching data from external API
+        3. Transforming to common schema
+        4. Chunking by time period
+        5. Encrypting with wallet-derived key
+        6. Uploading to Pinata (Filecoin/IPFS)
+
+        Args:
+            wallet_address: Customer's wallet address (will be normalized)
+            data_types: Optional list of specific data types to sync
+                       (default: all from get_data_types())
+
+        Returns:
+            Sync results with CIDs for each data type:
+            {
+                "business_wallet": str,
+                "integration": str,
+                "synced_at": str,
+                "data": {
+                    "data_type": {
+                        "status": "success" | "failed",
+                        "cid": str,  # Latest CID
+                        "chunks": {"chunk_id": "cid", ...},
+                        "record_count": int,
+                        "error": str (if failed)
+                    }
+                }
+            }
+        """
+        # CRITICAL: Normalize wallet address for consistent storage/retrieval
+        normalized_wallet = normalize_wallet_address(wallet_address)
+
+        if data_types is None:
+            data_types = self.get_data_types()
+
+        logger.info(
+            f"Starting {self.INTEGRATION_NAME} sync for wallet={normalized_wallet[:15]}..., "
+            f"data_types={data_types}"
+        )
+
+        results = {
+            "business_wallet": normalized_wallet,
+            "integration": self.INTEGRATION_NAME,
+            "synced_at": datetime.utcnow().isoformat(),
+            "data": {}
+        }
+
+        for data_type in data_types:
+            try:
+                result = await self._sync_data_type(normalized_wallet, data_type)
+                results["data"][data_type] = result
+            except Exception as e:
+                logger.error(
+                    f"Failed to sync {self.INTEGRATION_NAME}/{data_type}: {e}",
+                    exc_info=True
+                )
+                results["data"][data_type] = {
+                    "status": "failed",
+                    "error": str(e)
+                }
+
+        # Log summary
+        success_count = sum(
+            1 for d in results["data"].values() if d.get("status") == "success"
+        )
+        total_records = sum(
+            d.get("record_count", 0) for d in results["data"].values()
+        )
+
+        logger.info(
+            f"{self.INTEGRATION_NAME} sync complete: "
+            f"{success_count}/{len(data_types)} data types, "
+            f"{total_records} total records, "
+            f"wallet={normalized_wallet[:15]}..."
+        )
+
+        return results
+
+    async def _sync_data_type(
+        self,
+        wallet_address: str,
+        data_type: str
+    ) -> Dict[str, Any]:
+        """
+        Sync a single data type to Pinata.
+
+        Args:
+            wallet_address: Normalized wallet address
+            data_type: Data type to sync
+
+        Returns:
+            Sync result for this data type
+        """
+        logger.info(f"Syncing {self.INTEGRATION_NAME}/{data_type}")
+
+        # 1. Fetch data from external API
+        raw_data = await self.fetch_data(data_type)
+
+        # 2. Check if data comes pre-chunked
+        chunks = raw_data.get("chunks", {})
+
+        if chunks:
+            # Data is already chunked (e.g., by month/quarter)
+            return await self._store_chunked_data(
+                wallet_address, data_type, chunks
+            )
+        else:
+            # Transform and chunk the data
+            transformed = self.transform_data(data_type, raw_data)
+
+            if not transformed:
+                logger.info(f"No records to sync for {data_type}")
+                return {
+                    "status": "success",
+                    "record_count": 0,
+                    "cid": None,
+                    "chunks": {}
+                }
+
+            # Apply chunking strategy
+            chunks = self._apply_chunking(data_type, transformed)
+
+            return await self._store_chunked_data(
+                wallet_address, data_type, chunks
+            )
+
+    async def _store_chunked_data(
+        self,
+        wallet_address: str,
+        data_type: str,
+        chunks: Dict[str, List[Dict[str, Any]]]
+    ) -> Dict[str, Any]:
+        """
+        Store chunked data to Pinata.
+
+        Args:
+            wallet_address: Normalized wallet address
+            data_type: Data type being stored
+            chunks: Dict mapping chunk_id to list of records
+
+        Returns:
+            Storage result with CIDs
+        """
+        chunk_cids = {}
+        total_records = 0
+        latest_cid = None
+
+        # Sort chunks (most recent first for "latest" flag)
+        sorted_chunk_ids = sorted(chunks.keys(), reverse=True)
+
+        for i, chunk_id in enumerate(sorted_chunk_ids):
+            records = chunks[chunk_id]
+            if not records:
+                continue
+
+            # Transform records if they're raw (add type/integration fields)
+            processed_records = []
+            for record in records:
+                if "type" not in record or "integration" not in record:
+                    record = {
+                        **record,
+                        "type": data_type,
+                        "integration": self.INTEGRATION_NAME
+                    }
+                processed_records.append(record)
+
+            total_records += len(processed_records)
+
+            # Prepare data package
+            data_package = {
+                "data_type": data_type,
+                "integration": self.INTEGRATION_NAME,
+                "chunk_id": chunk_id,
+                "records": processed_records,
+                "record_count": len(processed_records),
+                "synced_at": datetime.utcnow().isoformat(),
+                "metadata": {
+                    "source": f"{self.INTEGRATION_NAME}_api",
+                    "chunk_strategy": self.get_chunk_strategy(data_type)
+                }
+            }
+
+            # Encrypt with wallet-derived key
+            encrypted_data = await self.encryption.encrypt_for_customer(
+                data=data_package,
+                customer_wallet=wallet_address,
+                additional_metadata={
+                    "integration": self.INTEGRATION_NAME,
+                    "data_type": data_type,
+                    "chunk_id": chunk_id
+                }
+            )
+
+            # Upload to Pinata
+            is_latest = (i == 0)  # First chunk (most recent) is marked as latest
+            cid = await self.filecoin.upload_encrypted_data(
+                customer_wallet=wallet_address,
+                integration=self.INTEGRATION_NAME,
+                data_type=data_type,
+                encrypted_data=encrypted_data,
+                chunk_id=chunk_id,
+                chunk_type=self.get_chunk_strategy(data_type),
+                is_latest=is_latest,
+                record_count=len(processed_records)
+            )
+
+            chunk_cids[chunk_id] = cid
+            if is_latest:
+                latest_cid = cid
+
+            logger.info(
+                f"Stored {self.INTEGRATION_NAME}/{data_type}/{chunk_id}: "
+                f"{len(processed_records)} records, CID={cid}"
+            )
+
+        return {
+            "status": "success",
+            "cid": latest_cid,
+            "chunks": chunk_cids,
+            "record_count": total_records,
+            "chunk_count": len(chunk_cids)
+        }
+
+    def _apply_chunking(
+        self,
+        data_type: str,
+        records: List[Dict[str, Any]]
+    ) -> Dict[str, List[Dict[str, Any]]]:
+        """
+        Apply chunking strategy to records.
+
+        Args:
+            data_type: Data type being chunked
+            records: List of transformed records
+
+        Returns:
+            Dict mapping chunk_id to list of records
+        """
+        strategy = self.get_chunk_strategy(data_type)
+        date_field = self.get_date_field(data_type)
+
+        if strategy == "monthly":
+            return self.chunk_by_month(records, date_field)
+        elif strategy == "quarterly":
+            return self.chunk_by_quarter(records, date_field)
+        elif strategy == "yearly":
+            return self.chunk_by_year(records, date_field)
+        else:
+            # Default: single "latest" chunk
+            return self.chunk_single(records)
 
     # ==================== PAGINATION ====================
 
@@ -75,7 +482,7 @@ class BaseDataAdapter(ABC):
             results, response_data = await fetch_page(cursor)
             all_results.extend(results)
 
-            logger.info(
+            logger.debug(
                 f"Pagination page {page_num}: fetched {len(results)}, "
                 f"total: {len(all_results)}"
             )
@@ -89,12 +496,19 @@ class BaseDataAdapter(ABC):
 
             await asyncio.sleep(rate_limit_ms / 1000)
 
-        logger.info(f"Pagination complete: {len(all_results)} total items across {page_num} pages")
+        logger.info(
+            f"Pagination complete: {len(all_results)} total items "
+            f"across {page_num} pages"
+        )
         return all_results
 
     # ==================== CHUNKING ====================
 
-    def chunk_by_month(self, records: List[Dict], date_field: str) -> Dict[str, List[Dict]]:
+    def chunk_by_month(
+        self,
+        records: List[Dict],
+        date_field: str
+    ) -> Dict[str, List[Dict]]:
         """
         Group records by YYYY-MM.
 
@@ -107,7 +521,11 @@ class BaseDataAdapter(ABC):
         """
         return self._chunk_by_date(records, date_field, "%Y-%m")
 
-    def chunk_by_quarter(self, records: List[Dict], date_field: str) -> Dict[str, List[Dict]]:
+    def chunk_by_quarter(
+        self,
+        records: List[Dict],
+        date_field: str
+    ) -> Dict[str, List[Dict]]:
         """
         Group records by YYYY-Q#.
 
@@ -130,7 +548,11 @@ class BaseDataAdapter(ABC):
             chunks[chunk_id].append(record)
         return dict(chunks)
 
-    def chunk_by_year(self, records: List[Dict], date_field: str) -> Dict[str, List[Dict]]:
+    def chunk_by_year(
+        self,
+        records: List[Dict],
+        date_field: str
+    ) -> Dict[str, List[Dict]]:
         """
         Group records by YYYY.
 
@@ -155,7 +577,10 @@ class BaseDataAdapter(ABC):
         return {"latest": records} if records else {}
 
     def _chunk_by_date(
-        self, records: List[Dict], date_field: str, fmt: str
+        self,
+        records: List[Dict],
+        date_field: str,
+        fmt: str
     ) -> Dict[str, List[Dict]]:
         """Internal helper for date-based chunking"""
         chunks = defaultdict(list)
@@ -200,7 +625,10 @@ class BaseDataAdapter(ABC):
 
         for fmt in formats:
             try:
-                return datetime.strptime(clean_str, fmt.replace(".%fZ", "").replace("Z", ""))
+                return datetime.strptime(
+                    clean_str,
+                    fmt.replace(".%fZ", "").replace("Z", "")
+                )
             except ValueError:
                 continue
 
@@ -224,46 +652,18 @@ class BaseDataAdapter(ABC):
         """Get list of data types that will be synced and indexed"""
         return self.RAG_ENABLED_TYPES.copy()
 
-    # ==================== SYNC (Abstract) ====================
+    # ==================== CONNECTION TEST ====================
 
-    @abstractmethod
-    async def sync_data(self, wallet_address: str) -> Dict[str, Any]:
+    async def test_connection(self) -> bool:
         """
-        Sync data from the integration for a given wallet.
+        Test if the OAuth connection is valid.
 
-        Must be implemented by each adapter.
-
-        Args:
-            wallet_address: Customer's wallet address
+        Override in subclass to implement provider-specific test.
 
         Returns:
-            Dict with sync results:
-            {
-                "business_wallet": str,
-                "integration": str,
-                "synced_at": str,
-                "data": {
-                    "data_type": {
-                        "status": "success" | "failed",
-                        "cid": str,
-                        "record_count": int,
-                        "chunks": {...},
-                        "error": str (if failed)
-                    }
-                }
-            }
+            True if connection is valid, False otherwise
         """
-        pass
-
-    @abstractmethod
-    def get_data_type_name(self, data_type: str) -> str:
-        """
-        Get human-readable name for a data type.
-
-        Args:
-            data_type: Internal data type key
-
-        Returns:
-            Human-readable name (e.g., "invoices" -> "Invoice")
-        """
-        pass
+        logger.warning(
+            f"test_connection() not implemented for {self.INTEGRATION_NAME}"
+        )
+        return True

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   FolderOpen,
   File,
@@ -20,6 +20,7 @@ import {
   Grid3X3,
   List,
   ChevronRight,
+  ChevronLeft,
   Search,
   Filter,
   Plus,
@@ -140,6 +141,8 @@ export function DriveExplorer({ walletAddress, data }: DriveExplorerProps) {
   const [creatingFolder, setCreatingFolder] = useState(false);
   const [showNewMenu, setShowNewMenu] = useState(false);
   const [sidebarSection, setSidebarSection] = useState<SidebarSection>('my-drive');
+  const [currentPage, setCurrentPage] = useState(0);
+  const FILES_PER_PAGE = 50;
   const fileInputRef = useRef<HTMLInputElement>(null);
   const newMenuRef = useRef<HTMLDivElement>(null);
 
@@ -162,7 +165,7 @@ export function DriveExplorer({ walletAddress, data }: DriveExplorerProps) {
         // Sort by modified time, most recent first
         result = [...result].sort((a, b) =>
           new Date(b.modifiedTime).getTime() - new Date(a.modifiedTime).getTime()
-        ).slice(0, 20); // Show 20 most recent
+        );
         break;
       case 'trash':
         // In real Drive, trash would be a separate API call
@@ -189,6 +192,18 @@ export function DriveExplorer({ walletAddress, data }: DriveExplorerProps) {
 
     return result;
   }, [files, searchQuery, sidebarSection]);
+
+  // Pagination logic
+  const totalPages = Math.ceil(filteredFiles.length / FILES_PER_PAGE);
+  const paginatedFiles = useMemo(() => {
+    const start = currentPage * FILES_PER_PAGE;
+    return filteredFiles.slice(start, start + FILES_PER_PAGE);
+  }, [filteredFiles, currentPage]);
+
+  // Reset page when filter changes
+  useEffect(() => {
+    setCurrentPage(0);
+  }, [searchQuery, sidebarSection]);
 
   // Load files from data prop (already fetched by parent)
   useEffect(() => {
@@ -568,7 +583,7 @@ export function DriveExplorer({ walletAddress, data }: DriveExplorerProps) {
 
   const renderGridView = () => (
     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4 p-6">
-      {filteredFiles.map((file) => {
+      {paginatedFiles.map((file) => {
         const Icon = getFileIcon(file.mimeType);
         const colors = getFileColors(file.mimeType);
         return (
@@ -615,7 +630,7 @@ export function DriveExplorer({ walletAddress, data }: DriveExplorerProps) {
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-100">
-          {filteredFiles.map((file) => {
+          {paginatedFiles.map((file) => {
             const Icon = getFileIcon(file.mimeType);
             const colors = getFileColors(file.mimeType);
             return (
@@ -906,6 +921,38 @@ export function DriveExplorer({ walletAddress, data }: DriveExplorerProps) {
             <p className="text-sm text-gray-600 mt-2">
               Found {filteredFiles.length} {filteredFiles.length === 1 ? 'file' : 'files'} matching &quot;{searchQuery}&quot;
             </p>
+          )}
+
+          {/* Pagination Controls */}
+          {filteredFiles.length > 0 && (
+            <div className="flex items-center justify-between mt-3 pt-3 border-t">
+              <span className="text-sm text-gray-600">
+                {filteredFiles.length === 0
+                  ? '0 files'
+                  : `${currentPage * FILES_PER_PAGE + 1}-${Math.min((currentPage + 1) * FILES_PER_PAGE, filteredFiles.length)} of ${filteredFiles.length} files`}
+              </span>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setCurrentPage(p => Math.max(0, p - 1))}
+                  disabled={currentPage === 0}
+                  className="p-1.5 hover:bg-gray-100 rounded-full text-gray-500 hover:text-gray-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                  title="Previous page"
+                >
+                  <ChevronLeft className="h-5 w-5" />
+                </button>
+                <span className="text-sm text-gray-600 px-2">
+                  Page {currentPage + 1} of {totalPages || 1}
+                </span>
+                <button
+                  onClick={() => setCurrentPage(p => Math.min(totalPages - 1, p + 1))}
+                  disabled={currentPage >= totalPages - 1}
+                  className="p-1.5 hover:bg-gray-100 rounded-full text-gray-500 hover:text-gray-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                  title="Next page"
+                >
+                  <ChevronRight className="h-5 w-5" />
+                </button>
+              </div>
+            </div>
           )}
         </div>
 

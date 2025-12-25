@@ -24,6 +24,7 @@ import {
 interface EmailComposerProps {
   walletAddress: string;
   onClose: () => void;
+  onSent?: () => void;
   replyTo?: {
     to: string;
     subject: string;
@@ -31,7 +32,7 @@ interface EmailComposerProps {
   };
 }
 
-export function EmailComposer({ walletAddress, onClose, replyTo }: EmailComposerProps) {
+export function EmailComposer({ walletAddress, onClose, onSent, replyTo }: EmailComposerProps) {
   const [minimized, setMinimized] = useState(false);
   const [to, setTo] = useState(replyTo?.to || '');
   const [cc, setCc] = useState('');
@@ -79,6 +80,7 @@ export function EmailComposer({ walletAddress, onClose, replyTo }: EmailComposer
 
       if (response.ok) {
         alert('Email sent successfully!');
+        onSent?.();
         onClose();
       } else {
         throw new Error('Failed to send email');

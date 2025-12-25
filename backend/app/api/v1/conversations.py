@@ -100,6 +100,7 @@ async def list_conversations(
                 "is_pinned": conv.is_pinned,
                 "is_archived": conv.is_archived,
                 "integration": conv.integration,
+                "project_id": conv.project_id,
                 "created_at": conv.created_at,
                 "updated_at": conv.updated_at,
                 "last_message_at": conv.last_message_at,
@@ -128,6 +129,7 @@ async def create_conversation(
             wallet_address=request.wallet_address.lower(),
             title=request.title or "New Conversation",
             integration=request.integration,
+            project_id=request.project_id,
             is_pinned=False,
             is_archived=False
         )
@@ -145,6 +147,7 @@ async def create_conversation(
             is_pinned=conversation.is_pinned,
             is_archived=conversation.is_archived,
             integration=conversation.integration,
+            project_id=conversation.project_id,
             created_at=conversation.created_at,
             updated_at=conversation.updated_at,
             last_message_at=conversation.last_message_at,
@@ -210,6 +213,7 @@ async def get_conversation(
             is_pinned=conversation.is_pinned,
             is_archived=conversation.is_archived,
             integration=conversation.integration,
+            project_id=conversation.project_id,
             created_at=conversation.created_at,
             updated_at=conversation.updated_at,
             last_message_at=conversation.last_message_at,
@@ -262,6 +266,8 @@ async def update_conversation(
             conversation.is_pinned = request.is_pinned
         if request.is_archived is not None:
             conversation.is_archived = request.is_archived
+        if request.project_id is not None:
+            conversation.project_id = request.project_id
 
         await db.commit()
         await db.refresh(conversation)
@@ -282,6 +288,7 @@ async def update_conversation(
             is_pinned=conversation.is_pinned,
             is_archived=conversation.is_archived,
             integration=conversation.integration,
+            project_id=conversation.project_id,
             created_at=conversation.created_at,
             updated_at=conversation.updated_at,
             last_message_at=conversation.last_message_at,

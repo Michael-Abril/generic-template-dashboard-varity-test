@@ -1,99 +1,217 @@
 """
 Microsoft 365 Sync Adapter
-Syncs data from Outlook, Calendar, OneDrive, Excel, and Contacts with multi-tenant Filecoin storage
+Inherits from BaseDataAdapter for consistent data pipeline handling.
+
+Syncs data from Microsoft Graph API:
+- Outlook Mail
+- Calendar events
+- OneDrive files
+- Contacts
+
+Only "onedrive" and "contacts" are indexed in RAG for AI queries.
+Mail and Calendar are accessed via live API calls.
 """
 import httpx
 import logging
 from typing import Dict, List, Any, Optional
 from datetime import datetime, timedelta
 
-from app.services.filecoin_service import FilecoinService
-from app.services.encryption_service import EncryptionService
+from app.adapters.base_adapter import BaseDataAdapter
 
 logger = logging.getLogger(__name__)
 
 
-class MicrosoftSync:
-    """Adapter for syncing data from Microsoft 365 via Microsoft Graph API with multi-tenant encrypted storage"""
+class MicrosoftSync(BaseDataAdapter):
+    """
+    Sync adapter for Microsoft 365 integration.
+
+    Inherits from BaseDataAdapter which handles:
+    - Wallet normalization
+    - Encryption
+    - Pinata storage
+    - Chunking
+    """
+
+    # Integration identifier
+    INTEGRATION_NAME = "microsoft"
 
     # Only OneDrive and Contacts go to RAG - Mail/Calendar are excluded
     RAG_ENABLED_TYPES = ["onedrive", "contacts"]
 
-    def should_index_in_rag(self, data_type: str) -> bool:
-        """Check if data type should be indexed in Qdrant"""
-        return data_type.lower() in [t.lower() for t in self.RAG_ENABLED_TYPES]
-
     def __init__(self, credentials: dict):
         """
-        Initialize Microsoft 365 sync adapter
+        Initialize Microsoft 365 adapter.
 
         Args:
-            credentials: OAuth credentials dict with access_token
+            credentials: OAuth credentials with access_token
         """
-        self.access_token = credentials.get("access_token")
-        if not self.access_token:
-            raise ValueError("Missing Microsoft 365 access token")
-
+        super().__init__(credentials)
         self.base_url = "https://graph.microsoft.com/v1.0"
         self.base_headers = {
             "Authorization": f"Bearer {self.access_token}",
             "Content-Type": "application/json"
         }
 
-        # Initialize storage services
-        self.filecoin = FilecoinService()
-        self.encryption = EncryptionService()
+    # ==================== REQUIRED IMPLEMENTATIONS ====================
 
-    async def sync_all(self) -> Dict[str, Any]:
+    def get_data_types(self) -> List[str]:
+        """Get available data types for Microsoft 365"""
+        return ["mail", "calendar", "onedrive", "contacts"]
+
+    async def fetch_data(self, data_type: str, **kwargs) -> Dict[str, Any]:
         """
-        Sync all Microsoft 365 data
+        Fetch data from Microsoft Graph API.
+
+        Args:
+            data_type: Type of data to fetch
+            **kwargs: Additional options
 
         Returns:
-            Dictionary containing all synced data categorized by service
+            Raw data from Microsoft API
         """
-        logger.info("Starting Microsoft 365 sync")
+        if data_type == "mail":
+            return await self._fetch_mail()
+        elif data_type == "calendar":
+            return await self._fetch_calendar()
+        elif data_type == "onedrive":
+            return await self._fetch_onedrive()
+        elif data_type == "contacts":
+            return await self._fetch_contacts()
+        else:
+            raise ValueError(f"Unsupported data type: {data_type}")
 
+    def transform_data(
+        self,
+        data_type: str,
+        raw_data: Dict[str, Any]
+    ) -> List[Dict[str, Any]]:
+        """
+        Transform Microsoft 365 data to common schema.
+
+        Args:
+            data_type: Type of data being transformed
+            raw_data: Raw data from fetch_data()
+
+        Returns:
+            List of transformed records
+        """
+        records = raw_data.get("records", [])
+        transformed = []
+
+        for record in records:
+            if data_type == "mail":
+                transformed.append({
+                    "id": record.get("id"),
+                    "type": "email",
+                    "integration": self.INTEGRATION_NAME,
+                    "subject": record.get("subject", ""),
+                    "from": record.get("from", ""),
+                    "fromName": record.get("fromName", ""),
+                    "to": record.get("to", []),
+                    "receivedDateTime": record.get("receivedDateTime", ""),
+                    "created_at": record.get("receivedDateTime", ""),
+                    "body": record.get("body", ""),
+                    "bodyPreview": record.get("bodyPreview", ""),
+                    "isRead": record.get("isRead", False),
+                    "importance": record.get("importance", "normal"),
+                    "hasAttachments": record.get("hasAttachments", False)
+                })
+
+            elif data_type == "calendar":
+                transformed.append({
+                    "id": record.get("id"),
+                    "type": "calendar_event",
+                    "integration": self.INTEGRATION_NAME,
+                    "subject": record.get("subject", "No title"),
+                    "start": record.get("start", ""),
+                    "end": record.get("end", ""),
+                    "created_at": record.get("start", ""),
+                    "location": record.get("location", ""),
+                    "attendees": record.get("attendees", []),
+                    "organizer": record.get("organizer", ""),
+                    "isAllDay": record.get("isAllDay", False),
+                    "importance": record.get("importance", "normal")
+                })
+
+            elif data_type == "onedrive":
+                transformed.append({
+                    "id": record.get("id"),
+                    "type": "document",
+                    "integration": self.INTEGRATION_NAME,
+                    "name": record.get("name", ""),
+                    "size": record.get("size", 0),
+                    "createdDateTime": record.get("createdDateTime", ""),
+                    "lastModifiedDateTime": record.get("lastModifiedDateTime", ""),
+                    "created_at": record.get("lastModifiedDateTime", ""),
+                    "webUrl": record.get("webUrl", ""),
+                    "isFolder": record.get("isFolder", False),
+                    "mimeType": record.get("mimeType", ""),
+                    "createdBy": record.get("createdBy", ""),
+                    "parentPath": record.get("parentPath", "")
+                })
+
+            elif data_type == "contacts":
+                transformed.append({
+                    "id": record.get("id"),
+                    "type": "contact",
+                    "integration": self.INTEGRATION_NAME,
+                    "name": record.get("name", ""),
+                    "emails": record.get("emails", []),
+                    "phones": record.get("phones", []),
+                    "company": record.get("company", ""),
+                    "jobTitle": record.get("jobTitle", ""),
+                    "created_at": datetime.utcnow().isoformat()
+                })
+
+        return transformed
+
+    # ==================== OPTIONAL OVERRIDES ====================
+
+    def get_chunk_strategy(self, data_type: str) -> str:
+        """Get chunking strategy for each data type"""
+        strategies = {
+            "mail": "monthly",      # Emails chunked by month
+            "calendar": "yearly",   # Calendar events by year
+            "onedrive": "quarterly", # Files by quarter
+            "contacts": "latest"    # Contacts as single chunk
+        }
+        return strategies.get(data_type, "latest")
+
+    def get_date_field(self, data_type: str) -> str:
+        """Get date field for chunking"""
+        fields = {
+            "mail": "receivedDateTime",
+            "calendar": "start",
+            "onedrive": "lastModifiedDateTime",
+            "contacts": "created_at"
+        }
+        return fields.get(data_type, "created_at")
+
+    async def test_connection(self) -> bool:
+        """Test if the Microsoft 365 connection is valid"""
         try:
-            # Sync data from all services
-            mail_data = await self.sync_mail()
-            calendar_data = await self.sync_calendar()
-            onedrive_data = await self.sync_onedrive()
-            contacts_data = await self.sync_contacts()
-
-            synced_data = {
-                "integration": "microsoft",
-                "sync_timestamp": datetime.utcnow().isoformat(),
-                "mail": mail_data,
-                "calendar": calendar_data,
-                "onedrive": onedrive_data,
-                "contacts": contacts_data,
-                "total_records": (
-                    len(mail_data.get("messages", []))
-                    + len(calendar_data.get("events", []))
-                    + len(onedrive_data.get("files", []))
-                    + len(contacts_data.get("contacts", []))
-                ),
-            }
-
-            logger.info(
-                f"Microsoft 365 sync completed: {synced_data['total_records']} total records"
-            )
-            return synced_data
-
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.get(
+                    f"{self.base_url}/me",
+                    headers=self.base_headers
+                )
+                response.raise_for_status()
+                user_info = response.json()
+                logger.info(
+                    f"Microsoft 365 connection valid for user: "
+                    f"{user_info.get('userPrincipalName')}"
+                )
+                return True
         except Exception as e:
-            logger.error(f"Microsoft 365 sync failed: {str(e)}")
-            raise
+            logger.error(f"Microsoft 365 connection test failed: {e}")
+            return False
 
-    async def sync_mail(self) -> Dict[str, Any]:
-        """
-        Sync Outlook emails
+    # ==================== PRIVATE FETCH METHODS ====================
 
-        Returns:
-            Dictionary containing Outlook mail data
-        """
-        async with httpx.AsyncClient() as client:
+    async def _fetch_mail(self) -> Dict[str, Any]:
+        """Fetch Outlook emails"""
+        async with httpx.AsyncClient(timeout=60.0) as client:
             try:
-                # Get user's emails (most recent 100, no filter - get ALL emails)
                 response = await client.get(
                     f"{self.base_url}/me/messages",
                     headers=self.base_headers,
@@ -101,15 +219,13 @@ class MicrosoftSync:
                         "$top": 100,
                         "$orderby": "receivedDateTime desc",
                         "$select": "id,subject,from,toRecipients,receivedDateTime,body,bodyPreview,isRead,importance,hasAttachments"
-                    },
-                    timeout=60.0
+                    }
                 )
                 response.raise_for_status()
                 data = response.json()
 
-                messages = []
+                records = []
                 for msg in data.get("value", []):
-                    # Get body content (full body if available, fallback to preview)
                     body_content = ""
                     body_data = msg.get("body", {})
                     if body_data:
@@ -117,12 +233,15 @@ class MicrosoftSync:
                     if not body_content:
                         body_content = msg.get("bodyPreview", "")
 
-                    messages.append({
+                    records.append({
                         "id": msg["id"],
                         "subject": msg.get("subject", ""),
                         "from": msg.get("from", {}).get("emailAddress", {}).get("address", ""),
                         "fromName": msg.get("from", {}).get("emailAddress", {}).get("name", ""),
-                        "to": [r.get("emailAddress", {}).get("address", "") for r in msg.get("toRecipients", [])],
+                        "to": [
+                            r.get("emailAddress", {}).get("address", "")
+                            for r in msg.get("toRecipients", [])
+                        ],
                         "receivedDateTime": msg.get("receivedDateTime", ""),
                         "body": body_content,
                         "bodyPreview": msg.get("bodyPreview", ""),
@@ -131,26 +250,17 @@ class MicrosoftSync:
                         "hasAttachments": msg.get("hasAttachments", False)
                     })
 
-                logger.info(f"Synced {len(messages)} Outlook messages")
-                return {
-                    "messages": messages,
-                    "synced_count": len(messages)
-                }
+                logger.info(f"Fetched {len(records)} Outlook messages")
+                return {"records": records, "total_count": len(records)}
 
             except Exception as e:
-                logger.error(f"Outlook mail sync failed: {str(e)}")
-                return {"messages": [], "error": str(e)}
+                logger.error(f"Outlook mail fetch failed: {e}")
+                return {"records": [], "error": str(e)}
 
-    async def sync_calendar(self) -> Dict[str, Any]:
-        """
-        Sync Outlook Calendar events
-
-        Returns:
-            Dictionary containing calendar data
-        """
-        async with httpx.AsyncClient() as client:
+    async def _fetch_calendar(self) -> Dict[str, Any]:
+        """Fetch Outlook Calendar events"""
+        async with httpx.AsyncClient(timeout=30.0) as client:
             try:
-                # Get calendar events (30 days past + 60 days future - matches Google)
                 start_time = (datetime.utcnow() - timedelta(days=30)).isoformat() + "Z"
                 end_time = (datetime.utcnow() + timedelta(days=60)).isoformat() + "Z"
 
@@ -167,9 +277,9 @@ class MicrosoftSync:
                 response.raise_for_status()
                 data = response.json()
 
-                events = []
+                records = []
                 for event in data.get("value", []):
-                    events.append({
+                    records.append({
                         "id": event["id"],
                         "subject": event.get("subject", "No title"),
                         "start": event.get("start", {}).get("dateTime", ""),
@@ -184,29 +294,21 @@ class MicrosoftSync:
                         "importance": event.get("importance", "normal")
                     })
 
-                logger.info(f"Synced {len(events)} Calendar events")
-                return {
-                    "events": events,
-                    "synced_count": len(events)
-                }
+                logger.info(f"Fetched {len(records)} Calendar events")
+                return {"records": records, "total_count": len(records)}
 
             except Exception as e:
-                logger.error(f"Calendar sync failed: {str(e)}")
-                return {"events": [], "error": str(e)}
+                logger.error(f"Calendar fetch failed: {e}")
+                return {"records": [], "error": str(e)}
 
-    async def sync_onedrive(self) -> Dict[str, Any]:
-        """
-        Sync OneDrive files metadata (recursively from all folders)
-
-        Returns:
-            Dictionary containing OneDrive files data
-        """
-        async with httpx.AsyncClient() as client:
+    async def _fetch_onedrive(self) -> Dict[str, Any]:
+        """Fetch OneDrive files metadata (recursively from all folders)"""
+        async with httpx.AsyncClient(timeout=60.0) as client:
             try:
                 all_files = []
                 folders_to_process = [("root", "/me/drive/root/children")]
                 processed_folders = set()
-                max_files = 100  # Limit total files to prevent timeout
+                max_files = 100
 
                 while folders_to_process and len(all_files) < max_files:
                     folder_id, folder_path = folders_to_process.pop(0)
@@ -223,15 +325,14 @@ class MicrosoftSync:
                                 "$top": 50,
                                 "$select": "id,name,size,createdDateTime,lastModifiedDateTime,webUrl,file,folder,createdBy,parentReference",
                                 "$orderby": "lastModifiedDateTime desc"
-                            },
-                            timeout=30.0
+                            }
                         )
                         response.raise_for_status()
                         data = response.json()
 
                         for item in data.get("value", []):
                             is_folder = "folder" in item
-                            file_entry = {
+                            all_files.append({
                                 "id": item["id"],
                                 "name": item.get("name", ""),
                                 "size": item.get("size", 0),
@@ -242,10 +343,8 @@ class MicrosoftSync:
                                 "mimeType": item.get("file", {}).get("mimeType", ""),
                                 "createdBy": item.get("createdBy", {}).get("user", {}).get("email", ""),
                                 "parentPath": item.get("parentReference", {}).get("path", "")
-                            }
-                            all_files.append(file_entry)
+                            })
 
-                            # Queue folders for recursive processing
                             if is_folder and len(all_files) < max_files:
                                 folders_to_process.append(
                                     (item["id"], f"/me/drive/items/{item['id']}/children")
@@ -255,27 +354,24 @@ class MicrosoftSync:
                         logger.warning(f"Failed to process folder {folder_id}: {folder_error}")
                         continue
 
-                logger.info(f"Synced {len(all_files)} OneDrive files from {len(processed_folders)} folders")
+                logger.info(
+                    f"Fetched {len(all_files)} OneDrive files from "
+                    f"{len(processed_folders)} folders"
+                )
                 return {
-                    "files": all_files,
-                    "synced_count": len(all_files),
+                    "records": all_files,
+                    "total_count": len(all_files),
                     "folders_processed": len(processed_folders)
                 }
 
             except Exception as e:
-                logger.error(f"OneDrive sync failed: {str(e)}")
-                return {"files": [], "error": str(e)}
+                logger.error(f"OneDrive fetch failed: {e}")
+                return {"records": [], "error": str(e)}
 
-    async def sync_contacts(self) -> Dict[str, Any]:
-        """
-        Sync Outlook Contacts
-
-        Returns:
-            Dictionary containing contacts data
-        """
-        async with httpx.AsyncClient() as client:
+    async def _fetch_contacts(self) -> Dict[str, Any]:
+        """Fetch Outlook Contacts"""
+        async with httpx.AsyncClient(timeout=30.0) as client:
             try:
-                # Get contacts
                 response = await client.get(
                     f"{self.base_url}/me/contacts",
                     headers=self.base_headers,
@@ -287,18 +383,16 @@ class MicrosoftSync:
                 response.raise_for_status()
                 data = response.json()
 
-                contacts = []
+                records = []
                 for contact in data.get("value", []):
-                    # Extract email addresses
                     email_addresses = contact.get("emailAddresses", [])
                     emails = [e.get("address") for e in email_addresses if e.get("address")]
 
-                    # Extract phone numbers
                     business_phones = contact.get("businessPhones", [])
                     mobile = contact.get("mobilePhone", "")
                     phones = business_phones + ([mobile] if mobile else [])
 
-                    contacts.append({
+                    records.append({
                         "id": contact["id"],
                         "name": contact.get("displayName", ""),
                         "emails": emails,
@@ -307,217 +401,102 @@ class MicrosoftSync:
                         "jobTitle": contact.get("jobTitle", "")
                     })
 
-                logger.info(f"Synced {len(contacts)} Contacts")
-                return {
-                    "contacts": contacts,
-                    "synced_count": len(contacts)
-                }
+                logger.info(f"Fetched {len(records)} Contacts")
+                return {"records": records, "total_count": len(records)}
 
             except Exception as e:
-                logger.error(f"Contacts sync failed: {str(e)}")
-                return {"contacts": [], "error": str(e)}
+                logger.error(f"Contacts fetch failed: {e}")
+                return {"records": [], "error": str(e)}
 
-    async def test_connection(self) -> bool:
-        """
-        Test if the OAuth connection is working
+    # ==================== ACTION METHODS ====================
 
-        Returns:
-            True if connection is valid, False otherwise
-        """
-        try:
-            async with httpx.AsyncClient() as client:
-                response = await client.get(
-                    f"{self.base_url}/me",
-                    headers=self.base_headers
-                )
-                response.raise_for_status()
-                user_info = response.json()
-                logger.info(f"Microsoft 365 connection valid for user: {user_info.get('userPrincipalName')}")
-                return True
-        except Exception as e:
-            logger.error(f"Microsoft 365 connection test failed: {str(e)}")
-            return False
-
-    def get_data_types(self) -> List[str]:
-        """Get available data types for Microsoft 365"""
-        return ["mail", "calendar", "onedrive", "contacts"]
-
-    async def fetch_data(self, data_type: str) -> Dict[str, Any]:
-        """
-        Fetch data from Microsoft 365 APIs
-
-        Args:
-            data_type: Type of data to fetch
-
-        Returns:
-            Dictionary containing fetched data
-        """
-        if data_type == "mail":
-            return await self.sync_mail()
-        elif data_type == "calendar":
-            return await self.sync_calendar()
-        elif data_type == "onedrive":
-            return await self.sync_onedrive()
-        elif data_type == "contacts":
-            return await self.sync_contacts()
-        else:
-            raise ValueError(f"Unsupported data type: {data_type}")
-
-    async def generate_embeddings(self, data: List[Dict[str, Any]]) -> List[List[float]]:
-        """
-        Generate embeddings for RAG indexing
-
-        Args:
-            data: List of transformed data records
-
-        Returns:
-            List of embedding vectors (empty for now, RAG service handles this)
-        """
-        # Embeddings are generated by the RAG service when indexing
-        # This is a placeholder for the sync interface
-        return []
-
-    def transform_data(
+    async def send_mail(
         self,
-        data_type: str,
-        raw_data: Dict[str, Any]
-    ) -> List[Dict[str, Any]]:
-        """
-        Transform Microsoft 365 data to common schema
-
-        Args:
-            data_type: Type of data
-            raw_data: Raw data from Microsoft APIs
-
-        Returns:
-            Transformed records with common schema
-        """
-        if data_type == "mail":
-            return [
-                {
-                    **msg,
-                    "type": "email",
-                    "integration": "microsoft"
-                }
-                for msg in raw_data.get("messages", [])
-            ]
-        elif data_type == "calendar":
-            return [
-                {
-                    **event,
-                    "type": "calendar_event",
-                    "integration": "microsoft"
-                }
-                for event in raw_data.get("events", [])
-            ]
-        elif data_type == "onedrive":
-            return [
-                {
-                    **file,
-                    "type": "document",
-                    "integration": "microsoft"
-                }
-                for file in raw_data.get("files", [])
-            ]
-        elif data_type == "contacts":
-            return [
-                {
-                    **contact,
-                    "type": "contact",
-                    "integration": "microsoft"
-                }
-                for contact in raw_data.get("contacts", [])
-            ]
-        else:
-            return []
-
-    async def sync_data(
-        self,
-        business_wallet: str,
-        data_types: Optional[List[str]] = None
+        to: List[str],
+        subject: str,
+        body: str,
+        content_type: str = "Text"
     ) -> Dict[str, Any]:
         """
-        Sync all Microsoft 365 data with multi-tenant Filecoin storage
+        Send an email via Outlook.
 
         Args:
-            business_wallet: Business wallet address (for encryption key)
-            data_types: Optional list of specific data types to sync
+            to: List of recipient email addresses
+            subject: Email subject
+            body: Email body content
+            content_type: "Text" or "HTML"
 
         Returns:
-            Sync results with CIDs for each data type
+            Send result from Microsoft API
         """
-        if data_types is None:
-            data_types = self.get_data_types()
-
-        results = {
-            "business_wallet": business_wallet,
-            "integration": "microsoft",
-            "synced_at": datetime.utcnow().isoformat(),
-            "data": {}
+        payload = {
+            "message": {
+                "subject": subject,
+                "body": {
+                    "contentType": content_type,
+                    "content": body
+                },
+                "toRecipients": [
+                    {"emailAddress": {"address": addr}}
+                    for addr in to
+                ]
+            }
         }
 
-        for data_type in data_types:
+        async with httpx.AsyncClient(timeout=30.0) as client:
             try:
-                # 1. Fetch data from Microsoft 365
-                raw_data = await self.fetch_data(data_type)
+                response = await client.post(
+                    f"{self.base_url}/me/sendMail",
+                    headers=self.base_headers,
+                    json=payload
+                )
+                response.raise_for_status()
+                logger.info(f"Sent email to {to}")
+                return {"success": True, "recipients": to}
 
-                # 2. Transform to common schema
-                transformed_data = self.transform_data(data_type, raw_data)
+            except httpx.HTTPStatusError as e:
+                logger.error(f"Failed to send email: {e.response.text}")
+                raise Exception(f"Failed to send email: {e.response.text}")
 
-                # 3. Prepare data package
-                data_package = {
-                    "data_type": data_type,
-                    "integration": "microsoft",
-                    "records": transformed_data,
-                    "record_count": len(transformed_data),
-                    "synced_at": datetime.utcnow().isoformat(),
-                    "metadata": {
-                        "source": "microsoft_graph_api",
-                        "version": "v1.0",
-                        "services": ["mail", "calendar", "onedrive", "contacts"]
-                    }
+    async def upload_to_onedrive(
+        self,
+        file_name: str,
+        content: bytes,
+        folder_path: str = "root"
+    ) -> Dict[str, Any]:
+        """
+        Upload a file to OneDrive.
+
+        Args:
+            file_name: Name for the uploaded file
+            content: File content as bytes
+            folder_path: Folder path (default: root)
+
+        Returns:
+            Upload result with file metadata
+        """
+        upload_url = f"{self.base_url}/me/drive/{folder_path}:/{file_name}:/content"
+
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            try:
+                response = await client.put(
+                    upload_url,
+                    headers={
+                        "Authorization": f"Bearer {self.access_token}",
+                        "Content-Type": "application/octet-stream"
+                    },
+                    content=content
+                )
+                response.raise_for_status()
+                result = response.json()
+                logger.info(f"Uploaded file {file_name} to OneDrive")
+                return {
+                    "success": True,
+                    "file_id": result.get("id"),
+                    "web_url": result.get("webUrl"),
+                    "name": result.get("name")
                 }
 
-                # 4. Encrypt with Lit Protocol (business wallet as key)
-                encrypted_data = await self.encryption.encrypt_for_customer(
-                    data=data_package,
-                    customer_wallet=business_wallet,
-                    additional_metadata={
-                        "integration": "microsoft",
-                        "data_type": data_type
-                    }
-                )
-
-                # 5. Upload to Filecoin (multi-tenant namespace)
-                cid = await self.filecoin.upload_encrypted_data(
-                    customer_wallet=business_wallet,
-                    integration="microsoft",
-                    data_type=data_type,
-                    encrypted_data=encrypted_data,
-                    metadata={
-                        "integration": "microsoft",
-                        "data_type": data_type,
-                        "record_count": len(transformed_data),
-                        "storage_layer": "customer-data"
-                    }
-                )
-
-                results["data"][data_type] = {
-                    "cid": cid,
-                    "record_count": len(transformed_data),
-                    "status": "success"
-                }
-
-                logger.info(
-                    f"Synced {len(transformed_data)} {data_type} records to Filecoin, "
-                    f"CID: {cid}, wallet: {business_wallet}"
-                )
-
-            except Exception as e:
-                logger.error(f"Failed to sync {data_type}: {e}")
-                results["data"][data_type] = {
-                    "status": "failed",
-                    "error": str(e)
-                }
-
-        return results
+            except httpx.HTTPStatusError as e:
+                logger.error(f"Failed to upload to OneDrive: {e.response.text}")
+                raise Exception(f"Failed to upload: {e.response.text}")

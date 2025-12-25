@@ -473,3 +473,52 @@ async def admin_status(
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/migrate")
+async def run_migrations(
+    admin_verified: bool = Depends(verify_admin)
+):
+    """
+    Run pending Alembic database migrations.
+
+    This endpoint runs `alembic upgrade head` to apply any pending migrations.
+    Protected by admin secret key.
+    """
+    import subprocess
+    import sys
+
+    try:
+        # Get the backend directory path
+        backend_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+
+        logger.info(f"Running migrations from: {backend_dir}")
+
+        # Run alembic upgrade head
+        result = subprocess.run(
+            [sys.executable, "-m", "alembic", "upgrade", "head"],
+            cwd=backend_dir,
+            capture_output=True,
+            text=True,
+            timeout=60
+        )
+
+        if result.returncode == 0:
+            logger.info(f"Migration successful: {result.stdout}")
+            return {
+                "success": True,
+                "message": "Migrations applied successfully",
+                "output": result.stdout
+            }
+        else:
+            logger.error(f"Migration failed: {result.stderr}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Migration failed: {result.stderr}"
+            )
+
+    except subprocess.TimeoutExpired:
+        raise HTTPException(status_code=500, detail="Migration timed out after 60 seconds")
+    except Exception as e:
+        logger.error(f"Migration error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

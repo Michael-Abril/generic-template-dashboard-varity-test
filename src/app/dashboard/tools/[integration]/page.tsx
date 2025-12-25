@@ -2849,7 +2849,8 @@ export default function IntegrationToolPage() {
 
     const microsoftData = data.reduce((acc, item) => {
       const propertyName = msDataTypeToPropertyMap[item.data_type] || 'records';
-      const newRecords = item.data?.records || item.data?.[propertyName] || [];
+      const rawRecords = item.data?.records ?? item.data?.[propertyName];
+      const newRecords: unknown[] = Array.isArray(rawRecords) ? rawRecords : [];
 
       // AGGREGATE records when multiple chunks have the same data_type
       const existingRecords = acc[item.data_type]?.[propertyName];
@@ -2869,6 +2870,8 @@ export default function IntegrationToolPage() {
           walletAddress={address}
           data={microsoftData}
           onSync={syncData}
+          onRefresh={refreshData}
+          loading={loading}
         />
       </Layout>
     );

@@ -636,7 +636,7 @@ async def get_tool_data(
     tool: str,
     wallet_address: str = Query(..., description="User's wallet address"),
     data_type: Optional[str] = Query(None, description="Specific data type (e.g., 'invoices')"),
-    limit: int = Query(100, description="Maximum results to return"),
+    limit: int = Query(10000, description="Maximum results to return (default 10000 for full data)"),
     latest_only: bool = Query(True, description="Only return most recent data per type (faster)")
 ):
     """
