@@ -26,7 +26,8 @@ import {
   Clock,
   Pencil,
   Eye,
-  EyeOff
+  EyeOff,
+  AlertCircle
 } from 'lucide-react';
 import { EmailComposer } from './EmailComposer';
 
