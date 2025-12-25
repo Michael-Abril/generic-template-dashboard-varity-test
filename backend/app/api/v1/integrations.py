@@ -661,14 +661,17 @@ async def get_tool_data(
         # Normalize integration name (e.g., "microsoft 365" -> "microsoft")
         normalized_tool = normalize_integration_name(tool)
 
+        # CRITICAL: Normalize wallet address to match how data was stored during sync
+        normalized_wallet = normalize_wallet_address(wallet_address)
+
         logger.info(
-            f"Retrieving {tool} (normalized: {normalized_tool}) data for wallet {wallet_address}, "
-            f"type={data_type}, limit={limit}, latest_only={latest_only}"
+            f"Retrieving {tool} (normalized: {normalized_tool}) data for wallet {wallet_address} "
+            f"(normalized: {normalized_wallet}), type={data_type}, limit={limit}, latest_only={latest_only}"
         )
 
-        # List files for this integration using normalized name
+        # List files for this integration using normalized wallet and tool name
         files = await filecoin_service.list_customer_files(
-            customer_wallet=wallet_address,
+            customer_wallet=normalized_wallet,
             integration=normalized_tool,
             data_type=data_type,
             limit=limit
@@ -708,10 +711,10 @@ async def get_tool_data(
                 # Retrieve encrypted data
                 encrypted = await filecoin_service.retrieve_data(file["cid"])
 
-                # Decrypt with wallet
+                # Decrypt with normalized wallet (must match encryption key)
                 decrypted = await encryption_service.decrypt_with_wallet(
                     encrypted_data=encrypted,
-                    customer_wallet=wallet_address
+                    customer_wallet=normalized_wallet
                 )
 
                 # Get data_type from metadata or file info

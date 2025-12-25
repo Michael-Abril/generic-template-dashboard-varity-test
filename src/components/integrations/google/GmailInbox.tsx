@@ -119,6 +119,7 @@ export function GmailInbox({ walletAddress, data }: GmailInboxProps) {
   const [replyContext, setReplyContext] = useState<{ to: string; subject: string; type: 'reply' | 'replyAll' | 'forward' } | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(0);
+  const [apiError, setApiError] = useState<string | null>(null);
   const EMAILS_PER_PAGE = 25;
 
   // Extract unique user labels from emails (excluding system labels)
@@ -197,12 +198,17 @@ export function GmailInbox({ walletAddress, data }: GmailInboxProps) {
     if (!walletAddress) return;
 
     setLoading(true);
+    setApiError(null);
     try {
       const response = await fetch(
         `${process.env.NEXT_PUBLIC_API_URL}/api/v1/integrations/google/emails?wallet_address=${walletAddress}&max_results=5000`
       );
 
       if (!response.ok) {
+        if (response.status === 401) {
+          setApiError('Google token expired. Please reconnect your Google account from the Marketplace.');
+          throw new Error('Token expired');
+        }
         throw new Error(`Failed to fetch emails: ${response.status}`);
       }
 
@@ -235,6 +241,10 @@ export function GmailInbox({ walletAddress, data }: GmailInboxProps) {
       setEmails(parsedEmails);
     } catch (error) {
       console.error('Failed to fetch emails from API:', error);
+      // Set error if not already set (e.g., for network errors)
+      if (!apiError) {
+        setApiError('Failed to load emails. Please try again.');
+      }
       // Fall back to data prop if API fails
       if (data?.messages) {
         const parsedEmails = data.messages.map((msg: any) => {
@@ -850,7 +860,25 @@ export function GmailInbox({ walletAddress, data }: GmailInboxProps) {
   };
 
   return (
-    <div className="flex h-[calc(100vh-200px)] bg-white rounded-lg border border-gray-200 overflow-hidden">
+    <div className="flex flex-col h-[calc(100vh-200px)] bg-white rounded-lg border border-gray-200 overflow-hidden">
+      {/* API Error Banner */}
+      {apiError && (
+        <div className="bg-red-50 border-b border-red-200 px-4 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-2 text-red-700">
+            <AlertCircle className="h-5 w-5" />
+            <span className="text-sm font-medium">{apiError}</span>
+          </div>
+          <button
+            onClick={() => setApiError(null)}
+            className="text-red-500 hover:text-red-700"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
+      {/* Main Content */}
+      <div className="flex flex-1 overflow-hidden">
       {/* Sidebar */}
       <div className="w-64 border-r border-gray-200 bg-white flex flex-col">
         {/* Gmail-style Compose FAB Button */}
@@ -960,6 +988,7 @@ export function GmailInbox({ walletAddress, data }: GmailInboxProps) {
 
       {/* Main Content */}
       {selectedEmail ? renderEmailDetail() : renderEmailList()}
+      </div>
 
       {/* Email Composer Modal */}
       {showComposer && (

@@ -2416,6 +2416,44 @@ export default function IntegrationToolPage() {
       }
 
       const result: SyncResult = await res.json();
+
+      // AUTO-SYNC: If no data exists, trigger initial sync automatically
+      if (!result.data || result.data.length === 0) {
+        console.log('No cached data found, triggering auto-sync...');
+        setSyncing(true);
+        try {
+          const syncRes = await fetch(
+            `${apiBase}/api/v1/integrations/${integration}/sync`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ wallet_address: address, force: false })
+            }
+          );
+
+          if (syncRes.ok) {
+            // Fetch newly synced data
+            const newDataRes = await fetch(
+              `${apiBase}/api/v1/integrations/${integration}/data?wallet_address=${address}${latestOnlyParam}`
+            );
+            if (newDataRes.ok) {
+              const newResult: SyncResult = await newDataRes.json();
+              setData(newResult.data || []);
+              if (newResult.data && newResult.data.length > 0) {
+                const syncTime = newResult.data[0].data?.synced_at || newResult.data[0].uploaded_at;
+                setLastSync(syncTime);
+                saveToCache(newResult.data, syncTime);
+              }
+            }
+          }
+        } catch (syncErr) {
+          console.error('Auto-sync failed:', syncErr);
+        } finally {
+          setSyncing(false);
+        }
+        return;
+      }
+
       setData(result.data || []);
 
       // Get last sync time from the most recent data

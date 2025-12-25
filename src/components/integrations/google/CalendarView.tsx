@@ -13,7 +13,8 @@ import {
   X,
   Edit3,
   Trash2,
-  Copy
+  Copy,
+  AlertCircle
 } from 'lucide-react';
 import { EventForm } from './EventForm';
 
@@ -64,18 +65,24 @@ export function CalendarView({ walletAddress, data }: CalendarViewProps) {
   const [showEventDetail, setShowEventDetail] = useState(false);
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [loading, setLoading] = useState(false);
+  const [apiError, setApiError] = useState<string | null>(null);
 
   // Fetch events from live Calendar API
   const fetchEventsFromAPI = useCallback(async () => {
     if (!walletAddress) return;
 
     setLoading(true);
+    setApiError(null);
     try {
       const response = await fetch(
         `${process.env.NEXT_PUBLIC_API_URL}/api/v1/integrations/google/events?wallet_address=${walletAddress}&max_results=5000`
       );
 
       if (!response.ok) {
+        if (response.status === 401) {
+          setApiError('Google token expired. Please reconnect your Google account from the Marketplace.');
+          throw new Error('Token expired');
+        }
         throw new Error(`Failed to fetch events: ${response.status}`);
       }
 
@@ -98,6 +105,10 @@ export function CalendarView({ walletAddress, data }: CalendarViewProps) {
       setEvents(parsedEvents);
     } catch (error) {
       console.error('Failed to fetch events from API:', error);
+      // Set error if not already set
+      if (!apiError) {
+        setApiError('Failed to load calendar events. Please try again.');
+      }
       // Fall back to data prop if API fails
       if (data?.events) {
         const parsedEvents = data.events.map((event: any) => ({
@@ -756,7 +767,25 @@ export function CalendarView({ walletAddress, data }: CalendarViewProps) {
   };
 
   return (
-    <div className="bg-white rounded-lg border flex h-[calc(100vh-200px)]">
+    <div className="bg-white rounded-lg border flex flex-col h-[calc(100vh-200px)]">
+      {/* API Error Banner */}
+      {apiError && (
+        <div className="bg-red-50 border-b border-red-200 px-4 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-2 text-red-700">
+            <AlertCircle className="h-5 w-5" />
+            <span className="text-sm font-medium">{apiError}</span>
+          </div>
+          <button
+            onClick={() => setApiError(null)}
+            className="text-red-500 hover:text-red-700"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
+      {/* Main Content */}
+      <div className="flex flex-1 overflow-hidden">
       {/* Left Sidebar - Google Calendar Style */}
       <div className="w-64 border-r bg-white flex flex-col">
         {/* Create Button */}
@@ -851,6 +880,7 @@ export function CalendarView({ walletAddress, data }: CalendarViewProps) {
 
         {/* Calendar View */}
         {renderView()}
+      </div>
       </div>
 
       {/* Event Form Modal */}
