@@ -29,10 +29,19 @@ async def init_database() -> bool:
     Returns:
         bool: True if successful, False otherwise
     """
+    import traceback
     try:
         logger.info("Initializing database...")
 
-        from app.core.database import engine, Base
+        # Log DATABASE_URL (masked) for debugging
+        from app.core.database import DATABASE_URL, engine, Base
+        if DATABASE_URL:
+            # Mask password in URL for logging
+            masked_url = DATABASE_URL[:50] + "..." if len(DATABASE_URL) > 50 else DATABASE_URL
+            logger.info(f"Database URL (masked): {masked_url}")
+        else:
+            logger.error("DATABASE_URL is not set!")
+            return False
 
         # Import all models to register them with Base before creating tables
         from app.models.marketplace import Product, Category, PricingPlan  # noqa: F401
@@ -41,13 +50,16 @@ async def init_database() -> bool:
         from app.models.conversation import Conversation, Message  # noqa: F401
 
         # Create all tables
+        logger.info("Attempting to connect to database and create tables...")
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
 
         logger.info("✅ Database tables created successfully")
         return True
     except Exception as e:
-        logger.error(f"❌ Database initialization failed: {e}")
+        # Log FULL exception details for debugging
+        logger.error(f"❌ Database initialization failed: {type(e).__name__}: {e}")
+        logger.error(f"Full traceback:\n{traceback.format_exc()}")
         return False
 
 
