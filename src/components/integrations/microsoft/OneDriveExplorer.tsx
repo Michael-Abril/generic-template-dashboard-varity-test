@@ -65,6 +65,7 @@ export default function OneDriveExplorer({
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
   const [currentFolder, setCurrentFolder] = useState<string | null>(null);
+  const [folderPath, setFolderPath] = useState<Array<{ id: string; name: string }>>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<'name' | 'modified' | 'size'>('modified');
   const [showFilePreview, setShowFilePreview] = useState(false);
@@ -144,9 +145,22 @@ export default function OneDriveExplorer({
   const handleFileClick = (file: DriveFile) => {
     if (file.isFolder) {
       setCurrentFolder(file.id);
+      setFolderPath(prev => [...prev, { id: file.id, name: file.name }]);
     } else {
       setSelectedFile(file);
       setShowFilePreview(true);
+    }
+  };
+
+  const navigateToFolder = (folderId: string | null, index: number) => {
+    if (folderId === null) {
+      // Navigate to root
+      setCurrentFolder(null);
+      setFolderPath([]);
+    } else {
+      // Navigate to specific folder in path
+      setCurrentFolder(folderId);
+      setFolderPath(prev => prev.slice(0, index + 1));
     }
   };
 
@@ -164,42 +178,65 @@ export default function OneDriveExplorer({
     const input = document.createElement('input');
     input.type = 'file';
     input.multiple = true;
-    input.onchange = async (e: any) => {
-      const files = Array.from(e.target.files) as File[];
+    input.onchange = async (e: Event) => {
+      const target = e.target as HTMLInputElement;
+      const selectedFiles = Array.from(target.files || []) as File[];
 
-      for (const file of files) {
+      if (selectedFiles.length === 0) return;
+
+      setIsUploading(true);
+      let successCount = 0;
+      let failCount = 0;
+
+      for (const file of selectedFiles) {
         try {
-          const reader = new FileReader();
-          reader.onload = async (event) => {
-            const fileContent = event.target?.result as string;
+          // Read file as base64 to properly handle binary files
+          const base64Content = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => {
+              const result = reader.result as string;
+              // Remove data URL prefix (e.g., "data:image/png;base64,")
+              const base64 = result.split(',')[1] || result;
+              resolve(base64);
+            };
+            reader.onerror = reject;
+            reader.readAsDataURL(file);
+          });
 
-            const response = await fetch(
-              `${process.env.NEXT_PUBLIC_API_URL}/api/v1/integrations/microsoft/onedrive/upload`,
-              {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  wallet_address: walletAddress,
-                  file_name: file.name,
-                  file_content: fileContent,
-                  folder_id: currentFolder || undefined
-                })
-              }
-            );
-
-            if (response.ok) {
-              alert(`File "${file.name}" uploaded successfully!`);
-              onDataChange?.();
-            } else {
-              const error = await response.json();
-              alert(`Error uploading "${file.name}": ${error.detail || 'Failed'}`);
+          const response = await fetch(
+            `${process.env.NEXT_PUBLIC_API_URL}/api/v1/integrations/microsoft/onedrive/upload`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                wallet_address: walletAddress,
+                file_name: file.name,
+                file_content: base64Content,
+                folder_id: currentFolder || undefined
+              })
             }
-          };
-          reader.readAsText(file);
+          );
+
+          if (response.ok) {
+            successCount++;
+          } else {
+            failCount++;
+            const error = await response.json();
+            console.error(`Error uploading "${file.name}":`, error.detail || 'Failed');
+          }
         } catch (error) {
+          failCount++;
           console.error('Error uploading file:', error);
-          alert(`Failed to upload "${file.name}"`);
         }
+      }
+
+      setIsUploading(false);
+
+      if (successCount > 0) {
+        alert(`${successCount} file(s) uploaded successfully!${failCount > 0 ? ` ${failCount} failed.` : ''}`);
+        onDataChange?.();
+      } else if (failCount > 0) {
+        alert(`Failed to upload ${failCount} file(s). Please try again.`);
       }
     };
     input.click();
@@ -220,14 +257,38 @@ export default function OneDriveExplorer({
     }
   };
 
-  const handleDelete = (fileIds: string[]) => {
-    try {
-      // TODO: Implement delete files API endpoint in backend
-      console.log('Deleting files:', fileIds);
-      alert('Delete functionality coming soon');
-    } catch (error) {
-      console.error('Error deleting files:', error);
-      alert('Failed to delete files');
+  const handleDelete = async (fileIds: string[]) => {
+    if (!confirm(`Are you sure you want to delete ${fileIds.length} file(s)?`)) {
+      return;
+    }
+
+    let successCount = 0;
+    let failCount = 0;
+
+    for (const fileId of fileIds) {
+      try {
+        const response = await fetch(
+          `${process.env.NEXT_PUBLIC_API_URL}/api/v1/integrations/microsoft/onedrive/files/${fileId}?wallet_address=${walletAddress}`,
+          { method: 'DELETE' }
+        );
+
+        if (response.ok) {
+          successCount++;
+        } else {
+          failCount++;
+        }
+      } catch (error) {
+        console.error('Error deleting file:', error);
+        failCount++;
+      }
+    }
+
+    if (successCount > 0) {
+      alert(`${successCount} file(s) deleted successfully!${failCount > 0 ? ` ${failCount} failed.` : ''}`);
+      setSelectedFiles(new Set());
+      onDataChange?.();
+    } else if (failCount > 0) {
+      alert(`Failed to delete ${failCount} file(s). Please try again.`);
     }
   };
 
@@ -471,6 +532,34 @@ export default function OneDriveExplorer({
           </div>
         )}
       </div>
+
+      {/* Breadcrumb Navigation */}
+      {folderPath.length > 0 && (
+        <div className="px-4 py-2 border-b border-gray-100 flex items-center gap-1 text-sm bg-gray-50">
+          <button
+            onClick={() => navigateToFolder(null, -1)}
+            className="text-blue-600 hover:text-blue-700 hover:underline flex items-center gap-1"
+          >
+            <Home className="h-4 w-4" />
+            My Files
+          </button>
+          {folderPath.map((folder, index) => (
+            <span key={folder.id} className="flex items-center gap-1">
+              <ChevronRight className="h-4 w-4 text-gray-400" />
+              {index === folderPath.length - 1 ? (
+                <span className="text-gray-900 font-medium">{folder.name}</span>
+              ) : (
+                <button
+                  onClick={() => navigateToFolder(folder.id, index)}
+                  className="text-blue-600 hover:text-blue-700 hover:underline"
+                >
+                  {folder.name}
+                </button>
+              )}
+            </span>
+          ))}
+        </div>
+      )}
 
       {/* File List */}
       <div className="flex-1 overflow-y-auto">

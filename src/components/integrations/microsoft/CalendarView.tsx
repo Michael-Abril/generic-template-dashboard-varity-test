@@ -562,13 +562,12 @@ export default function CalendarView({ walletAddress, view: initialView, events:
 
             <div className="mt-6 flex gap-2">
               <button
-                onClick={() => {
-                  alert('Edit functionality coming soon. You can edit events directly in Outlook for now.');
-                }}
-                className="flex-1 rounded-lg border border-gray-300 py-2 text-sm font-medium hover:bg-gray-50"
+                disabled
+                title="Edit in Outlook - coming in next release"
+                className="flex-1 rounded-lg border border-gray-300 py-2 text-sm font-medium opacity-50 cursor-not-allowed"
               >
                 <Edit3 className="inline h-4 w-4 mr-2" />
-                Edit
+                Edit in Outlook
               </button>
               <button
                 onClick={async () => {

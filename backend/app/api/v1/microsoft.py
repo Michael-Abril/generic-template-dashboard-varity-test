@@ -7,6 +7,7 @@ from typing import Optional, List, Dict, Any
 from datetime import datetime
 import logging
 import httpx
+import base64
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
@@ -458,6 +459,13 @@ async def upload_file(
         else:
             endpoint = f"{GRAPH_API_BASE}/me/drive/root:/{file_name}:/content"
 
+        # Decode base64 content to binary
+        try:
+            binary_content = base64.b64decode(file_content)
+        except Exception:
+            # Fallback: if not base64, treat as plain text
+            binary_content = file_content.encode()
+
         async with httpx.AsyncClient() as client:
             response = await client.put(
                 endpoint,
@@ -465,7 +473,7 @@ async def upload_file(
                     "Authorization": f"Bearer {access_token}",
                     "Content-Type": "application/octet-stream"
                 },
-                content=file_content.encode()
+                content=binary_content
             )
             response.raise_for_status()
             file_info = response.json()
@@ -473,6 +481,31 @@ async def upload_file(
 
     except Exception as e:
         logger.error(f"Error uploading file: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/onedrive/files/{file_id}")
+async def delete_file(
+    file_id: str,
+    wallet_address: str = Query(...),
+    db: AsyncSession = Depends(get_db)
+):
+    """Delete a file from OneDrive"""
+    access_token = await get_access_token_from_db(wallet_address, db)
+    if not access_token:
+        raise HTTPException(status_code=401, detail="Not authenticated with Microsoft 365")
+
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.delete(
+                f"{GRAPH_API_BASE}/me/drive/items/{file_id}",
+                headers={"Authorization": f"Bearer {access_token}"}
+            )
+            response.raise_for_status()
+            return {"success": True, "message": "File deleted successfully"}
+
+    except Exception as e:
+        logger.error(f"Error deleting file: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
