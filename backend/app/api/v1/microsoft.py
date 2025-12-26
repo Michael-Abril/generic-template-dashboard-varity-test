@@ -25,7 +25,7 @@ async def get_access_token_from_db(wallet_address: str, db: AsyncSession) -> Opt
     result = await db.execute(
         select(OAuthToken).where(
             and_(
-                OAuthToken.customer_wallet == wallet_address.lower(),
+                OAuthToken.user_address == wallet_address.lower(),
                 OAuthToken.provider == "microsoft"
             )
         )
