@@ -25,10 +25,12 @@ import { ThreadPanel } from './ThreadPanel';
 
 interface SlackPageProps {
   walletAddress: string;
-  data: any;
+  data?: any; // Optional - we use live API instead
 }
 
-export function SlackPage({ walletAddress, data }: SlackPageProps) {
+const API_URL = process.env.NEXT_PUBLIC_API_URL;
+
+export function SlackPage({ walletAddress }: SlackPageProps) {
   const [selectedChannel, setSelectedChannel] = useState<any>(null);
   const [selectedThread, setSelectedThread] = useState<any>(null);
   const [showSearch, setShowSearch] = useState(false);
@@ -38,51 +40,101 @@ export function SlackPage({ walletAddress, data }: SlackPageProps) {
   const [messages, setMessages] = useState<any[]>([]);
   const [allMessages, setAllMessages] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [messagesLoading, setMessagesLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
+  // Fetch channels and users via live API on mount
   useEffect(() => {
-    if (data) {
-      // Process data from backend
-      const channelsData = data.data?.channels?.records || [];
-      const messagesData = data.data?.messages?.records || [];
-      const usersData = data.data?.users?.records || [];
+    const fetchLiveData = async () => {
+      setLoading(true);
+      setError(null);
 
-      setChannels(channelsData.filter((c: any) => c.type === 'channel'));
-      setAllMessages(messagesData); // Store all messages for search
+      try {
+        // Fetch channels and users in parallel via live API
+        const [channelsRes, usersRes] = await Promise.all([
+          fetch(`${API_URL}/api/v1/integrations/slack/channels?wallet_address=${walletAddress}`),
+          fetch(`${API_URL}/api/v1/integrations/slack/users?wallet_address=${walletAddress}`)
+        ]);
 
-      // Create DM list from users
-      const dmsList = usersData.map((user: any) => ({
-        id: user.id,
-        name: user.real_name || user.name,
-        type: 'dm',
-        unread: 0,
-        online: true,
-        status_text: user.status_text
-      }));
-      setDms(dmsList);
+        if (!channelsRes.ok) {
+          const err = await channelsRes.json();
+          throw new Error(err.detail || 'Failed to fetch channels');
+        }
+        if (!usersRes.ok) {
+          const err = await usersRes.json();
+          throw new Error(err.detail || 'Failed to fetch users');
+        }
 
-      // Select first channel by default
-      if (channelsData.length > 0) {
-        setSelectedChannel(channelsData[0]);
-        // Filter messages for this channel
-        const channelMessages = messagesData.filter(
-          (m: any) => m.channel_id === channelsData[0].id
-        );
-        setMessages(channelMessages);
+        const channelsData = await channelsRes.json();
+        const usersData = await usersRes.json();
+
+        const fetchedChannels = channelsData.channels || [];
+        setChannels(fetchedChannels);
+
+        // Create DM list from users
+        const dmsList = (usersData.users || []).map((user: any) => ({
+          id: user.id,
+          name: user.real_name || user.name,
+          type: 'dm',
+          unread: 0,
+          online: true,
+          status_text: user.status_text,
+          image_48: user.image_48
+        }));
+        setDms(dmsList);
+
+        // Select first channel by default and fetch its messages
+        if (fetchedChannels.length > 0) {
+          const firstChannel = fetchedChannels[0];
+          setSelectedChannel(firstChannel);
+          await fetchMessagesForChannel(firstChannel.id);
+        }
+
+      } catch (err: any) {
+        console.error('Failed to fetch Slack data:', err);
+        setError(err.message || 'Failed to load workspace');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (walletAddress) {
+      fetchLiveData();
+    }
+  }, [walletAddress]);
+
+  // Fetch messages for a specific channel via live API
+  const fetchMessagesForChannel = async (channelId: string) => {
+    setMessagesLoading(true);
+    try {
+      const response = await fetch(
+        `${API_URL}/api/v1/integrations/slack/messages?wallet_address=${walletAddress}&channel=${channelId}`
+      );
+
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.detail || 'Failed to fetch messages');
       }
 
-      setLoading(false);
+      const data = await response.json();
+      const fetchedMessages = data.messages || [];
+      setMessages(fetchedMessages);
+      setAllMessages(fetchedMessages); // For search within channel
+    } catch (err: any) {
+      console.error('Failed to fetch messages:', err);
+      setMessages([]);
+    } finally {
+      setMessagesLoading(false);
     }
-  }, [data]);
+  };
 
-  const handleChannelSelect = (channel: any) => {
+  const handleChannelSelect = async (channel: any) => {
     setSelectedChannel(channel);
     setSelectedThread(null);
+    setSearchQuery('');
 
-    // Filter messages for selected channel
-    const channelMessages = data?.data?.messages?.records?.filter(
-      (m: any) => m.channel_id === channel.id
-    ) || [];
-    setMessages(channelMessages);
+    // Fetch messages for selected channel via live API
+    await fetchMessagesForChannel(channel.id);
   };
 
   const handleThreadSelect = (message: any) => {
@@ -93,31 +145,24 @@ export function SlackPage({ walletAddress, data }: SlackPageProps) {
     if (!selectedChannel) return;
 
     try {
-      const formData = new FormData();
-      formData.append('channel', selectedChannel.id);
-      formData.append('text', text);
-      formData.append('wallet_address', walletAddress);
-
-      if (selectedThread) {
-        formData.append('thread_ts', selectedThread.timestamp);
-      }
-
-      if (files && files.length > 0) {
-        files.forEach(file => formData.append('files', file));
-      }
-
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/integrations/slack/messages`,
+        `${API_URL}/api/v1/integrations/slack/messages`,
         {
           method: 'POST',
-          body: formData
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            wallet_address: walletAddress,
+            channel: selectedChannel.id,
+            text: text,
+            thread_ts: selectedThread?.timestamp || undefined,
+            reply_broadcast: false
+          })
         }
       );
 
       if (response.ok) {
-        // Refresh messages
-        const newMessage = await response.json();
-        setMessages([...messages, newMessage.data]);
+        // Refresh messages from server to get the new message
+        await fetchMessagesForChannel(selectedChannel.id);
       }
     } catch (error) {
       console.error('Failed to send message:', error);
@@ -127,7 +172,7 @@ export function SlackPage({ walletAddress, data }: SlackPageProps) {
   const handleReaction = async (messageTs: string, emoji: string) => {
     try {
       await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/integrations/slack/reactions`,
+        `${API_URL}/api/v1/integrations/slack/reactions`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -140,6 +185,7 @@ export function SlackPage({ walletAddress, data }: SlackPageProps) {
         }
       );
       // Refresh messages to show new reaction
+      await fetchMessagesForChannel(selectedChannel.id);
     } catch (error) {
       console.error('Failed to add reaction:', error);
     }
@@ -148,28 +194,18 @@ export function SlackPage({ walletAddress, data }: SlackPageProps) {
   const handleSearch = (query: string) => {
     setSearchQuery(query);
     if (!query.trim()) {
-      // Reset to current channel messages if search is cleared
-      if (selectedChannel) {
-        const channelMessages = allMessages.filter(
-          (m: any) => m.channel_id === selectedChannel.id
-        );
-        setMessages(channelMessages);
-      }
+      // Reset to all messages for current channel
+      setMessages(allMessages);
       return;
     }
 
-    // Search across all messages
+    // Search within current channel's messages
     const searchResults = allMessages.filter((m: any) => {
       const text = m.text?.toLowerCase() || '';
       const user = m.user?.toLowerCase() || '';
-      const channelName = m.channel_name?.toLowerCase() || '';
       const searchTerm = query.toLowerCase();
 
-      return (
-        text.includes(searchTerm) ||
-        user.includes(searchTerm) ||
-        channelName.includes(searchTerm)
-      );
+      return text.includes(searchTerm) || user.includes(searchTerm);
     });
 
     setMessages(searchResults);
@@ -181,6 +217,26 @@ export function SlackPage({ walletAddress, data }: SlackPageProps) {
         <div className="text-center">
           <div className="mb-4 h-12 w-12 animate-spin rounded-full border-4 border-purple-600 border-t-transparent mx-auto"></div>
           <p className="text-gray-600">Loading workspace...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex h-screen items-center justify-center">
+        <div className="text-center max-w-md">
+          <div className="mb-4 h-16 w-16 rounded-full bg-red-100 flex items-center justify-center mx-auto">
+            <X className="h-8 w-8 text-red-600" />
+          </div>
+          <h3 className="text-xl font-bold mb-2 text-gray-900">Failed to load Slack</h3>
+          <p className="text-gray-600 mb-4">{error}</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700"
+          >
+            Try Again
+          </button>
         </div>
       </div>
     );
@@ -319,11 +375,20 @@ export function SlackPage({ walletAddress, data }: SlackPageProps) {
 
             {/* Messages */}
             <div className="flex-1 overflow-hidden">
-              <MessageList
-                messages={messages}
-                onThreadClick={handleThreadSelect}
-                onReaction={handleReaction}
-              />
+              {messagesLoading ? (
+                <div className="flex items-center justify-center h-full">
+                  <div className="text-center">
+                    <div className="mb-2 h-8 w-8 animate-spin rounded-full border-4 border-purple-600 border-t-transparent mx-auto"></div>
+                    <p className="text-sm text-gray-500">Loading messages...</p>
+                  </div>
+                </div>
+              ) : (
+                <MessageList
+                  messages={messages}
+                  onThreadClick={handleThreadSelect}
+                  onReaction={handleReaction}
+                />
+              )}
             </div>
 
             {/* Message Composer */}

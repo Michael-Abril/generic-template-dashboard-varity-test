@@ -1298,124 +1298,113 @@ export function AIChat() {
 
       {/* Main Chat Area */}
       <div className="flex-1 flex flex-col">
-        {/* Header */}
-        <div className="bg-gradient-to-r from-blue-600 to-purple-600 p-4">
+        {/* Header - Minimal Design */}
+        <div className="bg-gradient-to-r from-slate-800 to-slate-900 px-4 py-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <button
                 onClick={() => setShowSidebar(!showSidebar)}
-                className="p-2 hover:bg-white/10 rounded-lg transition-colors"
+                className="p-1.5 hover:bg-white/10 rounded-lg transition-colors"
               >
-                <MessageSquare className="w-5 h-5 text-white" />
+                <MessageSquare className="w-4 h-4 text-white/70" />
               </button>
-              <div className="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center">
-                <Bot className="w-6 h-6 text-white" />
-              </div>
-              <div>
-                <h2 className="text-white font-bold text-lg">Varity AI Assistant</h2>
-                <div className="flex flex-wrap gap-2 mt-1">
-                  {installedTools.length > 0 ? (
-                    <>
-                      <p className="text-xs text-white/80">Connected:</p>
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 bg-gradient-to-br from-blue-500 to-purple-500 rounded-lg flex items-center justify-center">
+                  <Bot className="w-4 h-4 text-white" />
+                </div>
+                <div>
+                  <h2 className="text-white font-semibold text-sm">AI Assistant</h2>
+                  {installedTools.length > 0 && (
+                    <div className="flex items-center gap-1 mt-0.5">
                       {installedTools.slice(0, 4).map((tool, i) => (
-                        <span
+                        <div
                           key={i}
-                          className={`text-xs px-2 py-0.5 rounded-full ${
-                            tool.toLowerCase().includes('quickbooks') ? 'bg-green-500/30 text-green-100' :
-                            tool.toLowerCase().includes('google') ? 'bg-red-500/30 text-red-100' :
-                            tool.toLowerCase().includes('salesforce') ? 'bg-blue-500/30 text-blue-100' :
-                            tool.toLowerCase().includes('slack') ? 'bg-purple-500/30 text-purple-100' :
-                            tool.toLowerCase().includes('hubspot') ? 'bg-orange-500/30 text-orange-100' :
-                            'bg-white/20 text-white/90'
-                          }`}
+                          className="w-4 h-4 rounded bg-white/10 flex items-center justify-center"
+                          title={tool}
                         >
-                          {tool}
-                        </span>
+                          <span className="text-[8px] font-bold text-white/80">{tool.charAt(0).toUpperCase()}</span>
+                        </div>
                       ))}
                       {installedTools.length > 4 && (
-                        <span className="text-xs text-white/60">+{installedTools.length - 4} more</span>
+                        <span className="text-[10px] text-white/50">+{installedTools.length - 4}</span>
                       )}
-                    </>
-                  ) : (
-                    <p className="text-xs text-white/80">No integrations connected</p>
+                    </div>
                   )}
                 </div>
               </div>
             </div>
 
-            {/* Header Actions - Privacy, Actions & Export */}
-            <div className="flex items-center gap-2">
-              {/* Privacy Indicator */}
-              <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-white/10 rounded-full">
-                <Shield className="w-3.5 h-3.5 text-green-300" />
-                <span className="text-xs text-white/90">On-Chain Secure</span>
+            {/* Header Actions - Compact Icons */}
+            <div className="flex items-center gap-1">
+              {/* Privacy Indicator - Icon only with tooltip */}
+              <div className="relative group">
+                <div className="p-1.5 rounded-md bg-white/5">
+                  <Shield className="w-3.5 h-3.5 text-green-400" />
+                </div>
+                <div className="absolute bottom-full right-0 mb-1.5 px-2 py-1 bg-gray-900 text-white text-[10px] rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-20">
+                  On-Chain Secure
+                </div>
               </div>
 
-              {/* Data Status Indicator */}
+              {/* Data Status - Icon only with tooltip */}
               {!ragStatus.loading && (
-                <div
-                  className={`hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full ${
-                    ragStatus.dataAvailable
-                      ? 'bg-green-500/20 text-green-100'
-                      : 'bg-yellow-500/20 text-yellow-100'
-                  }`}
-                  title={
-                    ragStatus.dataAvailable
-                      ? `${ragStatus.documentCount} documents indexed from ${ragStatus.integrations.join(', ')}`
-                      : 'Sync your integrations to enable AI access to your business data'
-                  }
-                >
-                  <Database className="w-3.5 h-3.5" />
-                  <span className="text-xs">
-                    {ragStatus.dataAvailable
-                      ? `${ragStatus.documentCount} docs indexed`
-                      : 'No data synced'}
-                  </span>
+                <div className="relative group">
+                  <div className={`p-1.5 rounded-md ${ragStatus.dataAvailable ? 'bg-green-500/10' : 'bg-yellow-500/10'}`}>
+                    <Database className={`w-3.5 h-3.5 ${ragStatus.dataAvailable ? 'text-green-400' : 'text-yellow-400'}`} />
+                  </div>
+                  <div className="absolute bottom-full right-0 mb-1.5 px-2 py-1 bg-gray-900 text-white text-[10px] rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-20">
+                    {ragStatus.dataAvailable ? `${ragStatus.documentCount} docs indexed` : 'No data synced'}
+                  </div>
                 </div>
               )}
 
-              {/* Actions Button - Send Email, Create Doc */}
+              {/* Actions Button - Icon only */}
               {(isProviderConnected('google') || isProviderConnected('microsoft')) && (
-                <button
-                  onClick={() => setShowActionPanel(!showActionPanel)}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-colors ${
-                    showActionPanel ? 'bg-orange-500 text-white' : 'bg-white/10 text-white hover:bg-white/20'
-                  }`}
-                  title="Take Actions"
-                >
-                  <Zap className="w-4 h-4" />
-                  <span className="text-xs font-medium hidden sm:inline">Actions</span>
-                </button>
+                <div className="relative group">
+                  <button
+                    onClick={() => setShowActionPanel(!showActionPanel)}
+                    className={`p-1.5 rounded-md transition-colors ${
+                      showActionPanel ? 'bg-orange-500/20 text-orange-400' : 'bg-white/5 text-white/70 hover:bg-white/10'
+                    }`}
+                  >
+                    <Zap className="w-3.5 h-3.5" />
+                  </button>
+                  <div className="absolute bottom-full right-0 mb-1.5 px-2 py-1 bg-gray-900 text-white text-[10px] rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-20">
+                    Actions
+                  </div>
+                </div>
               )}
 
-              {/* Export Button */}
-              <div className="relative">
+              {/* Export Button - Icon only */}
+              <div className="relative group">
                 <button
                   onClick={() => setShowExportMenu(!showExportMenu)}
-                  className="p-2 hover:bg-white/10 rounded-lg transition-colors"
-                  title="Export conversation"
+                  className="p-1.5 hover:bg-white/10 rounded-md transition-colors"
                 >
-                  <Download className="w-5 h-5 text-white" />
+                  <Download className="w-3.5 h-3.5 text-white/70" />
                 </button>
+                <div className="absolute bottom-full right-0 mb-1.5 px-2 py-1 bg-gray-900 text-white text-[10px] rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-20">
+                  Export
+                </div>
                 {showExportMenu && (
-                  <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20">
+                  <div className="absolute right-0 top-full mt-1 w-36 bg-white rounded-lg shadow-xl border border-gray-200 py-1 z-30">
                     <button
                       onClick={() => exportConversation('markdown')}
-                      className="w-full flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                      className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50"
                     >
-                      <FileText className="w-4 h-4" /> Export as Markdown
+                      <FileText className="w-3.5 h-3.5" /> Markdown
                     </button>
                     <button
                       onClick={() => exportConversation('json')}
-                      className="w-full flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                      className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50"
                     >
-                      <BarChart3 className="w-4 h-4" /> Export as JSON
+                      <BarChart3 className="w-3.5 h-3.5" /> JSON
                     </button>
                     <button
                       onClick={() => exportConversation('pdf')}
-                      className="w-full flex items-center gap-2 px-4 py-2 text-sm text-gray-500 hover:bg-gray-100"
+                      className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-gray-400 cursor-not-allowed"
                     >
-                      <FileUp className="w-4 h-4" /> Export as PDF (soon)
+                      <FileUp className="w-3.5 h-3.5" /> PDF
                     </button>
                   </div>
                 )}
@@ -1424,24 +1413,21 @@ export function AIChat() {
           </div>
         </div>
 
-        {/* Privacy Banner - Dismissible */}
+        {/* Privacy Banner - Subtle */}
         {showPrivacyBanner && (
-          <div className="bg-gradient-to-r from-green-50 to-blue-50 border-b border-green-200 px-4 py-2">
+          <div className="bg-gray-50 border-b border-gray-100 px-4 py-1.5">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="flex items-center gap-1.5">
-                  <Lock className="w-4 h-4 text-green-600" />
-                  <span className="text-xs font-medium text-green-800">Your Data is Private</span>
-                </div>
-                <span className="text-xs text-gray-600">
-                  All data stored on Filecoin/IPFS • Encrypted with your wallet • Only you can access
+              <div className="flex items-center gap-2">
+                <Lock className="w-3 h-3 text-green-600" />
+                <span className="text-[10px] text-gray-500">
+                  Your data is encrypted and stored on Filecoin/IPFS
                 </span>
               </div>
               <button
                 onClick={() => setShowPrivacyBanner(false)}
-                className="p-1 hover:bg-white/50 rounded"
+                className="p-0.5 hover:bg-gray-200 rounded"
               >
-                <X className="w-3.5 h-3.5 text-gray-500" />
+                <X className="w-3 h-3 text-gray-400" />
               </button>
             </div>
           </div>
@@ -1857,22 +1843,22 @@ export function AIChat() {
                   </div>
                 ) : (
                   <div
-                    className={`rounded-2xl p-4 shadow-sm transition-all ${
+                    className={`rounded-xl p-3 transition-all ${
                       msg.role === 'user'
-                        ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white'
-                        : 'bg-white text-gray-900 border border-gray-100'
+                        ? 'bg-slate-800 text-white'
+                        : 'bg-gray-50 text-gray-900'
                     }`}
                   >
                     {msg.role === 'assistant' && (
-                      <div className="flex items-center gap-2 mb-3">
-                        <div className="w-7 h-7 bg-gradient-to-r from-blue-600 to-purple-600 rounded-full flex items-center justify-center shadow-sm">
-                          <Bot className="w-4 h-4 text-white" />
+                      <div className="flex items-center gap-1.5 mb-2">
+                        <div className="w-5 h-5 bg-gradient-to-br from-blue-500 to-purple-500 rounded-md flex items-center justify-center">
+                          <Bot className="w-3 h-3 text-white" />
                         </div>
-                        <span className="text-sm font-semibold text-gray-800">Varity AI</span>
+                        <span className="text-xs font-medium text-gray-600">Assistant</span>
                         {msg.context_used && (
-                          <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full flex items-center gap-1">
-                            <Database className="w-3 h-3" />
-                            Using your data
+                          <span className="text-[10px] bg-green-100 text-green-600 px-1.5 py-0.5 rounded flex items-center gap-0.5">
+                            <Database className="w-2.5 h-2.5" />
+                            Data
                           </span>
                         )}
                       </div>
@@ -1892,9 +1878,9 @@ export function AIChat() {
                           code: ({ className, children }) => {
                             const isInline = !className;
                             return isInline ? (
-                              <code className={`px-1.5 py-0.5 rounded text-sm font-mono ${msg.role === 'user' ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-800'}`}>{children}</code>
+                              <code className={`px-1 py-0.5 rounded text-xs font-mono ${msg.role === 'user' ? 'bg-white/15 text-white' : 'bg-gray-200/60 text-gray-700'}`}>{children}</code>
                             ) : (
-                              <code className="block bg-gray-100 text-gray-800 p-3 rounded-lg text-sm font-mono overflow-x-auto my-2">{children}</code>
+                              <code className="block bg-gray-100 text-gray-700 p-2.5 rounded-lg text-xs font-mono overflow-x-auto my-2">{children}</code>
                             );
                           },
                           pre: ({ children, className }) => (
@@ -1916,11 +1902,11 @@ export function AIChat() {
                       </ReactMarkdown>
                     </div>
                     {msg.sources && msg.sources.length > 0 && (
-                      <div className="mt-3 pt-3 border-t border-gray-100">
-                        <p className="text-xs font-medium text-gray-600 mb-1.5">Sources:</p>
-                        <div className="flex flex-wrap gap-1.5">
+                      <div className="mt-2 pt-2 border-t border-gray-100">
+                        <div className="flex flex-wrap items-center gap-1">
+                          <span className="text-[10px] text-gray-400">Sources:</span>
                           {msg.sources.map((source, i) => (
-                            <span key={i} className="text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded-full">
+                            <span key={i} className="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded">
                               {source}
                             </span>
                           ))}
@@ -2168,163 +2154,153 @@ export function AIChat() {
 
         {/* Input */}
         <div className="border-t border-gray-200 p-4 pb-8 bg-white">
-          {/* AI Mode Selector */}
+          {/* AI Mode Selector - Minimal Icon-based */}
           <div className="flex items-center gap-2 mb-3 flex-wrap">
-            <div className="relative">
+            <div className="relative group">
               <button
                 onClick={() => setShowModeSelector(!showModeSelector)}
-                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                className={`flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-xs font-medium transition-all border ${
                   aiMode === 'standard'
-                    ? 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    ? 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100'
                     : aiMode === 'deep_research'
-                    ? 'bg-purple-100 text-purple-700 hover:bg-purple-200'
+                    ? 'bg-purple-50 text-purple-700 border-purple-200 hover:bg-purple-100'
                     : aiMode === 'analyze'
-                    ? 'bg-blue-100 text-blue-700 hover:bg-blue-200'
-                    : 'bg-green-100 text-green-700 hover:bg-green-200'
+                    ? 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100'
+                    : 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100'
                 }`}
               >
-                {aiMode === 'standard' && <Sparkles className="w-4 h-4" />}
-                {aiMode === 'deep_research' && <Search className="w-4 h-4" />}
-                {aiMode === 'analyze' && <BarChart3 className="w-4 h-4" />}
-                {aiMode === 'document' && <FileUp className="w-4 h-4" />}
-                <span>
-                  {aiMode === 'standard' && 'Standard'}
-                  {aiMode === 'deep_research' && 'Deep Research'}
-                  {aiMode === 'analyze' && 'Deep Analysis'}
-                  {aiMode === 'document' && 'Document'}
-                </span>
-                <ChevronDown className="w-3 h-3" />
+                {aiMode === 'standard' && <Sparkles className="w-3.5 h-3.5" />}
+                {aiMode === 'deep_research' && <Search className="w-3.5 h-3.5" />}
+                {aiMode === 'analyze' && <BarChart3 className="w-3.5 h-3.5" />}
+                {aiMode === 'document' && <FileUp className="w-3.5 h-3.5" />}
+                <ChevronDown className="w-3 h-3 opacity-50" />
               </button>
+              {/* Tooltip */}
+              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1 bg-gray-900 text-white text-[10px] rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-20">
+                {aiMode === 'standard' && 'Standard Mode'}
+                {aiMode === 'deep_research' && 'Deep Research'}
+                {aiMode === 'analyze' && 'Deep Analysis'}
+                {aiMode === 'document' && 'Document Mode'}
+              </div>
 
               {showModeSelector && (
-                <div className="absolute bottom-full left-0 mb-2 w-72 bg-white border border-gray-200 rounded-lg shadow-lg z-10">
-                  <div className="p-2">
+                <div className="absolute bottom-full left-0 mb-2 w-44 bg-white border border-gray-200 rounded-lg shadow-xl z-30">
+                  <div className="p-1">
                     <button
                       onClick={() => { setAiMode('standard'); setShowModeSelector(false); }}
-                      className={`w-full flex items-start gap-3 p-3 rounded-lg text-left transition-colors ${
+                      className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-md text-left transition-colors ${
                         aiMode === 'standard' ? 'bg-gray-100' : 'hover:bg-gray-50'
                       }`}
                     >
-                      <Sparkles className="w-5 h-5 text-gray-600 mt-0.5" />
-                      <div>
-                        <p className="font-medium text-gray-900 text-sm">Standard</p>
-                        <p className="text-xs text-gray-500">Quick answers from your business data</p>
-                      </div>
+                      <Sparkles className="w-4 h-4 text-gray-500" />
+                      <span className="text-xs font-medium text-gray-700">Standard</span>
+                      {aiMode === 'standard' && <Check className="w-3 h-3 text-gray-500 ml-auto" />}
                     </button>
                     <button
                       onClick={() => { setAiMode('deep_research'); setShowModeSelector(false); }}
-                      className={`w-full flex items-start gap-3 p-3 rounded-lg text-left transition-colors ${
-                        aiMode === 'deep_research' ? 'bg-purple-100' : 'hover:bg-gray-50'
+                      className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-md text-left transition-colors ${
+                        aiMode === 'deep_research' ? 'bg-purple-50' : 'hover:bg-gray-50'
                       }`}
                     >
-                      <Search className="w-5 h-5 text-purple-600 mt-0.5" />
-                      <div>
-                        <p className="font-medium text-gray-900 text-sm">Deep Research</p>
-                        <p className="text-xs text-gray-500">Comprehensive analysis with optional web search</p>
-                      </div>
+                      <Search className="w-4 h-4 text-purple-500" />
+                      <span className="text-xs font-medium text-gray-700">Deep Research</span>
+                      {aiMode === 'deep_research' && <Check className="w-3 h-3 text-purple-500 ml-auto" />}
                     </button>
                     <button
                       onClick={() => { setAiMode('analyze'); setShowModeSelector(false); }}
-                      className={`w-full flex items-start gap-3 p-3 rounded-lg text-left transition-colors ${
-                        aiMode === 'analyze' ? 'bg-blue-100' : 'hover:bg-gray-50'
+                      className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-md text-left transition-colors ${
+                        aiMode === 'analyze' ? 'bg-blue-50' : 'hover:bg-gray-50'
                       }`}
                     >
-                      <BarChart3 className="w-5 h-5 text-blue-600 mt-0.5" />
-                      <div>
-                        <p className="font-medium text-gray-900 text-sm">Deep Analysis</p>
-                        <p className="text-xs text-gray-500">Executive-level analysis of your data</p>
-                      </div>
+                      <BarChart3 className="w-4 h-4 text-blue-500" />
+                      <span className="text-xs font-medium text-gray-700">Deep Analysis</span>
+                      {aiMode === 'analyze' && <Check className="w-3 h-3 text-blue-500 ml-auto" />}
                     </button>
                     <button
                       onClick={() => { setAiMode('document'); setShowModeSelector(false); setShowDocumentUpload(true); }}
-                      className={`w-full flex items-start gap-3 p-3 rounded-lg text-left transition-colors ${
-                        aiMode === 'document' ? 'bg-green-100' : 'hover:bg-gray-50'
+                      className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-md text-left transition-colors ${
+                        aiMode === 'document' ? 'bg-green-50' : 'hover:bg-gray-50'
                       }`}
                     >
-                      <FileUp className="w-5 h-5 text-green-600 mt-0.5" />
-                      <div>
-                        <p className="font-medium text-gray-900 text-sm">Analyze Document</p>
-                        <p className="text-xs text-gray-500">Upload and analyze any document</p>
-                      </div>
+                      <FileUp className="w-4 h-4 text-green-500" />
+                      <span className="text-xs font-medium text-gray-700">Document</span>
+                      {aiMode === 'document' && <Check className="w-3 h-3 text-green-500 ml-auto" />}
                     </button>
                   </div>
                 </div>
               )}
             </div>
 
-            {/* Mode-specific options */}
+            {/* Mode-specific options - Compact */}
             {aiMode === 'deep_research' && (
-              <label className="flex items-center gap-2 text-xs text-gray-600 bg-gray-100 px-3 py-1.5 rounded-lg cursor-pointer hover:bg-gray-200 transition-colors">
+              <label className="flex items-center gap-1.5 text-[10px] text-gray-500 bg-gray-50 border border-gray-200 px-2 py-1 rounded-md cursor-pointer hover:bg-gray-100 transition-colors">
                 <input
                   type="checkbox"
                   checked={enableWebSearch}
                   onChange={(e) => setEnableWebSearch(e.target.checked)}
-                  className="rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                  className="w-3 h-3 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
                 />
-                <Globe className="w-3.5 h-3.5" />
-                <span>Include Web Search</span>
+                <Globe className="w-3 h-3" />
+                <span>Web</span>
               </label>
             )}
 
             {aiMode === 'document' && !uploadedDocument && (
               <button
                 onClick={() => setShowDocumentUpload(true)}
-                className="flex items-center gap-2 text-xs text-green-700 bg-green-100 px-3 py-1.5 rounded-lg hover:bg-green-200 transition-colors"
+                className="flex items-center gap-1.5 text-[10px] text-green-600 bg-green-50 border border-green-200 px-2 py-1 rounded-md hover:bg-green-100 transition-colors"
               >
-                <Upload className="w-3.5 h-3.5" />
-                Upload Document
+                <Upload className="w-3 h-3" />
+                Upload
               </button>
             )}
 
-            {/* Integration Filter - for Standard, Deep Research, and Analyze modes */}
+            {/* Integration Filter - Compact */}
             {aiMode !== 'document' && installedTools.length > 0 && (
-              <div className="relative">
+              <div className="relative group">
                 <button
                   onClick={() => setShowIntegrationFilter(!showIntegrationFilter)}
-                  className={`flex items-center gap-2 text-xs px-3 py-1.5 rounded-lg transition-colors ${
+                  className={`flex items-center gap-1 text-[10px] px-2 py-1 rounded-md transition-colors border ${
                     selectedIntegration !== 'all'
-                      ? 'bg-orange-100 text-orange-700 hover:bg-orange-200'
-                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                      ? 'bg-orange-50 text-orange-600 border-orange-200 hover:bg-orange-100'
+                      : 'bg-gray-50 text-gray-500 border-gray-200 hover:bg-gray-100'
                   }`}
                 >
-                  <Filter className="w-3.5 h-3.5" />
-                  <span>{selectedIntegration === 'all' ? 'All Data' : selectedIntegration}</span>
-                  <ChevronDown className="w-3 h-3" />
+                  <Filter className="w-3 h-3" />
+                  {selectedIntegration !== 'all' && <span className="capitalize">{selectedIntegration}</span>}
+                  <ChevronDown className="w-2.5 h-2.5 opacity-50" />
                 </button>
+                {/* Tooltip */}
+                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1 bg-gray-900 text-white text-[10px] rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-20">
+                  {selectedIntegration === 'all' ? 'All Integrations' : `${selectedIntegration} only`}
+                </div>
 
                 {showIntegrationFilter && (
-                  <div className="absolute bottom-full left-0 mb-2 w-56 bg-white border border-gray-200 rounded-lg shadow-lg z-10">
-                    <div className="p-2">
-                      <div className="px-3 py-1.5 text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                        Filter by Integration
-                      </div>
+                  <div className="absolute bottom-full left-0 mb-2 w-40 bg-white border border-gray-200 rounded-lg shadow-xl z-30">
+                    <div className="p-1">
                       <button
                         onClick={() => { setSelectedIntegration('all'); setShowIntegrationFilter(false); }}
-                        className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left text-sm transition-colors ${
-                          selectedIntegration === 'all' ? 'bg-orange-100' : 'hover:bg-gray-50'
+                        className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md text-left transition-colors ${
+                          selectedIntegration === 'all' ? 'bg-gray-100' : 'hover:bg-gray-50'
                         }`}
                       >
-                        <Database className="w-4 h-4 text-gray-500" />
-                        <div>
-                          <p className="font-medium text-gray-900">All Data</p>
-                          <p className="text-xs text-gray-500">Search across all integrations</p>
-                        </div>
+                        <Database className="w-3.5 h-3.5 text-gray-400" />
+                        <span className="text-xs text-gray-700">All Data</span>
+                        {selectedIntegration === 'all' && <Check className="w-3 h-3 text-gray-500 ml-auto" />}
                       </button>
                       {installedTools.map((tool) => (
                         <button
                           key={tool}
                           onClick={() => { setSelectedIntegration(tool); setShowIntegrationFilter(false); }}
-                          className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left text-sm transition-colors ${
-                            selectedIntegration === tool ? 'bg-orange-100' : 'hover:bg-gray-50'
+                          className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md text-left transition-colors ${
+                            selectedIntegration === tool ? 'bg-orange-50' : 'hover:bg-gray-50'
                           }`}
                         >
-                          <div className="w-4 h-4 rounded bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center">
-                            <span className="text-[8px] font-bold text-white">{tool.charAt(0).toUpperCase()}</span>
+                          <div className="w-3.5 h-3.5 rounded bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center">
+                            <span className="text-[7px] font-bold text-white">{tool.charAt(0).toUpperCase()}</span>
                           </div>
-                          <div>
-                            <p className="font-medium text-gray-900">{tool}</p>
-                            <p className="text-xs text-gray-500">Only {tool} data</p>
-                          </div>
+                          <span className="text-xs text-gray-700 capitalize">{tool}</span>
+                          {selectedIntegration === tool && <Check className="w-3 h-3 text-orange-500 ml-auto" />}
                         </button>
                       ))}
                     </div>
@@ -2333,27 +2309,29 @@ export function AIChat() {
               </div>
             )}
 
-            {/* Context Picker Toggle (like Cursor AI) */}
+            {/* Context Picker Toggle - Compact Icon */}
             {aiMode !== 'document' && ragStatus.dataAvailable && (
-              <button
-                onClick={() => setShowContextPicker(!showContextPicker)}
-                className={`flex items-center gap-2 text-xs px-3 py-1.5 rounded-lg transition-colors ${
-                  selectedContextIds.length > 0
-                    ? 'bg-purple-100 text-purple-700 hover:bg-purple-200'
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                }`}
-              >
-                <Database className="w-3.5 h-3.5" />
-                <span>
-                  {selectedContextIds.length > 0
-                    ? `${selectedContextIds.length} Selected`
-                    : 'Select Context'}
-                </span>
-              </button>
+              <div className="relative group">
+                <button
+                  onClick={() => setShowContextPicker(!showContextPicker)}
+                  className={`flex items-center gap-1 text-[10px] px-2 py-1 rounded-md transition-colors border ${
+                    selectedContextIds.length > 0
+                      ? 'bg-purple-50 text-purple-600 border-purple-200 hover:bg-purple-100'
+                      : 'bg-gray-50 text-gray-500 border-gray-200 hover:bg-gray-100'
+                  }`}
+                >
+                  <Database className="w-3 h-3" />
+                  {selectedContextIds.length > 0 && <span>{selectedContextIds.length}</span>}
+                </button>
+                {/* Tooltip */}
+                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1 bg-gray-900 text-white text-[10px] rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-20">
+                  {selectedContextIds.length > 0 ? `${selectedContextIds.length} items selected` : 'Select Context'}
+                </div>
+              </div>
             )}
 
-            {/* Mode description */}
-            <span className="text-xs text-gray-500">
+            {/* Mode description - Subtle */}
+            <span className="text-[10px] text-gray-400 hidden sm:inline ml-auto">
               {aiMode === 'standard' && (
                 selectedContextIds.length > 0
                   ? `Using ${selectedContextIds.length} selected item${selectedContextIds.length > 1 ? 's' : ''}`
@@ -2388,8 +2366,8 @@ export function AIChat() {
             </div>
           )}
 
-          {/* Professional multi-line input area */}
-          <div className="relative bg-white border border-gray-200 rounded-2xl shadow-sm focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-transparent transition-all">
+          {/* Minimal input area */}
+          <div className="relative bg-gray-50 border border-gray-200 rounded-xl focus-within:ring-1 focus-within:ring-gray-300 focus-within:border-gray-300 transition-all">
             <textarea
               ref={textareaRef}
               value={input}
@@ -2397,22 +2375,22 @@ export function AIChat() {
               onKeyDown={handleKeyDown}
               placeholder={
                 aiMode === 'deep_research'
-                  ? "What would you like me to research?"
+                  ? "What would you like to research?"
                   : aiMode === 'analyze'
-                  ? "What report would you like me to create?"
+                  ? "What report would you like?"
                   : installedTools.length > 0
-                  ? "Ask me anything about your business..."
-                  : "Ask questions about your business. Connect tools for deeper insights."
+                  ? "Ask anything..."
+                  : "Ask a question..."
               }
               disabled={loading}
               rows={1}
-              className="w-full resize-none bg-transparent text-gray-900 placeholder-gray-400 px-4 py-3.5 pr-24 focus:outline-none disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-not-allowed rounded-2xl"
-              style={{ minHeight: '52px', maxHeight: '200px' }}
+              className="w-full resize-none bg-transparent text-gray-800 placeholder-gray-400 px-3 py-3 pr-16 text-sm focus:outline-none disabled:bg-gray-100 disabled:text-gray-500 disabled:cursor-not-allowed rounded-xl"
+              style={{ minHeight: '44px', maxHeight: '200px' }}
             />
-            <div className="absolute right-2 bottom-2 flex items-center gap-1.5">
-              {/* Character count for long messages */}
-              {input.length > 100 && (
-                <span className={`text-xs ${input.length > 4000 ? 'text-red-500' : 'text-gray-400'}`}>
+            <div className="absolute right-2 bottom-2 flex items-center gap-1">
+              {/* Character count - only near limit */}
+              {input.length > 3000 && (
+                <span className={`text-[10px] ${input.length > 4000 ? 'text-red-500' : 'text-gray-400'}`}>
                   {input.length.toLocaleString()}
                 </span>
               )}
@@ -2420,23 +2398,19 @@ export function AIChat() {
               <button
                 onClick={() => sendMessage()}
                 disabled={loading || !input.trim()}
-                className={`p-2 rounded-xl transition-all ${
+                className={`p-1.5 rounded-lg transition-all ${
                   input.trim() && !loading
-                    ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white hover:shadow-lg hover:scale-105'
-                    : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                    ? 'bg-slate-800 text-white hover:bg-slate-700'
+                    : 'bg-gray-200 text-gray-400 cursor-not-allowed'
                 }`}
-                title={loading ? 'Generating...' : 'Send message (Enter)'}
+                title={loading ? 'Generating...' : 'Send (Enter)'}
               >
                 {loading ? (
-                  <div className="w-5 h-5 border-2 border-gray-300 border-t-blue-600 rounded-full animate-spin"></div>
+                  <div className="w-4 h-4 border-2 border-gray-300 border-t-white rounded-full animate-spin"></div>
                 ) : (
-                  <Send className="w-5 h-5" />
+                  <Send className="w-4 h-4" />
                 )}
               </button>
-            </div>
-            {/* Keyboard hint */}
-            <div className="absolute left-4 bottom-[-22px] text-[10px] text-gray-400">
-              Press Enter to send, Shift+Enter for new line
             </div>
           </div>
         </div>

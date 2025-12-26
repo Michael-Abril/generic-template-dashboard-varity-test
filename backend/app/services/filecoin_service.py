@@ -10,7 +10,9 @@ Multi-Tenant Architecture:
 import json
 import httpx
 import time
-from typing import Optional, Dict, Any, List
+import asyncio
+import random
+from typing import Optional, Dict, Any, List, Callable
 from datetime import datetime
 import logging
 
@@ -29,6 +31,72 @@ class FilecoinService:
         self.api_url = settings.pinata_api_url
         self.gateway_url = settings.pinata_gateway_url
         self.headers = self._build_headers()
+        # Limit concurrent requests to avoid overwhelming the API
+        self._request_semaphore = asyncio.Semaphore(5)
+
+    async def _retry_request(
+        self,
+        request_func: Callable,
+        max_retries: int = 3,
+        base_delay: float = 1.0
+    ):
+        """
+        Execute request with exponential backoff for network/rate limit errors.
+
+        Even though dedicated gateways have no rate limits, this provides
+        resilience against network errors, 502/503/504 server errors, etc.
+        """
+        last_exception = None
+
+        async with self._request_semaphore:
+            for attempt in range(max_retries):
+                try:
+                    return await request_func()
+                except httpx.HTTPStatusError as e:
+                    last_exception = e
+                    status_code = e.response.status_code
+
+                    # Retryable HTTP errors
+                    if status_code in (429, 502, 503, 504):
+                        delay = base_delay * (2 ** attempt) + random.uniform(0, 1)
+
+                        # Respect Retry-After header if present
+                        retry_after = e.response.headers.get('Retry-After')
+                        if retry_after:
+                            try:
+                                delay = max(delay, float(retry_after))
+                            except ValueError:
+                                pass
+
+                        logger.warning(
+                            f"HTTP {status_code} error, retry {attempt + 1}/{max_retries} "
+                            f"in {delay:.1f}s"
+                        )
+
+                        if attempt < max_retries - 1:
+                            await asyncio.sleep(delay)
+                            continue
+
+                    # Non-retryable errors (400, 401, 403, 404, etc.)
+                    raise
+
+                except (httpx.ConnectError, httpx.ReadTimeout, httpx.WriteTimeout) as e:
+                    last_exception = e
+
+                    if attempt < max_retries - 1:
+                        delay = base_delay * (2 ** attempt)
+                        logger.warning(
+                            f"Network error ({type(e).__name__}), "
+                            f"retry {attempt + 1}/{max_retries} in {delay:.1f}s"
+                        )
+                        await asyncio.sleep(delay)
+                    else:
+                        raise
+
+        # Should not reach here, but just in case
+        if last_exception:
+            raise last_exception
+        raise Exception(f"Max retries ({max_retries}) exceeded")
 
     def _build_headers(self) -> Dict[str, str]:
         """Build authentication headers for Pinata API"""
@@ -252,7 +320,7 @@ class FilecoinService:
 
     async def retrieve_data(self, cid: str) -> dict:
         """
-        Retrieve data from Filecoin/IPFS by CID
+        Retrieve data from Filecoin/IPFS by CID with retry logic.
 
         Args:
             cid: Content Identifier
@@ -260,28 +328,29 @@ class FilecoinService:
         Returns:
             Retrieved data (still encrypted)
         """
-        async with httpx.AsyncClient() as client:
-            try:
+        async def _do_request():
+            async with httpx.AsyncClient() as client:
                 response = await client.get(
                     f"{self.gateway_url}/ipfs/{cid}",
                     timeout=30.0
                 )
                 response.raise_for_status()
+                return response.json()
 
-                data = response.json()
-                logger.info(f"Successfully retrieved data from IPFS: CID={cid}")
-                return data
-
-            except httpx.HTTPStatusError as e:
-                logger.error(f"IPFS retrieval error: {e.response.text}")
-                raise Exception(f"Failed to retrieve from IPFS: {e.response.text}")
-            except Exception as e:
-                logger.error(f"Retrieval error: {str(e)}")
-                raise
+        try:
+            data = await self._retry_request(_do_request)
+            logger.info(f"Successfully retrieved data from IPFS: CID={cid}")
+            return data
+        except httpx.HTTPStatusError as e:
+            logger.error(f"IPFS retrieval error: {e.response.text}")
+            raise Exception(f"Failed to retrieve from IPFS: {e.response.text}")
+        except Exception as e:
+            logger.error(f"Retrieval error: {str(e)}")
+            raise
 
     async def retrieve_file(self, cid: str) -> bytes:
         """
-        Retrieve file from Filecoin/IPFS by CID
+        Retrieve file from Filecoin/IPFS by CID with retry logic.
 
         Args:
             cid: Content Identifier
@@ -289,23 +358,25 @@ class FilecoinService:
         Returns:
             File bytes (still encrypted)
         """
-        async with httpx.AsyncClient() as client:
-            try:
+        async def _do_request():
+            async with httpx.AsyncClient() as client:
                 response = await client.get(
                     f"{self.gateway_url}/ipfs/{cid}",
                     timeout=60.0
                 )
                 response.raise_for_status()
-
-                logger.info(f"Successfully retrieved file from IPFS: CID={cid}")
                 return response.content
 
-            except httpx.HTTPStatusError as e:
-                logger.error(f"IPFS file retrieval error: {e.response.text}")
-                raise Exception(f"Failed to retrieve file from IPFS: {e.response.text}")
-            except Exception as e:
-                logger.error(f"File retrieval error: {str(e)}")
-                raise
+        try:
+            content = await self._retry_request(_do_request)
+            logger.info(f"Successfully retrieved file from IPFS: CID={cid}")
+            return content
+        except httpx.HTTPStatusError as e:
+            logger.error(f"IPFS file retrieval error: {e.response.text}")
+            raise Exception(f"Failed to retrieve file from IPFS: {e.response.text}")
+        except Exception as e:
+            logger.error(f"File retrieval error: {str(e)}")
+            raise
 
     async def list_customer_files(
         self,
@@ -350,8 +421,8 @@ class FilecoinService:
 
         logger.debug(f"Pinata query filters: {filters}")
 
-        async with httpx.AsyncClient() as client:
-            try:
+        async def _do_request():
+            async with httpx.AsyncClient() as client:
                 response = await client.get(
                     f"{self.api_url}/data/pinList",
                     params={"pageLimit": limit, **filters},
@@ -359,43 +430,45 @@ class FilecoinService:
                     timeout=30.0
                 )
                 response.raise_for_status()
+                return response.json()
 
-                result = response.json()
-                files = []
+        try:
+            result = await self._retry_request(_do_request)
+            files = []
 
-                for pin in result.get("rows", []):
-                    file_info = {
-                        "cid": pin["ipfs_pin_hash"],
-                        "name": pin["metadata"].get("name"),
-                        "size": pin["size"],
-                        "timestamp": pin["date_pinned"],
-                        "metadata": pin["metadata"].get("keyvalues", {})
-                    }
-                    files.append(file_info)
+            for pin in result.get("rows", []):
+                file_info = {
+                    "cid": pin["ipfs_pin_hash"],
+                    "name": pin["metadata"].get("name"),
+                    "size": pin["size"],
+                    "timestamp": pin["date_pinned"],
+                    "metadata": pin["metadata"].get("keyvalues", {})
+                }
+                files.append(file_info)
 
-                logger.info(
-                    f"Pinata returned {len(files)} files for wallet={normalized_wallet}, "
-                    f"integration={integration}, data_type={data_type}"
+            logger.info(
+                f"Pinata returned {len(files)} files for wallet={normalized_wallet}, "
+                f"integration={integration}, data_type={data_type}"
+            )
+
+            # Log warning if no files found - helps debug pipeline issues
+            if len(files) == 0:
+                logger.warning(
+                    f"No files found in Pinata for wallet={normalized_wallet}, "
+                    f"integration={integration}. This may indicate a sync issue."
                 )
 
-                # Log warning if no files found - helps debug pipeline issues
-                if len(files) == 0:
-                    logger.warning(
-                        f"No files found in Pinata for wallet={normalized_wallet}, "
-                        f"integration={integration}. This may indicate a sync issue."
-                    )
+            return files
 
-                return files
-
-            except httpx.HTTPStatusError as e:
-                logger.error(
-                    f"Pinata list error: {e.response.text}, "
-                    f"wallet={normalized_wallet}, integration={integration}"
-                )
-                raise Exception(f"Failed to list files: {e.response.text}")
-            except Exception as e:
-                logger.error(f"Pinata list error: {str(e)}, wallet={normalized_wallet}")
-                raise
+        except httpx.HTTPStatusError as e:
+            logger.error(
+                f"Pinata list error: {e.response.text}, "
+                f"wallet={normalized_wallet}, integration={integration}"
+            )
+            raise Exception(f"Failed to list files: {e.response.text}")
+        except Exception as e:
+            logger.error(f"Pinata list error: {str(e)}, wallet={normalized_wallet}")
+            raise
 
     async def unpin_file(self, cid: str) -> bool:
         """

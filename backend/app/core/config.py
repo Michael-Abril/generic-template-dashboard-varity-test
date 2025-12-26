@@ -32,7 +32,10 @@ class Settings(BaseSettings):
     pinata_secret_key: Optional[str] = Field(None, env="PINATA_SECRET_KEY")
     pinata_jwt: Optional[str] = Field(None, env="PINATA_JWT")
     pinata_api_url: str = "https://api.pinata.cloud"
-    pinata_gateway_url: str = "https://gateway.pinata.cloud"
+    pinata_gateway_url: str = Field(
+        "https://gateway.pinata.cloud",
+        env="PINATA_GATEWAY_URL"
+    )
 
     # Lit Protocol
     lit_network: str = Field("cayenne", env="LIT_NETWORK")  # cayenne = testnet

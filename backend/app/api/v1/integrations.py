@@ -1257,3 +1257,164 @@ async def get_slack_thread(
     except Exception as e:
         logger.error(f"Failed to get Slack thread: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/slack/channels")
+async def get_slack_channels(
+    wallet_address: str = Query(...),
+    limit: int = Query(100),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Get channels via live Slack API (not from Pinata sync).
+    This is the recommended way to fetch channels for display.
+    """
+    try:
+        from app.adapters.slack.sync import SlackSync
+
+        # Get OAuth token for this user
+        user_address = wallet_address.lower()
+        token_result = await db.execute(
+            select(OAuthToken)
+            .where(
+                and_(
+                    OAuthToken.user_address == user_address,
+                    OAuthToken.provider == "slack",
+                    OAuthToken.is_active == True,  # noqa: E712
+                )
+            )
+        )
+        oauth_token = token_result.scalar_one_or_none()
+
+        if not oauth_token:
+            raise HTTPException(status_code=404, detail="Slack not connected")
+
+        # Decrypt credentials
+        credentials = await encryption_service.decrypt_oauth_token(
+            encrypted_token=oauth_token.encrypted_token,
+            customer_wallet=user_address
+        )
+
+        # Initialize Slack adapter and get channels
+        slack = SlackSync(credentials)
+        channels = await slack.get_channels(limit=limit)
+
+        return {
+            "success": True,
+            "channels": channels,
+            "count": len(channels)
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get Slack channels: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/slack/messages")
+async def get_slack_messages(
+    wallet_address: str = Query(...),
+    channel: str = Query(..., description="Channel ID to fetch messages from"),
+    limit: int = Query(100),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Get messages for a specific channel via live Slack API.
+    This is the recommended way to fetch messages for display.
+    """
+    try:
+        from app.adapters.slack.sync import SlackSync
+
+        # Get OAuth token for this user
+        user_address = wallet_address.lower()
+        token_result = await db.execute(
+            select(OAuthToken)
+            .where(
+                and_(
+                    OAuthToken.user_address == user_address,
+                    OAuthToken.provider == "slack",
+                    OAuthToken.is_active == True,  # noqa: E712
+                )
+            )
+        )
+        oauth_token = token_result.scalar_one_or_none()
+
+        if not oauth_token:
+            raise HTTPException(status_code=404, detail="Slack not connected")
+
+        # Decrypt credentials
+        credentials = await encryption_service.decrypt_oauth_token(
+            encrypted_token=oauth_token.encrypted_token,
+            customer_wallet=user_address
+        )
+
+        # Initialize Slack adapter and get messages
+        slack = SlackSync(credentials)
+        messages = await slack.get_messages(channel=channel, limit=limit)
+
+        return {
+            "success": True,
+            "messages": messages,
+            "count": len(messages),
+            "channel": channel
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get Slack messages: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/slack/users")
+async def get_slack_users(
+    wallet_address: str = Query(...),
+    limit: int = Query(200),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Get workspace users via live Slack API.
+    This is the recommended way to fetch users for display.
+    """
+    try:
+        from app.adapters.slack.sync import SlackSync
+
+        # Get OAuth token for this user
+        user_address = wallet_address.lower()
+        token_result = await db.execute(
+            select(OAuthToken)
+            .where(
+                and_(
+                    OAuthToken.user_address == user_address,
+                    OAuthToken.provider == "slack",
+                    OAuthToken.is_active == True,  # noqa: E712
+                )
+            )
+        )
+        oauth_token = token_result.scalar_one_or_none()
+
+        if not oauth_token:
+            raise HTTPException(status_code=404, detail="Slack not connected")
+
+        # Decrypt credentials
+        credentials = await encryption_service.decrypt_oauth_token(
+            encrypted_token=oauth_token.encrypted_token,
+            customer_wallet=user_address
+        )
+
+        # Initialize Slack adapter and get users
+        slack = SlackSync(credentials)
+        users = await slack.get_users(limit=limit)
+
+        return {
+            "success": True,
+            "users": users,
+            "count": len(users)
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get Slack users: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

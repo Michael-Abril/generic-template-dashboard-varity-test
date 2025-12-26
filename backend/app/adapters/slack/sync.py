@@ -492,3 +492,247 @@ class SlackSync(BaseDataAdapter):
             except Exception as e:
                 logger.error(f"Failed to add reaction: {e}")
                 raise
+
+    # ==================== LIVE API METHODS ====================
+
+    async def get_channels(self, limit: int = 100) -> List[Dict[str, Any]]:
+        """
+        Get all channels via live Slack API.
+
+        Args:
+            limit: Maximum number of channels to fetch
+
+        Returns:
+            List of transformed channel objects
+        """
+        headers = {
+            "Authorization": f"Bearer {self.access_token}",
+            "Content-Type": "application/json"
+        }
+
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            try:
+                response = await client.get(
+                    f"{self.api_base}/conversations.list",
+                    params={"types": "public_channel,private_channel", "limit": limit},
+                    headers=headers
+                )
+                response.raise_for_status()
+                result = response.json()
+
+                if not result.get("ok"):
+                    raise Exception(f"Slack API error: {result.get('error')}")
+
+                channels = result.get("channels", [])
+
+                # Transform to common schema
+                transformed = []
+                for ch in channels:
+                    transformed.append({
+                        "id": ch.get("id"),
+                        "type": "channel",
+                        "name": ch.get("name"),
+                        "is_private": ch.get("is_private", False),
+                        "is_archived": ch.get("is_archived", False),
+                        "created": ch.get("created"),
+                        "created_at": self._timestamp_to_iso(ch.get("created")),
+                        "creator": ch.get("creator"),
+                        "num_members": ch.get("num_members", 0),
+                        "topic": ch.get("topic", {}).get("value"),
+                        "purpose": ch.get("purpose", {}).get("value")
+                    })
+
+                logger.info(f"Fetched {len(transformed)} channels via live API")
+                return transformed
+
+            except httpx.HTTPStatusError as e:
+                logger.error(f"Slack API error: {e.response.text}")
+                raise Exception(f"Failed to get channels: {e.response.text}")
+            except Exception as e:
+                logger.error(f"Failed to get channels: {e}")
+                raise
+
+    async def get_messages(
+        self,
+        channel: str,
+        limit: int = 100
+    ) -> List[Dict[str, Any]]:
+        """
+        Get messages for a specific channel via live Slack API.
+
+        Args:
+            channel: Channel ID to fetch messages from
+            limit: Maximum number of messages to fetch
+
+        Returns:
+            List of transformed message objects
+        """
+        headers = {
+            "Authorization": f"Bearer {self.access_token}",
+            "Content-Type": "application/json"
+        }
+
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            try:
+                response = await client.get(
+                    f"{self.api_base}/conversations.history",
+                    params={"channel": channel, "limit": limit},
+                    headers=headers
+                )
+                response.raise_for_status()
+                result = response.json()
+
+                if not result.get("ok"):
+                    raise Exception(f"Slack API error: {result.get('error')}")
+
+                messages = result.get("messages", [])
+
+                # Transform to common schema
+                transformed = []
+                for msg in messages:
+                    transformed.append({
+                        "id": msg.get("ts"),
+                        "type": "message",
+                        "channel_id": channel,
+                        "user": msg.get("user"),
+                        "text": msg.get("text"),
+                        "timestamp": msg.get("ts"),
+                        "created_at": self._timestamp_to_iso(msg.get("ts")),
+                        "thread_ts": msg.get("thread_ts"),
+                        "reply_count": msg.get("reply_count", 0),
+                        "reactions": msg.get("reactions", []),
+                        "attachments": msg.get("attachments", []),
+                        "files": msg.get("files", [])
+                    })
+
+                logger.info(f"Fetched {len(transformed)} messages from channel {channel}")
+                return transformed
+
+            except httpx.HTTPStatusError as e:
+                logger.error(f"Slack API error: {e.response.text}")
+                raise Exception(f"Failed to get messages: {e.response.text}")
+            except Exception as e:
+                logger.error(f"Failed to get messages: {e}")
+                raise
+
+    async def get_users(self, limit: int = 200) -> List[Dict[str, Any]]:
+        """
+        Get workspace users via live Slack API.
+
+        Args:
+            limit: Maximum number of users to fetch
+
+        Returns:
+            List of transformed user objects
+        """
+        headers = {
+            "Authorization": f"Bearer {self.access_token}",
+            "Content-Type": "application/json"
+        }
+
+        all_users = []
+        cursor = None
+
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            try:
+                while len(all_users) < limit:
+                    params = {"limit": min(100, limit - len(all_users))}
+                    if cursor:
+                        params["cursor"] = cursor
+
+                    response = await client.get(
+                        f"{self.api_base}/users.list",
+                        params=params,
+                        headers=headers
+                    )
+                    response.raise_for_status()
+                    result = response.json()
+
+                    if not result.get("ok"):
+                        raise Exception(f"Slack API error: {result.get('error')}")
+
+                    members = result.get("members", [])
+                    if not members:
+                        break
+
+                    # Transform and filter out bots/deleted
+                    for user in members:
+                        if user.get("is_bot") or user.get("deleted"):
+                            continue
+
+                        profile = user.get("profile", {})
+                        all_users.append({
+                            "id": user.get("id"),
+                            "type": "user",
+                            "name": user.get("name"),
+                            "real_name": user.get("real_name"),
+                            "display_name": profile.get("display_name"),
+                            "email": profile.get("email"),
+                            "title": profile.get("title"),
+                            "is_admin": user.get("is_admin", False),
+                            "is_owner": user.get("is_owner", False),
+                            "status_text": profile.get("status_text"),
+                            "status_emoji": profile.get("status_emoji"),
+                            "timezone": user.get("tz"),
+                            "image_48": profile.get("image_48"),
+                            "image_72": profile.get("image_72")
+                        })
+
+                    # Check for pagination
+                    cursor = result.get("response_metadata", {}).get("next_cursor")
+                    if not cursor:
+                        break
+
+                logger.info(f"Fetched {len(all_users)} users via live API")
+                return all_users
+
+            except httpx.HTTPStatusError as e:
+                logger.error(f"Slack API error: {e.response.text}")
+                raise Exception(f"Failed to get users: {e.response.text}")
+            except Exception as e:
+                logger.error(f"Failed to get users: {e}")
+                raise
+
+    async def get_thread_replies(
+        self,
+        channel: str,
+        thread_ts: str
+    ) -> List[Dict[str, Any]]:
+        """
+        Get replies in a Slack thread via conversations.replies API.
+
+        Args:
+            channel: Channel ID containing the thread
+            thread_ts: Parent message timestamp
+
+        Returns:
+            List of message objects in the thread (including parent)
+        """
+        headers = {
+            "Authorization": f"Bearer {self.access_token}",
+            "Content-Type": "application/json"
+        }
+
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            try:
+                response = await client.get(
+                    f"{self.api_base}/conversations.replies",
+                    params={"channel": channel, "ts": thread_ts},
+                    headers=headers
+                )
+                response.raise_for_status()
+                result = response.json()
+
+                if not result.get("ok"):
+                    raise Exception(f"Slack API error: {result.get('error')}")
+
+                messages = result.get("messages", [])
+                logger.info(f"Fetched {len(messages)} thread replies for {thread_ts}")
+                return messages
+
+            except httpx.HTTPStatusError as e:
+                logger.error(f"Slack API error: {e.response.text}")
+                raise Exception(f"Failed to get thread replies: {e.response.text}")
+            except Exception as e:
+                logger.error(f"Failed to get thread replies: {e}")
+                raise

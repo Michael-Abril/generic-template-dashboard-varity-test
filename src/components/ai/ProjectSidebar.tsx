@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Plus, ChevronRight, ChevronDown, MessageSquare, Pin, Trash2,
   Edit2, MoreVertical, FolderOpen, Folder, Settings, Archive,
@@ -53,6 +53,19 @@ export function ProjectSidebar({
   const [projectConversations, setProjectConversations] = useState<Record<number, ProjectConversation[]>>({});
   const [loading, setLoading] = useState(true);
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
+  const sidebarRef = useRef<HTMLDivElement>(null);
+
+  // Close menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (menuOpenId && sidebarRef.current && !sidebarRef.current.contains(event.target as Node)) {
+        setMenuOpenId(null);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [menuOpenId]);
 
   // Fetch projects
   const fetchProjects = useCallback(async () => {
@@ -218,7 +231,7 @@ export function ProjectSidebar({
   };
 
   return (
-    <div className="w-64 bg-gray-50 border-r border-gray-200 flex flex-col h-full">
+    <div ref={sidebarRef} className="w-64 bg-gray-50 border-r border-gray-200 flex flex-col h-full">
       {/* New Chat / Project Button */}
       <div className="p-3 border-b border-gray-200 space-y-2">
         <button
@@ -290,19 +303,24 @@ export function ProjectSidebar({
                         </div>
 
                         {/* Project Menu */}
-                        <div className="opacity-0 group-hover:opacity-100 transition-opacity">
+                        <div className="relative">
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
                               setMenuOpenId(menuOpenId === `project-${project.id}` ? null : `project-${project.id}`);
                             }}
-                            className="p-1 hover:bg-gray-200 rounded"
+                            className={`p-1 hover:bg-gray-200 rounded transition-opacity ${
+                              menuOpenId === `project-${project.id}` ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+                            }`}
                           >
                             <MoreVertical className="w-4 h-4 text-gray-500" />
                           </button>
 
                           {menuOpenId === `project-${project.id}` && (
-                            <div className="absolute right-4 mt-1 w-36 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-20">
+                            <div
+                              className="absolute right-0 top-full mt-1 w-36 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50"
+                              onMouseLeave={() => setMenuOpenId(null)}
+                            >
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
@@ -406,19 +424,24 @@ export function ProjectSidebar({
                     </div>
 
                     {/* Conversation Menu */}
-                    <div className="absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div className="absolute right-2 top-2">
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
                           setMenuOpenId(menuOpenId === `conv-${conv.id}` ? null : `conv-${conv.id}`);
                         }}
-                        className="p-1 hover:bg-gray-200 rounded"
+                        className={`p-1 hover:bg-gray-200 rounded transition-opacity ${
+                          menuOpenId === `conv-${conv.id}` ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+                        }`}
                       >
                         <MoreVertical className="w-4 h-4 text-gray-500" />
                       </button>
 
                       {menuOpenId === `conv-${conv.id}` && (
-                        <div className="absolute right-0 top-6 w-36 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-10">
+                        <div
+                          className="absolute right-0 top-full mt-1 w-36 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50"
+                          onMouseLeave={() => setMenuOpenId(null)}
+                        >
                           <button
                             onClick={(e) => {
                               e.stopPropagation();

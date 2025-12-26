@@ -29,43 +29,82 @@ interface ContextPickerProps {
   maxSelections?: number;
 }
 
-// Integration display names and icons
-const INTEGRATION_CONFIG: Record<string, { displayName: string; icon: React.ReactNode; color: string; bgColor: string }> = {
+// Integration display names, logos, and colors (minimal icon-first design)
+const INTEGRATION_CONFIG: Record<string, { displayName: string; icon: React.ReactNode; color: string; bgColor: string; logoColor: string }> = {
   google: {
     displayName: 'Google Workspace',
-    icon: <Cloud className="w-5 h-5" />,
+    icon: (
+      <svg viewBox="0 0 24 24" className="w-6 h-6" fill="currentColor">
+        <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+        <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+        <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
+        <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+      </svg>
+    ),
     color: 'text-red-600',
-    bgColor: 'bg-red-50 hover:bg-red-100 border-red-200'
+    bgColor: 'bg-red-50 hover:bg-red-100 border-red-200',
+    logoColor: 'bg-white'
   },
   microsoft: {
     displayName: 'Microsoft 365',
-    icon: <Cloud className="w-5 h-5" />,
+    icon: (
+      <svg viewBox="0 0 24 24" className="w-6 h-6">
+        <rect x="1" y="1" width="10" height="10" fill="#F25022"/>
+        <rect x="13" y="1" width="10" height="10" fill="#7FBA00"/>
+        <rect x="1" y="13" width="10" height="10" fill="#00A4EF"/>
+        <rect x="13" y="13" width="10" height="10" fill="#FFB900"/>
+      </svg>
+    ),
     color: 'text-blue-600',
-    bgColor: 'bg-blue-50 hover:bg-blue-100 border-blue-200'
+    bgColor: 'bg-blue-50 hover:bg-blue-100 border-blue-200',
+    logoColor: 'bg-white'
   },
   quickbooks: {
     displayName: 'QuickBooks',
-    icon: <DollarSign className="w-5 h-5" />,
+    icon: (
+      <svg viewBox="0 0 24 24" className="w-6 h-6" fill="#2CA01C">
+        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 15h-2v-6H7v-2h2V7h2v2h2v2h-2v6zm6-4h-2v-2h2v2z"/>
+      </svg>
+    ),
     color: 'text-green-600',
-    bgColor: 'bg-green-50 hover:bg-green-100 border-green-200'
+    bgColor: 'bg-green-50 hover:bg-green-100 border-green-200',
+    logoColor: 'bg-green-600'
   },
   salesforce: {
     displayName: 'Salesforce',
-    icon: <Building2 className="w-5 h-5" />,
+    icon: (
+      <svg viewBox="0 0 24 24" className="w-6 h-6" fill="#00A1E0">
+        <path d="M10.06 5.32c.91-.89 2.16-1.44 3.55-1.44 1.98 0 3.71 1.17 4.48 2.88.67-.29 1.4-.45 2.17-.45 3.02 0 5.47 2.46 5.47 5.49 0 3.03-2.45 5.49-5.47 5.49-.35 0-.69-.03-1.02-.09-.67 1.6-2.24 2.73-4.08 2.73-1.04 0-2-.36-2.76-.96-.76 1.45-2.28 2.44-4.02 2.44-2.52 0-4.56-2.05-4.56-4.58 0-.39.05-.77.14-1.13C2.18 14.82.73 12.9.73 10.65c0-2.94 2.38-5.32 5.31-5.32 1.46 0 2.78.59 3.74 1.54"/>
+      </svg>
+    ),
     color: 'text-sky-600',
-    bgColor: 'bg-sky-50 hover:bg-sky-100 border-sky-200'
+    bgColor: 'bg-sky-50 hover:bg-sky-100 border-sky-200',
+    logoColor: 'bg-sky-500'
   },
   hubspot: {
     displayName: 'HubSpot',
-    icon: <Briefcase className="w-5 h-5" />,
+    icon: (
+      <svg viewBox="0 0 24 24" className="w-6 h-6" fill="#FF7A59">
+        <path d="M18.16 7.58v-2.2a1.9 1.9 0 001.12-1.74 1.92 1.92 0 10-3.84 0 1.9 1.9 0 001.12 1.74v2.2a5.29 5.29 0 00-2.56 1.2l-6.84-5.32a2.36 2.36 0 10-1.2 1.55l6.67 5.19a5.35 5.35 0 00-.05.71 5.35 5.35 0 10 10.7 0 5.35 5.35 0 00-5.12-5.33z"/>
+      </svg>
+    ),
     color: 'text-orange-600',
-    bgColor: 'bg-orange-50 hover:bg-orange-100 border-orange-200'
+    bgColor: 'bg-orange-50 hover:bg-orange-100 border-orange-200',
+    logoColor: 'bg-orange-500'
   },
   slack: {
     displayName: 'Slack',
-    icon: <MessageSquare className="w-5 h-5" />,
+    icon: (
+      <svg viewBox="0 0 24 24" className="w-6 h-6">
+        <path fill="#E01E5A" d="M5.04 15.04a2.5 2.5 0 01-2.5 2.5 2.5 2.5 0 01-2.5-2.5 2.5 2.5 0 012.5-2.5h2.5v2.5zm1.27 0a2.5 2.5 0 012.5-2.5 2.5 2.5 0 012.5 2.5v6.27a2.5 2.5 0 01-2.5 2.5 2.5 2.5 0 01-2.5-2.5v-6.27z"/>
+        <path fill="#36C5F0" d="M8.81 5.04a2.5 2.5 0 01-2.5-2.5 2.5 2.5 0 012.5-2.5 2.5 2.5 0 012.5 2.5v2.5H8.81zm0 1.27a2.5 2.5 0 012.5 2.5 2.5 2.5 0 01-2.5 2.5H2.54a2.5 2.5 0 01-2.5-2.5 2.5 2.5 0 012.5-2.5h6.27z"/>
+        <path fill="#2EB67D" d="M18.96 8.81a2.5 2.5 0 012.5 2.5 2.5 2.5 0 01-2.5 2.5h-2.5V8.81h2.5zm-1.27 0a2.5 2.5 0 01-2.5 2.5 2.5 2.5 0 01-2.5-2.5V2.54a2.5 2.5 0 012.5-2.5 2.5 2.5 0 012.5 2.5v6.27z"/>
+        <path fill="#ECB22E" d="M15.19 18.96a2.5 2.5 0 012.5 2.5 2.5 2.5 0 01-2.5 2.5 2.5 2.5 0 01-2.5-2.5v-2.5h2.5zm0-1.27a2.5 2.5 0 01-2.5-2.5 2.5 2.5 0 012.5-2.5h6.27a2.5 2.5 0 012.5 2.5 2.5 2.5 0 01-2.5 2.5h-6.27z"/>
+      </svg>
+    ),
     color: 'text-purple-600',
-    bgColor: 'bg-purple-50 hover:bg-purple-100 border-purple-200'
+    bgColor: 'bg-purple-50 hover:bg-purple-100 border-purple-200',
+    logoColor: 'bg-purple-600'
   }
 };
 
@@ -240,90 +279,85 @@ export function ContextPicker({
   }
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 shadow-xl max-h-[480px] flex flex-col overflow-hidden">
-      {/* Header with Breadcrumb */}
-      <div className="px-4 py-3 border-b border-gray-100 bg-gradient-to-r from-gray-50 to-white">
+    <div className="bg-white rounded-xl border border-gray-200 shadow-xl max-h-[420px] w-80 flex flex-col overflow-hidden">
+      {/* Minimal Header */}
+      <div className="px-3 py-2.5 border-b border-gray-100 bg-gray-50/50">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
             {currentView !== 'integrations' && (
               <button
                 onClick={handleBack}
-                className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
+                className="p-1 hover:bg-gray-100 rounded-md transition-colors"
               >
-                <ChevronLeft className="w-5 h-5 text-gray-600" />
+                <ChevronLeft className="w-4 h-4 text-gray-500" />
               </button>
             )}
 
-            {/* Breadcrumb */}
-            <div className="flex items-center gap-1 text-sm">
-              <button
-                onClick={() => {
-                  setSelectedIntegration(null);
-                  setSelectedCategory(null);
-                  setCurrentView('integrations');
-                  setSearchQuery('');
-                }}
-                className={`font-medium ${currentView === 'integrations' ? 'text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}
-              >
-                Data Sources
-              </button>
-
-              {selectedIntegration && (
+            {/* Compact Breadcrumb */}
+            <div className="flex items-center gap-1 text-xs">
+              {currentView === 'integrations' ? (
+                <span className="font-medium text-gray-700">Select Context</span>
+              ) : (
                 <>
-                  <ChevronRight className="w-4 h-4 text-gray-400" />
-                  <button
-                    onClick={() => {
-                      setSelectedCategory(null);
-                      setCurrentView('categories');
-                      setSearchQuery('');
-                    }}
-                    className={`font-medium ${currentView === 'categories' ? 'text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}
-                  >
-                    {getIntegrationConfig(selectedIntegration).displayName}
-                  </button>
-                </>
-              )}
-
-              {selectedCategory && (
-                <>
-                  <ChevronRight className="w-4 h-4 text-gray-400" />
-                  <span className="font-medium text-gray-900">
-                    {getCategoryConfig(selectedCategory).displayName}
-                  </span>
+                  {selectedIntegration && (
+                    <button
+                      onClick={() => {
+                        setSelectedCategory(null);
+                        setCurrentView('categories');
+                        setSearchQuery('');
+                      }}
+                      className="flex items-center gap-1"
+                    >
+                      <div className="w-4 h-4">
+                        {getIntegrationConfig(selectedIntegration).icon}
+                      </div>
+                      <span className={`font-medium ${currentView === 'categories' ? 'text-gray-700' : 'text-gray-500'}`}>
+                        {getIntegrationConfig(selectedIntegration).displayName}
+                      </span>
+                    </button>
+                  )}
+                  {selectedCategory && (
+                    <>
+                      <ChevronRight className="w-3 h-3 text-gray-400" />
+                      <span className="font-medium text-gray-700">
+                        {getCategoryConfig(selectedCategory).displayName}
+                      </span>
+                    </>
+                  )}
                 </>
               )}
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
             {selectedIds.length > 0 && (
-              <span className="text-xs font-medium bg-blue-100 text-blue-700 px-2.5 py-1 rounded-full">
-                {selectedIds.length} selected
+              <span className="text-[10px] font-medium bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
+                {selectedIds.length}
               </span>
             )}
             {onClose && (
               <button
                 onClick={onClose}
-                className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
+                className="p-1 hover:bg-gray-100 rounded-md transition-colors"
               >
-                <X className="w-5 h-5 text-gray-500" />
+                <X className="w-4 h-4 text-gray-400" />
               </button>
             )}
           </div>
         </div>
       </div>
 
-      {/* Search (only on items view) */}
+      {/* Compact Search (only on items view) */}
       {currentView === 'items' && (
-        <div className="px-4 py-3 border-b border-gray-100">
+        <div className="px-2 py-2 border-b border-gray-100">
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
             <input
               type="text"
-              placeholder={`Search in ${getCategoryConfig(selectedCategory || '').displayName}...`}
+              placeholder="Search..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-gray-50"
+              className="w-full pl-8 pr-3 py-1.5 text-xs border border-gray-200 rounded-md focus:ring-1 focus:ring-blue-500 focus:border-blue-500 bg-gray-50"
             />
           </div>
         </div>
@@ -331,150 +365,143 @@ export function ContextPicker({
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto">
-        {/* Integrations View */}
+        {/* Integrations View - Minimal Logo Grid */}
         {currentView === 'integrations' && (
-          <div className="p-3 space-y-2">
+          <div className="p-4">
             {integrations.length === 0 ? (
               <div className="text-center py-12">
-                <Folder className="w-16 h-16 mx-auto mb-4 text-gray-200" />
-                <p className="text-gray-600 font-medium">No data sources connected</p>
-                <p className="text-sm text-gray-400 mt-1">
-                  Connect integrations in the Marketplace to add context
+                <Folder className="w-12 h-12 mx-auto mb-3 text-gray-200" />
+                <p className="text-gray-600 font-medium text-sm">No data sources connected</p>
+                <p className="text-xs text-gray-400 mt-1">
+                  Connect integrations in the Marketplace
                 </p>
               </div>
             ) : (
-              integrations.map((integration) => {
-                const config = getIntegrationConfig(integration.name);
-                const selectedCount = selectedIds.filter(id =>
-                  items.find(item => item.id === id && item.type === integration.name)
-                ).length;
+              <>
+                <p className="text-xs text-gray-500 mb-3 text-center">Select a data source</p>
+                <div className="flex flex-wrap justify-center gap-3">
+                  {integrations.map((integration) => {
+                    const config = getIntegrationConfig(integration.name);
+                    const selectedCount = selectedIds.filter(id =>
+                      items.find(item => item.id === id && item.type === integration.name)
+                    ).length;
 
-                return (
-                  <button
-                    key={integration.name}
-                    onClick={() => handleIntegrationClick(integration.name)}
-                    className={`w-full flex items-center gap-4 p-4 rounded-xl border transition-all ${config.bgColor}`}
-                  >
-                    <div className={`p-2.5 rounded-lg bg-white shadow-sm ${config.color}`}>
-                      {config.icon}
-                    </div>
-                    <div className="flex-1 text-left">
-                      <p className="font-semibold text-gray-900">{config.displayName}</p>
-                      <p className="text-sm text-gray-500">
-                        {integration.itemCount} items available
-                      </p>
-                    </div>
-                    {selectedCount > 0 && (
-                      <span className="text-xs font-medium bg-blue-600 text-white px-2 py-1 rounded-full">
-                        {selectedCount}
-                      </span>
-                    )}
-                    <ChevronRight className="w-5 h-5 text-gray-400" />
-                  </button>
-                );
-              })
+                    return (
+                      <div key={integration.name} className="relative group">
+                        <button
+                          onClick={() => handleIntegrationClick(integration.name)}
+                          className="w-14 h-14 rounded-xl bg-white border border-gray-200 shadow-sm hover:shadow-md hover:border-gray-300 transition-all flex items-center justify-center relative"
+                        >
+                          <div className="w-7 h-7 flex items-center justify-center">
+                            {config.icon}
+                          </div>
+                          {selectedCount > 0 && (
+                            <span className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-blue-600 text-white text-xs font-medium rounded-full flex items-center justify-center">
+                              {selectedCount}
+                            </span>
+                          )}
+                        </button>
+                        {/* Tooltip */}
+                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-1.5 bg-gray-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-10">
+                          <span className="font-medium">{config.displayName}</span>
+                          <span className="text-gray-400 ml-1">· {integration.itemCount} items</span>
+                          <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-1 border-4 border-transparent border-t-gray-900" />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
             )}
           </div>
         )}
 
-        {/* Categories View */}
+        {/* Categories View - Compact List */}
         {currentView === 'categories' && selectedIntegration && (
-          <div className="p-3 space-y-2">
+          <div className="p-2">
             {categories.length === 0 ? (
-              <div className="text-center py-12">
-                <Database className="w-16 h-16 mx-auto mb-4 text-gray-200" />
-                <p className="text-gray-600 font-medium">No data categories available</p>
+              <div className="text-center py-8">
+                <Database className="w-10 h-10 mx-auto mb-2 text-gray-200" />
+                <p className="text-gray-500 text-sm">No data available</p>
               </div>
             ) : (
-              categories.map((category) => {
-                const config = getCategoryConfig(category.name);
-                const integrationConfig = getIntegrationConfig(selectedIntegration);
-                const selectedCount = selectedIds.filter(id =>
-                  items.find(item => item.id === id && item.type === selectedIntegration && item.category === category.name)
-                ).length;
+              <div className="space-y-1">
+                {categories.map((category) => {
+                  const config = getCategoryConfig(category.name);
+                  const integrationConfig = getIntegrationConfig(selectedIntegration);
+                  const selectedCount = selectedIds.filter(id =>
+                    items.find(item => item.id === id && item.type === selectedIntegration && item.category === category.name)
+                  ).length;
 
-                return (
-                  <button
-                    key={category.name}
-                    onClick={() => handleCategoryClick(category.name)}
-                    className="w-full flex items-center gap-4 p-4 rounded-xl border border-gray-200 hover:bg-gray-50 transition-all"
-                  >
-                    <div className={`p-2.5 rounded-lg bg-gray-100 ${integrationConfig.color}`}>
-                      {config.icon}
-                    </div>
-                    <div className="flex-1 text-left">
-                      <p className="font-semibold text-gray-900">{config.displayName}</p>
-                      <p className="text-sm text-gray-500">
-                        {category.itemCount} items
-                      </p>
-                    </div>
-                    {selectedCount > 0 && (
-                      <span className="text-xs font-medium bg-blue-600 text-white px-2 py-1 rounded-full">
-                        {selectedCount}
-                      </span>
-                    )}
-                    <ChevronRight className="w-5 h-5 text-gray-400" />
-                  </button>
-                );
-              })
+                  return (
+                    <button
+                      key={category.name}
+                      onClick={() => handleCategoryClick(category.name)}
+                      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-gray-50 transition-all group"
+                    >
+                      <div className={`w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center ${integrationConfig.color}`}>
+                        <div className="w-4 h-4">{config.icon}</div>
+                      </div>
+                      <div className="flex-1 text-left">
+                        <p className="text-sm font-medium text-gray-700">{config.displayName}</p>
+                        <p className="text-[10px] text-gray-400">
+                          {category.itemCount} items
+                        </p>
+                      </div>
+                      {selectedCount > 0 && (
+                        <span className="text-[10px] font-medium bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full">
+                          {selectedCount}
+                        </span>
+                      )}
+                      <ChevronRight className="w-4 h-4 text-gray-300 group-hover:text-gray-400" />
+                    </button>
+                  );
+                })}
+              </div>
             )}
           </div>
         )}
 
-        {/* Items View */}
+        {/* Items View - Compact Checklist */}
         {currentView === 'items' && (
-          <div className="p-3 space-y-1">
+          <div className="p-2 space-y-0.5">
             {filteredItems.length === 0 ? (
-              <div className="text-center py-12">
-                <Search className="w-16 h-16 mx-auto mb-4 text-gray-200" />
-                <p className="text-gray-600 font-medium">No items found</p>
-                <p className="text-sm text-gray-400 mt-1">
-                  Try adjusting your search
-                </p>
+              <div className="text-center py-8">
+                <Search className="w-10 h-10 mx-auto mb-2 text-gray-200" />
+                <p className="text-gray-500 text-sm">No items found</p>
               </div>
             ) : (
               filteredItems.map((item) => {
                 const isSelected = selectedIds.includes(item.id);
-                const config = getCategoryConfig(item.category);
 
                 return (
                   <button
                     key={item.id}
                     onClick={() => toggleItem(item.id)}
                     disabled={!isSelected && selectedIds.length >= maxSelections}
-                    className={`w-full flex items-center gap-3 p-3 rounded-lg text-left transition-all ${
+                    className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-left transition-all ${
                       isSelected
-                        ? 'bg-blue-50 border-2 border-blue-300'
-                        : 'hover:bg-gray-50 border border-gray-100'
-                    } ${!isSelected && selectedIds.length >= maxSelections ? 'opacity-50 cursor-not-allowed' : ''}`}
+                        ? 'bg-blue-50 border border-blue-200'
+                        : 'hover:bg-gray-50 border border-transparent'
+                    } ${!isSelected && selectedIds.length >= maxSelections ? 'opacity-40 cursor-not-allowed' : ''}`}
                   >
-                    <div className={`w-6 h-6 rounded-md border-2 flex items-center justify-center transition-colors ${
+                    <div className={`w-4 h-4 rounded flex-shrink-0 border flex items-center justify-center transition-colors ${
                       isSelected
                         ? 'bg-blue-600 border-blue-600'
                         : 'border-gray-300 bg-white'
                     }`}>
-                      {isSelected && <Check className="w-4 h-4 text-white" />}
-                    </div>
-                    <div className="text-gray-400">
-                      {config.icon}
+                      {isSelected && <Check className="w-3 h-3 text-white" />}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-gray-900 truncate">
+                      <p className="text-xs font-medium text-gray-700 truncate">
                         {item.title}
                       </p>
-                      {item.description && (
-                        <p className="text-xs text-gray-500 truncate mt-0.5">
-                          {item.description}
-                        </p>
-                      )}
                     </div>
-                    <span className={`text-xs px-2 py-1 rounded-md font-medium ${
-                      item.source === 'indexed'
-                        ? 'bg-green-100 text-green-700'
-                        : 'bg-amber-100 text-amber-700'
-                    }`}>
-                      {item.source === 'indexed' ? 'Indexed' : 'Live'}
-                    </span>
+                    {item.source === 'live' && (
+                      <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-600 font-medium">
+                        Live
+                      </span>
+                    )}
                   </button>
                 );
               })
@@ -483,25 +510,24 @@ export function ContextPicker({
         )}
       </div>
 
-      {/* Footer */}
-      <div className="px-4 py-3 border-t border-gray-100 bg-gradient-to-r from-gray-50 to-white">
-        <div className="flex items-center justify-between">
-          <p className="text-xs text-gray-500">
-            {currentView === 'items'
-              ? `${filteredItems.length} items available`
-              : 'Select items to include as context for your query'
-            }
-          </p>
-          {selectedIds.length > 0 && onClose && (
-            <button
-              onClick={onClose}
-              className="text-sm font-medium text-blue-600 hover:text-blue-700 px-3 py-1.5 rounded-lg hover:bg-blue-50 transition-colors"
-            >
-              Done
-            </button>
-          )}
+      {/* Minimal Footer */}
+      {(selectedIds.length > 0 || currentView === 'items') && (
+        <div className="px-3 py-2 border-t border-gray-100 bg-gray-50/50">
+          <div className="flex items-center justify-between">
+            <p className="text-[10px] text-gray-400">
+              {currentView === 'items' && `${filteredItems.length} items`}
+            </p>
+            {selectedIds.length > 0 && onClose && (
+              <button
+                onClick={onClose}
+                className="text-xs font-medium text-blue-600 hover:text-blue-700 px-2.5 py-1 rounded-md hover:bg-blue-50 transition-colors"
+              >
+                Done
+              </button>
+            )}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
