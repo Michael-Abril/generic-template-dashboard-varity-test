@@ -4,12 +4,14 @@ Revision ID: add_projects_tables
 Revises: add_nft_cols_001
 Create Date: 2025-12-24
 
+This migration is idempotent - checks for existence before creating objects.
 """
 from typing import Sequence, Union
 
 from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
+from sqlalchemy import text
 
 
 # revision identifiers, used by Alembic.
@@ -19,9 +21,45 @@ branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
+def table_exists(table_name: str) -> bool:
+    """Check if a table exists in the database."""
+    conn = op.get_bind()
+    result = conn.execute(text(
+        "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = :table_name)"
+    ), {"table_name": table_name})
+    return result.scalar()
+
+
+def column_exists(table_name: str, column_name: str) -> bool:
+    """Check if a column exists in a table."""
+    conn = op.get_bind()
+    result = conn.execute(text(
+        "SELECT EXISTS (SELECT FROM information_schema.columns WHERE table_name = :table_name AND column_name = :column_name)"
+    ), {"table_name": table_name, "column_name": column_name})
+    return result.scalar()
+
+
+def index_exists(index_name: str) -> bool:
+    """Check if an index exists."""
+    conn = op.get_bind()
+    result = conn.execute(text(
+        "SELECT EXISTS (SELECT FROM pg_indexes WHERE indexname = :index_name)"
+    ), {"index_name": index_name})
+    return result.scalar()
+
+
+def constraint_exists(constraint_name: str) -> bool:
+    """Check if a constraint exists."""
+    conn = op.get_bind()
+    result = conn.execute(text(
+        "SELECT EXISTS (SELECT FROM information_schema.table_constraints WHERE constraint_name = :constraint_name)"
+    ), {"constraint_name": constraint_name})
+    return result.scalar()
+
+
 def upgrade() -> None:
-    # Create projects table (idempotent - skip if exists)
-    try:
+    # Create projects table (idempotent - check if exists first)
+    if not table_exists('projects'):
         op.create_table(
             'projects',
             sa.Column('id', sa.Integer(), nullable=False),
@@ -36,21 +74,15 @@ def upgrade() -> None:
             sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=True),
             sa.PrimaryKeyConstraint('id')
         )
-    except Exception:
-        pass  # Table already exists
 
-    try:
+    if not index_exists('idx_projects_wallet'):
         op.create_index('idx_projects_wallet', 'projects', ['wallet_address'])
-    except Exception:
-        pass  # Index already exists
 
-    try:
+    if not index_exists('idx_projects_archived'):
         op.create_index('idx_projects_archived', 'projects', ['is_archived'])
-    except Exception:
-        pass  # Index already exists
 
     # Create project_files table - supports both uploads and integration links (idempotent)
-    try:
+    if not table_exists('project_files'):
         op.create_table(
             'project_files',
             sa.Column('id', sa.Integer(), nullable=False),
@@ -67,26 +99,18 @@ def upgrade() -> None:
             sa.ForeignKeyConstraint(['project_id'], ['projects.id'], ondelete='CASCADE'),
             sa.PrimaryKeyConstraint('id')
         )
-    except Exception:
-        pass  # Table already exists
 
-    try:
+    if not index_exists('idx_project_files_project'):
         op.create_index('idx_project_files_project', 'project_files', ['project_id'])
-    except Exception:
-        pass  # Index already exists
 
-    try:
+    if not index_exists('idx_project_files_wallet'):
         op.create_index('idx_project_files_wallet', 'project_files', ['wallet_address'])
-    except Exception:
-        pass  # Index already exists
 
     # Add project_id to conversations table (idempotent)
-    try:
+    if not column_exists('conversations', 'project_id'):
         op.add_column('conversations', sa.Column('project_id', sa.Integer(), nullable=True))
-    except Exception:
-        pass  # Column already exists
 
-    try:
+    if not constraint_exists('fk_conversations_project'):
         op.create_foreign_key(
             'fk_conversations_project',
             'conversations',
@@ -95,13 +119,9 @@ def upgrade() -> None:
             ['id'],
             ondelete='SET NULL'
         )
-    except Exception:
-        pass  # Foreign key already exists
 
-    try:
+    if not index_exists('idx_conversations_project'):
         op.create_index('idx_conversations_project', 'conversations', ['project_id'])
-    except Exception:
-        pass  # Index already exists
 
 
 def downgrade() -> None:
