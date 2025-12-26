@@ -371,6 +371,70 @@ async def create_event(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.patch("/calendar/events/{event_id}")
+async def update_event(
+    event_id: str,
+    wallet_address: str = Body(..., embed=True),
+    subject: Optional[str] = Body(None),
+    start: Optional[Dict[str, str]] = Body(None),
+    end: Optional[Dict[str, str]] = Body(None),
+    location: Optional[str] = Body(None),
+    attendees: Optional[List[str]] = Body(None),
+    is_online_meeting: Optional[bool] = Body(None),
+    body_content: Optional[str] = Body(None),
+    db: AsyncSession = Depends(get_db)
+):
+    """Update a calendar event"""
+    access_token = await get_access_token_from_db(wallet_address, db)
+    if not access_token:
+        raise HTTPException(status_code=401, detail="Not authenticated with Microsoft 365")
+
+    try:
+        event_update = {}
+
+        if subject is not None:
+            event_update["subject"] = subject
+        if start is not None:
+            event_update["start"] = start
+        if end is not None:
+            event_update["end"] = end
+        if location is not None:
+            event_update["location"] = {"displayName": location} if location else None
+        if body_content is not None:
+            event_update["body"] = {"contentType": "HTML", "content": body_content}
+        if attendees is not None:
+            event_update["attendees"] = [
+                {"emailAddress": {"address": addr}, "type": "required"}
+                for addr in attendees
+            ]
+        if is_online_meeting is not None:
+            event_update["isOnlineMeeting"] = is_online_meeting
+            if is_online_meeting:
+                event_update["onlineMeetingProvider"] = "teamsForBusiness"
+
+        if not event_update:
+            raise HTTPException(status_code=400, detail="No fields to update")
+
+        async with httpx.AsyncClient() as client:
+            response = await client.patch(
+                f"{GRAPH_API_BASE}/me/calendar/events/{event_id}",
+                headers={
+                    "Authorization": f"Bearer {access_token}",
+                    "Content-Type": "application/json"
+                },
+                json=event_update
+            )
+            response.raise_for_status()
+            updated_event = response.json()
+            return {"success": True, "event": updated_event}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating calendar event: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.delete("/calendar/events/{event_id}")
 async def delete_event(
     event_id: str,
@@ -506,6 +570,159 @@ async def delete_file(
 
     except Exception as e:
         logger.error(f"Error deleting file: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/onedrive/folders")
+async def create_folder(
+    wallet_address: str = Body(..., embed=True),
+    folder_name: str = Body(...),
+    parent_id: Optional[str] = Body(None),
+    db: AsyncSession = Depends(get_db)
+):
+    """Create a new folder in OneDrive"""
+    access_token = await get_access_token_from_db(wallet_address, db)
+    if not access_token:
+        raise HTTPException(status_code=401, detail="Not authenticated with Microsoft 365")
+
+    try:
+        folder_data = {
+            "name": folder_name,
+            "folder": {},
+            "@microsoft.graph.conflictBehavior": "rename"
+        }
+
+        if parent_id:
+            endpoint = f"{GRAPH_API_BASE}/me/drive/items/{parent_id}/children"
+        else:
+            endpoint = f"{GRAPH_API_BASE}/me/drive/root/children"
+
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                endpoint,
+                headers={
+                    "Authorization": f"Bearer {access_token}",
+                    "Content-Type": "application/json"
+                },
+                json=folder_data
+            )
+            response.raise_for_status()
+            folder_info = response.json()
+            return {"success": True, "folder": folder_info}
+
+    except Exception as e:
+        logger.error(f"Error creating folder: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.patch("/onedrive/files/{file_id}/rename")
+async def rename_file(
+    file_id: str,
+    wallet_address: str = Body(..., embed=True),
+    new_name: str = Body(...),
+    db: AsyncSession = Depends(get_db)
+):
+    """Rename a file or folder in OneDrive"""
+    access_token = await get_access_token_from_db(wallet_address, db)
+    if not access_token:
+        raise HTTPException(status_code=401, detail="Not authenticated with Microsoft 365")
+
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.patch(
+                f"{GRAPH_API_BASE}/me/drive/items/{file_id}",
+                headers={
+                    "Authorization": f"Bearer {access_token}",
+                    "Content-Type": "application/json"
+                },
+                json={"name": new_name}
+            )
+            response.raise_for_status()
+            updated_file = response.json()
+            return {"success": True, "file": updated_file}
+
+    except Exception as e:
+        logger.error(f"Error renaming file: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/onedrive/files/{file_id}/copy")
+async def copy_file(
+    file_id: str,
+    wallet_address: str = Body(..., embed=True),
+    new_name: Optional[str] = Body(None),
+    parent_id: Optional[str] = Body(None),
+    db: AsyncSession = Depends(get_db)
+):
+    """Copy a file in OneDrive"""
+    access_token = await get_access_token_from_db(wallet_address, db)
+    if not access_token:
+        raise HTTPException(status_code=401, detail="Not authenticated with Microsoft 365")
+
+    try:
+        copy_data: Dict[str, Any] = {}
+
+        if new_name:
+            copy_data["name"] = new_name
+
+        if parent_id:
+            copy_data["parentReference"] = {"id": parent_id}
+        else:
+            # Copy to same location with new name
+            copy_data["parentReference"] = {"path": "/drive/root"}
+
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"{GRAPH_API_BASE}/me/drive/items/{file_id}/copy",
+                headers={
+                    "Authorization": f"Bearer {access_token}",
+                    "Content-Type": "application/json"
+                },
+                json=copy_data
+            )
+            # Copy returns 202 Accepted with Location header for async operation
+            if response.status_code in [200, 201, 202]:
+                return {"success": True, "message": "Copy operation started"}
+            response.raise_for_status()
+            return {"success": True, "message": "File copied successfully"}
+
+    except Exception as e:
+        logger.error(f"Error copying file: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/onedrive/storage")
+async def get_storage_info(
+    wallet_address: str = Query(...),
+    db: AsyncSession = Depends(get_db)
+):
+    """Get OneDrive storage usage information"""
+    access_token = await get_access_token_from_db(wallet_address, db)
+    if not access_token:
+        raise HTTPException(status_code=401, detail="Not authenticated with Microsoft 365")
+
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"{GRAPH_API_BASE}/me/drive",
+                headers={"Authorization": f"Bearer {access_token}"},
+                params={"$select": "quota"}
+            )
+            response.raise_for_status()
+            drive_info = response.json()
+            quota = drive_info.get("quota", {})
+            return {
+                "success": True,
+                "storage": {
+                    "total": quota.get("total", 0),
+                    "used": quota.get("used", 0),
+                    "remaining": quota.get("remaining", 0),
+                    "state": quota.get("state", "normal")
+                }
+            }
+
+    except Exception as e:
+        logger.error(f"Error getting storage info: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

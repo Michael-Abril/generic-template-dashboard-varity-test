@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   ChevronLeft,
   ChevronRight,
@@ -14,7 +14,11 @@ import {
   X,
   Edit3,
   Trash2,
-  Loader2
+  Loader2,
+  AlertCircle,
+  ExternalLink,
+  Tag,
+  Check
 } from 'lucide-react';
 
 interface CalendarEvent {
@@ -28,7 +32,9 @@ interface CalendarEvent {
   isAllDay: boolean;
   importance: 'low' | 'normal' | 'high';
   isOnlineMeeting?: boolean;
+  onlineMeetingUrl?: string;
   categories?: string[];
+  bodyPreview?: string;
 }
 
 interface CalendarViewProps {
@@ -40,6 +46,19 @@ interface CalendarViewProps {
 
 type ViewType = 'day' | 'week' | 'month';
 
+// Category colors for different event types
+const CATEGORY_COLORS: Record<string, { bg: string; border: string; text: string }> = {
+  'Blue category': { bg: 'bg-blue-500', border: 'border-blue-600', text: 'text-blue-700' },
+  'Green category': { bg: 'bg-green-500', border: 'border-green-600', text: 'text-green-700' },
+  'Purple category': { bg: 'bg-purple-500', border: 'border-purple-600', text: 'text-purple-700' },
+  'Red category': { bg: 'bg-red-500', border: 'border-red-600', text: 'text-red-700' },
+  'Yellow category': { bg: 'bg-yellow-500', border: 'border-yellow-600', text: 'text-yellow-700' },
+  'Orange category': { bg: 'bg-orange-500', border: 'border-orange-600', text: 'text-orange-700' },
+  'default': { bg: 'bg-blue-500', border: 'border-blue-600', text: 'text-blue-700' },
+  'high': { bg: 'bg-red-500', border: 'border-red-600', text: 'text-red-700' },
+  'low': { bg: 'bg-gray-400', border: 'border-gray-500', text: 'text-gray-700' },
+};
+
 export default function CalendarView({ walletAddress, view: initialView, events: initialEvents = [], onDataChange }: CalendarViewProps) {
   const [events, setEvents] = useState<CalendarEvent[]>(initialEvents);
   const [loading, setLoading] = useState(true);
@@ -48,6 +67,13 @@ export default function CalendarView({ walletAddress, view: initialView, events:
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
   const [showEventModal, setShowEventModal] = useState(false);
   const [showNewEventForm, setShowNewEventForm] = useState(false);
+  const [showEditEventForm, setShowEditEventForm] = useState(false);
+  const [actionLoading, setActionLoading] = useState(false);
+  const [apiError, setApiError] = useState<string | null>(null);
+
+  // Quick event creation state
+  const [quickEventSlot, setQuickEventSlot] = useState<{ date: Date; hour: number } | null>(null);
+
   const [newEventData, setNewEventData] = useState({
     subject: '',
     startDate: '',
@@ -55,16 +81,34 @@ export default function CalendarView({ walletAddress, view: initialView, events:
     endDate: '',
     endTime: '',
     location: '',
-    isOnlineMeeting: false
+    isOnlineMeeting: false,
+    attendees: ''
+  });
+
+  const [editEventData, setEditEventData] = useState({
+    subject: '',
+    startDate: '',
+    startTime: '',
+    endDate: '',
+    endTime: '',
+    location: '',
+    isOnlineMeeting: false,
+    attendees: ''
   });
 
   // Fetch events from live API
-  const fetchEvents = async () => {
+  const fetchEvents = useCallback(async () => {
     setLoading(true);
+    setApiError(null);
     try {
       const response = await fetch(
         `${process.env.NEXT_PUBLIC_API_URL}/api/v1/integrations/microsoft/calendar/events?wallet_address=${walletAddress}`
       );
+      if (response.status === 401) {
+        setApiError('Microsoft token expired. Please reconnect from Marketplace.');
+        setEvents(initialEvents);
+        return;
+      }
       if (response.ok) {
         const data = await response.json();
         setEvents(data.events || []);
@@ -78,11 +122,11 @@ export default function CalendarView({ walletAddress, view: initialView, events:
     } finally {
       setLoading(false);
     }
-  };
+  }, [walletAddress, initialEvents]);
 
   useEffect(() => {
     fetchEvents();
-  }, [walletAddress]);
+  }, [fetchEvents]);
 
   const goToPrevious = () => {
     const newDate = new Date(currentDate);
@@ -142,10 +186,20 @@ export default function CalendarView({ walletAddress, view: initialView, events:
     });
   };
 
-  const getEventColor = (importance: string) => {
-    if (importance === 'high') return 'bg-red-500 border-red-600';
-    if (importance === 'low') return 'bg-gray-400 border-gray-500';
-    return 'bg-blue-500 border-blue-600';
+  const getEventColor = (event: CalendarEvent) => {
+    // First check for categories
+    if (event.categories && event.categories.length > 0) {
+      const category = event.categories[0];
+      if (CATEGORY_COLORS[category]) {
+        return `${CATEGORY_COLORS[category].bg} ${CATEGORY_COLORS[category].border}`;
+      }
+    }
+    // Then check importance
+    if (event.importance === 'high') return `${CATEGORY_COLORS.high.bg} ${CATEGORY_COLORS.high.border}`;
+    if (event.importance === 'low') return `${CATEGORY_COLORS.low.bg} ${CATEGORY_COLORS.low.border}`;
+    // Check for online meeting (Teams events)
+    if (event.isOnlineMeeting) return 'bg-purple-500 border-purple-600';
+    return `${CATEGORY_COLORS.default.bg} ${CATEGORY_COLORS.default.border}`;
   };
 
   const handleCreateEvent = async () => {
@@ -154,36 +208,60 @@ export default function CalendarView({ walletAddress, view: initialView, events:
       return;
     }
 
+    setActionLoading(true);
     try {
       const startDateTime = `${newEventData.startDate}T${newEventData.startTime}:00`;
       const endDateTime = newEventData.endDate && newEventData.endTime
         ? `${newEventData.endDate}T${newEventData.endTime}:00`
         : `${newEventData.startDate}T${newEventData.startTime}:00`;
 
+      const payload: Record<string, unknown> = {
+        wallet_address: walletAddress,
+        subject: newEventData.subject,
+        start: {
+          dateTime: startDateTime,
+          timeZone: 'UTC'
+        },
+        end: {
+          dateTime: endDateTime,
+          timeZone: 'UTC'
+        },
+        is_online_meeting: newEventData.isOnlineMeeting
+      };
+
+      if (newEventData.location) {
+        payload.location = newEventData.location;
+      }
+
+      if (newEventData.attendees) {
+        payload.attendees = newEventData.attendees.split(',').map(e => e.trim()).filter(Boolean);
+      }
+
       const response = await fetch(
         `${process.env.NEXT_PUBLIC_API_URL}/api/v1/integrations/microsoft/calendar/events`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            wallet_address: walletAddress,
-            subject: newEventData.subject,
-            start: {
-              dateTime: startDateTime,
-              timeZone: 'UTC'
-            },
-            end: {
-              dateTime: endDateTime,
-              timeZone: 'UTC'
-            },
-            location: newEventData.location || undefined,
-            is_online_meeting: newEventData.isOnlineMeeting
-          })
+          body: JSON.stringify(payload)
         }
       );
 
       if (response.ok) {
-        alert('Event created successfully!');
+        const data = await response.json();
+        // Optimistic update
+        if (data.event) {
+          setEvents(prev => [...prev, {
+            id: data.event.id,
+            subject: data.event.subject,
+            start: data.event.start?.dateTime || startDateTime,
+            end: data.event.end?.dateTime || endDateTime,
+            location: data.event.location?.displayName,
+            isAllDay: data.event.isAllDay || false,
+            importance: data.event.importance || 'normal',
+            isOnlineMeeting: data.event.isOnlineMeeting || false,
+            onlineMeetingUrl: data.event.onlineMeeting?.joinUrl,
+          }]);
+        }
         setShowNewEventForm(false);
         setNewEventData({
           subject: '',
@@ -192,9 +270,9 @@ export default function CalendarView({ walletAddress, view: initialView, events:
           endDate: '',
           endTime: '',
           location: '',
-          isOnlineMeeting: false
+          isOnlineMeeting: false,
+          attendees: ''
         });
-        // Refresh to load new event
         onDataChange?.();
       } else {
         const error = await response.json();
@@ -203,7 +281,152 @@ export default function CalendarView({ walletAddress, view: initialView, events:
     } catch (error) {
       console.error('Error creating event:', error);
       alert('Network error. Please try again.');
+    } finally {
+      setActionLoading(false);
     }
+  };
+
+  const handleEditEvent = async () => {
+    if (!selectedEvent) return;
+    if (!editEventData.subject || !editEventData.startDate || !editEventData.startTime) {
+      alert('Please fill in event title, start date, and start time');
+      return;
+    }
+
+    setActionLoading(true);
+    try {
+      const startDateTime = `${editEventData.startDate}T${editEventData.startTime}:00`;
+      const endDateTime = editEventData.endDate && editEventData.endTime
+        ? `${editEventData.endDate}T${editEventData.endTime}:00`
+        : `${editEventData.startDate}T${editEventData.startTime}:00`;
+
+      const payload: Record<string, unknown> = {
+        wallet_address: walletAddress,
+        subject: editEventData.subject,
+        start: {
+          dateTime: startDateTime,
+          timeZone: 'UTC'
+        },
+        end: {
+          dateTime: endDateTime,
+          timeZone: 'UTC'
+        },
+        is_online_meeting: editEventData.isOnlineMeeting
+      };
+
+      if (editEventData.location !== undefined) {
+        payload.location = editEventData.location || null;
+      }
+
+      if (editEventData.attendees) {
+        payload.attendees = editEventData.attendees.split(',').map(e => e.trim()).filter(Boolean);
+      }
+
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/integrations/microsoft/calendar/events/${selectedEvent.id}`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        }
+      );
+
+      if (response.ok) {
+        // Optimistic update
+        setEvents(prev => prev.map(event =>
+          event.id === selectedEvent.id
+            ? {
+                ...event,
+                subject: editEventData.subject,
+                start: startDateTime,
+                end: endDateTime,
+                location: editEventData.location || undefined,
+                isOnlineMeeting: editEventData.isOnlineMeeting
+              }
+            : event
+        ));
+        setShowEditEventForm(false);
+        setShowEventModal(false);
+        setSelectedEvent(null);
+        onDataChange?.();
+      } else {
+        const error = await response.json();
+        alert(`Error: ${error.detail || 'Failed to update event'}`);
+      }
+    } catch (error) {
+      console.error('Error updating event:', error);
+      alert('Network error. Please try again.');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleDeleteEvent = async () => {
+    if (!selectedEvent) return;
+    if (!confirm('Are you sure you want to delete this event?')) return;
+
+    setActionLoading(true);
+    try {
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/integrations/microsoft/calendar/events/${selectedEvent.id}?wallet_address=${walletAddress}`,
+        { method: 'DELETE' }
+      );
+      if (response.ok) {
+        // Optimistic update
+        setEvents(prev => prev.filter(e => e.id !== selectedEvent.id));
+        setShowEventModal(false);
+        setSelectedEvent(null);
+        onDataChange?.();
+      } else {
+        const error = await response.json();
+        alert(`Error: ${error.detail || 'Failed to delete event'}`);
+      }
+    } catch (error) {
+      console.error('Error deleting event:', error);
+      alert('Network error. Please try again.');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const openEditForm = () => {
+    if (!selectedEvent) return;
+    const startDate = new Date(selectedEvent.start);
+    const endDate = new Date(selectedEvent.end);
+
+    setEditEventData({
+      subject: selectedEvent.subject,
+      startDate: startDate.toISOString().split('T')[0],
+      startTime: startDate.toTimeString().slice(0, 5),
+      endDate: endDate.toISOString().split('T')[0],
+      endTime: endDate.toTimeString().slice(0, 5),
+      location: selectedEvent.location || '',
+      isOnlineMeeting: selectedEvent.isOnlineMeeting || false,
+      attendees: selectedEvent.attendees?.join(', ') || ''
+    });
+    setShowEventModal(false);
+    setShowEditEventForm(true);
+  };
+
+  // Quick event creation - handle time slot click
+  const handleTimeSlotClick = (date: Date, hour: number) => {
+    const clickDate = new Date(date);
+    clickDate.setHours(hour, 0, 0, 0);
+
+    const endDate = new Date(clickDate);
+    endDate.setHours(hour + 1);
+
+    setNewEventData({
+      subject: '',
+      startDate: clickDate.toISOString().split('T')[0],
+      startTime: `${hour.toString().padStart(2, '0')}:00`,
+      endDate: endDate.toISOString().split('T')[0],
+      endTime: `${(hour + 1).toString().padStart(2, '0')}:00`,
+      location: '',
+      isOnlineMeeting: false,
+      attendees: ''
+    });
+    setShowNewEventForm(true);
   };
 
   const renderDayView = () => {
@@ -215,11 +438,20 @@ export default function CalendarView({ walletAddress, view: initialView, events:
         <div className="flex-1 overflow-y-auto">
           <div className="relative">
             {hours.map((hour) => (
-              <div key={hour} className="flex border-b border-gray-200" style={{ height: '60px' }}>
+              <div
+                key={hour}
+                className="flex border-b border-gray-200 hover:bg-gray-50 cursor-pointer transition-colors"
+                style={{ height: '60px' }}
+                onClick={() => handleTimeSlotClick(currentDate, hour)}
+              >
                 <div className="w-20 flex-shrink-0 border-r border-gray-200 px-2 py-1 text-right text-sm text-gray-500">
                   {hour === 0 ? '12 AM' : hour < 12 ? `${hour} AM` : hour === 12 ? '12 PM' : `${hour - 12} PM`}
                 </div>
-                <div className="flex-1 relative"></div>
+                <div className="flex-1 relative group">
+                  <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                    <Plus className="h-4 w-4 text-gray-400" />
+                  </div>
+                </div>
               </div>
             ))}
 
@@ -230,20 +462,26 @@ export default function CalendarView({ walletAddress, view: initialView, events:
               const startHour = startTime.getHours() + startTime.getMinutes() / 60;
               const duration = (endTime.getTime() - startTime.getTime()) / (1000 * 60 * 60);
               const top = startHour * 60;
-              const height = duration * 60;
+              const height = Math.max(duration * 60, 30);
 
               return (
                 <div
                   key={event.id}
-                  className={`absolute left-20 right-4 cursor-pointer rounded-lg border-l-4 p-2 shadow-sm ${getEventColor(event.importance)} bg-opacity-90 hover:bg-opacity-100`}
+                  className={`absolute left-20 right-4 cursor-pointer rounded-lg border-l-4 p-2 shadow-sm ${getEventColor(event)} bg-opacity-90 hover:bg-opacity-100 transition-all hover:shadow-md`}
                   style={{ top: `${top}px`, height: `${height}px`, minHeight: '30px' }}
-                  onClick={() => {
+                  onClick={(e) => {
+                    e.stopPropagation();
                     setSelectedEvent(event);
                     setShowEventModal(true);
                   }}
                 >
-                  <p className="text-sm font-semibold text-white truncate">{event.subject}</p>
-                  {event.location && (
+                  <div className="flex items-start justify-between">
+                    <p className="text-sm font-semibold text-white truncate flex-1">{event.subject}</p>
+                    {event.isOnlineMeeting && (
+                      <Video className="h-4 w-4 text-white ml-1 flex-shrink-0" />
+                    )}
+                  </div>
+                  {event.location && height > 40 && (
                     <p className="text-xs text-white opacity-90 truncate">
                       <MapPin className="inline h-3 w-3 mr-1" />
                       {event.location}
@@ -300,7 +538,16 @@ export default function CalendarView({ walletAddress, view: initialView, events:
             {weekDays.map((day, dayIndex) => (
               <div key={dayIndex} className="flex-1 border-r border-gray-200 relative">
                 {hours.map((hour) => (
-                  <div key={hour} className="border-b border-gray-100" style={{ height: '48px' }}></div>
+                  <div
+                    key={hour}
+                    className="border-b border-gray-100 hover:bg-gray-50 cursor-pointer transition-colors group"
+                    style={{ height: '48px' }}
+                    onClick={() => handleTimeSlotClick(day, hour)}
+                  >
+                    <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+                      <Plus className="h-3 w-3 text-gray-400" />
+                    </div>
+                  </div>
                 ))}
 
                 {/* Events for this day */}
@@ -310,19 +557,23 @@ export default function CalendarView({ walletAddress, view: initialView, events:
                   const startHour = startTime.getHours() + startTime.getMinutes() / 60;
                   const duration = (endTime.getTime() - startTime.getTime()) / (1000 * 60 * 60);
                   const top = startHour * 48;
-                  const height = duration * 48;
+                  const height = Math.max(duration * 48, 24);
 
                   return (
                     <div
                       key={event.id}
-                      className={`absolute left-1 right-1 cursor-pointer rounded border-l-2 p-1 text-xs ${getEventColor(event.importance)} bg-opacity-80 hover:bg-opacity-100`}
+                      className={`absolute left-1 right-1 cursor-pointer rounded border-l-2 p-1 text-xs ${getEventColor(event)} bg-opacity-80 hover:bg-opacity-100 transition-all hover:shadow-md z-10`}
                       style={{ top: `${top}px`, height: `${height}px`, minHeight: '24px' }}
-                      onClick={() => {
+                      onClick={(e) => {
+                        e.stopPropagation();
                         setSelectedEvent(event);
                         setShowEventModal(true);
                       }}
                     >
-                      <p className="font-semibold text-white truncate">{event.subject}</p>
+                      <div className="flex items-center gap-1">
+                        <p className="font-semibold text-white truncate">{event.subject}</p>
+                        {event.isOnlineMeeting && <Video className="h-3 w-3 text-white flex-shrink-0" />}
+                      </div>
                     </div>
                   );
                 })}
@@ -381,7 +632,11 @@ export default function CalendarView({ walletAddress, view: initialView, events:
                 return (
                   <div
                     key={dayIndex}
-                    className={`border-r border-b border-gray-200 p-2 ${!isCurrentMonth ? 'bg-gray-50' : ''}`}
+                    className={`border-r border-b border-gray-200 p-2 cursor-pointer hover:bg-gray-50 transition-colors ${!isCurrentMonth ? 'bg-gray-50' : ''}`}
+                    onClick={() => {
+                      setCurrentDate(day);
+                      setCurrentView('day');
+                    }}
                   >
                     <div
                       className={`mb-1 inline-flex h-6 w-6 items-center justify-center rounded-full text-sm ${
@@ -398,17 +653,21 @@ export default function CalendarView({ walletAddress, view: initialView, events:
                       {dayEvents.slice(0, 3).map((event) => (
                         <div
                           key={event.id}
-                          className={`cursor-pointer truncate rounded px-2 py-0.5 text-xs text-white ${getEventColor(event.importance)}`}
-                          onClick={() => {
+                          className={`cursor-pointer truncate rounded px-2 py-0.5 text-xs text-white ${getEventColor(event)} hover:opacity-80`}
+                          onClick={(e) => {
+                            e.stopPropagation();
                             setSelectedEvent(event);
                             setShowEventModal(true);
                           }}
                         >
-                          {new Date(event.start).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} {event.subject}
+                          <span className="flex items-center gap-1">
+                            {event.isOnlineMeeting && <Video className="h-3 w-3 inline" />}
+                            {new Date(event.start).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} {event.subject}
+                          </span>
                         </div>
                       ))}
                       {dayEvents.length > 3 && (
-                        <p className="text-xs text-gray-500">+{dayEvents.length - 3} more</p>
+                        <p className="text-xs text-gray-500 hover:text-blue-600 cursor-pointer">+{dayEvents.length - 3} more</p>
                       )}
                     </div>
                   </div>
@@ -421,8 +680,31 @@ export default function CalendarView({ walletAddress, view: initialView, events:
     );
   };
 
+  // Event count by category for mini stats
+  const eventStats = useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const upcomingEvents = events.filter(e => new Date(e.start) >= today);
+    const teamsEvents = upcomingEvents.filter(e => e.isOnlineMeeting);
+    return { total: upcomingEvents.length, teams: teamsEvents.length };
+  }, [events]);
+
   return (
     <div className="flex h-[calc(100vh-220px)] flex-col rounded-lg border border-gray-200 bg-white shadow-sm overflow-hidden">
+      {/* API Error Banner */}
+      {apiError && (
+        <div className="bg-red-50 border-b border-red-200 px-4 py-3 flex items-center gap-2">
+          <AlertCircle className="h-5 w-5 text-red-500 flex-shrink-0" />
+          <p className="text-sm text-red-700">{apiError}</p>
+          <button
+            onClick={() => setApiError(null)}
+            className="ml-auto text-red-500 hover:text-red-700"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
       {/* Toolbar */}
       <div className="flex items-center justify-between border-b border-gray-200 p-4">
         <div className="flex items-center gap-3">
@@ -447,6 +729,20 @@ export default function CalendarView({ walletAddress, view: initialView, events:
             </button>
           </div>
           <h2 className="text-lg font-semibold text-gray-900">{getDateRangeText()}</h2>
+
+          {/* Mini stats */}
+          <div className="hidden sm:flex items-center gap-3 ml-4 text-sm text-gray-500">
+            <span className="flex items-center gap-1">
+              <CalendarIcon className="h-4 w-4" />
+              {eventStats.total} upcoming
+            </span>
+            {eventStats.teams > 0 && (
+              <span className="flex items-center gap-1 text-purple-600">
+                <Video className="h-4 w-4" />
+                {eventStats.teams} Teams
+              </span>
+            )}
+          </div>
         </div>
 
         <div className="flex items-center gap-3">
@@ -506,7 +802,19 @@ export default function CalendarView({ walletAddress, view: initialView, events:
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
           <div className="w-full max-w-lg rounded-lg bg-white p-6 shadow-2xl">
             <div className="mb-4 flex items-start justify-between">
-              <h3 className="text-xl font-semibold text-gray-900">{selectedEvent.subject}</h3>
+              <div>
+                <h3 className="text-xl font-semibold text-gray-900">{selectedEvent.subject}</h3>
+                {selectedEvent.categories && selectedEvent.categories.length > 0 && (
+                  <div className="flex items-center gap-1 mt-1">
+                    <Tag className="h-3 w-3 text-gray-400" />
+                    {selectedEvent.categories.map((cat, i) => (
+                      <span key={i} className={`text-xs px-2 py-0.5 rounded ${CATEGORY_COLORS[cat]?.text || 'text-gray-600'} bg-gray-100`}>
+                        {cat.replace(' category', '')}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
               <button
                 onClick={() => setShowEventModal(false)}
                 className="rounded-lg p-1 hover:bg-gray-100"
@@ -552,47 +860,48 @@ export default function CalendarView({ walletAddress, view: initialView, events:
 
               {selectedEvent.isOnlineMeeting && (
                 <div className="flex items-start gap-3">
-                  <Video className="mt-0.5 h-5 w-5 text-gray-400" />
-                  <a href="#" className="text-sm text-blue-600 hover:underline">
-                    Join Teams Meeting
-                  </a>
+                  <Video className="mt-0.5 h-5 w-5 text-purple-500" />
+                  <div className="flex-1">
+                    {selectedEvent.onlineMeetingUrl ? (
+                      <a
+                        href={selectedEvent.onlineMeetingUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-2 px-4 py-2 bg-purple-600 text-white text-sm font-medium rounded-lg hover:bg-purple-700 transition-colors"
+                      >
+                        <Video className="h-4 w-4" />
+                        Join Teams Meeting
+                        <ExternalLink className="h-3 w-3" />
+                      </a>
+                    ) : (
+                      <span className="text-sm text-purple-600 flex items-center gap-1">
+                        <Check className="h-4 w-4" />
+                        Teams Meeting (link available in Outlook)
+                      </span>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
 
             <div className="mt-6 flex gap-2">
               <button
-                disabled
-                title="Edit in Outlook - coming in next release"
-                className="flex-1 rounded-lg border border-gray-300 py-2 text-sm font-medium opacity-50 cursor-not-allowed"
+                onClick={openEditForm}
+                className="flex-1 rounded-lg border border-gray-300 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors flex items-center justify-center gap-2"
               >
-                <Edit3 className="inline h-4 w-4 mr-2" />
-                Edit in Outlook
+                <Edit3 className="h-4 w-4" />
+                Edit Event
               </button>
               <button
-                onClick={async () => {
-                  if (!confirm('Are you sure you want to delete this event?')) return;
-                  try {
-                    const response = await fetch(
-                      `${process.env.NEXT_PUBLIC_API_URL}/api/v1/integrations/microsoft/calendar/events/${selectedEvent.id}?wallet_address=${walletAddress}`,
-                      { method: 'DELETE' }
-                    );
-                    if (response.ok) {
-                      alert('Event deleted successfully!');
-                      setShowEventModal(false);
-                      onDataChange?.();
-                    } else {
-                      const error = await response.json();
-                      alert(`Error: ${error.detail || 'Failed to delete event'}`);
-                    }
-                  } catch (error) {
-                    console.error('Error deleting event:', error);
-                    alert('Network error. Please try again.');
-                  }
-                }}
-                className="flex-1 rounded-lg border border-red-300 py-2 text-sm font-medium text-red-600 hover:bg-red-50"
+                onClick={handleDeleteEvent}
+                disabled={actionLoading}
+                className="flex-1 rounded-lg border border-red-300 py-2 text-sm font-medium text-red-600 hover:bg-red-50 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
               >
-                <Trash2 className="inline h-4 w-4 mr-2" />
+                {actionLoading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Trash2 className="h-4 w-4" />
+                )}
                 Delete
               </button>
             </div>
@@ -603,7 +912,7 @@ export default function CalendarView({ walletAddress, view: initialView, events:
       {/* New Event Form Modal */}
       {showNewEventForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
-          <div className="w-full max-w-lg rounded-lg bg-white p-6 shadow-2xl">
+          <div className="w-full max-w-lg rounded-lg bg-white p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
             <div className="mb-4 flex items-center justify-between">
               <h3 className="text-xl font-semibold text-gray-900">New Event</h3>
               <button
@@ -623,8 +932,9 @@ export default function CalendarView({ walletAddress, view: initialView, events:
                   type="text"
                   value={newEventData.subject}
                   onChange={(e) => setNewEventData({ ...newEventData, subject: e.target.value })}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 focus:border-blue-500 focus:outline-none"
                   placeholder="Event title"
+                  autoFocus
                 />
               </div>
 
@@ -637,7 +947,7 @@ export default function CalendarView({ walletAddress, view: initialView, events:
                     type="date"
                     value={newEventData.startDate}
                     onChange={(e) => setNewEventData({ ...newEventData, startDate: e.target.value })}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 focus:border-blue-500 focus:outline-none"
                   />
                 </div>
                 <div>
@@ -648,7 +958,7 @@ export default function CalendarView({ walletAddress, view: initialView, events:
                     type="time"
                     value={newEventData.startTime}
                     onChange={(e) => setNewEventData({ ...newEventData, startTime: e.target.value })}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 focus:border-blue-500 focus:outline-none"
                   />
                 </div>
               </div>
@@ -662,7 +972,7 @@ export default function CalendarView({ walletAddress, view: initialView, events:
                     type="date"
                     value={newEventData.endDate}
                     onChange={(e) => setNewEventData({ ...newEventData, endDate: e.target.value })}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 focus:border-blue-500 focus:outline-none"
                   />
                 </div>
                 <div>
@@ -673,7 +983,7 @@ export default function CalendarView({ walletAddress, view: initialView, events:
                     type="time"
                     value={newEventData.endTime}
                     onChange={(e) => setNewEventData({ ...newEventData, endTime: e.target.value })}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 focus:border-blue-500 focus:outline-none"
                   />
                 </div>
               </div>
@@ -686,20 +996,34 @@ export default function CalendarView({ walletAddress, view: initialView, events:
                   type="text"
                   value={newEventData.location}
                   onChange={(e) => setNewEventData({ ...newEventData, location: e.target.value })}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none"
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 focus:border-blue-500 focus:outline-none"
                   placeholder="Meeting location"
                 />
               </div>
 
               <div>
-                <label className="flex items-center gap-2 text-sm">
+                <label className="mb-1 block text-sm font-medium text-gray-700">
+                  Attendees (comma-separated emails)
+                </label>
+                <input
+                  type="text"
+                  value={newEventData.attendees}
+                  onChange={(e) => setNewEventData({ ...newEventData, attendees: e.target.value })}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 focus:border-blue-500 focus:outline-none"
+                  placeholder="john@example.com, jane@example.com"
+                />
+              </div>
+
+              <div>
+                <label className="flex items-center gap-2 text-sm cursor-pointer">
                   <input
                     type="checkbox"
                     checked={newEventData.isOnlineMeeting}
                     onChange={(e) => setNewEventData({ ...newEventData, isOnlineMeeting: e.target.checked })}
-                    className="rounded border-gray-300"
+                    className="rounded border-gray-300 text-purple-600 focus:ring-purple-500"
                   />
-                  Create Teams meeting
+                  <Video className="h-4 w-4 text-purple-600" />
+                  <span className="text-gray-700">Create Teams meeting</span>
                 </label>
               </div>
             </div>
@@ -707,13 +1031,168 @@ export default function CalendarView({ walletAddress, view: initialView, events:
             <div className="mt-6 flex gap-2">
               <button
                 onClick={handleCreateEvent}
-                className="flex-1 rounded-lg bg-blue-600 py-2 font-medium text-white hover:bg-blue-700"
+                disabled={actionLoading}
+                className="flex-1 rounded-lg bg-blue-600 py-2 font-medium text-white hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center gap-2"
               >
+                {actionLoading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Plus className="h-4 w-4" />
+                )}
                 Create Event
               </button>
               <button
                 onClick={() => setShowNewEventForm(false)}
-                className="flex-1 rounded-lg border border-gray-300 py-2 font-medium hover:bg-gray-50"
+                className="flex-1 rounded-lg border border-gray-300 py-2 font-medium text-gray-700 hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Event Form Modal */}
+      {showEditEventForm && selectedEvent && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+          <div className="w-full max-w-lg rounded-lg bg-white p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-xl font-semibold text-gray-900">Edit Event</h3>
+              <button
+                onClick={() => {
+                  setShowEditEventForm(false);
+                  setSelectedEvent(null);
+                }}
+                className="rounded-lg p-1 hover:bg-gray-100"
+              >
+                <X className="h-5 w-5 text-gray-500" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">
+                  Event Title *
+                </label>
+                <input
+                  type="text"
+                  value={editEventData.subject}
+                  onChange={(e) => setEditEventData({ ...editEventData, subject: e.target.value })}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 focus:border-blue-500 focus:outline-none"
+                  placeholder="Event title"
+                  autoFocus
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-700">
+                    Start Date *
+                  </label>
+                  <input
+                    type="date"
+                    value={editEventData.startDate}
+                    onChange={(e) => setEditEventData({ ...editEventData, startDate: e.target.value })}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 focus:border-blue-500 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-700">
+                    Start Time *
+                  </label>
+                  <input
+                    type="time"
+                    value={editEventData.startTime}
+                    onChange={(e) => setEditEventData({ ...editEventData, startTime: e.target.value })}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 focus:border-blue-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-700">
+                    End Date
+                  </label>
+                  <input
+                    type="date"
+                    value={editEventData.endDate}
+                    onChange={(e) => setEditEventData({ ...editEventData, endDate: e.target.value })}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 focus:border-blue-500 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-700">
+                    End Time
+                  </label>
+                  <input
+                    type="time"
+                    value={editEventData.endTime}
+                    onChange={(e) => setEditEventData({ ...editEventData, endTime: e.target.value })}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 focus:border-blue-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">
+                  Location
+                </label>
+                <input
+                  type="text"
+                  value={editEventData.location}
+                  onChange={(e) => setEditEventData({ ...editEventData, location: e.target.value })}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 focus:border-blue-500 focus:outline-none"
+                  placeholder="Meeting location"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">
+                  Attendees (comma-separated emails)
+                </label>
+                <input
+                  type="text"
+                  value={editEventData.attendees}
+                  onChange={(e) => setEditEventData({ ...editEventData, attendees: e.target.value })}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 focus:border-blue-500 focus:outline-none"
+                  placeholder="john@example.com, jane@example.com"
+                />
+              </div>
+
+              <div>
+                <label className="flex items-center gap-2 text-sm cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={editEventData.isOnlineMeeting}
+                    onChange={(e) => setEditEventData({ ...editEventData, isOnlineMeeting: e.target.checked })}
+                    className="rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                  />
+                  <Video className="h-4 w-4 text-purple-600" />
+                  <span className="text-gray-700">Teams meeting</span>
+                </label>
+              </div>
+            </div>
+
+            <div className="mt-6 flex gap-2">
+              <button
+                onClick={handleEditEvent}
+                disabled={actionLoading}
+                className="flex-1 rounded-lg bg-blue-600 py-2 font-medium text-white hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {actionLoading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Check className="h-4 w-4" />
+                )}
+                Save Changes
+              </button>
+              <button
+                onClick={() => {
+                  setShowEditEventForm(false);
+                  setShowEventModal(true);
+                }}
+                className="flex-1 rounded-lg border border-gray-300 py-2 font-medium text-gray-700 hover:bg-gray-50"
               >
                 Cancel
               </button>
