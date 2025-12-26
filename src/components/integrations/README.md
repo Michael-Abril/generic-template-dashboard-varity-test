@@ -814,6 +814,347 @@ Every data view should handle empty states gracefully:
 
 ---
 
+---
+
+# AI ASSISTANT DOCUMENTATION
+
+**Last Updated:** December 26, 2025
+**Location:** `src/components/AIChat.tsx` + `src/components/ai/`
+**Status:** Fully Implemented (awaiting database migration for Projects)
+
+---
+
+## AI Assistant Overview
+
+The AI Assistant is a **Claude Projects-like interface** for business intelligence. It provides:
+- Multi-mode AI chat (Standard, Deep Research, Deep Analysis, Document)
+- Project organization with custom AI instructions
+- Cursor-style context picker (3-level hierarchy)
+- Email and document creation actions
+- Full conversation history with persistence
+
+---
+
+## Architecture
+
+```
+AI Assistant Page (/ai-assistant)
+│
+├── ProjectSidebar (left panel)
+│   ├── New Chat / New Project buttons
+│   ├── Projects list (expandable with conversations)
+│   └── Recent Chats (not in any project)
+│
+└── Main Chat Area
+    ├── Header (title, integrations badges, actions menu)
+    ├── ProjectHeader (when project selected - shows context)
+    ├── Action Panel (email/document creation forms)
+    ├── Messages Area (chat history with sources)
+    ├── Context Picker (3-level hierarchical selection)
+    └── Input Area (mode selector, integration filter, textarea)
+```
+
+---
+
+## Component Files
+
+| Component | File | Lines | Purpose |
+|-----------|------|-------|---------|
+| **AIChat** | `src/components/AIChat.tsx` | 2,400+ | Main chat interface |
+| **ProjectSidebar** | `src/components/ai/ProjectSidebar.tsx` | ~400 | Project/conversation navigation |
+| **ProjectEditor** | `src/components/ai/ProjectEditor.tsx` | ~350 | Create/edit project modal |
+| **ProjectHeader** | `src/components/ai/ProjectHeader.tsx` | ~200 | Display selected project info |
+| **ContextPicker** | `src/components/ai/ContextPicker.tsx` | ~500 | 3-level context selection |
+| **SuggestedPrompts** | `src/components/ai/SuggestedPrompts.tsx` | ~200 | Integration-aware suggestions |
+| **CodeBlock** | `src/components/ai/CodeBlock.tsx` | ~50 | Code with copy button |
+
+---
+
+## AI Modes
+
+| Mode | Endpoint | Temperature | Purpose |
+|------|----------|-------------|---------|
+| **Standard** | `/api/v1/ai/chat/general` | 0.7 | Quick answers from business data |
+| **Deep Research** | `/api/v1/ai/query/combined` | 0.7 | RAG + optional web search |
+| **Deep Analysis** | `/api/v1/ai/research` | 0.3 | Executive-level reports |
+| **Document** | `/api/v1/ai/analyze/document` | 0.7 | Upload & analyze files |
+
+### Mode Selection Flow
+```
+User clicks mode dropdown
+    ↓
+Standard → Quick answers, no web search
+Deep Research → Toggle web search available
+Deep Analysis → Comprehensive analysis
+Document → File upload UI appears
+```
+
+---
+
+## Projects Feature (Claude-like)
+
+### What Projects Do
+- **Organize conversations** into logical groups
+- **Custom AI instructions** applied to all chats in project
+- **Pin files** as permanent context
+- **Color and icon** customization (10 colors, 10 icons)
+
+### Project User Flow
+```
+1. Click "New Project" → ProjectEditor modal opens
+2. Fill: name, description, color, icon, custom instructions
+3. Click "Create Project" → POST /api/v1/projects/
+4. Project appears in sidebar
+5. Click project → ProjectHeader shows at top
+6. Start chatting → Project instructions guide AI responses
+```
+
+### Project Data Model
+```typescript
+interface Project {
+  id: number;
+  wallet_address: string;
+  name: string;
+  description: string | null;
+  color: string;           // Hex color (#3B82F6)
+  icon: string;            // Icon name (folder, briefcase, etc.)
+  custom_instructions: string | null;
+  is_archived: boolean;
+  created_at: string;
+  updated_at: string;
+  file_count: number;
+  conversation_count: number;
+}
+```
+
+### Available Colors
+`#3B82F6` (blue), `#8B5CF6` (purple), `#EC4899` (pink), `#EF4444` (red), `#F97316` (orange), `#EAB308` (yellow), `#22C55E` (green), `#06B6D4` (cyan), `#6366F1` (indigo), `#64748B` (slate)
+
+### Available Icons
+`folder`, `briefcase`, `chart`, `code`, `document`, `globe`, `lightbulb`, `rocket`, `star`, `users`
+
+---
+
+## Context Picker (Cursor-style)
+
+### 3-Level Navigation
+```
+Level 1: Integrations
+├── Google Workspace (12 items)
+├── Microsoft 365 (8 items)
+├── QuickBooks (25 items)
+└── ...
+    ↓ Click
+Level 2: Categories
+├── Gmail (5 emails)
+├── Drive (4 files)
+├── Calendar (3 events)
+└── ...
+    ↓ Click
+Level 3: Items
+├── ☐ Email: "Q4 Report..."
+├── ☐ Email: "Meeting invite..."
+├── ☐ File: "budget.xlsx"
+└── [Search box] [Done button]
+```
+
+### Context Picker Features
+- **Breadcrumb navigation** (All > Google > Gmail)
+- **Back button** to previous level
+- **Search** only at items level (real-time filtering)
+- **Multi-select** with max limit (default 10 items)
+- **Selection badge** shows count
+- **Source indicator** (Indexed vs Live)
+
+### Integration Colors
+| Integration | Background | Text |
+|-------------|------------|------|
+| Google | `bg-red-50` | `text-red-600` |
+| Microsoft | `bg-blue-50` | `text-blue-600` |
+| QuickBooks | `bg-green-50` | `text-green-600` |
+| Salesforce | `bg-sky-50` | `text-sky-600` |
+| HubSpot | `bg-orange-50` | `text-orange-600` |
+| Slack | `bg-purple-50` | `text-purple-600` |
+
+---
+
+## Action Panel (Email/Document)
+
+### Email Action
+```
+Provider: Gmail or Outlook
+Fields: To, CC, Subject, Body
+Endpoints:
+  - Gmail: POST /api/v1/integrations/google/send-email
+  - Outlook: POST /api/v1/integrations/microsoft/mail/send
+```
+
+### Document Action
+```
+Provider: Google Drive or OneDrive
+Fields: Title, Content
+Endpoints:
+  - Google Drive: POST /api/v1/integrations/google/upload-file
+  - OneDrive: POST /api/v1/integrations/microsoft/onedrive/upload
+```
+
+### Action Flow
+```
+1. User clicks "Actions" button
+2. Select action type (Email or Document)
+3. Select provider (Gmail/Outlook or Drive/OneDrive)
+4. Fill form fields
+5. Click "Preview & Send" or "Preview & Save"
+6. Confirmation modal shows preview
+7. Click "Confirm" → Action executes
+8. Success/Error feedback shown
+```
+
+---
+
+## Message Features
+
+| Feature | Description | Implementation |
+|---------|-------------|----------------|
+| **Copy** | Copy message to clipboard | `navigator.clipboard.writeText()` |
+| **Edit & Resend** | Modify user message, regenerate | Removes messages from edit point, resends |
+| **Feedback** | Thumbs up/down | Stored in `feedbackGiven` state |
+| **Regenerate** | Regenerate last response | Removes last assistant message, resends |
+| **Send as Email** | Quick email action | Opens action panel with content |
+| **Save as Document** | Quick save action | Opens action panel with content |
+| **Sources** | RAG (📊) and Web (🌐) | Displayed below assistant messages |
+
+---
+
+## Backend API Endpoints
+
+### AI Chat
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/api/v1/ai/chat/general` | POST | Standard mode chat |
+| `/api/v1/ai/query/combined` | POST | Deep research with optional web search |
+| `/api/v1/ai/research` | POST | Deep analysis mode |
+| `/api/v1/ai/analyze/document` | POST | Document analysis |
+| `/api/v1/ai/upload/document` | POST | Upload PDF/DOCX for text extraction |
+| `/api/v1/ai/health` | GET | Service health check |
+| `/api/v1/ai/models` | GET | List available LLM models |
+| `/api/v1/ai/context/items` | GET | Fetch available context for picker |
+| `/api/v1/ai/suggested-prompts` | GET | Fetch integration-aware suggestions |
+
+### Conversations
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/api/v1/conversations/` | GET | List conversations (wallet-scoped) |
+| `/api/v1/conversations/` | POST | Create conversation |
+| `/api/v1/conversations/{id}` | GET | Get with all messages |
+| `/api/v1/conversations/{id}` | PATCH | Update (rename, pin, project) |
+| `/api/v1/conversations/{id}` | DELETE | Delete conversation |
+| `/api/v1/conversations/{id}/messages` | POST | Add message |
+| `/api/v1/conversations/{id}/pin` | POST | Pin conversation |
+| `/api/v1/conversations/{id}/unpin` | POST | Unpin conversation |
+| `/api/v1/conversations/{id}/archive` | POST | Archive conversation |
+
+### Projects
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/api/v1/projects/` | GET | List projects (wallet-scoped) |
+| `/api/v1/projects/` | POST | Create project |
+| `/api/v1/projects/{id}` | GET | Get project with files |
+| `/api/v1/projects/{id}` | PATCH | Update project |
+| `/api/v1/projects/{id}` | DELETE | Delete/archive project |
+| `/api/v1/projects/{id}/files` | POST | Add file to project |
+| `/api/v1/projects/{id}/files` | GET | List project files |
+| `/api/v1/projects/{id}/files/{fid}` | DELETE | Remove file |
+| `/api/v1/projects/{id}/conversations` | GET | List project conversations |
+
+---
+
+## State Management (Key Variables)
+
+| State | Type | Purpose |
+|-------|------|---------|
+| `currentProjectId` | `number \| null` | Selected project ID |
+| `currentProject` | `Project \| null` | Full project with instructions |
+| `currentConversationId` | `number \| null` | Selected conversation ID |
+| `messages` | `Message[]` | Chat messages array |
+| `aiMode` | `string` | Current AI mode |
+| `selectedContextIds` | `string[]` | Context picker selections |
+| `showProjectEditor` | `boolean` | Editor modal visibility |
+| `showContextPicker` | `boolean` | Context picker visibility |
+| `showActionPanel` | `boolean` | Action panel visibility |
+| `actionType` | `'email' \| 'document'` | Current action type |
+| `actionProvider` | `'google' \| 'microsoft'` | Action provider |
+| `installedTools` | `string[]` | Connected integrations |
+| `ragStatus` | `object` | RAG data availability status |
+
+---
+
+## LLM Configuration
+
+| Setting | Value |
+|---------|-------|
+| **Provider** | Together.ai (primary), Ollama (fallback) |
+| **Model** | `meta-llama/Llama-3.3-70B-Instruct-Turbo` |
+| **Temperature** | 0.7 (standard), 0.3 (research/analysis) |
+| **Max Tokens** | 2048-4096 |
+| **Timeout** | 2 minutes |
+| **API URL** | `https://api.together.xyz/v1` |
+
+---
+
+## RAG System
+
+| Setting | Value |
+|---------|-------|
+| **Vector DB** | Qdrant |
+| **Embeddings** | Together.ai or Ollama (768 dimensions) |
+| **Collection** | `business_{wallet_clean}` (per-wallet isolation) |
+| **Context Limit** | 5-30KB total |
+| **Entry Limit** | 3000 chars per entry (~750 tokens) |
+| **Similarity** | Cosine |
+
+---
+
+## Security (4-Layer Multi-Tenant)
+
+| Layer | Implementation |
+|-------|----------------|
+| **1. Authentication** | Privy → Embedded Wallet |
+| **2. Database** | All queries filtered by `wallet_address` |
+| **3. RAG** | Isolated Qdrant collection per wallet |
+| **4. Storage** | AES-256-GCM encryption with wallet-derived key |
+
+**Guarantee:** Cross-business data access is mathematically impossible.
+
+---
+
+## Export Options
+
+| Format | Status | Description |
+|--------|--------|-------------|
+| **Markdown** | ✅ Working | Full conversation with metadata |
+| **JSON** | ✅ Working | Structured data export |
+| **PDF** | 🔜 Coming | PDF generation |
+
+---
+
+## Database Tables Required
+
+| Table | Purpose | Status |
+|-------|---------|--------|
+| `conversations` | Chat history | ✅ Exists |
+| `messages` | Individual messages | ✅ Exists |
+| `projects` | Project metadata | ⚠️ Needs migration |
+| `project_files` | Files linked to projects | ⚠️ Needs migration |
+
+**Migration Command:**
+```bash
+# From Railway dashboard shell:
+cd /app && alembic upgrade head
+```
+
+---
+
 ## Research Sources (December 2025)
 
 MVP feature priorities based on:
