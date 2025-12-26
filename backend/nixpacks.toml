@@ -1,0 +1,11 @@
+# Nixpacks configuration for Railway deployment
+# This ensures our start.sh script is used (which runs migrations)
+
+[phases.setup]
+nixPkgs = ["python311", "postgresql"]
+
+[phases.install]
+cmds = ["pip install --upgrade pip", "pip install -r requirements.txt"]
+
+[start]
+cmd = "bash start.sh"
