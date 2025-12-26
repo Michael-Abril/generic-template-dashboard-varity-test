@@ -1,6 +1,6 @@
 # Software Integration Pages - Comprehensive Guide
 
-**Last Updated:** December 24, 2025
+**Last Updated:** December 26, 2025
 **Status:** MVP Launch - Priority Focus on Google, Microsoft, Slack
 **Live Site:** https://app.varity.so
 
@@ -402,16 +402,116 @@ function IntegrationPage({ walletAddress, data, onRefresh }: IntegrationPageProp
 
 ### 3. Microsoft 365
 
-**Status:** Needs Simplification
-**File:** `/microsoft/Microsoft365Page.tsx`
+**Status:** ✅ Fully Enhanced (December 26, 2025)
+**Files:** `/microsoft/Microsoft365Page.tsx`, `OutlookInbox.tsx`, `CalendarView.tsx`, `OneDriveExplorer.tsx`
 
-| Tab | MVP Features | Data Source | Future Features |
-|-----|--------------|-------------|-----------------|
-| **Overview** | Quick stats | Aggregated | - |
-| **Outlook** | Inbox list, read emails | `data.emails` | Compose, reply |
-| **Calendar** | Event list | `data.events` | Create events |
-| **OneDrive** | File browser | `data.files` | Upload, share |
-| **Contacts** | Contact list | `data.contacts` | Add/edit |
+| Tab | Features | Data Source | Status |
+|-----|----------|-------------|--------|
+| **Overview** | Quick stats, recent activity | Aggregated | ✅ Working |
+| **Outlook** | Full inbox, compose, keyboard shortcuts, flag/archive/delete | Live API | ✅ Working |
+| **Calendar** | Day/week/month views, create/edit/delete events, Teams meetings | Live API | ✅ Working |
+| **OneDrive** | File browser, upload, create folder, rename, copy, star | Live API | ✅ Working |
+| **Contacts** | Contact list, search | Live API | ✅ Working |
+| **Tasks** | To-Do list | Coming Soon | 🔜 Coming |
+
+**Key Files:**
+- `Microsoft365Page.tsx` - Main page with tab navigation (505 lines)
+- `OutlookInbox.tsx` - Full email client (920 lines)
+- `CalendarView.tsx` - Calendar with event editing (1,205 lines)
+- `OneDriveExplorer.tsx` - File manager (1,116 lines)
+- `ContactsList.tsx` - Contact management (186 lines)
+
+#### OutlookInbox.tsx Features (920 lines)
+
+| Feature | Description |
+|---------|-------------|
+| **Keyboard Shortcuts** | Gmail-style: c (compose), j/k (navigate), e (archive), # (delete), s (flag), r (reply), a (reply all), f (forward), / (search), Esc (close) |
+| **Shortcuts Help** | Shift+? opens help modal |
+| **Email Actions** | Read, reply, reply all, forward, archive, delete, flag/unflag, mark read/unread |
+| **Compose** | Full compose modal with to/cc/bcc, rich text body |
+| **Hover Actions** | Quick action buttons appear on email row hover |
+| **API Error Banner** | Shows reconnection prompt on 401 token expiration |
+| **Optimistic Updates** | Instant UI feedback before API confirmation |
+| **Search** | Real-time search filtering |
+| **Folder Navigation** | Inbox, Sent, Drafts, Junk, Deleted, Archive |
+
+#### CalendarView.tsx Features (1,205 lines)
+
+| Feature | Description |
+|---------|-------------|
+| **Views** | Day, Week, Month with smooth navigation |
+| **Create Events** | Full form with title, date/time, location, attendees, Teams meeting option |
+| **Edit Events** | Update existing events with same form |
+| **Delete Events** | With confirmation dialog |
+| **Quick Create** | Click on empty time slot to create event at that time |
+| **Teams Integration** | Create Teams meetings, clickable join buttons |
+| **Category Colors** | Events colored by category (Blue, Green, Purple, Red, Yellow, Orange) |
+| **Mini Stats** | Shows upcoming event count and Teams meeting count |
+| **API Error Banner** | Token expiration notification |
+
+#### OneDriveExplorer.tsx Features (1,116 lines)
+
+| Feature | Description |
+|---------|-------------|
+| **File Browser** | List/grid views with folder navigation |
+| **Create Folder** | New folder modal with backend integration |
+| **Upload Files** | File upload with progress indicator |
+| **Rename** | Rename files and folders |
+| **Copy** | Duplicate files |
+| **Star/Favorite** | Star files for quick access |
+| **Delete** | Delete files with confirmation |
+| **Office Colors** | Word (blue), Excel (green), PowerPoint (orange), PDF (red) icons |
+| **Storage Info** | Shows used/total storage with progress bar |
+| **Pagination** | 50 files per page with navigation |
+| **"New" Menu** | Dropdown with New Folder, File Upload options |
+| **Starred Section** | Quick access to starred files in sidebar |
+
+#### Backend Endpoints (microsoft.py - 989 lines)
+
+**Outlook Mail:**
+```
+GET  /mail/messages                    → List emails from folder
+POST /mail/send                        → Send email
+POST /mail/drafts                      → Save draft
+PATCH /mail/messages/{id}/read         → Mark read/unread
+DELETE /mail/messages/{id}             → Delete email
+POST /mail/messages/{id}/archive       → Archive email
+PATCH /mail/messages/{id}/flag         → Flag/unflag email
+```
+
+**Calendar:**
+```
+GET  /calendar/events                  → List events
+POST /calendar/events                  → Create event
+PATCH /calendar/events/{id}            → Update event (NEW)
+DELETE /calendar/events/{id}           → Delete event
+```
+
+**OneDrive:**
+```
+GET  /onedrive/files                   → List files
+POST /onedrive/upload                  → Upload file
+DELETE /onedrive/files/{id}            → Delete file
+POST /onedrive/folders                 → Create folder (NEW)
+PATCH /onedrive/files/{id}/rename      → Rename file (NEW)
+POST /onedrive/files/{id}/copy         → Copy file (NEW)
+GET  /onedrive/storage                 → Get storage info (NEW)
+```
+
+**Contacts:**
+```
+GET  /contacts                         → List contacts
+POST /contacts                         → Create contact
+DELETE /contacts/{id}                  → Delete contact
+```
+
+**Tasks (To-Do):**
+```
+GET  /tasks                            → List tasks
+POST /tasks                            → Create task
+PATCH /tasks/{id}                      → Update task
+DELETE /tasks/{id}                     → Delete task
+```
 
 ---
 
@@ -729,22 +829,24 @@ Every data view should handle empty states gracefully:
 
 ### Phase 1: MVP Launch (Current)
 
-**Goal:** Read-only data display with clean UI
+**Goal:** Full-featured integration pages with native-like functionality
 
 - [ ] Simplify QuickBooks to 3-tab layout
-- [ ] Simplify Microsoft 365 to 4-tab layout
+- [x] **Microsoft 365 - COMPLETE** (December 26, 2025) - Full Outlook, Calendar, OneDrive with CRUD
 - [ ] Simplify Slack to 3-tab layout
 - [ ] Simplify Salesforce to 4-tab layout
 - [ ] Simplify HubSpot to 4-tab layout
-- [ ] Google Workspace already MVP-ready
+- [x] **Google Workspace** - MVP-ready (reference implementation)
 
 **Acceptance Criteria:**
-- No forms or modals
-- No CRUD operations
-- Simple tab navigation (no sidebars)
-- Clean search/filter on tables
-- Proper empty states
-- Dark mode support
+- ✅ Tab-based navigation (Google, Microsoft complete)
+- ✅ Full CRUD operations where applicable (Microsoft has full email/calendar/drive CRUD)
+- ✅ Keyboard shortcuts (Microsoft Outlook matches Gmail)
+- ✅ Clean search/filter on tables
+- ✅ Proper empty states
+- ✅ API error handling with reconnect prompts
+- ✅ Optimistic UI updates
+- Dark mode support (partial)
 
 ### Phase 2: Actions (Post-Launch)
 
@@ -800,7 +902,13 @@ Every data view should handle empty states gracefully:
 │   └── index.ts
 │
 ├── microsoft/
-│   └── Microsoft365Page.tsx     # Main page (needs simplification)
+│   ├── Microsoft365Page.tsx     # Main page with tab navigation (505 lines)
+│   ├── OutlookInbox.tsx         # Full email client with keyboard shortcuts (920 lines)
+│   ├── CalendarView.tsx         # Calendar with event CRUD + Teams (1,205 lines)
+│   ├── OneDriveExplorer.tsx     # File manager with folder/rename/copy (1,116 lines)
+│   ├── ContactsList.tsx         # Contact list (186 lines)
+│   ├── TaskList.tsx             # To-Do tasks (Coming Soon)
+│   └── index.ts
 │
 ├── slack/
 │   └── SlackPage.tsx            # Main page (needs simplification)
