@@ -18,11 +18,8 @@ def get_database_url() -> str:
     elif url.startswith("postgresql://") and "+asyncpg" not in url:
         url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
 
-    # Add SSL mode for Railway PostgreSQL connections if not already present
-    # This is required for Railway's managed PostgreSQL service
-    if "postgresql" in url and "sslmode" not in url:
-        separator = "&" if "?" in url else "?"
-        url = f"{url}{separator}sslmode=require"
+    # NOTE: Do NOT add sslmode to URL - asyncpg doesn't accept it as URL parameter
+    # Railway PostgreSQL works without explicit SSL configuration
 
     return url
 
