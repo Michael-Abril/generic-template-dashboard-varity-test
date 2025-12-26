@@ -401,52 +401,52 @@ async def sync_tool_data(
         if provider == "quickbooks":
             from app.adapters.quickbooks.sync import QuickBooksSync
             adapter = QuickBooksSync(credentials)
-            result = await adapter.sync_data(request.wallet_address)
+            result = await adapter.sync_data(normalized_wallet)
 
         elif provider == "google" or provider == "google_workspace":
             from app.adapters.google.sync import GoogleWorkspaceSync
             adapter = GoogleWorkspaceSync(credentials)
-            result = await adapter.sync_data(request.wallet_address)
+            result = await adapter.sync_data(normalized_wallet)
 
         elif provider == "microsoft":
             from app.adapters.microsoft.sync import MicrosoftSync
             adapter = MicrosoftSync(credentials)
-            result = await adapter.sync_data(request.wallet_address)
+            result = await adapter.sync_data(normalized_wallet)
 
         elif provider == "slack":
             from app.adapters.slack.sync import SlackSync
             adapter = SlackSync(credentials)
-            result = await adapter.sync_data(request.wallet_address)
+            result = await adapter.sync_data(normalized_wallet)
 
         elif provider == "hubspot":
             from app.adapters.hubspot.sync import HubSpotSync
             adapter = HubSpotSync(credentials)
-            result = await adapter.sync_data(request.wallet_address)
+            result = await adapter.sync_data(normalized_wallet)
 
         elif provider == "salesforce":
             from app.adapters.salesforce.sync import SalesforceSync
             adapter = SalesforceSync(credentials)
-            result = await adapter.sync_data(request.wallet_address)
+            result = await adapter.sync_data(normalized_wallet)
 
         elif provider == "shopify":
             from app.adapters.shopify.sync import ShopifySync
             adapter = ShopifySync(credentials)
-            result = await adapter.sync_data(request.wallet_address)
+            result = await adapter.sync_data(normalized_wallet)
 
         elif provider == "zendesk":
             from app.adapters.zendesk.sync import ZendeskSync
             adapter = ZendeskSync(credentials)
-            result = await adapter.sync_data(request.wallet_address)
+            result = await adapter.sync_data(normalized_wallet)
 
         elif provider == "stripe":
             from app.adapters.stripe.sync import StripeSync
             adapter = StripeSync(credentials)
-            result = await adapter.sync_data(request.wallet_address)
+            result = await adapter.sync_data(normalized_wallet)
 
         elif provider == "monday":
             from app.adapters.monday.sync import MondaySync
             adapter = MondaySync(credentials)
-            result = await adapter.sync_data(request.wallet_address)
+            result = await adapter.sync_data(normalized_wallet)
 
         else:
             raise HTTPException(
@@ -766,13 +766,16 @@ async def reindex_tool_data(
         # Normalize integration name
         normalized_tool = normalize_integration_name(tool)
 
+        # CRITICAL: Normalize wallet address for consistent storage/retrieval
+        normalized_wallet = normalize_wallet_address(wallet_address)
+
         logger.info(
-            f"Re-indexing {tool} (normalized: {normalized_tool}) data for wallet {wallet_address}"
+            f"Re-indexing {tool} (normalized: {normalized_tool}) data for wallet {wallet_address} (normalized: {normalized_wallet})"
         )
 
         # List all files for this integration
         files = await filecoin_service.list_customer_files(
-            customer_wallet=wallet_address,
+            customer_wallet=normalized_wallet,
             integration=normalized_tool,
             limit=100
         )
@@ -797,19 +800,19 @@ async def reindex_tool_data(
                 encrypted = await filecoin_service.retrieve_data(cid)
                 decrypted = await encryption_service.decrypt_with_wallet(
                     encrypted_data=encrypted,
-                    customer_wallet=wallet_address
+                    customer_wallet=normalized_wallet
                 )
 
                 # Index in Qdrant
                 await rag_service.index_business_data(
-                    business_wallet=wallet_address,
+                    business_wallet=normalized_wallet,
                     cid=cid,
                     data=decrypted,
                     integration=normalized_tool,
                     data_type=data_type
                 )
                 indexed_count += 1
-                logger.info(f"Re-indexed {data_type} for {wallet_address[:10]}..., CID: {cid}")
+                logger.info(f"Re-indexed {data_type} for {normalized_wallet[:10]}..., CID: {cid}")
 
             except Exception as e:
                 errors.append({"cid": file.get("cid"), "error": str(e)})
@@ -819,7 +822,7 @@ async def reindex_tool_data(
         return {
             "success": True,
             "integration": tool,
-            "wallet_address": wallet_address,
+            "wallet_address": normalized_wallet,
             "indexed_count": indexed_count,
             "total_files": len(files),
             "errors": errors if errors else None,

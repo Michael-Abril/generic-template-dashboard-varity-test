@@ -406,18 +406,24 @@ class FilecoinService:
             f"integration={integration}, data_type={data_type}"
         )
 
-        # Build query filters using Pinata's object format
-        # Pinata requires: {"value": "yourValue", "op": "eq"}
-        filters = {
-            "status": "pinned",
-            "metadata[keyvalues][customer_wallet]": json.dumps({"value": normalized_wallet, "op": "eq"})
+        # Build keyvalues query object with proper Pinata format
+        # Pinata API requires: metadata[keyvalues]={"key":{"value":"...","op":"eq"}}
+        # See: https://docs.pinata.cloud/api-reference/endpoint/list-files
+        keyvalues_query = {
+            "customer_wallet": {"value": normalized_wallet, "op": "eq"}
         }
 
         if integration:
-            filters["metadata[keyvalues][integration]"] = json.dumps({"value": integration, "op": "eq"})
+            keyvalues_query["integration"] = {"value": integration, "op": "eq"}
 
         if data_type:
-            filters["metadata[keyvalues][data_type]"] = json.dumps({"value": data_type, "op": "eq"})
+            keyvalues_query["data_type"] = {"value": data_type, "op": "eq"}
+
+        # Build final query filters
+        filters = {
+            "status": "pinned",
+            "metadata[keyvalues]": json.dumps(keyvalues_query)
+        }
 
         logger.debug(f"Pinata query filters: {filters}")
 

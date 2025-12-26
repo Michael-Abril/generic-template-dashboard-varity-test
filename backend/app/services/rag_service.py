@@ -143,10 +143,11 @@ class BusinessRAGService:
             business_wallet: Business wallet address
 
         Returns:
-            Collection name: business_{wallet_lowercase}
+            Collection name: business_{wallet_normalized}
         """
-        # Use full wallet address for uniqueness
-        wallet_clean = business_wallet.lower().replace("0x", "")
+        # CRITICAL: Use normalize_wallet_address for consistency with storage/retrieval
+        normalized = normalize_wallet_address(business_wallet)
+        wallet_clean = normalized.replace("0x", "")
         return f"business_{wallet_clean}"
 
     async def create_business_collection(
