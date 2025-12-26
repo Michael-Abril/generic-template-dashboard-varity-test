@@ -20,55 +20,88 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # Create projects table
-    op.create_table(
-        'projects',
-        sa.Column('id', sa.Integer(), nullable=False),
-        sa.Column('wallet_address', sa.String(255), nullable=False),
-        sa.Column('name', sa.String(255), nullable=False),
-        sa.Column('description', sa.Text(), nullable=True),
-        sa.Column('color', sa.String(7), nullable=True, server_default='#3B82F6'),
-        sa.Column('icon', sa.String(50), nullable=True, server_default='folder'),
-        sa.Column('custom_instructions', sa.Text(), nullable=True),
-        sa.Column('is_archived', sa.Boolean(), nullable=True, server_default='false'),
-        sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=True),
-        sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=True),
-        sa.PrimaryKeyConstraint('id')
-    )
-    op.create_index('idx_projects_wallet', 'projects', ['wallet_address'])
-    op.create_index('idx_projects_archived', 'projects', ['is_archived'])
+    # Create projects table (idempotent - skip if exists)
+    try:
+        op.create_table(
+            'projects',
+            sa.Column('id', sa.Integer(), nullable=False),
+            sa.Column('wallet_address', sa.String(255), nullable=False),
+            sa.Column('name', sa.String(255), nullable=False),
+            sa.Column('description', sa.Text(), nullable=True),
+            sa.Column('color', sa.String(7), nullable=True, server_default='#3B82F6'),
+            sa.Column('icon', sa.String(50), nullable=True, server_default='folder'),
+            sa.Column('custom_instructions', sa.Text(), nullable=True),
+            sa.Column('is_archived', sa.Boolean(), nullable=True, server_default='false'),
+            sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=True),
+            sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=True),
+            sa.PrimaryKeyConstraint('id')
+        )
+    except Exception:
+        pass  # Table already exists
 
-    # Create project_files table - supports both uploads and integration links
-    op.create_table(
-        'project_files',
-        sa.Column('id', sa.Integer(), nullable=False),
-        sa.Column('project_id', sa.Integer(), nullable=False),
-        sa.Column('wallet_address', sa.String(255), nullable=False),
-        sa.Column('file_name', sa.String(255), nullable=False),
-        sa.Column('file_type', sa.String(50), nullable=True),
-        sa.Column('source_type', sa.String(20), nullable=False, server_default='upload'),
-        sa.Column('cid', sa.String(255), nullable=True),
-        sa.Column('integration_ref', postgresql.JSONB(), nullable=True),
-        sa.Column('content_preview', sa.Text(), nullable=True),
-        sa.Column('file_size', sa.Integer(), nullable=True),
-        sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=True),
-        sa.ForeignKeyConstraint(['project_id'], ['projects.id'], ondelete='CASCADE'),
-        sa.PrimaryKeyConstraint('id')
-    )
-    op.create_index('idx_project_files_project', 'project_files', ['project_id'])
-    op.create_index('idx_project_files_wallet', 'project_files', ['wallet_address'])
+    try:
+        op.create_index('idx_projects_wallet', 'projects', ['wallet_address'])
+    except Exception:
+        pass  # Index already exists
 
-    # Add project_id to conversations table
-    op.add_column('conversations', sa.Column('project_id', sa.Integer(), nullable=True))
-    op.create_foreign_key(
-        'fk_conversations_project',
-        'conversations',
-        'projects',
-        ['project_id'],
-        ['id'],
-        ondelete='SET NULL'
-    )
-    op.create_index('idx_conversations_project', 'conversations', ['project_id'])
+    try:
+        op.create_index('idx_projects_archived', 'projects', ['is_archived'])
+    except Exception:
+        pass  # Index already exists
+
+    # Create project_files table - supports both uploads and integration links (idempotent)
+    try:
+        op.create_table(
+            'project_files',
+            sa.Column('id', sa.Integer(), nullable=False),
+            sa.Column('project_id', sa.Integer(), nullable=False),
+            sa.Column('wallet_address', sa.String(255), nullable=False),
+            sa.Column('file_name', sa.String(255), nullable=False),
+            sa.Column('file_type', sa.String(50), nullable=True),
+            sa.Column('source_type', sa.String(20), nullable=False, server_default='upload'),
+            sa.Column('cid', sa.String(255), nullable=True),
+            sa.Column('integration_ref', postgresql.JSONB(), nullable=True),
+            sa.Column('content_preview', sa.Text(), nullable=True),
+            sa.Column('file_size', sa.Integer(), nullable=True),
+            sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=True),
+            sa.ForeignKeyConstraint(['project_id'], ['projects.id'], ondelete='CASCADE'),
+            sa.PrimaryKeyConstraint('id')
+        )
+    except Exception:
+        pass  # Table already exists
+
+    try:
+        op.create_index('idx_project_files_project', 'project_files', ['project_id'])
+    except Exception:
+        pass  # Index already exists
+
+    try:
+        op.create_index('idx_project_files_wallet', 'project_files', ['wallet_address'])
+    except Exception:
+        pass  # Index already exists
+
+    # Add project_id to conversations table (idempotent)
+    try:
+        op.add_column('conversations', sa.Column('project_id', sa.Integer(), nullable=True))
+    except Exception:
+        pass  # Column already exists
+
+    try:
+        op.create_foreign_key(
+            'fk_conversations_project',
+            'conversations',
+            'projects',
+            ['project_id'],
+            ['id'],
+            ondelete='SET NULL'
+        )
+    except Exception:
+        pass  # Foreign key already exists
+
+    try:
+        op.create_index('idx_conversations_project', 'conversations', ['project_id'])
+    except Exception:
+        pass  # Index already exists
 
 
 def downgrade() -> None:
