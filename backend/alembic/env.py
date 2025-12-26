@@ -18,7 +18,9 @@ from app.models import (
     DataSyncType, ProductAddon, UserSettings, APIKey,
     Purchase, Subscription, OAuthToken, SyncLog, IntegrationConfig,
     Conversation, Message,
-    Feedback, FeedbackSummary
+    Feedback, FeedbackSummary,
+    Team, TeamMember, TeamInvitation,
+    Project, ProjectFile
 )
 
 # this is the Alembic Config object, which provides
