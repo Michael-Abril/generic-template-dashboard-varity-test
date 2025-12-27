@@ -208,20 +208,40 @@ class EncryptionService:
 
     def derive_customer_key(self, wallet_address: str) -> bytes:
         """
-        Derive a unique encryption key from customer's wallet address
-        Each business gets their own key - complete isolation
+        Derive a unique encryption key from customer's wallet address AND server secret.
+
+        SECURITY FIX (RED-001): Added server-side encryption_secret to prevent
+        attackers from deriving keys using only the public wallet address.
+
+        Key derivation now includes:
+        - Wallet address (unique per customer)
+        - Chain ID (network identifier)
+        - Server encryption_secret (only known to backend)
+
+        This ensures that even if an attacker knows a wallet address,
+        they cannot derive the encryption key without the server secret.
         """
         # Normalize wallet address
         wallet = wallet_address.lower()
         if not wallet.startswith("0x"):
             wallet = f"0x{wallet}"
 
-        # Generate salt from wallet + network for consistency
+        # Get server-side secret (MUST be set in production)
+        server_secret = settings.encryption_secret
+        if server_secret.startswith("CHANGE_ME"):
+            logger.warning(
+                "⚠️  ENCRYPTION_SECRET not set! Using default value. "
+                "Set ENCRYPTION_SECRET env var in production!"
+            )
+
+        # Generate salt from wallet + network + server secret
+        # The server secret is included to prevent public key derivation
         salt = hashlib.sha256(
-            f"varity-oauth-{wallet}-{self.chain_id}".encode()
+            f"varity-oauth-{wallet}-{self.chain_id}-{server_secret}".encode()
         ).digest()[:16]
 
         # Derive 256-bit key using PBKDF2
+        # Input includes both wallet and server secret for security
         kdf = PBKDF2HMAC(
             algorithm=hashes.SHA256(),
             length=32,
@@ -230,7 +250,8 @@ class EncryptionService:
             backend=self.backend
         )
 
-        key = kdf.derive(wallet.encode())
+        # Key derived from wallet + server secret (not just public wallet)
+        key = kdf.derive(f"{wallet}-{server_secret}".encode())
         return key
 
     def encrypt_oauth_token(
@@ -371,10 +392,13 @@ class EncryptionService:
             Dictionary with encrypted data and metadata:
             {
                 "encrypted_data": str (base64),
-                "encrypted_symmetric_key": str (base64),
                 "access_control_conditions": list,
                 "chain": str,
-                "metadata": dict
+                "chain_id": int,
+                "metadata": dict,
+                "nonce": str (base64),
+                "tag": str (base64),
+                "algorithm": str
             }
         """
         try:
@@ -401,13 +425,12 @@ class EncryptionService:
             encrypted = self.encrypt_oauth_token(customer_wallet, data)
 
             encrypted_data_base64 = encrypted["encrypted_data"]
-            encrypted_key_base64 = base64.b64encode(
-                self.derive_customer_key(customer_wallet)[:16]  # First 16 bytes for metadata
-            ).decode()
+            # SECURITY FIX (RED-003): Removed encrypted_symmetric_key from response
+            # Key material should NEVER be exposed in API responses
 
             result = {
                 "encrypted_data": encrypted_data_base64,
-                "encrypted_symmetric_key": encrypted_key_base64,
+                # REMOVED: "encrypted_symmetric_key" - security vulnerability (RED-003)
                 "access_control_conditions": access_conditions,
                 "chain": "arbitrum",
                 "chain_id": self.chain_id,

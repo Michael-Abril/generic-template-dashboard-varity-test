@@ -147,6 +147,21 @@ class Settings(BaseSettings):
     # Production Security Settings
     environment: str = Field("development", env="ENVIRONMENT")
 
+    # SECURITY: OAuth state signing secret (RED-002 fix)
+    # MUST be set to a secure random value in production
+    oauth_state_secret: str = Field(
+        "CHANGE_ME_IN_PRODUCTION_use_openssl_rand_hex_32",
+        env="OAUTH_STATE_SECRET"
+    )
+
+    # SECURITY: Server-side encryption secret (RED-001 fix)
+    # Added to key derivation to prevent public wallet address attacks
+    # MUST be set to a secure random value in production
+    encryption_secret: str = Field(
+        "CHANGE_ME_IN_PRODUCTION_use_openssl_rand_hex_32",
+        env="ENCRYPTION_SECRET"
+    )
+
     # Rate Limiting (Production)
     rate_limit_per_minute: int = Field(60, env="RATE_LIMIT_PER_MINUTE")
     rate_limit_per_hour: int = Field(1000, env="RATE_LIMIT_PER_HOUR")

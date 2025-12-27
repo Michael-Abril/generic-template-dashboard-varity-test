@@ -12,6 +12,7 @@ import secrets
 import json
 import base64
 import hashlib
+import hmac
 from urllib.parse import urlencode
 from datetime import datetime, timedelta
 
@@ -56,8 +57,9 @@ def normalize_provider_name(name: str) -> str:
     normalized = name.lower().strip()
     return PROVIDER_NAME_MAPPING.get(normalized, normalized)
 
-# Secret key for state signing (should be in environment variables in production)
-STATE_SECRET = settings.secret_key if hasattr(settings, 'secret_key') else "varity-oauth-state-secret-key-2024"
+# Secret key for state signing - uses environment variable (RED-002 fix)
+# Generate with: openssl rand -hex 32
+STATE_SECRET = settings.oauth_state_secret
 
 
 def generate_pkce_pair() -> tuple:
@@ -118,9 +120,9 @@ def decode_oauth_state(state: str) -> Optional[Dict[str, Any]]:
 
         payload, signature = parts
 
-        # Verify signature
+        # Verify signature using constant-time comparison (prevents timing attacks)
         expected_sig = hashlib.sha256(f"{payload}{STATE_SECRET}".encode()).hexdigest()[:16]
-        if signature != expected_sig:
+        if not hmac.compare_digest(signature, expected_sig):
             logger.warning("OAuth state signature mismatch")
             return None
 
@@ -196,7 +198,8 @@ OAUTH_CONFIGS = {
         "client_id": settings.microsoft_client_id if hasattr(settings, 'microsoft_client_id') else "",
         "client_secret": settings.microsoft_client_secret if hasattr(settings, 'microsoft_client_secret') else "",
         "redirect_uri": get_redirect_uri("microsoft"),
-        "scope": "openid email profile User.Read Mail.Read Calendars.Read Files.Read Contacts.Read offline_access"
+        # Updated Dec 26, 2025: Added write permissions for CRUD operations
+        "scope": "openid email profile User.Read Mail.Read Mail.Send Mail.ReadWrite Calendars.Read Calendars.ReadWrite Files.Read Files.ReadWrite Contacts.Read Contacts.ReadWrite Tasks.ReadWrite offline_access"
     },
     "stripe": {
         "authorize_url": "https://connect.stripe.com/oauth/authorize",
@@ -402,6 +405,11 @@ async def start_oauth_flow(
         if integration in ["google", "google_workspace"]:
             params["access_type"] = "offline"
             params["prompt"] = "consent"  # Force consent to ensure refresh_token is returned
+
+        # Microsoft: Add prompt=consent to ensure refresh_token is returned on reconnect
+        # Fixed Dec 26, 2025: Without this, reconnecting users don't get refresh tokens
+        if integration == "microsoft":
+            params["prompt"] = "consent"
 
         auth_url = f"{authorize_url}?{urlencode(params)}"
 

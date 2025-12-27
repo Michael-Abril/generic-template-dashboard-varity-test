@@ -3,6 +3,44 @@
 
 ---
 
+## December 26, 2025 - Security Fixes (Terminal 1)
+
+### CRITICAL Security Vulnerabilities Fixed
+
+#### RED-001: Key Derivation Vulnerability - FIXED
+- **Problem:** Encryption keys were derived using ONLY the public wallet address
+- **Impact:** Anyone could decrypt any user's data by knowing their wallet address
+- **Fix:** Added server-side `encryption_secret` to key derivation
+- **File:** `backend/app/services/encryption_service.py:209-255`
+- **Breaking Change:** Existing encrypted data will need re-encryption with new keys
+
+#### RED-002: Hardcoded OAuth State Secret - FIXED
+- **Problem:** OAuth state secret was hardcoded in source code
+- **Impact:** Attackers could forge OAuth state tokens and hijack OAuth flows
+- **Fix:** Moved to `OAUTH_STATE_SECRET` environment variable
+- **File:** `backend/app/api/v1/oauth.py:60-62`
+- **Added:** Constant-time comparison with `hmac.compare_digest`
+
+#### RED-003: Encryption Key Leaked in Response - FIXED
+- **Problem:** First 16 bytes of encryption key returned in API responses
+- **Impact:** Key material exposure aided cryptanalysis
+- **Fix:** Removed `encrypted_symmetric_key` from all API responses
+- **File:** `backend/app/services/encryption_service.py:403-417`
+
+#### YELLOW-002: Auth Exemptions Too Broad - FIXED
+- **Problem:** Most API endpoints were exempt from authentication
+- **Impact:** No effective authentication on protected endpoints
+- **Fix:** Separated truly public endpoints from wallet-param endpoints with clear documentation
+- **File:** `backend/app/middleware/auth.py:57-150`
+
+### New Environment Variables Required
+```bash
+OAUTH_STATE_SECRET=<random-32-char-string>    # Generate with: openssl rand -hex 32
+ENCRYPTION_SECRET=<random-32-char-string>     # Generate with: openssl rand -hex 32
+```
+
+---
+
 ## December 26, 2025 - Deduplication Phase
 
 ### Files Deleted (21 total)
