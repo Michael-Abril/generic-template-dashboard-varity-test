@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
 from app.core.database import get_db
 from app.models.purchase import OAuthToken
+from app.api.v1.integrations import refresh_oauth_token
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -21,7 +22,13 @@ GRAPH_API_BASE = "https://graph.microsoft.com/v1.0"
 
 
 async def get_access_token_from_db(wallet_address: str, db: AsyncSession) -> Optional[str]:
-    """Get OAuth access token for Microsoft 365"""
+    """
+    Get OAuth access token for Microsoft 365.
+
+    Checks if the token is expired and attempts to refresh it if necessary.
+    Returns the (possibly refreshed) access token, or None if not found.
+    Raises HTTPException if token is expired and refresh fails.
+    """
     result = await db.execute(
         select(OAuthToken).where(
             and_(
@@ -31,7 +38,26 @@ async def get_access_token_from_db(wallet_address: str, db: AsyncSession) -> Opt
         )
     )
     token = result.scalar_one_or_none()
-    return token.access_token if token else None
+
+    if not token:
+        return None
+
+    # Check if token is expired and attempt refresh
+    if token.expires_at and token.expires_at < datetime.utcnow():
+        logger.info(f"Microsoft token for {wallet_address[:10]}... is expired, attempting refresh...")
+
+        refresh_success = await refresh_oauth_token(token, "microsoft", db)
+
+        if not refresh_success:
+            logger.warning(f"Microsoft token refresh failed for {wallet_address[:10]}...")
+            raise HTTPException(
+                status_code=401,
+                detail="Microsoft 365 token has expired and refresh failed. Please reconnect the integration."
+            )
+
+        logger.info(f"Microsoft token refreshed successfully for {wallet_address[:10]}...")
+
+    return token.access_token
 
 
 # ============================================================================
