@@ -32,7 +32,6 @@ interface Customer {
 interface CustomersListProps {
   walletAddress: string;
   customers?: Customer[];
-  onRefresh?: () => void;
 }
 
 // Helper function to normalize customer data from QuickBooks API format
@@ -56,7 +55,7 @@ function normalizeCustomer(cust: Customer): {
   };
 }
 
-export default function CustomersList({ walletAddress, customers: rawCustomers = [], onRefresh }: CustomersListProps) {
+export default function CustomersList({ walletAddress, customers: rawCustomers = [] }: CustomersListProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [showCustomerForm, setShowCustomerForm] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState<ReturnType<typeof normalizeCustomer> | null>(null);
@@ -89,7 +88,7 @@ export default function CustomersList({ walletAddress, customers: rawCustomers =
       const result = await response.json();
       if (result.success) {
         alert('Customer deleted successfully');
-        onRefresh?.();
+        window.location.reload();
       } else {
         alert('Failed to delete customer: ' + (result.detail || 'Unknown error'));
       }
@@ -258,7 +257,7 @@ export default function CustomersList({ walletAddress, customers: rawCustomers =
               if (result.success) {
                 setShowCustomerForm(false);
                 setSelectedCustomer(null);
-                onRefresh?.();
+                window.location.reload();
               } else {
                 alert('Failed to save customer: ' + (result.detail || 'Unknown error'));
               }

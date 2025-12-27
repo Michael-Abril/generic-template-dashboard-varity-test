@@ -1,12 +1,32 @@
 # CLAUDE.md - Varity Generic Dashboard Template
 
-**Last Updated:** December 23, 2025
+**Last Updated:** December 26, 2025
 **Status:** LIVE at https://app.varity.so
 **Build Status:** Passing (Frontend: Vercel | Backend: Railway)
 
 ---
 
 ## CRITICAL STATUS ASSESSMENT
+
+### Infrastructure Status
+
+| Component | Status | Notes |
+|-----------|--------|-------|
+| **Frontend (Vercel)** | ✅ WORKING | Live at https://app.varity.so |
+| **Backend (Railway)** | ✅ WORKING | Live at https://generic-template-dashboard-production.up.railway.app |
+| **Pinata Gateway** | ✅ FIXED | Using dedicated gateway `varity.mypinata.cloud` (no rate limits) |
+| **Qdrant (RAG)** | ⚠️ PARTIAL | Deployed, but not all data being indexed |
+
+### Data Pipeline Status (CRITICAL)
+
+| Component | Status | Issue |
+|-----------|--------|-------|
+| **Pinata Storage** | ✅ WORKING | Dedicated gateway deployed Dec 26, 2025 |
+| **RAG Indexing** | ⚠️ NOT FULLY WORKING | Data not consistently going to Qdrant on sync |
+| **Live API Calls** | ⚠️ PARTIAL | Not all integrations have live endpoints |
+| **Hybrid Data Model** | ⚠️ DOCUMENTED | Architecture defined but not fully implemented |
+
+**See:** `src/components/integrations/README.md` for full Hybrid Data Model documentation
 
 ### What Actually Works vs. What's Documented
 
@@ -16,12 +36,13 @@
 | **Backend Deployment** | ✅ | ✅ WORKING | Live on Railway |
 | **OAuth Flow (QuickBooks)** | ✅ | ⚠️ PARTIAL | Flow works, data sync returns 403 (dev mode) |
 | **OAuth Flow (Google)** | ✅ | ✅ WORKING | Tested and functional |
-| **OAuth Flow (Microsoft)** | ❓ | ❓ UNTESTED | Credentials set, needs testing |
-| **OAuth Flow (Slack)** | ❓ | ❓ UNTESTED | Credentials set, needs testing |
-| **OAuth Flow (Salesforce)** | ❓ | ❓ UNTESTED | Credentials set, needs testing |
-| **OAuth Flow (HubSpot)** | ❓ | ❓ UNTESTED | Credentials set, needs testing |
-| **Data Sync (Google)** | ✅ | ✅ WORKING | Gmail, Calendar, Drive, Contacts sync |
-| **AI Assistant** | ✅ | ✅ WORKING | Chat, RAG, modes all functional |
+| **OAuth Flow (Microsoft)** | ✅ | ❌ NOT WORKING | Needs investigation |
+| **OAuth Flow (Slack)** | ✅ | ✅ WORKING | Fixed Dec 26 - requires groups:read,groups:history scopes |
+| **OAuth Flow (Salesforce)** | ✅ | ❓ TESTING | User testing with dev account |
+| **OAuth Flow (HubSpot)** | ✅ | ❓ TESTING | User testing with free account |
+| **Data Sync (Google)** | ✅ | ⚠️ PARTIAL | Syncs but RAG indexing incomplete |
+| **Data Sync (Slack)** | ✅ | ⚠️ PARTIAL | Channels/messages via live API, files to RAG |
+| **AI Assistant** | ✅ | ✅ WORKING | Chat works, RAG limited by indexing issues |
 | **Onboarding Flow** | ✅ | ✅ WORKING | 6-step wizard complete |
 | **Dashboard KPIs** | ✅ | ✅ WORKING | Clean redesigned UI with AI insights |
 | **Marketplace** | ✅ | ✅ WORKING | OAuth-only (USDC purchases post-MVP) |
@@ -78,14 +99,30 @@
 
 ## 6 PRIORITY INTEGRATIONS STATUS
 
-| # | Integration | Credentials | OAuth Flow | Data Sync | Blocking Issue |
-|---|-------------|:-----------:|:----------:|:---------:|----------------|
-| 1 | **QuickBooks** | ✅ | ✅ Works | ❌ 403 | App in Dev Mode |
-| 2 | **Google Workspace** | ✅ | ✅ Works | ✅ Works | None |
-| 3 | **Microsoft 365** | ✅ | ❓ Test | ❓ Test | Needs testing |
-| 4 | **Slack** | ✅ | ❓ Test | ❓ Test | Needs testing |
-| 5 | **Salesforce** | ✅ | ❓ Test | ❓ Test | Needs testing |
-| 6 | **HubSpot** | ✅ | ❓ Test | ❓ Test | Needs testing |
+**IMPORTANT:** No integration is fully working yet. All require completion of:
+1. RAG Storage (data syncing to Pinata and indexing in Qdrant)
+2. Live API endpoints for appropriate data types
+3. Frontend UI displaying all data correctly
+
+| # | Integration | OAuth | Page Loads | RAG Sync | Live API | Status |
+|---|-------------|:-----:|:----------:|:--------:|:--------:|--------|
+| 1 | **QuickBooks** | ✅ | ⚠️ Partial | ❌ | ❌ | Needs data pipeline |
+| 2 | **Google Workspace** | ✅ | ⚠️ Partial | ⚠️ Partial | ⚠️ Partial | Needs completion |
+| 3 | **Microsoft 365** | ❌ | ❌ | ❌ | ⚠️ Partial | OAuth broken |
+| 4 | **Slack** | ✅ | ⚠️ Partial | ⚠️ Files only | ✅ Ch/Msg/Users | Needs RAG for files |
+| 5 | **Salesforce** | ❓ | ❓ | ❌ | ❌ | Testing |
+| 6 | **HubSpot** | ❓ | ❓ | ❌ | ❌ | Testing |
+
+### Hybrid Data Model (See `src/components/integrations/README.md`)
+
+| Integration | RAG Storage (Pinata → Qdrant) | Live API Calls |
+|-------------|------------------------------|----------------|
+| **Google Workspace** | Drive files, Contacts | Gmail, Calendar |
+| **Microsoft 365** | OneDrive files, Contacts | Mail, Calendar |
+| **Slack** | Files | Channels, Messages, Users |
+| **QuickBooks** | Invoices, Expenses, Customers, Vendors, Payments | TBD |
+| **Salesforce** | Contacts, Opportunities, Accounts, Leads, Tasks | TBD |
+| **HubSpot** | Contacts, Deals, Companies, Emails, Tickets | TBD |
 
 ### Production Redirect URIs (Must be registered)
 
@@ -288,6 +325,22 @@ This is the most complete integration and serves as the reference for others:
 - **Settings Improvements**: Data Import → "Coming Soon", decentralized storage info card
 - **Duplicate Files Deleted**: Removed 9 duplicate component files
 - **Text Visibility Fixes**: Added text-gray-900 to dropdowns across Analytics, Marketplace, Integration Tools
+
+### Recent Fixes (Dec 26, 2025)
+
+- **Pinata Gateway Fix (CRITICAL)**: Switched from public gateway to dedicated gateway `varity.mypinata.cloud`
+  - Public gateway had rate limits causing 429 errors
+  - Dedicated gateway has NO rate limits for retrieval
+  - Added `PINATA_GATEWAY_URL` env var support in `config.py`
+  - Added retry logic with exponential backoff in `filecoin_service.py`
+
+- **Slack OAuth Fix**: Fixed `'OAuthToken' object has no attribute 'encrypted_token'` error
+  - Changed all Slack endpoints to use `oauth_token.access_token` property
+  - Required Slack App scopes: `channels:read`, `channels:history`, `groups:read`, `groups:history`, `users:read`, `files:read`, `chat:write`
+
+- **Slack Live API**: Implemented live API endpoints for channels, messages, users
+  - Channels and messages NOT stored in RAG (fetched live)
+  - Only files go to RAG storage
 
 ---
 

@@ -1,6 +1,6 @@
 # CLAUDE.md - Backend (FastAPI)
 
-**Last Updated:** December 23, 2025
+**Last Updated:** December 26, 2025
 **Framework:** FastAPI + SQLAlchemy + Pydantic
 **Python Version:** 3.8+
 **Production:** https://generic-template-dashboard-production.up.railway.app (Railway)
@@ -9,26 +9,45 @@
 
 ## CRITICAL STATUS
 
-### What Works
+### Recent Fixes (December 26, 2025)
 
-| Feature | Status | Notes |
-|---------|--------|-------|
+| Fix | Files Changed | Status |
+|-----|---------------|--------|
+| **Pinata Gateway** | `core/config.py`, `services/filecoin_service.py` | ✅ DEPLOYED |
+| **Slack OAuth** | `api/v1/integrations.py` | ✅ DEPLOYED |
+
+**Pinata Gateway Fix:**
+- Switched from public gateway (`gateway.pinata.cloud`) to dedicated gateway
+- Dedicated gateway has NO rate limits for retrieval
+- Added `PINATA_GATEWAY_URL` env var support
+- Added retry logic with exponential backoff
+- Railway env var: `PINATA_GATEWAY_URL=https://varity.mypinata.cloud`
+
+**Slack OAuth Fix:**
+- Fixed `'OAuthToken' object has no attribute 'encrypted_token'`
+- Use `oauth_token.access_token` property (auto-decrypts via model)
+- Required scopes: `channels:read`, `channels:history`, `groups:read`, `groups:history`, `users:read`, `files:read`, `chat:write`
+
+### Infrastructure Status
+
+| Component | Status | Notes |
+|-----------|--------|-------|
 | **Health Check** | ✅ Working | `/health` returns healthy |
-| **OAuth Flow** | ✅ Working | All 6 providers configured |
-| **Google Data Sync** | ✅ Working | Gmail, Calendar, Drive, Contacts |
+| **Pinata Storage** | ✅ Working | Dedicated gateway, no rate limits |
+| **Qdrant (RAG)** | ⚠️ Partial | Not all data being indexed |
 | **AI Chat** | ✅ Working | Together.ai integration |
 | **Conversations** | ✅ Working | Full CRUD operations |
-| **Filecoin Storage** | ✅ Working | Pinata integration |
 
-### What's Blocked
+### Integration Status (NONE FULLY WORKING)
 
-| Feature | Status | Issue |
-|---------|--------|-------|
-| **QuickBooks Sync** | ❌ 403 | App in Development Mode |
-| **Microsoft Sync** | ❓ Untested | OAuth credentials set |
-| **Slack Sync** | ❓ Untested | OAuth credentials set |
-| **Salesforce Sync** | ❓ Untested | OAuth credentials set |
-| **HubSpot Sync** | ❓ Untested | OAuth credentials set |
+| Integration | OAuth | Data Sync | RAG Index | Live API | Issue |
+|-------------|:-----:|:---------:|:---------:|:--------:|-------|
+| **QuickBooks** | ✅ | ⚠️ Partial | ❌ | ❌ | Needs data pipeline |
+| **Google** | ✅ | ⚠️ Partial | ⚠️ Partial | ⚠️ Partial | Needs completion |
+| **Microsoft** | ❌ | ❌ | ❌ | ⚠️ Partial | OAuth broken |
+| **Slack** | ✅ | ⚠️ Files only | ⚠️ Files only | ✅ | Working |
+| **Salesforce** | ❓ | ❓ | ❌ | ❌ | Testing |
+| **HubSpot** | ❓ | ❓ | ❌ | ❌ | Testing |
 
 ---
 

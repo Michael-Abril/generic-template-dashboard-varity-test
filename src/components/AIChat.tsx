@@ -1298,8 +1298,8 @@ export function AIChat() {
 
       {/* Main Chat Area */}
       <div className="flex-1 flex flex-col">
-        {/* Header - Minimal Design */}
-        <div className="bg-gradient-to-r from-slate-800 to-slate-900 px-4 py-3">
+        {/* Header - Brand Colors */}
+        <div className="bg-gradient-to-r from-blue-600 to-purple-600 px-4 py-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <button
@@ -1850,20 +1850,20 @@ export function AIChat() {
                     }`}
                   >
                     {msg.role === 'assistant' && (
-                      <div className="flex items-center gap-1.5 mb-2">
-                        <div className="w-5 h-5 bg-gradient-to-br from-blue-500 to-purple-500 rounded-md flex items-center justify-center">
-                          <Bot className="w-3 h-3 text-white" />
+                      <div className="flex items-center gap-2 mb-2">
+                        <div className="w-6 h-6 bg-gradient-to-br from-blue-500 to-purple-500 rounded-md flex items-center justify-center">
+                          <Bot className="w-3.5 h-3.5 text-white" />
                         </div>
-                        <span className="text-xs font-medium text-gray-600">Assistant</span>
+                        <span className="text-sm font-medium text-gray-700">Assistant</span>
                         {msg.context_used && (
-                          <span className="text-[10px] bg-green-100 text-green-600 px-1.5 py-0.5 rounded flex items-center gap-0.5">
-                            <Database className="w-2.5 h-2.5" />
-                            Data
+                          <span className="text-xs bg-green-100 text-green-600 px-2 py-0.5 rounded flex items-center gap-1">
+                            <Database className="w-3 h-3" />
+                            Using data
                           </span>
                         )}
                       </div>
                     )}
-                    <div className={`prose prose-sm max-w-none leading-relaxed ${msg.role === 'user' ? 'prose-invert' : ''}`}>
+                    <div className={`prose prose-base max-w-none leading-relaxed ${msg.role === 'user' ? 'prose-invert' : ''}`}>
                       <ReactMarkdown
                         components={{
                           h1: ({ children }) => <h1 className="text-xl font-bold mt-4 mb-2 first:mt-0">{children}</h1>,
@@ -1878,9 +1878,9 @@ export function AIChat() {
                           code: ({ className, children }) => {
                             const isInline = !className;
                             return isInline ? (
-                              <code className={`px-1 py-0.5 rounded text-xs font-mono ${msg.role === 'user' ? 'bg-white/15 text-white' : 'bg-gray-200/60 text-gray-700'}`}>{children}</code>
+                              <code className={`px-1.5 py-0.5 rounded text-sm font-mono ${msg.role === 'user' ? 'bg-white/15 text-white' : 'bg-gray-200/60 text-gray-700'}`}>{children}</code>
                             ) : (
-                              <code className="block bg-gray-100 text-gray-700 p-2.5 rounded-lg text-xs font-mono overflow-x-auto my-2">{children}</code>
+                              <code className="block bg-gray-100 text-gray-700 p-3 rounded-lg text-sm font-mono overflow-x-auto my-2">{children}</code>
                             );
                           },
                           pre: ({ children, className }) => (
@@ -1902,11 +1902,11 @@ export function AIChat() {
                       </ReactMarkdown>
                     </div>
                     {msg.sources && msg.sources.length > 0 && (
-                      <div className="mt-2 pt-2 border-t border-gray-100">
-                        <div className="flex flex-wrap items-center gap-1">
-                          <span className="text-[10px] text-gray-400">Sources:</span>
+                      <div className="mt-3 pt-3 border-t border-gray-100">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="text-xs text-gray-500">Sources:</span>
                           {msg.sources.map((source, i) => (
-                            <span key={i} className="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded">
+                            <span key={i} className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded">
                               {source}
                             </span>
                           ))}
@@ -2176,7 +2176,7 @@ export function AIChat() {
                 <ChevronDown className="w-3 h-3 opacity-50" />
               </button>
               {/* Tooltip */}
-              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1 bg-gray-900 text-white text-[10px] rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-20">
+              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-20">
                 {aiMode === 'standard' && 'Standard Mode'}
                 {aiMode === 'deep_research' && 'Deep Research'}
                 {aiMode === 'analyze' && 'Deep Analysis'}
@@ -2184,123 +2184,135 @@ export function AIChat() {
               </div>
 
               {showModeSelector && (
-                <div className="absolute bottom-full left-0 mb-2 w-44 bg-white border border-gray-200 rounded-lg shadow-xl z-30">
-                  <div className="p-1">
+                <div className="absolute bottom-full left-0 mb-2 w-56 bg-white border border-gray-200 rounded-lg shadow-xl z-30">
+                  <div className="p-1.5">
                     <button
                       onClick={() => { setAiMode('standard'); setShowModeSelector(false); }}
-                      className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-md text-left transition-colors ${
+                      className={`w-full flex items-start gap-2.5 px-3 py-2.5 rounded-md text-left transition-colors ${
                         aiMode === 'standard' ? 'bg-gray-100' : 'hover:bg-gray-50'
                       }`}
                     >
-                      <Sparkles className="w-4 h-4 text-gray-500" />
-                      <span className="text-xs font-medium text-gray-700">Standard</span>
-                      {aiMode === 'standard' && <Check className="w-3 h-3 text-gray-500 ml-auto" />}
+                      <Sparkles className="w-4 h-4 text-gray-500 mt-0.5" />
+                      <div className="flex-1">
+                        <span className="text-sm font-medium text-gray-700">Standard</span>
+                        <p className="text-xs text-gray-400">Quick answers from your data</p>
+                      </div>
+                      {aiMode === 'standard' && <Check className="w-4 h-4 text-gray-500 mt-0.5" />}
                     </button>
                     <button
                       onClick={() => { setAiMode('deep_research'); setShowModeSelector(false); }}
-                      className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-md text-left transition-colors ${
+                      className={`w-full flex items-start gap-2.5 px-3 py-2.5 rounded-md text-left transition-colors ${
                         aiMode === 'deep_research' ? 'bg-purple-50' : 'hover:bg-gray-50'
                       }`}
                     >
-                      <Search className="w-4 h-4 text-purple-500" />
-                      <span className="text-xs font-medium text-gray-700">Deep Research</span>
-                      {aiMode === 'deep_research' && <Check className="w-3 h-3 text-purple-500 ml-auto" />}
+                      <Search className="w-4 h-4 text-purple-500 mt-0.5" />
+                      <div className="flex-1">
+                        <span className="text-sm font-medium text-gray-700">Deep Research</span>
+                        <p className="text-xs text-gray-400">Your data + web search</p>
+                      </div>
+                      {aiMode === 'deep_research' && <Check className="w-4 h-4 text-purple-500 mt-0.5" />}
                     </button>
                     <button
                       onClick={() => { setAiMode('analyze'); setShowModeSelector(false); }}
-                      className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-md text-left transition-colors ${
+                      className={`w-full flex items-start gap-2.5 px-3 py-2.5 rounded-md text-left transition-colors ${
                         aiMode === 'analyze' ? 'bg-blue-50' : 'hover:bg-gray-50'
                       }`}
                     >
-                      <BarChart3 className="w-4 h-4 text-blue-500" />
-                      <span className="text-xs font-medium text-gray-700">Deep Analysis</span>
-                      {aiMode === 'analyze' && <Check className="w-3 h-3 text-blue-500 ml-auto" />}
+                      <BarChart3 className="w-4 h-4 text-blue-500 mt-0.5" />
+                      <div className="flex-1">
+                        <span className="text-sm font-medium text-gray-700">Deep Analysis</span>
+                        <p className="text-xs text-gray-400">Create reports & summaries</p>
+                      </div>
+                      {aiMode === 'analyze' && <Check className="w-4 h-4 text-blue-500 mt-0.5" />}
                     </button>
                     <button
                       onClick={() => { setAiMode('document'); setShowModeSelector(false); setShowDocumentUpload(true); }}
-                      className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-md text-left transition-colors ${
+                      className={`w-full flex items-start gap-2.5 px-3 py-2.5 rounded-md text-left transition-colors ${
                         aiMode === 'document' ? 'bg-green-50' : 'hover:bg-gray-50'
                       }`}
                     >
-                      <FileUp className="w-4 h-4 text-green-500" />
-                      <span className="text-xs font-medium text-gray-700">Document</span>
-                      {aiMode === 'document' && <Check className="w-3 h-3 text-green-500 ml-auto" />}
+                      <FileUp className="w-4 h-4 text-green-500 mt-0.5" />
+                      <div className="flex-1">
+                        <span className="text-sm font-medium text-gray-700">Document</span>
+                        <p className="text-xs text-gray-400">Upload & analyze files</p>
+                      </div>
+                      {aiMode === 'document' && <Check className="w-4 h-4 text-green-500 mt-0.5" />}
                     </button>
                   </div>
                 </div>
               )}
             </div>
 
-            {/* Mode-specific options - Compact */}
+            {/* Mode-specific options */}
             {aiMode === 'deep_research' && (
-              <label className="flex items-center gap-1.5 text-[10px] text-gray-500 bg-gray-50 border border-gray-200 px-2 py-1 rounded-md cursor-pointer hover:bg-gray-100 transition-colors">
+              <label className="flex items-center gap-1.5 text-xs text-gray-500 bg-gray-50 border border-gray-200 px-2.5 py-1.5 rounded-md cursor-pointer hover:bg-gray-100 transition-colors">
                 <input
                   type="checkbox"
                   checked={enableWebSearch}
                   onChange={(e) => setEnableWebSearch(e.target.checked)}
-                  className="w-3 h-3 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                  className="w-3.5 h-3.5 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
                 />
-                <Globe className="w-3 h-3" />
-                <span>Web</span>
+                <Globe className="w-3.5 h-3.5" />
+                <span>Web Search</span>
               </label>
             )}
 
             {aiMode === 'document' && !uploadedDocument && (
               <button
                 onClick={() => setShowDocumentUpload(true)}
-                className="flex items-center gap-1.5 text-[10px] text-green-600 bg-green-50 border border-green-200 px-2 py-1 rounded-md hover:bg-green-100 transition-colors"
+                className="flex items-center gap-1.5 text-xs text-green-600 bg-green-50 border border-green-200 px-2.5 py-1.5 rounded-md hover:bg-green-100 transition-colors"
               >
-                <Upload className="w-3 h-3" />
+                <Upload className="w-3.5 h-3.5" />
                 Upload
               </button>
             )}
 
-            {/* Integration Filter - Compact */}
+            {/* Integration Filter */}
             {aiMode !== 'document' && installedTools.length > 0 && (
               <div className="relative group">
                 <button
                   onClick={() => setShowIntegrationFilter(!showIntegrationFilter)}
-                  className={`flex items-center gap-1 text-[10px] px-2 py-1 rounded-md transition-colors border ${
+                  className={`flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-md transition-colors border ${
                     selectedIntegration !== 'all'
                       ? 'bg-orange-50 text-orange-600 border-orange-200 hover:bg-orange-100'
                       : 'bg-gray-50 text-gray-500 border-gray-200 hover:bg-gray-100'
                   }`}
                 >
-                  <Filter className="w-3 h-3" />
+                  <Filter className="w-3.5 h-3.5" />
                   {selectedIntegration !== 'all' && <span className="capitalize">{selectedIntegration}</span>}
-                  <ChevronDown className="w-2.5 h-2.5 opacity-50" />
+                  <ChevronDown className="w-3 h-3 opacity-50" />
                 </button>
                 {/* Tooltip */}
-                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1 bg-gray-900 text-white text-[10px] rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-20">
+                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-20">
                   {selectedIntegration === 'all' ? 'All Integrations' : `${selectedIntegration} only`}
                 </div>
 
                 {showIntegrationFilter && (
-                  <div className="absolute bottom-full left-0 mb-2 w-40 bg-white border border-gray-200 rounded-lg shadow-xl z-30">
-                    <div className="p-1">
+                  <div className="absolute bottom-full left-0 mb-2 w-44 bg-white border border-gray-200 rounded-lg shadow-xl z-30">
+                    <div className="p-1.5">
                       <button
                         onClick={() => { setSelectedIntegration('all'); setShowIntegrationFilter(false); }}
-                        className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md text-left transition-colors ${
+                        className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-md text-left transition-colors ${
                           selectedIntegration === 'all' ? 'bg-gray-100' : 'hover:bg-gray-50'
                         }`}
                       >
-                        <Database className="w-3.5 h-3.5 text-gray-400" />
-                        <span className="text-xs text-gray-700">All Data</span>
-                        {selectedIntegration === 'all' && <Check className="w-3 h-3 text-gray-500 ml-auto" />}
+                        <Database className="w-4 h-4 text-gray-400" />
+                        <span className="text-sm text-gray-700">All Data</span>
+                        {selectedIntegration === 'all' && <Check className="w-3.5 h-3.5 text-gray-500 ml-auto" />}
                       </button>
                       {installedTools.map((tool) => (
                         <button
                           key={tool}
                           onClick={() => { setSelectedIntegration(tool); setShowIntegrationFilter(false); }}
-                          className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md text-left transition-colors ${
+                          className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-md text-left transition-colors ${
                             selectedIntegration === tool ? 'bg-orange-50' : 'hover:bg-gray-50'
                           }`}
                         >
-                          <div className="w-3.5 h-3.5 rounded bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center">
-                            <span className="text-[7px] font-bold text-white">{tool.charAt(0).toUpperCase()}</span>
+                          <div className="w-4 h-4 rounded bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center">
+                            <span className="text-[8px] font-bold text-white">{tool.charAt(0).toUpperCase()}</span>
                           </div>
-                          <span className="text-xs text-gray-700 capitalize">{tool}</span>
-                          {selectedIntegration === tool && <Check className="w-3 h-3 text-orange-500 ml-auto" />}
+                          <span className="text-sm text-gray-700 capitalize">{tool}</span>
+                          {selectedIntegration === tool && <Check className="w-3.5 h-3.5 text-orange-500 ml-auto" />}
                         </button>
                       ))}
                     </div>
@@ -2309,29 +2321,29 @@ export function AIChat() {
               </div>
             )}
 
-            {/* Context Picker Toggle - Compact Icon */}
+            {/* Context Picker Toggle */}
             {aiMode !== 'document' && ragStatus.dataAvailable && (
               <div className="relative group">
                 <button
                   onClick={() => setShowContextPicker(!showContextPicker)}
-                  className={`flex items-center gap-1 text-[10px] px-2 py-1 rounded-md transition-colors border ${
+                  className={`flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-md transition-colors border ${
                     selectedContextIds.length > 0
                       ? 'bg-purple-50 text-purple-600 border-purple-200 hover:bg-purple-100'
                       : 'bg-gray-50 text-gray-500 border-gray-200 hover:bg-gray-100'
                   }`}
                 >
-                  <Database className="w-3 h-3" />
+                  <Database className="w-3.5 h-3.5" />
                   {selectedContextIds.length > 0 && <span>{selectedContextIds.length}</span>}
                 </button>
                 {/* Tooltip */}
-                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1 bg-gray-900 text-white text-[10px] rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-20">
+                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-20">
                   {selectedContextIds.length > 0 ? `${selectedContextIds.length} items selected` : 'Select Context'}
                 </div>
               </div>
             )}
 
-            {/* Mode description - Subtle */}
-            <span className="text-[10px] text-gray-400 hidden sm:inline ml-auto">
+            {/* Mode description */}
+            <span className="text-xs text-gray-400 hidden sm:inline ml-auto">
               {aiMode === 'standard' && (
                 selectedContextIds.length > 0
                   ? `Using ${selectedContextIds.length} selected item${selectedContextIds.length > 1 ? 's' : ''}`
