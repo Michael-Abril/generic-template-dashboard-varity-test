@@ -164,7 +164,8 @@ function WalletSyncProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     // Get the primary wallet (first embedded wallet or connected wallet)
-    const primaryWallet = wallets[0];
+    // SAFETY: Check wallets array exists and has items before accessing
+    const primaryWallet = wallets && wallets.length > 0 ? wallets[0] : null;
 
     if (!walletsReady) {
       setSyncState({ address: null, isLoading: true, isSynced: false });
