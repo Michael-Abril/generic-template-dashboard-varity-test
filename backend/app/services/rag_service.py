@@ -75,9 +75,11 @@ class BusinessRAGService:
         # Embedding configuration - Together.ai primary, Ollama fallback
         self.together_api_key = os.getenv("TOGETHER_API_KEY", "")
         self.together_api_url = os.getenv("TOGETHER_API_URL", "https://api.together.xyz/v1")
+        # FIXED Dec 28, 2025: Changed from m2-bert-80M-8k-retrieval (deprecated)
+        # to BAAI/bge-base-en-v1.5 which is actively supported and produces 768 dims
         self.together_embedding_model = os.getenv(
             "TOGETHER_EMBEDDING_MODEL",
-            "togethercomputer/m2-bert-80M-8k-retrieval"
+            "BAAI/bge-base-en-v1.5"
         )
 
         # Ollama fallback for local development
@@ -135,33 +137,51 @@ class BusinessRAGService:
 
         # Try Together.ai first if API key is available
         if use_together:
-            try:
-                # FIX: Create fresh HTTP client for each request to avoid async context issues
-                async with httpx.AsyncClient(timeout=30.0) as client:
-                    response = await client.post(
-                        f"{self.together_api_url}/embeddings",
-                        headers={
-                            "Authorization": f"Bearer {together_api_key}",
-                            "Content-Type": "application/json"
-                        },
-                        json={
-                            "model": self.together_embedding_model,
-                            "input": text
-                        }
-                    )
-                    response.raise_for_status()
-                    result = response.json()
-                    # Together.ai returns embeddings in OpenAI-compatible format
-                    embedding = result["data"][0]["embedding"]
-                    # Validate embedding
-                    if len(embedding) != self.embedding_dimension:
-                        raise EmbeddingGenerationError(
-                            f"Invalid embedding dimension: {len(embedding)} != {self.embedding_dimension}"
+            # Retry logic for transient network errors
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    # FIX: Create fresh HTTP client for each request to avoid async context issues
+                    async with httpx.AsyncClient(timeout=30.0) as client:
+                        response = await client.post(
+                            f"{self.together_api_url}/embeddings",
+                            headers={
+                                "Authorization": f"Bearer {together_api_key}",
+                                "Content-Type": "application/json"
+                            },
+                            json={
+                                "model": self.together_embedding_model,
+                                "input": text
+                            }
                         )
-                    return embedding
-            except Exception as e:
-                last_error = e
-                logger.warning(f"Together.ai embedding failed, trying Ollama: {str(e)}")
+                        response.raise_for_status()
+                        result = response.json()
+                        # Together.ai returns embeddings in OpenAI-compatible format
+                        embedding = result["data"][0]["embedding"]
+                        # Validate embedding
+                        if len(embedding) != self.embedding_dimension:
+                            raise EmbeddingGenerationError(
+                                f"Invalid embedding dimension: {len(embedding)} != {self.embedding_dimension}"
+                            )
+                        return embedding
+                except httpx.TimeoutException as e:
+                    last_error = e
+                    if attempt < max_retries - 1:
+                        logger.warning(f"Together.ai embedding timeout (attempt {attempt + 1}/{max_retries}), retrying...")
+                        await asyncio.sleep(1 * (attempt + 1))  # Exponential backoff
+                    else:
+                        logger.error(f"Together.ai embedding timeout after {max_retries} attempts")
+                except httpx.HTTPStatusError as e:
+                    last_error = e
+                    # Log detailed error for debugging
+                    logger.error(
+                        f"Together.ai embedding HTTP error: status={e.response.status_code}, "
+                        f"model={self.together_embedding_model}, body={e.response.text[:200]}"
+                    )
+                    break  # Don't retry on HTTP errors (likely model not found or auth issue)
+                except Exception as e:
+                    last_error = e
+                    logger.warning(f"Together.ai embedding failed (attempt {attempt + 1}): {type(e).__name__}: {str(e)}")
 
         # Fallback to Ollama for local development
         try:

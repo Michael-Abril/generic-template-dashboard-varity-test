@@ -199,11 +199,32 @@ async def get_integration_data(
                     customer_wallet=normalized_wallet
                 )
 
-                # Handle both single record and list of records
+                # Handle different data formats:
+                # 1. List of records (old format)
+                # 2. Dict with "records" key (new chunked format)
+                # 3. Dict with data_type-specific key (e.g., "messages", "files", "contacts")
                 if isinstance(decrypted, list):
                     all_data.extend(decrypted)
-                else:
-                    all_data.append(decrypted)
+                elif isinstance(decrypted, dict):
+                    # Check for "records" key first (standard format)
+                    if "records" in decrypted and isinstance(decrypted["records"], list):
+                        all_data.extend(decrypted["records"])
+                    # Check for data_type-specific keys (gmail, calendar, drive, etc.)
+                    elif "messages" in decrypted and isinstance(decrypted["messages"], list):
+                        all_data.extend(decrypted["messages"])
+                    elif "files" in decrypted and isinstance(decrypted["files"], list):
+                        all_data.extend(decrypted["files"])
+                    elif "events" in decrypted and isinstance(decrypted["events"], list):
+                        all_data.extend(decrypted["events"])
+                    elif "contacts" in decrypted and isinstance(decrypted["contacts"], list):
+                        all_data.extend(decrypted["contacts"])
+                    elif "channels" in decrypted and isinstance(decrypted["channels"], list):
+                        all_data.extend(decrypted["channels"])
+                    elif "users" in decrypted and isinstance(decrypted["users"], list):
+                        all_data.extend(decrypted["users"])
+                    else:
+                        # Fallback: append the dict itself as a single record
+                        all_data.append(decrypted)
 
             except Exception as e:
                 decryption_errors += 1

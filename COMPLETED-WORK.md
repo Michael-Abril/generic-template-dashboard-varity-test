@@ -1,5 +1,112 @@
 # COMPLETED WORK - DO NOT REDO
-**Last Updated:** December 28, 2025 (RAG Context Fix)
+**Last Updated:** December 28, 2025 (Pipeline Tracer Agent - Data Pipeline Fixes)
+
+---
+
+## December 28, 2025 - Pipeline Tracer Agent: Critical Data Pipeline Fixes
+
+### Issue: RAG Embedding Generation Failing with Deprecated Model
+
+**Root Cause:** The Together.ai embedding model `togethercomputer/m2-bert-80M-8k-retrieval` has been deprecated. The API was returning connection errors because the model no longer exists.
+
+**Evidence from `/api/v1/ai/debug/pipeline`:**
+- Pinata: 141 files stored correctly (50 QuickBooks, 50 Google, 39 Microsoft, 2 Slack)
+- Qdrant: 114 documents indexed
+- Error: "Embedding generation failed for both providers: All connection attempts failed"
+
+### Fix 1: Updated Embedding Model in RAG Service
+
+**File:** `backend/app/services/rag_service.py`
+
+| Line | Before | After |
+|------|--------|-------|
+| 80-83 | `togethercomputer/m2-bert-80M-8k-retrieval` | `BAAI/bge-base-en-v1.5` |
+| 140-184 | No retry logic | Added 3 retries with exponential backoff for transient network errors |
+| 174-181 | Generic error handling | Added detailed HTTP error logging with status code and response body |
+
+**Code Change:**
+```python
+# Before (deprecated model)
+self.together_embedding_model = os.getenv(
+    "TOGETHER_EMBEDDING_MODEL",
+    "togethercomputer/m2-bert-80M-8k-retrieval"  # No longer exists!
+)
+
+# After (actively supported model)
+self.together_embedding_model = os.getenv(
+    "TOGETHER_EMBEDDING_MODEL",
+    "BAAI/bge-base-en-v1.5"  # 768 dims, actively supported
+)
+```
+
+### Fix 2: Dashboard Data Extraction from Nested "records" Key
+
+**File:** `backend/app/api/v1/dashboard.py`
+
+**Issue:** Dashboard KPIs showed "1 email, 1 event, 1 file" instead of actual counts because decrypted data was a dict with `records` key, not a flat list.
+
+**Evidence from debug endpoint:**
+```json
+"sample_data": {
+  "type": "dict",
+  "keys": ["data_type", "integration", "records", "record_count", "synced_at", "metadata"],
+  "record_count": 1
+}
+```
+
+**Fix Applied (lines 202-227):**
+```python
+# Before: Appended entire dict as single record
+if isinstance(decrypted, list):
+    all_data.extend(decrypted)
+else:
+    all_data.append(decrypted)  # Wrong!
+
+# After: Extract records from nested structure
+if isinstance(decrypted, list):
+    all_data.extend(decrypted)
+elif isinstance(decrypted, dict):
+    if "records" in decrypted and isinstance(decrypted["records"], list):
+        all_data.extend(decrypted["records"])
+    elif "messages" in decrypted:
+        all_data.extend(decrypted["messages"])
+    elif "files" in decrypted:
+        all_data.extend(decrypted["files"])
+    # ... and similar for events, contacts, channels, users
+```
+
+### Fix 3: Frontend Null Safety on Array Length Access
+
+**File:** `src/components/pages/DashboardContent.tsx`
+
+**Issue:** Frontend crashed with `Cannot read properties of undefined (reading 'length')` when API returned partial data.
+
+**Fixes Applied:**
+
+| Line | Before | After |
+|------|--------|-------|
+| 164-165 | `kpisData.kpis.length` | `!kpisData.kpis \|\| kpisData.kpis.length` |
+| 375 | `revenueTrendData.data.length` | `revenueTrendData.data && revenueTrendData.data.length` |
+| 437 | `recentActivityData.activities.length` | `recentActivityData.activities && recentActivityData.activities.length` |
+
+### Verification
+
+**Backend:**
+```bash
+python3 -m py_compile backend/app/services/rag_service.py  # OK
+python3 -m py_compile backend/app/api/v1/dashboard.py      # OK
+```
+
+**Frontend:**
+```bash
+npm run build  # All 11 routes compile successfully
+```
+
+### Expected Outcomes After Deployment
+
+1. **RAG Queries:** Should return `context_used: true` with actual business data
+2. **Dashboard KPIs:** Should show real record counts (not "1" for everything)
+3. **Frontend Stability:** No more crashes on partial API responses
 
 ---
 

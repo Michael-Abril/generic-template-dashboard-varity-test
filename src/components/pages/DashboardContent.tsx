@@ -161,7 +161,8 @@ export default function DashboardContent() {
 
   // Calculate AI insight based on KPI data
   const getAIInsight = () => {
-    if (!kpisData || !kpisData.has_data || kpisData.kpis.length === 0) return null;
+    // SAFETY: Check kpisData.kpis exists before accessing .length
+    if (!kpisData || !kpisData.has_data || !kpisData.kpis || kpisData.kpis.length === 0) return null;
 
     // Check for revenue KPI first (QuickBooks)
     const revenueKPI = kpisData.kpis.find(k => k.title.toLowerCase().includes('revenue') && k.title.toLowerCase().includes('total'));
@@ -371,7 +372,7 @@ export default function DashboardContent() {
                     ))}
                   </div>
                 </div>
-              ) : revenueTrendData && revenueTrendData.data.length > 0 ? (
+              ) : revenueTrendData && revenueTrendData.data && revenueTrendData.data.length > 0 ? (
                 <div className="h-48">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={revenueTrendData.data} margin={{ top: 5, right: 5, left: 0, bottom: 0 }}>
@@ -433,7 +434,7 @@ export default function DashboardContent() {
                   </div>
                 ))}
               </div>
-            ) : recentActivityData && recentActivityData.activities.length > 0 ? (
+            ) : recentActivityData && recentActivityData.activities && recentActivityData.activities.length > 0 ? (
               <div className="space-y-2">
                 {recentActivityData.activities.slice(0, 7).map((activity, i) => (
                   <div key={i} className="flex items-center gap-3 p-2 -mx-2 rounded-lg hover:bg-gray-50 transition-colors cursor-pointer">
