@@ -8,6 +8,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { usePrivy, useWallets } from '@privy-io/react-auth';
 import { useActiveAccount } from 'thirdweb/react';
 import axios from 'axios';
+import { logger } from '@/lib/logger';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 
@@ -111,7 +112,7 @@ export const useWalletAuth = (): UseWalletAuthReturn => {
         const signature = await (privyWallet as any).signMessage(message);
         return signature;
       } catch (error) {
-        console.error('Privy wallet signing failed:', error);
+        logger.error('Privy wallet signing failed', error);
         throw error;
       }
     }
@@ -122,7 +123,7 @@ export const useWalletAuth = (): UseWalletAuthReturn => {
         const signature = await activeAccount.signMessage({ message });
         return signature;
       } catch (error) {
-        console.error('Thirdweb wallet signing failed:', error);
+        logger.error('Thirdweb wallet signing failed', error);
         throw error;
       }
     }
@@ -173,9 +174,9 @@ export const useWalletAuth = (): UseWalletAuthReturn => {
       localStorage.setItem('wallet_session_token', session.sessionToken);
       localStorage.setItem('wallet_address', session.walletAddress);
 
-      console.log('✅ Wallet authentication successful');
+      logger.info('Wallet authentication successful');
     } catch (error: any) {
-      console.error('❌ Wallet authentication failed:', error);
+      logger.error('Wallet authentication failed', error);
       setAuthError(
         error.response?.data?.detail?.message ||
           error.response?.data?.detail ||
@@ -209,9 +210,9 @@ export const useWalletAuth = (): UseWalletAuthReturn => {
         }
       );
 
-      console.log('✅ Logged out successfully');
+      logger.debug('Logged out successfully');
     } catch (error) {
-      console.error('❌ Logout failed:', error);
+      logger.error('Logout failed', error);
     } finally {
       // Clear session regardless of API success
       setSessionToken(null);
@@ -241,9 +242,9 @@ export const useWalletAuth = (): UseWalletAuthReturn => {
       const session = response.data;
 
       // Update expiration
-      console.log('✅ Session refreshed, expires at:', new Date(session.expiresAt * 1000));
+      logger.debug('Session refreshed', { expiresAt: new Date(session.expiresAt * 1000) });
     } catch (error) {
-      console.error('❌ Session refresh failed:', error);
+      logger.error('Session refresh failed', error);
       // Session might be expired, logout
       await logout();
     }
@@ -267,7 +268,7 @@ export const useWalletAuth = (): UseWalletAuthReturn => {
 
       setSessions(response.data);
     } catch (error) {
-      console.error('❌ Failed to get sessions:', error);
+      logger.error('Failed to get sessions', error);
     }
   }, [sessionToken]);
 
@@ -285,7 +286,7 @@ export const useWalletAuth = (): UseWalletAuthReturn => {
           },
         });
 
-        console.log('✅ Session invalidated');
+        logger.debug('Session invalidated');
 
         // If we logged out our own session, clear local state
         if (targetSessionToken === sessionToken) {
@@ -295,7 +296,7 @@ export const useWalletAuth = (): UseWalletAuthReturn => {
           await getSessions();
         }
       } catch (error) {
-        console.error('❌ Failed to invalidate session:', error);
+        logger.error('Failed to invalidate session', error);
       }
     },
     [sessionToken, logout, getSessions]
@@ -314,12 +315,12 @@ export const useWalletAuth = (): UseWalletAuthReturn => {
         },
       });
 
-      console.log('✅ Logged out from all devices');
+      logger.info('Logged out from all devices');
 
       // Clear local session
       await logout();
     } catch (error) {
-      console.error('❌ Failed to logout from all devices:', error);
+      logger.error('Failed to logout from all devices', error);
     }
   }, [sessionToken, logout]);
 
@@ -357,9 +358,9 @@ export const useWalletAuth = (): UseWalletAuthReturn => {
           }
         );
 
-        console.log('✅ Wallet added successfully');
+        logger.info('Wallet added successfully');
       } catch (error) {
-        console.error('❌ Failed to add wallet:', error);
+        logger.error('Failed to add wallet', error);
         throw error;
       }
     },
@@ -369,8 +370,8 @@ export const useWalletAuth = (): UseWalletAuthReturn => {
   // Auto-login when Privy authenticates
   useEffect(() => {
     if (ready && authenticated && address && !sessionToken && !isAuthenticating) {
-      console.log('🔐 Auto-logging in with wallet:', address);
-      login().catch(console.error);
+      logger.debug('Auto-logging in with wallet', { address });
+      login().catch((e) => logger.error('Auto-login failed', e));
     }
   }, [ready, authenticated, address, sessionToken, isAuthenticating, login]);
 
@@ -379,8 +380,7 @@ export const useWalletAuth = (): UseWalletAuthReturn => {
     if (!sessionToken) return;
 
     const intervalId = setInterval(() => {
-      console.log('🔄 Auto-refreshing session...');
-      refreshSession().catch(console.error);
+      refreshSession().catch((e) => logger.error('Auto-refresh failed', e));
     }, 30 * 60 * 1000); // 30 minutes
 
     return () => clearInterval(intervalId);

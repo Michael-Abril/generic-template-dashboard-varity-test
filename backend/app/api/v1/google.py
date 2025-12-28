@@ -1,82 +1,340 @@
 """
 Google Workspace API Endpoints
 Handles Gmail, Calendar, Drive, and Contacts operations
+
+All endpoints use the OAuthToken.access_token property which auto-decrypts.
+Token refresh is handled automatically when tokens expire.
+
+Updated: December 28, 2025 (Terminal 1 - 100% Completion)
+Fixes Applied:
+- CRIT-G1: Wallet address validation on all endpoints
+- CRIT-G3: Token leakage prevention in error logs
+- HIGH-G1: Moved imports to module level (base64)
+- HIGH-G2: Email validation
+- HIGH-G3: DateTime validation for events
+- HIGH-G5: File size limits (DoS prevention)
+- HIGH-G6: MIME type validation
+- HIGH-G11: Wallet normalization
+- HIGH-G12: Safe response.json() parsing
 """
-from fastapi import APIRouter, HTTPException, Depends, Body
-from pydantic import BaseModel, Field
-from typing import List, Optional, Dict, Any
+from fastapi import APIRouter, HTTPException, Depends, Body, Query
+from pydantic import BaseModel, Field, field_validator
+from typing import List, Optional, Dict, Any, TypeVar
 import logging
 import httpx
-from datetime import datetime
+import asyncio
+import base64  # HIGH-G1: Moved to module level
+from datetime import datetime, timezone
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
 from app.core.database import get_db
+from app.core.validators import (
+    validate_wallet_address,
+    validate_email_list,
+    validate_iso_datetime,
+    validate_file_size,
+    validate_mime_type,
+    sanitize_error_message,
+    sanitize_api_error,
+    MAX_FILE_SIZE_BYTES,
+)
 from app.models.purchase import OAuthToken
 from app.services.filecoin_service import FilecoinService
 from app.services.encryption_service import EncryptionService
+from app.api.v1.integrations import refresh_oauth_token
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+# Type variable for generic return type
+T = TypeVar('T')
 
 # Initialize services
 filecoin_service = FilecoinService()
 encryption_service = EncryptionService()
 
+# Constants (extracted from hardcoded values)
+DEFAULT_HTTP_TIMEOUT = 30.0
+UPLOAD_HTTP_TIMEOUT = 60.0
+DEFAULT_MAX_RESULTS = 50
+MAX_PAGE_SIZE = 100
+
 
 # ============================================================================
-# Pydantic Models
+# Google API Error Handling
+# ============================================================================
+
+class GoogleAPIError(Exception):
+    """Custom exception for Google API errors with detailed context"""
+    def __init__(
+        self,
+        message: str,
+        status_code: int,
+        error_type: str = "api_error",
+        retry_after: Optional[int] = None
+    ):
+        self.message = message
+        self.status_code = status_code
+        self.error_type = error_type
+        self.retry_after = retry_after
+        super().__init__(message)
+
+
+async def handle_google_api_response(
+    response: httpx.Response,
+    operation: str,
+    wallet_address: str
+) -> Dict[str, Any]:
+    """
+    Handle Google API responses with proper error handling for:
+    - 401 Unauthorized: Token expired or invalidated
+    - 403 Forbidden: Permission denied or quota exceeded
+    - 429 Too Many Requests: Rate limited
+
+    Args:
+        response: The httpx response object
+        operation: Description of the operation being performed
+        wallet_address: User's wallet address for logging
+
+    Returns:
+        Parsed JSON response if successful
+
+    Raises:
+        GoogleAPIError: For handled API errors
+        HTTPException: For HTTP-level errors
+    """
+    if response.status_code == 200:
+        return response.json()
+
+    # Try to parse error details from response
+    try:
+        error_data = response.json()
+        error_message = error_data.get("error", {}).get("message", str(error_data))
+        error_code = error_data.get("error", {}).get("code", response.status_code)
+    except Exception:
+        error_message = response.text or f"HTTP {response.status_code}"
+        error_code = response.status_code
+
+    wallet_prefix = wallet_address[:10] if wallet_address else "unknown"
+
+    if response.status_code == 401:
+        logger.error(
+            f"Google API 401 Unauthorized for {operation}, wallet={wallet_prefix}...: {error_message}"
+        )
+        raise GoogleAPIError(
+            message=f"Google authentication failed. Your session may have expired. Please reconnect Google Workspace.",
+            status_code=401,
+            error_type="unauthorized"
+        )
+
+    elif response.status_code == 403:
+        # Check if it's a quota error vs permission error
+        if "quota" in error_message.lower() or "rate" in error_message.lower():
+            logger.warning(
+                f"Google API 403 Quota exceeded for {operation}, wallet={wallet_prefix}...: {error_message}"
+            )
+            raise GoogleAPIError(
+                message=f"Google API quota exceeded. Please try again in a few minutes.",
+                status_code=403,
+                error_type="quota_exceeded"
+            )
+        else:
+            logger.error(
+                f"Google API 403 Permission denied for {operation}, wallet={wallet_prefix}...: {error_message}"
+            )
+            raise GoogleAPIError(
+                message=f"Permission denied: {error_message}. You may need to reconnect with additional permissions.",
+                status_code=403,
+                error_type="permission_denied"
+            )
+
+    elif response.status_code == 429:
+        # Get retry-after header if available
+        retry_after = response.headers.get("Retry-After")
+        retry_seconds = int(retry_after) if retry_after and retry_after.isdigit() else 60
+
+        logger.warning(
+            f"Google API 429 Rate limited for {operation}, wallet={wallet_prefix}..., retry_after={retry_seconds}s"
+        )
+        raise GoogleAPIError(
+            message=f"Rate limited by Google. Please try again in {retry_seconds} seconds.",
+            status_code=429,
+            error_type="rate_limited",
+            retry_after=retry_seconds
+        )
+
+    elif response.status_code == 404:
+        logger.warning(
+            f"Google API 404 Not found for {operation}, wallet={wallet_prefix}...: {error_message}"
+        )
+        raise GoogleAPIError(
+            message=f"Resource not found: {error_message}",
+            status_code=404,
+            error_type="not_found"
+        )
+
+    else:
+        logger.error(
+            f"Google API error {response.status_code} for {operation}, wallet={wallet_prefix}...: {error_message}"
+        )
+        raise GoogleAPIError(
+            message=f"Google API error: {error_message}",
+            status_code=response.status_code,
+            error_type="api_error"
+        )
+
+
+async def google_api_request_with_retry(
+    client: httpx.AsyncClient,
+    method: str,
+    url: str,
+    access_token: str,
+    wallet_address: str,
+    operation: str,
+    max_retries: int = 3,
+    **kwargs
+) -> Dict[str, Any]:
+    """
+    Make a Google API request with automatic retry for rate limiting.
+
+    Args:
+        client: httpx AsyncClient instance
+        method: HTTP method (GET, POST, PUT, PATCH, DELETE)
+        url: API endpoint URL
+        access_token: OAuth access token
+        wallet_address: User's wallet for logging
+        operation: Description of operation for logging
+        max_retries: Maximum retry attempts for rate limiting
+        **kwargs: Additional arguments passed to httpx request
+
+    Returns:
+        Parsed JSON response
+
+    Raises:
+        HTTPException: Converted from GoogleAPIError for FastAPI handling
+    """
+    headers = kwargs.pop("headers", {})
+    headers["Authorization"] = f"Bearer {access_token}"
+    if "Content-Type" not in headers:
+        headers["Content-Type"] = "application/json"
+
+    timeout = kwargs.pop("timeout", 30.0)
+
+    last_error: Optional[GoogleAPIError] = None
+
+    for attempt in range(max_retries + 1):
+        try:
+            response = await client.request(
+                method=method,
+                url=url,
+                headers=headers,
+                timeout=timeout,
+                **kwargs
+            )
+
+            return await handle_google_api_response(response, operation, wallet_address)
+
+        except GoogleAPIError as e:
+            last_error = e
+
+            # Only retry on rate limiting
+            if e.error_type == "rate_limited" and attempt < max_retries:
+                wait_time = e.retry_after or (2 ** attempt)  # Exponential backoff
+                logger.info(
+                    f"Rate limited, retrying {operation} in {wait_time}s (attempt {attempt + 1}/{max_retries})"
+                )
+                await asyncio.sleep(wait_time)
+                continue
+
+            # Convert to HTTPException for other errors
+            raise HTTPException(
+                status_code=e.status_code,
+                detail=e.message
+            )
+
+    # If we exhausted retries
+    if last_error:
+        raise HTTPException(
+            status_code=last_error.status_code,
+            detail=f"Request failed after {max_retries} retries: {last_error.message}"
+        )
+
+    raise HTTPException(status_code=500, detail="Unexpected error in Google API request")
+
+
+# ============================================================================
+# Pydantic Models with Validation (HIGH-G2, HIGH-G3, HIGH-G5, HIGH-G6)
 # ============================================================================
 
 class SendEmailRequest(BaseModel):
-    wallet_address: str
-    to: List[str]
-    cc: Optional[List[str]] = []
-    bcc: Optional[List[str]] = []
-    subject: str
-    body: str
-    thread_id: Optional[str] = None
+    """Email send request with validation"""
+    wallet_address: str = Field(..., description="User's wallet address")
+    to: List[str] = Field(..., min_length=1, description="Recipient email addresses")
+    cc: Optional[List[str]] = Field(default=[], description="CC recipients")
+    bcc: Optional[List[str]] = Field(default=[], description="BCC recipients")
+    subject: str = Field(..., min_length=1, max_length=998, description="Email subject")
+    body: str = Field(..., min_length=1, description="Email body")
+    thread_id: Optional[str] = Field(default=None, description="Thread ID for replies")
 
 
 class CreateEventRequest(BaseModel):
-    wallet_address: str
-    summary: str
-    start: str  # ISO format datetime
-    end: str  # ISO format datetime
-    location: Optional[str] = None
-    description: Optional[str] = None
-    attendees: Optional[List[str]] = []
-    add_google_meet: bool = False
-    reminder_minutes: int = 10
+    """Calendar event creation request with validation"""
+    wallet_address: str = Field(..., description="User's wallet address")
+    summary: str = Field(..., min_length=1, max_length=1000, description="Event title")
+    start: str = Field(..., description="Start time (ISO 8601 format)")
+    end: str = Field(..., description="End time (ISO 8601 format)")
+    location: Optional[str] = Field(default=None, max_length=1000, description="Event location")
+    description: Optional[str] = Field(default=None, max_length=8000, description="Event description")
+    attendees: Optional[List[str]] = Field(default=[], description="Attendee email addresses")
+    add_google_meet: bool = Field(default=False, description="Add Google Meet link")
+    reminder_minutes: int = Field(default=10, ge=0, le=40320, description="Reminder time in minutes")
 
 
 class UploadFileRequest(BaseModel):
-    wallet_address: str
-    file_name: str
-    file_content: str  # Base64 encoded
-    mime_type: str
-    parent_folder_id: Optional[str] = None
+    """File upload request with validation (HIGH-G5, HIGH-G6)"""
+    wallet_address: str = Field(..., description="User's wallet address")
+    file_name: str = Field(..., min_length=1, max_length=255, description="File name")
+    file_content: str = Field(..., description="Base64 encoded file content")
+    mime_type: str = Field(..., description="MIME type of the file")
+    parent_folder_id: Optional[str] = Field(default=None, description="Parent folder ID")
 
 
 class CreateContactRequest(BaseModel):
-    wallet_address: str
-    given_name: str
-    family_name: str
-    email: Optional[str] = None
-    phone: Optional[str] = None
-    company: Optional[str] = None
+    """Contact creation request with validation"""
+    wallet_address: str = Field(..., description="User's wallet address")
+    given_name: str = Field(..., min_length=1, max_length=255, description="First name")
+    family_name: str = Field(..., min_length=1, max_length=255, description="Last name")
+    email: Optional[str] = Field(default=None, description="Email address")
+    phone: Optional[str] = Field(default=None, max_length=50, description="Phone number")
+    company: Optional[str] = Field(default=None, max_length=255, description="Company name")
 
 
 # ============================================================================
-# Helper Functions
+# Helper Functions (CRIT-G1: Wallet validation added)
 # ============================================================================
 
 async def get_google_access_token(wallet_address: str, db: AsyncSession) -> str:
-    """Get active Google OAuth access token for the user"""
+    """
+    Get active Google OAuth access token for the user.
+
+    Args:
+        wallet_address: User's wallet address (will be validated and normalized)
+        db: Database session
+
+    Returns:
+        Decrypted access token
+
+    Raises:
+        HTTPException: If wallet is invalid or not connected
+    """
+    # CRIT-G1: Validate and normalize wallet address
+    normalized_wallet = validate_wallet_address(wallet_address)
+
     result = await db.execute(
         select(OAuthToken).where(
             and_(
-                OAuthToken.user_address == wallet_address.lower(),
+                OAuthToken.user_address == normalized_wallet,
                 OAuthToken.provider == "google",
                 OAuthToken.is_active == True  # noqa: E712
             )
@@ -90,21 +348,19 @@ async def get_google_access_token(wallet_address: str, db: AsyncSession) -> str:
             detail="Google Workspace not connected. Please connect via OAuth first."
         )
 
-    # Check if token needs refresh
-    if token.expires_at and datetime.fromisoformat(token.expires_at) < datetime.utcnow():
-        # TODO: Implement token refresh logic
-        raise HTTPException(
-            status_code=401,
-            detail="Access token expired. Please reconnect Google Workspace."
-        )
+    # Check if token needs refresh (expires_at is already DateTime, not string)
+    if token.expires_at and token.expires_at < datetime.utcnow():
+        logger.info(f"Google token expired for {normalized_wallet[:10]}..., attempting refresh")
+        refresh_success = await refresh_oauth_token(token, "google", db)
+        if not refresh_success:
+            raise HTTPException(
+                status_code=401,
+                detail="Access token expired and refresh failed. Please reconnect Google Workspace."
+            )
+        logger.info(f"Google token refreshed successfully for {normalized_wallet[:10]}...")
 
-    # Decrypt access token
-    decrypted_token = await encryption_service.decrypt_oauth_token(
-        encrypted_token=token.encrypted_token,
-        customer_wallet=wallet_address
-    )
-
-    return decrypted_token.get("access_token")
+    # Use the property which auto-decrypts (same pattern as Slack fix Dec 26, 2025)
+    return token.access_token
 
 
 # ============================================================================
@@ -116,55 +372,61 @@ async def send_email(
     request: SendEmailRequest,
     db: AsyncSession = Depends(get_db)
 ):
-    """Send an email via Gmail API"""
+    """
+    Send an email via Gmail API.
+
+    Handles rate limiting with automatic retry and proper error messages for:
+    - 401: Token expired (prompts reconnection)
+    - 403: Permission denied (missing Gmail scopes)
+    - 429: Rate limited (automatic retry with backoff)
+    """
     try:
+        # HIGH-G2: Validate all email addresses
+        validated_to = validate_email_list(request.to, "To")
+        validated_cc = validate_email_list(request.cc, "CC") if request.cc else []
+        validated_bcc = validate_email_list(request.bcc, "BCC") if request.bcc else []
+
         access_token = await get_google_access_token(request.wallet_address, db)
 
         # Build email message in RFC 2822 format
+        # HIGH-G4: Added Content-Type header for proper MIME handling
         message_parts = []
-        message_parts.append(f"To: {', '.join(request.to)}")
-        if request.cc:
-            message_parts.append(f"Cc: {', '.join(request.cc)}")
-        if request.bcc:
-            message_parts.append(f"Bcc: {', '.join(request.bcc)}")
+        message_parts.append("Content-Type: text/plain; charset=utf-8")
+        message_parts.append(f"To: {', '.join(validated_to)}")
+        if validated_cc:
+            message_parts.append(f"Cc: {', '.join(validated_cc)}")
+        if validated_bcc:
+            message_parts.append(f"Bcc: {', '.join(validated_bcc)}")
         message_parts.append(f"Subject: {request.subject}")
         message_parts.append("")  # Empty line between headers and body
         message_parts.append(request.body)
 
         raw_message = "\r\n".join(message_parts)
 
-        # Encode message as base64url
-        import base64
+        # Encode message as base64url (HIGH-G1: Using module-level import)
         encoded_message = base64.urlsafe_b64encode(raw_message.encode()).decode()
 
         # Prepare API request
-        payload = {
+        payload: Dict[str, Any] = {
             "raw": encoded_message
         }
         if request.thread_id:
             payload["threadId"] = request.thread_id
 
-        # Send email via Gmail API
+        # Send email via Gmail API with retry and proper error handling
         async with httpx.AsyncClient() as client:
-            response = await client.post(
-                "https://gmail.googleapis.com/gmail/v1/users/me/messages/send",
-                headers={
-                    "Authorization": f"Bearer {access_token}",
-                    "Content-Type": "application/json"
-                },
-                json=payload,
-                timeout=30.0
+            result = await google_api_request_with_retry(
+                client=client,
+                method="POST",
+                url="https://gmail.googleapis.com/gmail/v1/users/me/messages/send",
+                access_token=access_token,
+                wallet_address=request.wallet_address,
+                operation="send_email",
+                json=payload
             )
 
-            if response.status_code != 200:
-                error_detail = response.json()
-                raise HTTPException(
-                    status_code=response.status_code,
-                    detail=f"Gmail API error: {error_detail}"
-                )
-
-            result = response.json()
-            logger.info(f"Email sent successfully: {result.get('id')}")
+            # HIGH-S11: Success logging
+            logger.info(f"Email sent successfully for {request.wallet_address[:10]}...: message_id={result.get('id')}")
 
             return {
                 "success": True,
@@ -175,8 +437,9 @@ async def send_email(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to send email: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to send email: {str(e)}")
+        # CRIT-G3: Sanitize error message to prevent token leakage
+        logger.error(f"Failed to send email for {request.wallet_address[:10]}...")
+        raise HTTPException(status_code=500, detail=sanitize_error_message(e))
 
 
 # ============================================================================
@@ -188,19 +451,35 @@ async def create_calendar_event(
     request: CreateEventRequest,
     db: AsyncSession = Depends(get_db)
 ):
-    """Create a new calendar event"""
+    """
+    Create a new calendar event.
+
+    Handles rate limiting with automatic retry and proper error messages for:
+    - 401: Token expired (prompts reconnection)
+    - 403: Permission denied (missing Calendar scopes)
+    - 429: Rate limited (automatic retry with backoff)
+    """
     try:
+        # HIGH-G3: Validate datetime formats
+        validated_start = validate_iso_datetime(request.start, "start time")
+        validated_end = validate_iso_datetime(request.end, "end time")
+
+        # HIGH-G2: Validate attendee emails if provided
+        validated_attendees = []
+        if request.attendees:
+            validated_attendees = validate_email_list(request.attendees, "attendees")
+
         access_token = await get_google_access_token(request.wallet_address, db)
 
         # Build event payload
-        event_payload = {
+        event_payload: Dict[str, Any] = {
             "summary": request.summary,
             "start": {
-                "dateTime": request.start,
+                "dateTime": validated_start,
                 "timeZone": "UTC"
             },
             "end": {
-                "dateTime": request.end,
+                "dateTime": validated_end,
                 "timeZone": "UTC"
             },
             "reminders": {
@@ -217,9 +496,9 @@ async def create_calendar_event(
         if request.description:
             event_payload["description"] = request.description
 
-        if request.attendees:
+        if validated_attendees:
             event_payload["attendees"] = [
-                {"email": email} for email in request.attendees
+                {"email": email} for email in validated_attendees
             ]
 
         if request.add_google_meet:
@@ -230,28 +509,21 @@ async def create_calendar_event(
                 }
             }
 
-        # Create event via Calendar API
+        # Create event via Calendar API with retry and error handling
         async with httpx.AsyncClient() as client:
-            response = await client.post(
-                "https://www.googleapis.com/calendar/v3/calendars/primary/events",
-                headers={
-                    "Authorization": f"Bearer {access_token}",
-                    "Content-Type": "application/json"
-                },
+            result = await google_api_request_with_retry(
+                client=client,
+                method="POST",
+                url="https://www.googleapis.com/calendar/v3/calendars/primary/events",
+                access_token=access_token,
+                wallet_address=request.wallet_address,
+                operation="create_calendar_event",
                 json=event_payload,
-                params={"conferenceDataVersion": 1} if request.add_google_meet else {},
-                timeout=30.0
+                params={"conferenceDataVersion": 1} if request.add_google_meet else {}
             )
 
-            if response.status_code != 200:
-                error_detail = response.json()
-                raise HTTPException(
-                    status_code=response.status_code,
-                    detail=f"Calendar API error: {error_detail}"
-                )
-
-            result = response.json()
-            logger.info(f"Event created successfully: {result.get('id')}")
+            # HIGH-S11: Success logging
+            logger.info(f"Event created for {request.wallet_address[:10]}...: event_id={result.get('id')}")
 
             return {
                 "success": True,
@@ -263,8 +535,9 @@ async def create_calendar_event(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to create event: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to create event: {str(e)}")
+        # CRIT-G3: Sanitize error message
+        logger.error(f"Failed to create event for {request.wallet_address[:10]}...")
+        raise HTTPException(status_code=500, detail=sanitize_error_message(e))
 
 
 # ============================================================================
@@ -278,16 +551,28 @@ async def upload_file_to_drive(
 ):
     """Upload a file to Google Drive"""
     try:
+        # HIGH-G5: Validate file size (DoS prevention)
+        file_size = validate_file_size(request.file_content)
+        logger.info(f"Upload request: file_name={request.file_name}, estimated_size={file_size} bytes")
+
+        # HIGH-G6: Validate MIME type
+        validated_mime_type = validate_mime_type(request.mime_type)
+
         access_token = await get_google_access_token(request.wallet_address, db)
 
-        # Decode base64 file content
-        import base64
-        file_bytes = base64.b64decode(request.file_content)
+        # Decode base64 file content (HIGH-G1: Using module-level import)
+        try:
+            file_bytes = base64.b64decode(request.file_content)
+        except Exception:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid base64 file content"
+            )
 
         # Create file metadata
         file_metadata = {
             "name": request.file_name,
-            "mimeType": request.mime_type
+            "mimeType": validated_mime_type
         }
 
         if request.parent_folder_id:
@@ -303,17 +588,28 @@ async def upload_file_to_drive(
                     "Content-Type": "application/json"
                 },
                 json=file_metadata,
-                timeout=30.0
+                timeout=DEFAULT_HTTP_TIMEOUT
             )
 
             if metadata_response.status_code != 200:
-                error_detail = metadata_response.json()
+                # HIGH-G12: Safe JSON parsing
+                try:
+                    error_detail = metadata_response.json()
+                except Exception:
+                    error_detail = "Unknown error"
                 raise HTTPException(
                     status_code=metadata_response.status_code,
-                    detail=f"Drive API error: {error_detail}"
+                    detail=f"Drive API error: {sanitize_api_error(str(error_detail), 'Google Drive')}"
                 )
 
-            file_metadata_result = metadata_response.json()
+            # HIGH-G12: Safe JSON parsing
+            try:
+                file_metadata_result = metadata_response.json()
+            except Exception:
+                raise HTTPException(
+                    status_code=500,
+                    detail="Invalid response from Google Drive API"
+                )
             file_id = file_metadata_result.get("id")
 
             # Upload file content
@@ -321,21 +617,26 @@ async def upload_file_to_drive(
                 f"https://www.googleapis.com/upload/drive/v3/files/{file_id}",
                 headers={
                     "Authorization": f"Bearer {access_token}",
-                    "Content-Type": request.mime_type
+                    "Content-Type": validated_mime_type
                 },
                 content=file_bytes,
                 params={"uploadType": "media"},
-                timeout=60.0
+                timeout=UPLOAD_HTTP_TIMEOUT
             )
 
             if content_response.status_code != 200:
-                error_detail = content_response.json()
+                # HIGH-G12: Safe JSON parsing
+                try:
+                    error_detail = content_response.json()
+                except Exception:
+                    error_detail = "Unknown error"
                 raise HTTPException(
                     status_code=content_response.status_code,
-                    detail=f"Drive upload error: {error_detail}"
+                    detail=f"Drive upload error: {sanitize_api_error(str(error_detail), 'Google Drive')}"
                 )
 
-            logger.info(f"File uploaded successfully: {file_id}")
+            # HIGH-S11: Success logging
+            logger.info(f"File uploaded for {request.wallet_address[:10]}...: file_id={file_id}, size={file_size}")
 
             return {
                 "success": True,
@@ -347,14 +648,15 @@ async def upload_file_to_drive(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to upload file: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to upload file: {str(e)}")
+        # CRIT-G3: Sanitize error message
+        logger.error(f"Failed to upload file for {request.wallet_address[:10]}...")
+        raise HTTPException(status_code=500, detail=sanitize_error_message(e))
 
 
 @router.get("/download-file/{file_id}")
 async def download_file_from_drive(
     file_id: str,
-    wallet_address: str,
+    wallet_address: str = Query(..., description="User's wallet address"),
     db: AsyncSession = Depends(get_db)
 ):
     """Download a file from Google Drive"""
@@ -367,7 +669,7 @@ async def download_file_from_drive(
                 f"https://www.googleapis.com/drive/v3/files/{file_id}",
                 headers={"Authorization": f"Bearer {access_token}"},
                 params={"fields": "name,mimeType,size"},
-                timeout=30.0
+                timeout=DEFAULT_HTTP_TIMEOUT
             )
 
             if metadata_response.status_code != 200:
@@ -376,14 +678,21 @@ async def download_file_from_drive(
                     detail="Failed to get file metadata"
                 )
 
-            metadata = metadata_response.json()
+            # HIGH-G12: Safe JSON parsing
+            try:
+                metadata = metadata_response.json()
+            except Exception:
+                raise HTTPException(
+                    status_code=500,
+                    detail="Invalid response from Google Drive API"
+                )
 
             # Download file content
             content_response = await client.get(
                 f"https://www.googleapis.com/drive/v3/files/{file_id}",
                 headers={"Authorization": f"Bearer {access_token}"},
                 params={"alt": "media"},
-                timeout=60.0
+                timeout=UPLOAD_HTTP_TIMEOUT
             )
 
             if content_response.status_code != 200:
@@ -392,9 +701,11 @@ async def download_file_from_drive(
                     detail="Failed to download file"
                 )
 
-            # Encode content as base64
-            import base64
+            # Encode content as base64 (HIGH-G1: Using module-level import)
             file_content_base64 = base64.b64encode(content_response.content).decode()
+
+            # HIGH-S11: Success logging
+            logger.info(f"File downloaded for {wallet_address[:10]}...: file_id={file_id}")
 
             return {
                 "success": True,
@@ -407,8 +718,9 @@ async def download_file_from_drive(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to download file: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to download file: {str(e)}")
+        # CRIT-G3: Sanitize error message
+        logger.error(f"Failed to download file for {wallet_address[:10]}...")
+        raise HTTPException(status_code=500, detail=sanitize_error_message(e))
 
 
 # ============================================================================
@@ -478,8 +790,9 @@ async def create_contact(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to create contact: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to create contact: {str(e)}")
+        # CRIT-G3: Sanitize error message
+        logger.error(f"Failed to create contact for {request.wallet_address[:10]}...")
+        raise HTTPException(status_code=500, detail=sanitize_error_message(e))
 
 
 # ============================================================================
@@ -492,44 +805,58 @@ async def list_emails(
     max_results: int = 50,
     db: AsyncSession = Depends(get_db)
 ):
-    """List emails from Gmail"""
+    """
+    List emails from Gmail with full message details.
+
+    Handles rate limiting with automatic retry and proper error messages for:
+    - 401: Token expired (prompts reconnection)
+    - 403: Permission denied (missing Gmail scopes)
+    - 429: Rate limited (automatic retry with backoff)
+    """
     try:
         access_token = await get_google_access_token(wallet_address, db)
 
         async with httpx.AsyncClient() as client:
-            response = await client.get(
-                "https://gmail.googleapis.com/gmail/v1/users/me/messages",
-                headers={"Authorization": f"Bearer {access_token}"},
-                params={"maxResults": max_results},
-                timeout=30.0
+            # Get list of message IDs with error handling
+            list_result = await google_api_request_with_retry(
+                client=client,
+                method="GET",
+                url="https://gmail.googleapis.com/gmail/v1/users/me/messages",
+                access_token=access_token,
+                wallet_address=wallet_address,
+                operation="list_emails",
+                params={"maxResults": max_results}
             )
 
-            if response.status_code != 200:
-                raise HTTPException(
-                    status_code=response.status_code,
-                    detail="Failed to fetch emails"
-                )
-
-            messages = response.json().get("messages", [])
+            messages = list_result.get("messages", [])
 
             # Fetch full details for each message
             email_details = []
             for msg in messages[:max_results]:
-                msg_response = await client.get(
-                    f"https://gmail.googleapis.com/gmail/v1/users/me/messages/{msg['id']}",
-                    headers={"Authorization": f"Bearer {access_token}"},
-                    timeout=30.0
-                )
-                if msg_response.status_code == 200:
-                    email_details.append(msg_response.json())
+                try:
+                    msg_result = await google_api_request_with_retry(
+                        client=client,
+                        method="GET",
+                        url=f"https://gmail.googleapis.com/gmail/v1/users/me/messages/{msg['id']}",
+                        access_token=access_token,
+                        wallet_address=wallet_address,
+                        operation=f"get_email_{msg['id'][:8]}",
+                        max_retries=1  # Fewer retries for individual messages
+                    )
+                    email_details.append(msg_result)
+                except HTTPException as e:
+                    # Log but continue if individual message fetch fails
+                    logger.warning(f"Failed to fetch message {msg['id']}: {e.detail}")
+                    continue
 
             return {"success": True, "emails": email_details}
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to list emails: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to list emails: {str(e)}")
+        # CRIT-G3: Sanitize error message
+        logger.error(f"Failed to list emails for {wallet_address[:10]}...")
+        raise HTTPException(status_code=500, detail=sanitize_error_message(e))
 
 
 @router.delete("/emails/{email_id}")
@@ -560,8 +887,9 @@ async def delete_email(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to delete email: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to delete email: {str(e)}")
+        # CRIT-G3: Sanitize error message
+        logger.error(f"Failed to delete email for {wallet_address[:10]}...")
+        raise HTTPException(status_code=500, detail=sanitize_error_message(e))
 
 
 @router.patch("/emails/{email_id}")
@@ -615,8 +943,9 @@ async def update_email(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to update email: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to update email: {str(e)}")
+        # CRIT-G3: Sanitize error message
+        logger.error(f"Failed to update email for {wallet_address[:10]}...")
+        raise HTTPException(status_code=500, detail=sanitize_error_message(e))
 
 
 # ============================================================================
@@ -629,37 +958,41 @@ async def list_events(
     max_results: int = 50,
     db: AsyncSession = Depends(get_db)
 ):
-    """List calendar events"""
+    """
+    List calendar events starting from now.
+
+    Handles rate limiting with automatic retry and proper error messages for:
+    - 401: Token expired (prompts reconnection)
+    - 403: Permission denied (missing Calendar scopes)
+    - 429: Rate limited (automatic retry with backoff)
+    """
     try:
         access_token = await get_google_access_token(wallet_address, db)
 
         async with httpx.AsyncClient() as client:
-            response = await client.get(
-                "https://www.googleapis.com/calendar/v3/calendars/primary/events",
-                headers={"Authorization": f"Bearer {access_token}"},
+            result = await google_api_request_with_retry(
+                client=client,
+                method="GET",
+                url="https://www.googleapis.com/calendar/v3/calendars/primary/events",
+                access_token=access_token,
+                wallet_address=wallet_address,
+                operation="list_events",
                 params={
                     "maxResults": max_results,
                     "singleEvents": True,
                     "orderBy": "startTime",
                     "timeMin": datetime.utcnow().isoformat() + "Z"
-                },
-                timeout=30.0
+                }
             )
 
-            if response.status_code != 200:
-                raise HTTPException(
-                    status_code=response.status_code,
-                    detail="Failed to fetch events"
-                )
-
-            result = response.json()
             return {"success": True, "events": result.get("items", [])}
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to list events: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to list events: {str(e)}")
+        # CRIT-G3: Sanitize error message
+        logger.error(f"Failed to list events for {wallet_address[:10]}...")
+        raise HTTPException(status_code=500, detail=sanitize_error_message(e))
 
 
 @router.delete("/events/{event_id}")
@@ -690,8 +1023,9 @@ async def delete_event(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to delete event: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to delete event: {str(e)}")
+        # CRIT-G3: Sanitize error message
+        logger.error(f"Failed to delete event for {wallet_address[:10]}...")
+        raise HTTPException(status_code=500, detail=sanitize_error_message(e))
 
 
 @router.patch("/events/{event_id}")
@@ -759,8 +1093,9 @@ async def update_event(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to update event: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to update event: {str(e)}")
+        # CRIT-G3: Sanitize error message
+        logger.error(f"Failed to update event for {wallet_address[:10]}...")
+        raise HTTPException(status_code=500, detail=sanitize_error_message(e))
 
 
 # ============================================================================
@@ -800,8 +1135,9 @@ async def list_files(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to list files: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to list files: {str(e)}")
+        # CRIT-G3: Sanitize error message
+        logger.error(f"Failed to list files for {wallet_address[:10]}...")
+        raise HTTPException(status_code=500, detail=sanitize_error_message(e))
 
 
 @router.delete("/files/{file_id}")
@@ -832,8 +1168,9 @@ async def delete_file(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to delete file: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to delete file: {str(e)}")
+        # CRIT-G3: Sanitize error message
+        logger.error(f"Failed to delete file for {wallet_address[:10]}...")
+        raise HTTPException(status_code=500, detail=sanitize_error_message(e))
 
 
 # ============================================================================
@@ -873,8 +1210,9 @@ async def list_contacts(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to list contacts: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to list contacts: {str(e)}")
+        # CRIT-G3: Sanitize error message
+        logger.error(f"Failed to list contacts for {wallet_address[:10]}...")
+        raise HTTPException(status_code=500, detail=sanitize_error_message(e))
 
 
 @router.delete("/contacts/{resource_name}")
@@ -905,8 +1243,9 @@ async def delete_contact(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to delete contact: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to delete contact: {str(e)}")
+        # CRIT-G3: Sanitize error message
+        logger.error(f"Failed to delete contact for {wallet_address[:10]}...")
+        raise HTTPException(status_code=500, detail=sanitize_error_message(e))
 
 
 @router.patch("/contacts/{resource_name}")
@@ -982,5 +1321,6 @@ async def update_contact(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to update contact: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to update contact: {str(e)}")
+        # CRIT-G3: Sanitize error message
+        logger.error(f"Failed to update contact for {wallet_address[:10]}...")
+        raise HTTPException(status_code=500, detail=sanitize_error_message(e))

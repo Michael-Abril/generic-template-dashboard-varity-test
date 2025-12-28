@@ -57,8 +57,11 @@ export function Sidebar({ installedTools = [] }: SidebarProps) {
       <button
         onClick={() => setIsMobileOpen(!isMobileOpen)}
         className="lg:hidden fixed top-4 left-4 z-50 bg-white rounded-lg shadow-lg p-2 hover:bg-gray-50"
+        aria-label={isMobileOpen ? 'Close navigation menu' : 'Open navigation menu'}
+        aria-expanded={isMobileOpen}
+        aria-controls="main-sidebar"
       >
-        <svg className="w-6 h-6 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg className="w-6 h-6 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
           {isMobileOpen ? (
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
           ) : (
@@ -77,6 +80,9 @@ export function Sidebar({ installedTools = [] }: SidebarProps) {
 
       {/* Sidebar */}
       <aside
+        id="main-sidebar"
+        role="navigation"
+        aria-label="Main sidebar"
         className={`
           fixed top-0 left-0 h-screen bg-white border-r border-gray-200 shadow-lg z-40
           transition-transform duration-300 ease-in-out
@@ -125,7 +131,7 @@ export function Sidebar({ installedTools = [] }: SidebarProps) {
         )}
 
         {/* Navigation */}
-        <nav className="flex-1 overflow-y-auto py-4 px-3">
+        <nav className="flex-1 overflow-y-auto py-4 px-3" aria-label="Dashboard navigation">
           {/* Main Navigation */}
           <div className="space-y-1">
             {navigationItems.map((item) => {
@@ -135,6 +141,7 @@ export function Sidebar({ installedTools = [] }: SidebarProps) {
                   key={item.path}
                   href={item.path}
                   onClick={() => setIsMobileOpen(false)}
+                  aria-current={isActive(item.path) ? 'page' : undefined}
                   className={`
                     flex items-center gap-3 px-3 py-2.5 rounded-lg font-medium transition-all duration-200
                     ${isActive(item.path)
@@ -191,6 +198,7 @@ export function Sidebar({ installedTools = [] }: SidebarProps) {
             <Link
               href="/integrations"
               onClick={() => setIsMobileOpen(false)}
+              aria-current={isActive('/integrations') ? 'page' : undefined}
               className={`
                 flex items-center gap-3 px-3 py-2.5 rounded-lg font-medium transition-all duration-200
                 ${isActive('/integrations')
@@ -205,6 +213,7 @@ export function Sidebar({ installedTools = [] }: SidebarProps) {
             <Link
               href="/marketplace"
               onClick={() => setIsMobileOpen(false)}
+              aria-current={isActive('/marketplace') ? 'page' : undefined}
               className={`
                 flex items-center gap-3 px-3 py-2.5 rounded-lg font-medium transition-all duration-200
                 ${isActive('/marketplace')
@@ -219,6 +228,7 @@ export function Sidebar({ installedTools = [] }: SidebarProps) {
             <Link
               href="/analytics"
               onClick={() => setIsMobileOpen(false)}
+              aria-current={isActive('/analytics') ? 'page' : undefined}
               className={`
                 flex items-center gap-3 px-3 py-2.5 rounded-lg font-medium transition-all duration-200
                 ${isActive('/analytics')
@@ -233,6 +243,7 @@ export function Sidebar({ installedTools = [] }: SidebarProps) {
             <Link
               href="/ai-assistant"
               onClick={() => setIsMobileOpen(false)}
+              aria-current={isActive('/ai-assistant') ? 'page' : undefined}
               className={`
                 flex items-center gap-3 px-3 py-2.5 rounded-lg font-medium transition-all duration-200
                 ${isActive('/ai-assistant')
@@ -247,6 +258,7 @@ export function Sidebar({ installedTools = [] }: SidebarProps) {
             <Link
               href="/settings"
               onClick={() => setIsMobileOpen(false)}
+              aria-current={isActive('/settings') ? 'page' : undefined}
               className={`
                 flex items-center gap-3 px-3 py-2.5 rounded-lg font-medium transition-all duration-200
                 ${isActive('/settings')

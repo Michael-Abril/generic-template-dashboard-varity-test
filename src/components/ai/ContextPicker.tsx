@@ -287,6 +287,7 @@ export function ContextPicker({
             {currentView !== 'integrations' && (
               <button
                 onClick={handleBack}
+                aria-label="Go back"
                 className="p-1 hover:bg-gray-100 rounded-md transition-colors"
               >
                 <ChevronLeft className="w-4 h-4 text-gray-500" />
@@ -296,7 +297,7 @@ export function ContextPicker({
             {/* Compact Breadcrumb */}
             <div className="flex items-center gap-1 text-xs">
               {currentView === 'integrations' ? (
-                <span className="font-medium text-gray-700">Select Context</span>
+                <span className="font-medium text-gray-700">Search in:</span>
               ) : (
                 <>
                   {selectedIntegration && (
@@ -338,6 +339,7 @@ export function ContextPicker({
             {onClose && (
               <button
                 onClick={onClose}
+                aria-label="Close context picker"
                 className="p-1 hover:bg-gray-100 rounded-md transition-colors"
               >
                 <X className="w-4 h-4 text-gray-400" />

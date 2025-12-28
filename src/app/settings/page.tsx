@@ -551,12 +551,17 @@ export default function SettingsPage() {
             {/* Sidebar Navigation */}
             <div className="lg:col-span-1">
               <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                <nav className="flex flex-col">
+                <nav role="tablist" aria-label="Settings navigation" className="flex flex-col">
                   {tabs.map((tab) => (
                     <button
                       key={tab.id}
+                      role="tab"
+                      id={`tab-${tab.id}`}
+                      aria-selected={activeTab === tab.id}
+                      aria-controls={`tabpanel-${tab.id}`}
                       onClick={() => !tab.disabled && setActiveTab(tab.id)}
                       disabled={tab.disabled}
+                      tabIndex={activeTab === tab.id ? 0 : -1}
                       className={`flex items-center justify-between gap-3 px-6 py-4 text-left transition-all ${
                         tab.disabled
                           ? 'bg-gray-50 text-gray-400 cursor-not-allowed border-l-4 border-transparent'
@@ -566,7 +571,7 @@ export default function SettingsPage() {
                       }`}
                     >
                       <div className="flex items-center gap-3">
-                        <tab.icon className={`w-5 h-5 ${tab.disabled ? 'text-gray-300' : ''}`} />
+                        <tab.icon className={`w-5 h-5 ${tab.disabled ? 'text-gray-300' : ''}`} aria-hidden="true" />
                         <span>{tab.label}</span>
                       </div>
                       {tab.comingSoon && (
@@ -582,7 +587,13 @@ export default function SettingsPage() {
 
             {/* Main Content */}
             <div className="lg:col-span-3">
-              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-8">
+              <div
+                role="tabpanel"
+                id={`tabpanel-${activeTab}`}
+                aria-labelledby={`tab-${activeTab}`}
+                tabIndex={0}
+                className="bg-white rounded-xl shadow-sm border border-gray-200 p-8"
+              >
 
                 {/* Loading State */}
                 {loading && (
@@ -599,10 +610,11 @@ export default function SettingsPage() {
 
                     <div className="space-y-6">
                       <div>
-                        <label className="block text-sm font-semibold text-gray-700 mb-2">
+                        <label htmlFor="settings-company-name" className="block text-sm font-semibold text-gray-700 mb-2">
                           Company Name
                         </label>
                         <input
+                          id="settings-company-name"
                           type="text"
                           value={companyName}
                           onChange={(e) => setCompanyName(e.target.value)}
@@ -612,24 +624,27 @@ export default function SettingsPage() {
                       </div>
 
                       <div>
-                        <label className="block text-sm font-semibold text-gray-700 mb-2">
+                        <label htmlFor="settings-contact-email" className="block text-sm font-semibold text-gray-700 mb-2">
                           Contact Email
                         </label>
                         <input
+                          id="settings-contact-email"
                           type="email"
                           value={contactEmail}
                           disabled
+                          aria-describedby="email-hint"
                           className="w-full px-4 py-3 border border-gray-300 rounded-lg bg-gray-50 text-gray-500 cursor-not-allowed"
                           placeholder="contact@company.com"
                         />
-                        <p className="text-xs text-gray-500 mt-1">Email is managed through your Privy account</p>
+                        <p id="email-hint" className="text-xs text-gray-500 mt-1">Email is managed through your Privy account</p>
                       </div>
 
                       <div>
-                        <label className="block text-sm font-semibold text-gray-700 mb-2">
+                        <label htmlFor="settings-industry" className="block text-sm font-semibold text-gray-700 mb-2">
                           Industry
                         </label>
                         <select
+                          id="settings-industry"
                           value={industry}
                           onChange={(e) => setIndustry(e.target.value)}
                           className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-600 focus:border-transparent bg-white text-gray-900"
@@ -650,10 +665,11 @@ export default function SettingsPage() {
                       </div>
 
                       <div>
-                        <label className="block text-sm font-semibold text-gray-700 mb-2">
+                        <label htmlFor="settings-timezone" className="block text-sm font-semibold text-gray-700 mb-2">
                           Timezone
                         </label>
                         <select
+                          id="settings-timezone"
                           value={timezone}
                           onChange={(e) => setTimezone(e.target.value)}
                           className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-600 focus:border-transparent bg-white text-gray-900"
@@ -669,10 +685,11 @@ export default function SettingsPage() {
                       </div>
 
                       <div>
-                        <label className="block text-sm font-semibold text-gray-700 mb-2">
+                        <label htmlFor="settings-company-size" className="block text-sm font-semibold text-gray-700 mb-2">
                           Company Size
                         </label>
                         <select
+                          id="settings-company-size"
                           value={companySize}
                           onChange={(e) => setCompanySize(e.target.value)}
                           className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-600 focus:border-transparent bg-white text-gray-900"
@@ -688,10 +705,11 @@ export default function SettingsPage() {
                       </div>
 
                       <div>
-                        <label className="block text-sm font-semibold text-gray-700 mb-2">
+                        <label htmlFor="settings-contact-name" className="block text-sm font-semibold text-gray-700 mb-2">
                           Contact Name
                         </label>
                         <input
+                          id="settings-contact-name"
                           type="text"
                           value={contactName}
                           onChange={(e) => setContactName(e.target.value)}
@@ -701,12 +719,14 @@ export default function SettingsPage() {
                       </div>
 
                       <div>
-                        <label className="block text-sm font-semibold text-gray-700 mb-2">
+                        <label htmlFor="settings-referral-source" className="block text-sm font-semibold text-gray-700 mb-2">
                           Referral Source
                         </label>
                         <select
+                          id="settings-referral-source"
                           value={referralSource}
                           onChange={(e) => setReferralSource(e.target.value)}
+                          aria-describedby="referral-hint"
                           className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-600 focus:border-transparent bg-white text-gray-900"
                         >
                           <option value="">Not specified</option>
@@ -717,7 +737,7 @@ export default function SettingsPage() {
                           <option value="Conference or event">Conference or event</option>
                           <option value="Other">Other</option>
                         </select>
-                        <p className="text-xs text-gray-500 mt-1">How did you hear about us?</p>
+                        <p id="referral-hint" className="text-xs text-gray-500 mt-1">How did you hear about us?</p>
                       </div>
 
                       <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
@@ -754,6 +774,9 @@ export default function SettingsPage() {
                         <label className="relative inline-flex items-center cursor-pointer">
                           <input
                             type="checkbox"
+                            role="switch"
+                            aria-checked={emailNotifications.weeklyReport}
+                            aria-label="Weekly Summary Report"
                             checked={emailNotifications.weeklyReport}
                             onChange={(e) => setEmailNotifications({...emailNotifications, weeklyReport: e.target.checked})}
                             className="sr-only peer"
@@ -770,6 +793,9 @@ export default function SettingsPage() {
                         <label className="relative inline-flex items-center cursor-pointer">
                           <input
                             type="checkbox"
+                            role="switch"
+                            aria-checked={emailNotifications.integrationUpdates}
+                            aria-label="Integration Updates"
                             checked={emailNotifications.integrationUpdates}
                             onChange={(e) => setEmailNotifications({...emailNotifications, integrationUpdates: e.target.checked})}
                             className="sr-only peer"
@@ -786,6 +812,9 @@ export default function SettingsPage() {
                         <label className="relative inline-flex items-center cursor-pointer">
                           <input
                             type="checkbox"
+                            role="switch"
+                            aria-checked={emailNotifications.billingAlerts}
+                            aria-label="Billing Alerts"
                             checked={emailNotifications.billingAlerts}
                             onChange={(e) => setEmailNotifications({...emailNotifications, billingAlerts: e.target.checked})}
                             className="sr-only peer"
@@ -802,6 +831,9 @@ export default function SettingsPage() {
                         <label className="relative inline-flex items-center cursor-pointer">
                           <input
                             type="checkbox"
+                            role="switch"
+                            aria-checked={emailNotifications.securityAlerts}
+                            aria-label="Security Alerts"
                             checked={emailNotifications.securityAlerts}
                             onChange={(e) => setEmailNotifications({...emailNotifications, securityAlerts: e.target.checked})}
                             className="sr-only peer"
@@ -818,6 +850,9 @@ export default function SettingsPage() {
                         <label className="relative inline-flex items-center cursor-pointer">
                           <input
                             type="checkbox"
+                            role="switch"
+                            aria-checked={emailNotifications.newFeatures}
+                            aria-label="New Features"
                             checked={emailNotifications.newFeatures}
                             onChange={(e) => setEmailNotifications({...emailNotifications, newFeatures: e.target.checked})}
                             className="sr-only peer"
@@ -896,6 +931,7 @@ export default function SettingsPage() {
                             {member.role !== 'owner' && (
                               <button
                                 onClick={() => handleRemoveMember(member.id)}
+                                aria-label={`Remove ${member.name} from team`}
                                 className="text-red-600 hover:text-red-700 text-sm font-semibold"
                               >
                                 Remove
@@ -908,12 +944,23 @@ export default function SettingsPage() {
 
                     {/* Invite Modal */}
                     {showInviteModal && (
-                      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-                        <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto">
+                      <div
+                        className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+                        onClick={(e) => e.target === e.currentTarget && setShowInviteModal(false)}
+                        onKeyDown={(e) => e.key === 'Escape' && setShowInviteModal(false)}
+                      >
+                        <div
+                          role="dialog"
+                          aria-modal="true"
+                          aria-labelledby="invite-modal-title"
+                          tabIndex={-1}
+                          className="bg-white rounded-xl shadow-xl p-6 w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto"
+                        >
                           <div className="flex items-center justify-between mb-6">
-                            <h3 className="text-xl font-bold text-gray-900">Invite Team Member</h3>
+                            <h3 id="invite-modal-title" className="text-xl font-bold text-gray-900">Invite Team Member</h3>
                             <button
                               onClick={() => setShowInviteModal(false)}
+                              aria-label="Close invite modal"
                               className="text-gray-500 hover:text-gray-700"
                             >
                               <X className="w-5 h-5" />
@@ -922,23 +969,25 @@ export default function SettingsPage() {
 
                           <div className="space-y-6">
                             <div>
-                              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                              <label htmlFor="invite-email" className="block text-sm font-semibold text-gray-700 mb-2">
                                 Email Address
                               </label>
                               <input
+                                id="invite-email"
                                 type="email"
                                 value={inviteEmail}
                                 onChange={(e) => setInviteEmail(e.target.value)}
+                                aria-required="true"
                                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-600 focus:border-transparent bg-white text-gray-900"
                                 placeholder="colleague@company.com"
                               />
                             </div>
 
-                            <div>
-                              <label className="block text-sm font-semibold text-gray-700 mb-3">
+                            <fieldset>
+                              <legend className="block text-sm font-semibold text-gray-700 mb-3">
                                 Select Role
-                              </label>
-                              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                              </legend>
+                              <div role="radiogroup" aria-label="Team member role" className="grid grid-cols-1 md:grid-cols-3 gap-3">
                                 {(['admin', 'member', 'viewer'] as const).map((roleId) => {
                                   const role = ROLE_DEFINITIONS[roleId];
                                   const RoleIcon = role.icon;
@@ -947,6 +996,8 @@ export default function SettingsPage() {
                                     <button
                                       key={roleId}
                                       type="button"
+                                      role="radio"
+                                      aria-checked={isSelected}
                                       onClick={() => setInviteRole(roleId)}
                                       className={`relative p-4 rounded-xl border-2 text-left transition-all ${
                                         isSelected
@@ -955,11 +1006,11 @@ export default function SettingsPage() {
                                       }`}
                                     >
                                       {isSelected && (
-                                        <div className="absolute top-2 right-2">
+                                        <div className="absolute top-2 right-2" aria-hidden="true">
                                           <Check className="w-5 h-5 text-blue-600" />
                                         </div>
                                       )}
-                                      <div className={`w-10 h-10 rounded-lg bg-gradient-to-br ${role.color} flex items-center justify-center mb-3`}>
+                                      <div className={`w-10 h-10 rounded-lg bg-gradient-to-br ${role.color} flex items-center justify-center mb-3`} aria-hidden="true">
                                         <RoleIcon className="w-5 h-5 text-white" />
                                       </div>
                                       <h4 className="font-semibold text-gray-900 mb-1">{role.label}</h4>
@@ -968,7 +1019,7 @@ export default function SettingsPage() {
                                   );
                                 })}
                               </div>
-                            </div>
+                            </fieldset>
 
                             {/* Selected role permissions preview */}
                             <div className={`p-4 rounded-lg ${ROLE_DEFINITIONS[inviteRole].bgColor} border ${ROLE_DEFINITIONS[inviteRole].borderColor}`}>
@@ -1015,24 +1066,36 @@ export default function SettingsPage() {
 
                     {/* Role Selection Modal */}
                     {showRoleModal && selectedMemberForRole && (
-                      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-                        <div className="bg-white rounded-xl shadow-xl p-6 w-full max-w-3xl mx-4 max-h-[90vh] overflow-y-auto">
+                      <div
+                        className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+                        onClick={(e) => e.target === e.currentTarget && cancelRoleChange()}
+                        onKeyDown={(e) => e.key === 'Escape' && cancelRoleChange()}
+                      >
+                        <div
+                          role="dialog"
+                          aria-modal="true"
+                          aria-labelledby="role-modal-title"
+                          aria-describedby="role-modal-description"
+                          tabIndex={-1}
+                          className="bg-white rounded-xl shadow-xl p-6 w-full max-w-3xl mx-4 max-h-[90vh] overflow-y-auto"
+                        >
                           <div className="flex items-center justify-between mb-6">
                             <div>
-                              <h3 className="text-xl font-bold text-gray-900">Change Role</h3>
-                              <p className="text-sm text-gray-500 mt-1">
+                              <h3 id="role-modal-title" className="text-xl font-bold text-gray-900">Change Role</h3>
+                              <p id="role-modal-description" className="text-sm text-gray-500 mt-1">
                                 Select a new role for {selectedMemberForRole.name}
                               </p>
                             </div>
                             <button
                               onClick={cancelRoleChange}
+                              aria-label="Close role selection modal"
                               className="text-gray-500 hover:text-gray-700"
                             >
                               <X className="w-5 h-5" />
                             </button>
                           </div>
 
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                          <div role="radiogroup" aria-label="Select new role" className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
                             {(['admin', 'member', 'viewer'] as const).map((roleId) => {
                               const role = ROLE_DEFINITIONS[roleId];
                               const RoleIcon = role.icon;
@@ -1042,6 +1105,8 @@ export default function SettingsPage() {
                                 <button
                                   key={roleId}
                                   type="button"
+                                  role="radio"
+                                  aria-checked={isSelected}
                                   onClick={() => setPendingRole(roleId)}
                                   className={`relative p-5 rounded-xl border-2 text-left transition-all ${
                                     isSelected
@@ -1050,7 +1115,7 @@ export default function SettingsPage() {
                                   }`}
                                 >
                                   {isSelected && (
-                                    <div className="absolute top-3 right-3">
+                                    <div className="absolute top-3 right-3" aria-hidden="true">
                                       <div className="w-6 h-6 bg-blue-600 rounded-full flex items-center justify-center">
                                         <Check className="w-4 h-4 text-white" />
                                       </div>
@@ -1061,21 +1126,21 @@ export default function SettingsPage() {
                                       <span className="text-xs bg-gray-200 text-gray-600 px-2 py-1 rounded-full">Current</span>
                                     </div>
                                   )}
-                                  <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${role.color} flex items-center justify-center mb-4`}>
+                                  <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${role.color} flex items-center justify-center mb-4`} aria-hidden="true">
                                     <RoleIcon className="w-6 h-6 text-white" />
                                   </div>
                                   <h4 className="font-bold text-gray-900 text-lg mb-2">{role.label}</h4>
                                   <p className="text-sm text-gray-600 mb-4">{role.description}</p>
-                                  <ul className="space-y-2">
+                                  <ul className="space-y-2" aria-label={`${role.label} permissions`}>
                                     {role.permissions.map((perm, idx) => (
                                       <li key={idx} className="flex items-center gap-2 text-sm">
                                         {perm.allowed ? (
-                                          <Check className="w-4 h-4 text-green-600 flex-shrink-0" />
+                                          <Check className="w-4 h-4 text-green-600 flex-shrink-0" aria-hidden="true" />
                                         ) : (
-                                          <XIcon className="w-4 h-4 text-red-400 flex-shrink-0" />
+                                          <XIcon className="w-4 h-4 text-red-400 flex-shrink-0" aria-hidden="true" />
                                         )}
                                         <span className={perm.allowed ? 'text-gray-700' : 'text-gray-400'}>
-                                          {perm.label}
+                                          {perm.allowed ? '' : 'Cannot '}{perm.label}
                                         </span>
                                       </li>
                                     ))}
@@ -1234,7 +1299,7 @@ export default function SettingsPage() {
                             <Trash2 className="w-5 h-5" />
                             Delete Account
                           </h3>
-                          <p className="text-sm text-red-800 mb-4">
+                          <p id="delete-confirm-warning" className="text-sm text-red-800 mb-4">
                             Permanently delete your account and all associated data. This action cannot be undone.
                           </p>
                           {!showDeleteConfirm ? (
@@ -1246,11 +1311,14 @@ export default function SettingsPage() {
                             </button>
                           ) : (
                             <div className="space-y-3">
-                              <p className="text-sm font-semibold text-red-900">Type DELETE to confirm:</p>
+                              <label htmlFor="delete-confirm-input" className="block text-sm font-semibold text-red-900">Type DELETE to confirm:</label>
                               <input
+                                id="delete-confirm-input"
                                 type="text"
                                 value={deleteConfirmText}
                                 onChange={(e) => setDeleteConfirmText(e.target.value)}
+                                aria-required="true"
+                                aria-describedby="delete-confirm-warning"
                                 className="w-full px-4 py-2 border border-red-300 rounded-lg focus:ring-2 focus:ring-red-500 bg-white text-gray-900"
                                 placeholder="DELETE"
                               />

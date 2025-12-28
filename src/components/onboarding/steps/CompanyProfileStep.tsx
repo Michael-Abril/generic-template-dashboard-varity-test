@@ -135,26 +135,30 @@ export function CompanyProfileStep({
       <div className="space-y-4 max-w-sm mx-auto">
         {/* Company Name */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Company Name <span className="text-red-500">*</span>
+          <label htmlFor="company-name" className="block text-sm font-medium text-gray-700 mb-1">
+            Company Name <span className="text-red-500" aria-hidden="true">*</span>
           </label>
           <input
+            id="company-name"
             type="text"
             value={companyName}
             onChange={(e) => onUpdate({ companyName: e.target.value })}
             placeholder="Acme Inc."
+            aria-required="true"
             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm text-gray-900 bg-white"
           />
         </div>
 
         {/* Industry */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Industry <span className="text-red-500">*</span>
+          <label htmlFor="industry" className="block text-sm font-medium text-gray-700 mb-1">
+            Industry <span className="text-red-500" aria-hidden="true">*</span>
           </label>
           <select
+            id="industry"
             value={industry}
             onChange={(e) => onUpdate({ industry: e.target.value })}
+            aria-required="true"
             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm text-gray-900 bg-white"
           >
             <option value="">Select your industry</option>
@@ -168,10 +172,11 @@ export function CompanyProfileStep({
 
         {/* Your Name */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
+          <label htmlFor="contact-name" className="block text-sm font-medium text-gray-700 mb-1">
             Your Name
           </label>
           <input
+            id="contact-name"
             type="text"
             value={contactName}
             onChange={(e) => onUpdate({ contactName: e.target.value })}
@@ -182,15 +187,19 @@ export function CompanyProfileStep({
 
         {/* Email */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Your Email <span className="text-red-500">*</span>
+          <label htmlFor="contact-email" className="block text-sm font-medium text-gray-700 mb-1">
+            Your Email <span className="text-red-500" aria-hidden="true">*</span>
           </label>
           <input
+            id="contact-email"
             type="email"
             value={contactEmail}
             onChange={(e) => onUpdate({ contactEmail: e.target.value })}
             onBlur={() => setEmailTouched(true)}
             placeholder="you@company.com"
+            aria-required="true"
+            aria-invalid={emailTouched && contactEmail.length > 0 && !isValidEmail(contactEmail)}
+            aria-describedby={emailTouched && contactEmail && !isValidEmail(contactEmail) ? 'email-error' : undefined}
             className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm text-gray-900 ${
               emailTouched && contactEmail && !isValidEmail(contactEmail)
                 ? 'border-red-300 bg-red-50'
@@ -198,16 +207,17 @@ export function CompanyProfileStep({
             }`}
           />
           {emailTouched && contactEmail && !isValidEmail(contactEmail) && (
-            <p className="mt-1 text-xs text-red-600">Please enter a valid email</p>
+            <p id="email-error" role="alert" className="mt-1 text-xs text-red-600">Please enter a valid email</p>
           )}
         </div>
 
         {/* Company Size - Optional */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
+          <label htmlFor="company-size" className="block text-sm font-medium text-gray-700 mb-1">
             Company Size
           </label>
           <select
+            id="company-size"
             value={companySize}
             onChange={(e) => onUpdate({ companySize: e.target.value })}
             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm text-gray-900 bg-white"
@@ -224,10 +234,11 @@ export function CompanyProfileStep({
 
         {/* How did you hear about us - Optional */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
+          <label htmlFor="referral-source" className="block text-sm font-medium text-gray-700 mb-1">
             How did you hear about us?
           </label>
           <select
+            id="referral-source"
             value={referralSource}
             onChange={(e) => onUpdate({ referralSource: e.target.value })}
             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm text-gray-900 bg-white"
@@ -279,7 +290,7 @@ export function CompanyProfileStep({
       </div>
 
       {/* Privacy note */}
-      <p className="text-center text-xs text-gray-400 mt-4">
+      <p className="text-center text-xs text-gray-500 mt-4">
         Your data is encrypted and secure
       </p>
     </div>

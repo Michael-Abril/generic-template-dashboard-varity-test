@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { RefreshCw, Check, Clock, Database, Shield, Sparkles, ArrowRight } from 'lucide-react';
 import { IntegrationLogo } from '@/components/IntegrationLogo';
+import { logger } from '@/lib/logger';
 
 interface SyncingStepProps {
   integration: string;
@@ -29,7 +30,7 @@ export function SyncingStep({
   const [stages, setStages] = useState<SyncStage[]>([
     { id: 'connect', label: 'Connection verified', icon: Check, status: 'completed' },
     { id: 'fetch', label: 'Fetching your data', icon: Database, status: 'pending' },
-    { id: 'encrypt', label: 'Encrypting with your key', icon: Shield, status: 'pending' },
+    { id: 'encrypt', label: 'Securing your data', icon: Shield, status: 'pending' },
     { id: 'store', label: 'Storing securely', icon: Clock, status: 'pending' },
     { id: 'index', label: 'Preparing AI insights', icon: Sparkles, status: 'pending' },
   ]);
@@ -119,7 +120,7 @@ export function SyncingStep({
         onComplete();
 
       } catch (err) {
-        console.error('Sync error:', err);
+        logger.error('Sync error:', err);
         const errorMessage = err instanceof Error ? err.message : 'Sync failed';
         setError(errorMessage);
 
@@ -168,7 +169,14 @@ export function SyncingStep({
 
       {/* Progress Bar */}
       <div className="max-w-sm mx-auto mb-5">
-        <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+        <div
+          className="h-2 bg-gray-100 rounded-full overflow-hidden"
+          role="progressbar"
+          aria-valuenow={Math.round(progressPercent)}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-label={`Sync progress: ${Math.round(progressPercent)}%`}
+        >
           <div
             className={`h-full transition-all duration-500 ease-out ${syncComplete ? 'bg-green-500' : 'bg-blue-600'}`}
             style={{ width: `${progressPercent}%` }}
@@ -276,7 +284,7 @@ export function SyncingStep({
             Continue anyway
             <ArrowRight className="w-4 h-4" />
           </button>
-          <p className="text-center text-xs text-gray-400 mt-1">
+          <p className="text-center text-xs text-gray-500 mt-1">
             You can sync again from the dashboard
           </p>
         </div>

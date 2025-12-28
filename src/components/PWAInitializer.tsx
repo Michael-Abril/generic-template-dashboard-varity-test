@@ -2,6 +2,7 @@
 
 import { useEffect } from 'react';
 import { initializePWA } from '@/lib/pwa';
+import { logger } from '@/lib/logger';
 
 /**
  * PWA Initializer Component
@@ -12,11 +13,8 @@ export function PWAInitializer() {
     // Initialize PWA features when component mounts
     initializePWA();
 
-    // Log environment info
-    if (process.env.NODE_ENV === 'development') {
-      console.log('[PWA] Running in development mode');
-      console.log('[PWA] Service worker enabled:', process.env.NEXT_PUBLIC_ENABLE_SW === 'true');
-    }
+    // Log environment info (logger.debug only logs in development)
+    logger.debug('[PWA] Service worker enabled', { enabled: process.env.NEXT_PUBLIC_ENABLE_SW === 'true' });
   }, []);
 
   // This component doesn't render anything

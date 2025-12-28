@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { showInstallPrompt, isInstallPromptAvailable, isPWA } from '@/lib/pwa';
+import { logger } from '@/lib/logger';
 
 /**
  * Install PWA Button Component
@@ -42,9 +43,9 @@ export function InstallPWAButton() {
     const result = await showInstallPrompt();
 
     if (result === 'accepted') {
-      console.log('[PWA] User accepted the install prompt');
+      logger.info('[PWA] User accepted the install prompt');
     } else if (result === 'dismissed') {
-      console.log('[PWA] User dismissed the install prompt');
+      logger.debug('[PWA] User dismissed the install prompt');
     }
 
     setCanInstall(false);

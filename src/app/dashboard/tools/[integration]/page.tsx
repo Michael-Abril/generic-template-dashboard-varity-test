@@ -6,6 +6,7 @@ import { usePrivy } from '@privy-io/react-auth';
 import { useWalletSync } from '@/app/providers';
 import { useToast } from '@/components/ui/Toast';
 import { Layout } from '@/components/Layout';
+import { logger } from '@/lib/logger';
 import Link from 'next/link';
 import { SalesforcePage } from '@/components/integrations/salesforce';
 import { SlackPage } from '@/components/integrations/slack';
@@ -13,6 +14,7 @@ import { HubSpotPage } from '@/components/integrations/hubspot';
 import { QuickBooksPage } from '@/components/integrations/quickbooks';
 import { GoogleWorkspacePage } from '@/components/integrations/google';
 import { Microsoft365Page } from '@/components/integrations/microsoft';
+import { IntegrationErrorBoundary } from '@/components/integrations/IntegrationErrorBoundary';
 import {
   RefreshCw,
   FileText,
@@ -415,7 +417,7 @@ function QuickBooksToolPage({
       setShowInvoiceForm(false);
       if (onRefresh) onRefresh();
     } catch (error) {
-      console.error('Failed to save invoice:', error);
+      logger.error('Failed to save invoice', error);
       alert(error instanceof Error ? error.message : 'Failed to create invoice');
     } finally {
       setSavingInvoice(false);
@@ -472,7 +474,7 @@ function QuickBooksToolPage({
       setShowExpenseForm(false);
       if (onRefresh) onRefresh();
     } catch (error) {
-      console.error('Failed to save expense:', error);
+      logger.error('Failed to save expense', error);
       alert(error instanceof Error ? error.message : 'Failed to create expense');
     } finally {
       setSavingExpense(false);
@@ -2363,7 +2365,7 @@ export default function IntegrationToolPage() {
       };
       localStorage.setItem(getCacheKey(), JSON.stringify(cacheData));
     } catch (e) {
-      console.warn('Failed to cache integration data:', e);
+      logger.warn('Failed to cache integration data', e);
     }
   }, [address, integration, getCacheKey]);
 
@@ -2385,7 +2387,7 @@ export default function IntegrationToolPage() {
       }
       return null;
     } catch (e) {
-      console.warn('Failed to load cached integration data:', e);
+      logger.warn('Failed to load cached integration data', e);
       return null;
     }
   }, [address, integration, getCacheKey]);
@@ -2426,7 +2428,7 @@ export default function IntegrationToolPage() {
 
       // AUTO-SYNC: If no data exists, trigger initial sync automatically
       if (!result.data || result.data.length === 0) {
-        console.log('No cached data found, triggering auto-sync...');
+        logger.debug('No cached data found, triggering auto-sync');
         setSyncing(true);
         try {
           const syncRes = await fetch(
@@ -2454,7 +2456,7 @@ export default function IntegrationToolPage() {
             }
           }
         } catch (syncErr) {
-          console.error('Auto-sync failed:', syncErr);
+          logger.error('Auto-sync failed', syncErr);
         } finally {
           setSyncing(false);
         }
@@ -2478,7 +2480,7 @@ export default function IntegrationToolPage() {
       // Save to cache
       saveToCache(result.data || [], syncTime);
     } catch (err) {
-      console.error('Error fetching integration data:', err);
+      logger.error('Error fetching integration data', err);
       setError(err instanceof Error ? err.message : 'Failed to load data');
     } finally {
       setLoading(false);
@@ -2512,7 +2514,7 @@ export default function IntegrationToolPage() {
       await fetchData(true);
       setLastSync(new Date().toISOString());
     } catch (err) {
-      console.error('Sync error:', err);
+      logger.error('Sync error', err);
       setError(err instanceof Error ? err.message : 'Sync failed');
     } finally {
       setSyncing(false);
@@ -2616,11 +2618,13 @@ export default function IntegrationToolPage() {
 
     return (
       <Layout>
-        <QuickBooksPage
-          walletAddress={address}
-          data={Object.keys(quickbooksData).length > 0 ? quickbooksData : null}
-          onRefresh={syncData}
-        />
+        <IntegrationErrorBoundary integrationName="quickbooks" onRetry={refreshData}>
+          <QuickBooksPage
+            walletAddress={address}
+            data={Object.keys(quickbooksData).length > 0 ? quickbooksData : null}
+            onRefresh={syncData}
+          />
+        </IntegrationErrorBoundary>
       </Layout>
     );
   }
@@ -2770,29 +2774,31 @@ export default function IntegrationToolPage() {
 
     return (
       <Layout>
-        <HubSpotPage
-          walletAddress={address}
-          data={data}
-          loading={loading}
-          syncing={syncing}
-          error={error}
-          lastSync={lastSync}
-          onSync={syncData}
-          onRefresh={refreshData}
-          onCreateContact={handleCreateContact}
-          onEditContact={handleEditContact}
-          onDeleteContact={handleDeleteContact}
-          onCreateCompany={handleCreateCompany}
-          onEditCompany={handleEditCompany}
-          onDeleteCompany={handleDeleteCompany}
-          onCreateDeal={handleCreateDeal}
-          onEditDeal={handleEditDeal}
-          onDeleteDeal={handleDeleteDeal}
-          onUpdateDealStage={handleUpdateDealStage}
-          onCreateTicket={handleCreateTicket}
-          onEditTicket={handleEditTicket}
-          onDeleteTicket={handleDeleteTicket}
-        />
+        <IntegrationErrorBoundary integrationName="hubspot" onRetry={refreshData}>
+          <HubSpotPage
+            walletAddress={address}
+            data={data}
+            loading={loading}
+            syncing={syncing}
+            error={error}
+            lastSync={lastSync}
+            onSync={syncData}
+            onRefresh={refreshData}
+            onCreateContact={handleCreateContact}
+            onEditContact={handleEditContact}
+            onDeleteContact={handleDeleteContact}
+            onCreateCompany={handleCreateCompany}
+            onEditCompany={handleEditCompany}
+            onDeleteCompany={handleDeleteCompany}
+            onCreateDeal={handleCreateDeal}
+            onEditDeal={handleEditDeal}
+            onDeleteDeal={handleDeleteDeal}
+            onUpdateDealStage={handleUpdateDealStage}
+            onCreateTicket={handleCreateTicket}
+            onEditTicket={handleEditTicket}
+            onDeleteTicket={handleDeleteTicket}
+          />
+        </IntegrationErrorBoundary>
       </Layout>
     );
   }
@@ -2807,11 +2813,13 @@ export default function IntegrationToolPage() {
 
     return (
       <Layout>
-        <SalesforcePage
-          walletAddress={address}
-          data={salesforceData}
-          onRefresh={refreshData}
-        />
+        <IntegrationErrorBoundary integrationName="salesforce" onRetry={refreshData}>
+          <SalesforcePage
+            walletAddress={address}
+            data={salesforceData}
+            onRefresh={refreshData}
+          />
+        </IntegrationErrorBoundary>
       </Layout>
     );
   }
@@ -2828,10 +2836,12 @@ export default function IntegrationToolPage() {
 
     return (
       <Layout>
-        <SlackPage
-          walletAddress={address}
-          data={slackData}
-        />
+        <IntegrationErrorBoundary integrationName="slack" onRetry={refreshData}>
+          <SlackPage
+            walletAddress={address}
+            data={slackData}
+          />
+        </IntegrationErrorBoundary>
       </Layout>
     );
   }
@@ -2868,13 +2878,15 @@ export default function IntegrationToolPage() {
 
     return (
       <Layout>
-        <GoogleWorkspacePage
-          walletAddress={address}
-          data={googleData}
-          onSync={syncData}
-          onRefresh={refreshData}
-          loading={loading}
-        />
+        <IntegrationErrorBoundary integrationName="google" onRetry={refreshData}>
+          <GoogleWorkspacePage
+            walletAddress={address}
+            data={googleData}
+            onSync={syncData}
+            onRefresh={refreshData}
+            loading={loading}
+          />
+        </IntegrationErrorBoundary>
       </Layout>
     );
   }
@@ -2911,13 +2923,15 @@ export default function IntegrationToolPage() {
 
     return (
       <Layout>
-        <Microsoft365Page
-          walletAddress={address}
-          data={microsoftData}
-          onSync={syncData}
-          onRefresh={refreshData}
-          loading={loading}
-        />
+        <IntegrationErrorBoundary integrationName="microsoft" onRetry={refreshData}>
+          <Microsoft365Page
+            walletAddress={address}
+            data={microsoftData}
+            onSync={syncData}
+            onRefresh={refreshData}
+            loading={loading}
+          />
+        </IntegrationErrorBoundary>
       </Layout>
     );
   }

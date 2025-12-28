@@ -1,10 +1,18 @@
 """
 OAuth Integration API Endpoints
 Handles OAuth flows for QuickBooks, Salesforce, Shopify, and other integrations
+
+Updated: December 28, 2025 (Terminal 1 - 100% Completion)
+Fixes Applied:
+- CRIT-O2: State secret validation now fails startup in production
+- CRIT-O3: Error messages sanitized to prevent information disclosure
+- CRIT-O4: Wallet address validation on all endpoints
+- CRIT-O5: OAuth credentials validated before flow starts
+- HIGH-O5: HTTP timeout added to all token exchange requests
 """
 from fastapi import APIRouter, HTTPException, Query, Request, Depends
 from fastapi.responses import RedirectResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional, Dict, Any
 import logging
 import httpx
@@ -13,6 +21,7 @@ import json
 import base64
 import hashlib
 import hmac
+import os
 from urllib.parse import urlencode
 from datetime import datetime, timedelta
 
@@ -23,9 +32,18 @@ from app.services.filecoin_service import FilecoinService
 from app.services.encryption_service import EncryptionService
 from app.core.config import settings
 from app.core.database import get_db
+from app.core.validators import (
+    validate_wallet_address,
+    validate_oauth_credentials,
+    sanitize_error_message,
+    sanitize_api_error,
+)
 from app.models.purchase import OAuthToken
 
 logger = logging.getLogger(__name__)
+
+# Constants
+HTTP_TIMEOUT = 30.0  # HIGH-O5: HTTP timeout for all external requests
 
 router = APIRouter()
 
@@ -60,6 +78,39 @@ def normalize_provider_name(name: str) -> str:
 # Secret key for state signing - uses environment variable (RED-002 fix)
 # Generate with: openssl rand -hex 32
 STATE_SECRET = settings.oauth_state_secret
+
+# CRIT-O2: Validate OAuth state secret is properly configured
+# Updated Dec 28, 2025: Now FAILS startup in production if secret is weak
+_DEFAULT_STATE_SECRET = "CHANGE_ME_IN_PRODUCTION_use_openssl_rand_hex_32"
+_IS_PRODUCTION = os.getenv("ENVIRONMENT", "development").lower() in ["production", "prod"]
+
+if STATE_SECRET == _DEFAULT_STATE_SECRET or len(STATE_SECRET) < 32:
+    error_msg = (
+        "SECURITY CRITICAL: OAUTH_STATE_SECRET is set to default value or too short! "
+        "Generate a secure secret with: openssl rand -hex 32"
+    )
+    if _IS_PRODUCTION:
+        # In production, fail startup to prevent insecure operation
+        logger.critical(error_msg)
+        raise RuntimeError(error_msg)
+    else:
+        # In development, warn but allow startup for testing
+        logger.warning(f"DEV MODE: {error_msg}")
+
+
+def sanitize_oauth_error(response_text: str) -> str:
+    """
+    Remove sensitive data from OAuth error responses (ISSUE-3 fix - Dec 28, 2025).
+    Only returns safe error fields, never exposes tokens, secrets, or internal details.
+    """
+    try:
+        error_data = json.loads(response_text)
+        safe_fields = ["error", "error_description", "error_code", "message"]
+        sanitized = {k: v for k, v in error_data.items() if k in safe_fields}
+        return json.dumps(sanitized) if sanitized else "OAuth provider error"
+    except json.JSONDecodeError:
+        # If not JSON, return generic error (don't expose raw response)
+        return "OAuth provider error"
 
 
 def generate_pkce_pair() -> tuple:
@@ -215,7 +266,7 @@ OAUTH_CONFIGS = {
         "client_id": settings.slack_client_id if hasattr(settings, 'slack_client_id') else "",
         "client_secret": settings.slack_client_secret if hasattr(settings, 'slack_client_secret') else "",
         "redirect_uri": get_redirect_uri("slack"),
-        "scope": "channels:read,channels:history,users:read,files:read,chat:write"
+        "scope": "channels:read,channels:history,groups:read,groups:history,users:read,files:read,chat:write"
     },
     "monday": {
         "authorize_url": "https://auth.monday.com/oauth2/authorize",
@@ -254,10 +305,10 @@ OAUTH_CONFIGS = {
 
 
 class OAuthStartRequest(BaseModel):
-    """OAuth flow start request"""
-    wallet_address: str
-    shop_domain: Optional[str] = None  # Required for Shopify
-    subdomain: Optional[str] = None  # Required for Zendesk
+    """OAuth flow start request with validation (CRIT-O4)"""
+    wallet_address: str = Field(..., description="User's wallet address (0x...)")
+    shop_domain: Optional[str] = Field(default=None, description="Required for Shopify")
+    subdomain: Optional[str] = Field(default=None, description="Required for Zendesk")
 
 
 class OAuthCallbackResponse(BaseModel):
@@ -299,8 +350,9 @@ async def authorize_oauth_alias(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to authorize OAuth: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        # CRIT-O3: Sanitize error message
+        logger.error(f"Failed to authorize OAuth")
+        raise HTTPException(status_code=500, detail=sanitize_error_message(e))
 
 
 @router.post("/start/{integration}")
@@ -319,6 +371,9 @@ async def start_oauth_flow(
         Redirect URL to OAuth provider
     """
     try:
+        # CRIT-O4: Validate wallet address
+        validated_wallet = validate_wallet_address(request.wallet_address)
+
         if integration not in OAUTH_CONFIGS:
             raise HTTPException(
                 status_code=400,
@@ -326,6 +381,13 @@ async def start_oauth_flow(
             )
 
         config = OAUTH_CONFIGS[integration]
+
+        # CRIT-O5: Validate OAuth credentials are configured before starting flow
+        validate_oauth_credentials(
+            client_id=config.get("client_id"),
+            client_secret=config.get("client_secret"),
+            provider=integration
+        )
 
         # CRITICAL FIX: Get redirect_uri dynamically at request time, not module load time
         # This ensures consistency between START and CALLBACK phases
@@ -344,7 +406,7 @@ async def start_oauth_flow(
         # CRITICAL: Store redirect_uri in state to ensure same URI is used in CALLBACK
         state = encode_oauth_state(
             integration=integration,
-            wallet_address=request.wallet_address,
+            wallet_address=validated_wallet,  # CRIT-O4: Use validated wallet
             shop_domain=request.shop_domain,
             subdomain=request.subdomain,
             redirect_uri=redirect_uri,  # Store for CALLBACK phase
@@ -354,7 +416,7 @@ async def start_oauth_flow(
         # Also store in memory for faster lookup (optional, state is self-validating)
         oauth_states[state] = {
             "integration": integration,
-            "wallet_address": request.wallet_address,
+            "wallet_address": validated_wallet,  # CRIT-O4: Use validated wallet
             "shop_domain": request.shop_domain,
             "subdomain": request.subdomain,
             "redirect_uri": redirect_uri,
@@ -415,7 +477,7 @@ async def start_oauth_flow(
 
         logger.info(
             f"Starting OAuth flow for {integration}, "
-            f"wallet: {request.wallet_address}, "
+            f"wallet: {validated_wallet[:10]}..., "
             f"redirect_uri: {redirect_uri}"  # Log for debugging
         )
 
@@ -423,14 +485,15 @@ async def start_oauth_flow(
             "success": True,
             "authorization_url": auth_url,
             "integration": integration,
-            "wallet_address": request.wallet_address
+            "wallet_address": validated_wallet
         }
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to start OAuth flow: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        # CRIT-O3: Sanitize error message
+        logger.error(f"Failed to start OAuth flow for {integration}")
+        raise HTTPException(status_code=500, detail=sanitize_error_message(e))
 
 
 @router.post("/callback")
@@ -538,7 +601,7 @@ async def oauth_callback_post(request: Request, db: AsyncSession = Depends(get_d
         if code_verifier:
             token_data["code_verifier"] = code_verifier
 
-        # Exchange code for token
+        # Exchange code for token (HIGH-O5: Added HTTP timeout)
         async with httpx.AsyncClient() as client:
             response = await client.post(
                 token_url,
@@ -547,17 +610,26 @@ async def oauth_callback_post(request: Request, db: AsyncSession = Depends(get_d
                 headers={
                     "Accept": "application/json",
                     "Content-Type": "application/x-www-form-urlencoded" if integration != "shopify" else "application/json"
-                }
+                },
+                timeout=HTTP_TIMEOUT  # HIGH-O5: Added timeout
             )
 
             if response.status_code != 200:
-                logger.error(f"Token exchange failed: {response.text}")
+                logger.error(f"Token exchange failed for {integration}: status={response.status_code}")
                 raise HTTPException(
                     status_code=400,
-                    detail=f"Failed to exchange code for token: {response.text}"
+                    detail=f"Failed to exchange code for token: {sanitize_oauth_error(response.text)}"
                 )
 
-            token_response = response.json()
+            # HIGH-G12: Safe JSON parsing
+            try:
+                token_response = response.json()
+            except Exception:
+                logger.error(f"Invalid JSON response from {integration} token endpoint")
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Invalid response from {integration}"
+                )
 
         # Prepare credentials for storage
         credentials = {
@@ -814,8 +886,9 @@ async def oauth_callback_post(request: Request, db: AsyncSession = Depends(get_d
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"OAuth callback failed: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        # CRIT-O3: Sanitize error message
+        logger.error(f"OAuth callback failed for POST request")
+        raise HTTPException(status_code=500, detail=sanitize_error_message(e))
 
 
 @router.get("/callback")
@@ -907,7 +980,7 @@ async def oauth_callback(
         if code_verifier:
             token_data["code_verifier"] = code_verifier
 
-        # Exchange code for token
+        # Exchange code for token (HIGH-O5: Added HTTP timeout)
         async with httpx.AsyncClient() as client:
             response = await client.post(
                 token_url,
@@ -916,17 +989,26 @@ async def oauth_callback(
                 headers={
                     "Accept": "application/json",
                     "Content-Type": "application/x-www-form-urlencoded" if integration != "shopify" else "application/json"
-                }
+                },
+                timeout=HTTP_TIMEOUT  # HIGH-O5: Added timeout
             )
 
             if response.status_code != 200:
-                logger.error(f"Legacy token exchange failed for {integration}: {response.text}, redirect_uri: {state_redirect_uri}")
+                logger.error(f"Legacy token exchange failed for {integration}: status={response.status_code}")
                 raise HTTPException(
                     status_code=400,
-                    detail=f"Failed to exchange code for token: {response.text}"
+                    detail=f"Failed to exchange code for token: {sanitize_oauth_error(response.text)}"
                 )
 
-            token_response = response.json()
+            # HIGH-G12: Safe JSON parsing
+            try:
+                token_response = response.json()
+            except Exception:
+                logger.error(f"Invalid JSON response from {integration} token endpoint")
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Invalid response from {integration}"
+                )
 
         # Prepare credentials for storage
         credentials = {
@@ -1039,9 +1121,10 @@ async def oauth_callback(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"OAuth callback failed: {e}")
-        # Redirect to frontend with error
-        redirect_url = f"{settings.frontend_url}/integrations?success=false&error={str(e)}"
+        # CRIT-O3: Sanitize error message
+        logger.error(f"OAuth callback failed for GET request")
+        # Redirect to frontend with generic error (don't expose internal details in URL)
+        redirect_url = f"{settings.frontend_url}/integrations?success=false&error=OAuth+connection+failed"
         return RedirectResponse(url=redirect_url)
 
 
@@ -1090,8 +1173,9 @@ async def get_oauth_status(
         }
 
     except Exception as e:
-        logger.error(f"Failed to check OAuth status: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        # CRIT-O3: Sanitize error message
+        logger.error(f"Failed to check OAuth status for {integration}")
+        raise HTTPException(status_code=500, detail=sanitize_error_message(e))
 
 
 @router.delete("/disconnect/{integration}")
@@ -1136,8 +1220,9 @@ async def disconnect_oauth(
         }
 
     except Exception as e:
-        logger.error(f"Failed to disconnect OAuth: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        # CRIT-O3: Sanitize error message
+        logger.error(f"Failed to disconnect OAuth for {integration}")
+        raise HTTPException(status_code=500, detail=sanitize_error_message(e))
 
 
 @router.get("/credentials/{integration}")

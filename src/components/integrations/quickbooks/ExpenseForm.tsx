@@ -21,6 +21,7 @@ interface ExpenseFormData {
 
 interface ExpenseFormProps {
   expense?: ExpenseFormData;
+  vendors?: Array<{ id: string; name: string }>;
   onClose: () => void;
   onSave: (expenseData: ExpenseFormData) => void;
   loading?: boolean;

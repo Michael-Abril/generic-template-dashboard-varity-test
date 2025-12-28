@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Layout } from '@/components/Layout';
 import { useToast } from '@/components/ui/Toast';
+import { logger } from '@/lib/logger';
 import {
   FileSpreadsheet,
   FileText,
@@ -201,7 +202,7 @@ export default function AnalyticsContent() {
             setActiveTabId(parsed[0].id);
           }
         } catch (e) {
-          console.error('Failed to parse saved tabs:', e);
+          logger.error('Failed to parse saved tabs', e);
         }
       }
 
@@ -211,7 +212,7 @@ export default function AnalyticsContent() {
         try {
           setTabLayouts(JSON.parse(savedLayouts));
         } catch (e) {
-          console.error('Failed to parse saved layouts:', e);
+          logger.error('Failed to parse saved layouts', e);
         }
       }
 
@@ -231,7 +232,7 @@ export default function AnalyticsContent() {
         setConnectedIntegrations(integrations);
       }
     } catch (e) {
-      console.error('Failed to fetch integrations:', e);
+      logger.error('Failed to fetch integrations', e);
     }
   };
 
@@ -265,7 +266,7 @@ export default function AnalyticsContent() {
           setAnalyticsData(data);
         }
       } catch (error) {
-        console.error('Error fetching analytics:', error);
+        logger.error('Error fetching analytics', error);
       } finally {
         setLoading(false);
       }
@@ -478,7 +479,7 @@ export default function AnalyticsContent() {
           })
         });
       } catch (e) {
-        console.log('Backend layout save not available');
+        logger.debug('Backend layout save not available');
       }
 
       setHasChanges(false);

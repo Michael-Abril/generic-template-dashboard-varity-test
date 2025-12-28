@@ -27,11 +27,12 @@ interface InvoiceFormProps {
     tax?: number;
     lineItems?: LineItem[];
   };
+  customers?: Array<{ id: string; name: string }>;
   onClose: () => void;
   onSave: (invoiceData: Record<string, unknown>) => void;
 }
 
-export default function InvoiceForm({ invoice, onClose, onSave }: InvoiceFormProps) {
+export default function InvoiceForm({ invoice, customers = [], onClose, onSave }: InvoiceFormProps) {
   const [formData, setFormData] = useState({
     customer: invoice?.customer || '',
     invoiceNumber: invoice?.number || `INV-${Date.now().toString().slice(-4)}`,
@@ -171,10 +172,18 @@ export default function InvoiceForm({ invoice, onClose, onSave }: InvoiceFormPro
                 }`}
               >
                 <option value="">Select customer...</option>
-                <option value="Acme Corporation">Acme Corporation</option>
-                <option value="Tech Solutions Inc">Tech Solutions Inc</option>
-                <option value="Global Enterprises">Global Enterprises</option>
-                <option value="Startup Co">Startup Co</option>
+                {customers.length > 0 ? (
+                  customers.map(c => (
+                    <option key={c.id} value={c.name}>{c.name}</option>
+                  ))
+                ) : (
+                  <>
+                    <option value="Acme Corporation">Acme Corporation</option>
+                    <option value="Tech Solutions Inc">Tech Solutions Inc</option>
+                    <option value="Global Enterprises">Global Enterprises</option>
+                    <option value="Startup Co">Startup Co</option>
+                  </>
+                )}
               </select>
               {errors.customer && (
                 <p className="text-xs text-red-600 mt-1">{errors.customer}</p>

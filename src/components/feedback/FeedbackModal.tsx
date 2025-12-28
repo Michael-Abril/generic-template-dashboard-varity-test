@@ -12,6 +12,7 @@ import {
   ThumbsDown,
   Meh,
 } from 'lucide-react';
+import { logger } from '@/lib/logger';
 
 interface FeedbackModalProps {
   isOpen: boolean;
@@ -145,9 +146,9 @@ export function FeedbackModal({
         const errorData = await backendResponse.json().catch(() => ({}));
         // If it's a duplicate submission, treat as success
         if (backendResponse.status === 409) {
-          console.log('Feedback already submitted for this milestone');
+          logger.debug('Feedback already submitted for this milestone');
         } else {
-          console.error('Backend feedback submission failed:', errorData);
+          logger.error('Backend feedback submission failed', errorData);
           // Don't throw - try Web3Forms as backup
         }
       }
@@ -175,7 +176,7 @@ export function FeedbackModal({
           });
         } catch (web3Error) {
           // Web3Forms is secondary - log but don't fail
-          console.error('Web3Forms submission failed (non-critical):', web3Error);
+          logger.warn('Web3Forms submission failed (non-critical)', web3Error);
         }
       }
 
@@ -188,7 +189,7 @@ export function FeedbackModal({
         localStorage.setItem(feedbackKey, new Date().toISOString());
       }
     } catch (err) {
-      console.error('Feedback submission error:', err);
+      logger.error('Feedback submission error', err);
       setError('Failed to submit feedback. Please try again.');
     } finally {
       setSubmitting(false);

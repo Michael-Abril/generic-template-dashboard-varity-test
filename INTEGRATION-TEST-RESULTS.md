@@ -444,34 +444,73 @@ response.raise_for_status()  # FAILS HERE with 403
 
 ### Bugs Discovered
 
-| ID | Integration | File:Line | Severity | Description |
-|----|-------------|-----------|----------|-------------|
-| BUG-001 | Google | google.py:102-107 | CRITICAL | Uses non-existent `token.encrypted_token` |
-| BUG-002 | Slack | oauth.py:217 | HIGH | Missing private channel scopes |
-| BUG-003 | Microsoft | oauth.py:201 | CRITICAL | Read-only OAuth scopes |
-| BUG-004 | Microsoft | integrations.py:41-64 | CRITICAL | Missing from TOKEN_REFRESH_CONFIGS |
-| BUG-005 | Salesforce | salesforce_crud.py:85-101 | LOW | Missing `department` field |
+| ID | Integration | File:Line | Severity | Description | Status |
+|----|-------------|-----------|----------|-------------|--------|
+| BUG-001 | Google | google.py:102-107 | CRITICAL | Uses non-existent `token.encrypted_token` | **NOT FIXED** |
+| BUG-002 | Slack | oauth.py:218 | ~~HIGH~~ LOW | ~~Missing private channel scopes~~ **SCOPES CORRECT** - Users must reconnect | **CLARIFIED** |
+| BUG-003 | Microsoft | oauth.py:201 | CRITICAL | Read-only OAuth scopes | **FIXED Dec 26** |
+| BUG-004 | Microsoft | integrations.py:44-48 | CRITICAL | Missing from TOKEN_REFRESH_CONFIGS | **FIXED Dec 26** |
+| BUG-005 | Salesforce | salesforce_crud.py:85-101 | LOW | Missing `department` field | **NOT FIXED** |
+| BUG-006 | HubSpot | hubspot_crud.py:89 | HIGH | Wrong `data_type` for credentials retrieval | **FIXED Dec 28** |
+| BUG-007 | Salesforce | salesforce_crud.py:125 | HIGH | Wrong `data_type` for credentials retrieval | **NOT FIXED** |
 
 ---
 
-## 10. Conclusion
+## 10. Terminal 5 Testing Results (December 28, 2025)
 
-### Working Now
-- **Slack:** 75% - Functional for public channels
-- **Google Workspace:** 70% - Sync works, CRUD blocked by bug
+### Microsoft 365 - Code Analysis Complete
+**Status: 65% Ready (Code-complete, needs end-to-end testing)**
+
+| Component | Status | Notes |
+|-----------|--------|-------|
+| OAuth Scopes | ✅ FIXED | All write permissions included |
+| Token Refresh | ✅ FIXED | In TOKEN_REFRESH_CONFIGS |
+| Token Access | ✅ CORRECT | Uses `token.access_token` property |
+| 30 CRUD Endpoints | ❓ UNTESTED | All implemented but never verified |
+
+**Recommendation:** Perform end-to-end testing with real Microsoft 365 account
+
+### Slack - Code Analysis Complete
+**Status: 75% Ready (Public channels 100%, private channels need reconnect)**
+
+| Component | Status | Notes |
+|-----------|--------|-------|
+| OAuth Scopes | ✅ CORRECT | `groups:read,groups:history` ARE present |
+| Live API (6 endpoints) | ✅ WORKING | All use correct token access |
+| File Sync to RAG | ✅ WORKING | Files indexed in Qdrant |
+| Private Channels | ⚠️ RECONNECT | Users who connected pre-Dec 26 need reconnect |
+
+**BUG-002 Clarification:** The scopes ARE correct in code. Issue is that tokens created before Dec 26 lack the scopes. Users must disconnect and reconnect to get new token with all scopes.
+
+### HubSpot Credentials Bug - FIXED
+**File:** `backend/app/api/v1/hubspot_crud.py:89`
+**Change:** `data_type="oauth_token"` → `data_type="oauth-credentials"`
+
+This fix ensures CRUD operations can retrieve stored OAuth tokens.
+
+---
+
+## 11. Conclusion
+
+### Working Now (Updated Dec 28)
+- **Slack:** 75% - Public channels fully working, private channels work after reconnect
+- **Microsoft 365:** 65% - Code-complete, needs end-to-end testing
+- **Google Workspace:** 70% - Sync works, CRUD blocked by BUG-001
 
 ### Blocked
 - **QuickBooks:** External approval required (Intuit)
 
 ### Ready for Testing
-- **Salesforce:** 95% - Minor fix needed
-- **HubSpot:** 100% - Best implementation, zero bugs
+- **Salesforce:** 85% - Needs BUG-005 + BUG-007 fixes
+- **HubSpot:** 95% - Credentials bug fixed, ready for end-to-end testing
 
-### Needs Major Fixes
-- **Microsoft 365:** 3 code changes + Azure configuration
+### Needs Fixes (Terminal 1)
+- **Google:** BUG-001 (token bug in google.py)
+- **Salesforce:** BUG-005 (department field) + BUG-007 (credentials data_type)
 
 ---
 
-**Document Version:** 2.0
-**Last Updated:** December 26, 2025
-**Next Review:** After Terminal 1 (Security) and Terminal 2 (Backend) complete their fixes
+**Document Version:** 3.0
+**Last Updated:** December 28, 2025
+**Updated By:** Terminal 5 (Integration Completion Team)
+**Next Review:** After HubSpot/Salesforce test accounts created

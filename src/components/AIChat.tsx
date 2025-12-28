@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useWallets } from '@privy-io/react-auth';
 import { useWalletSync } from '../app/providers';
 import { logger } from '@/lib/logger';
@@ -19,6 +19,25 @@ import { ProjectSidebar } from './ai/ProjectSidebar';
 import { ProjectEditor } from './ai/ProjectEditor';
 import { ProjectHeader } from './ai/ProjectHeader';
 import { Project, ProjectFile } from '@/types/project';
+
+// AI Enhancement Components (Terminal 4 - December 28, 2025)
+import { detectIntent, getModeBadgeColor, getIntentExplanation } from './ai/IntentDetector';
+import { ContextPreview, ContextPreviewBadge } from './ai/ContextPreview';
+import { CitationPanel } from './ai/CitationPanel';
+import { TextWithCitations } from './ai/CitationLink';
+import { QuickActions } from './ai/QuickActions';
+import { MemoryBadge, MemoryIndicatorInline } from './ai/MemoryIndicator';
+import {
+  AIMode,
+  IntentClassification,
+  Citation,
+  MessageCitations,
+  EnhancedRAGStatus,
+  IntegrationContextInfo,
+  calculateFreshness,
+  calculateMemoryStatus,
+  CITATION_PATTERN
+} from '@/types/ai';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 
@@ -97,6 +116,67 @@ interface ConversationWithMessages extends Conversation {
   }>;
 }
 
+/**
+ * Build MessageCitations from a Message's source fields
+ * Terminal 4: AI Enhancement - Citation Integration
+ */
+function buildCitationsFromMessage(msg: Message): MessageCitations | null {
+  const citations: Citation[] = [];
+  let index = 1;
+
+  // Add RAG sources
+  if (msg.rag_sources) {
+    msg.rag_sources.forEach(source => {
+      citations.push({
+        index: index++,
+        type: 'rag',
+        title: source,
+        source: source,
+        integration: 'business_data'
+      });
+    });
+  }
+
+  // Add web sources
+  if (msg.web_sources) {
+    msg.web_sources.forEach(ws => {
+      citations.push({
+        index: index++,
+        type: 'web',
+        title: ws.title,
+        source: ws.url,
+        url: ws.url
+      });
+    });
+  }
+
+  // Add general sources (avoiding duplicates)
+  if (msg.sources) {
+    msg.sources.forEach(source => {
+      if (!citations.find(c => c.source === source)) {
+        citations.push({
+          index: index++,
+          type: 'rag',
+          title: source,
+          source: source
+        });
+      }
+    });
+  }
+
+  if (citations.length === 0) return null;
+
+  return {
+    citations,
+    allVerified: true,
+    summary: {
+      ragCount: citations.filter(c => c.type === 'rag').length,
+      webCount: citations.filter(c => c.type === 'web').length,
+      documentCount: citations.filter(c => c.type === 'document').length
+    }
+  };
+}
+
 export function AIChat() {
   const { wallets } = useWallets();
   const { address: syncedAddress, isLoading } = useWalletSync();
@@ -119,6 +199,11 @@ export function AIChat() {
   const [aiMode, setAiMode] = useState<'standard' | 'deep_research' | 'analyze' | 'document'>('standard');
   const [showModeSelector, setShowModeSelector] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Smart Mode Selection State (Terminal 4 Enhancement)
+  const [lastIntentClassification, setLastIntentClassification] = useState<IntentClassification | null>(null);
+  const [showModeBadge, setShowModeBadge] = useState(false);
+  const [autoModeEnabled, setAutoModeEnabled] = useState(true); // Enable smart mode by default
 
   // Enhanced features state
   const [enableWebSearch, setEnableWebSearch] = useState(true); // Toggle for Deep Research
@@ -145,6 +230,33 @@ export function AIChat() {
     integrations: [],
     loading: true
   });
+
+  // Context Preview state - Terminal 4 Enhancement
+  const [showContextPreview, setShowContextPreview] = useState(false);
+
+  // Enhanced RAG status with integration details - Terminal 4 Enhancement
+  const enhancedRagStatus = useMemo((): EnhancedRAGStatus => {
+    return {
+      dataAvailable: ragStatus.dataAvailable,
+      documentCount: ragStatus.documentCount,
+      integrations: ragStatus.integrations,
+      integrationDetails: ragStatus.integrations.map(provider => ({
+        provider,
+        displayName: provider.charAt(0).toUpperCase() + provider.slice(1),
+        documentCount: ragStatus.integrations.length > 0
+          ? Math.floor(ragStatus.documentCount / ragStatus.integrations.length)
+          : 0,
+        lastSyncedAt: new Date(), // Would come from backend in production
+        isStale: false,
+        freshness: 'fresh' as const,
+        dataTypes: ['documents', 'emails'],
+        isConnected: true
+      })),
+      loading: ragStatus.loading,
+      lastSyncTime: new Date(),
+      hasStaleData: false
+    };
+  }, [ragStatus]);
 
   // Action panel state (for sending emails, creating documents)
   const [showActionPanel, setShowActionPanel] = useState(false);
@@ -928,8 +1040,25 @@ export function AIChat() {
       // Prepare integration filter (only include if not 'all')
       const integrationFilter = selectedIntegration !== 'all' ? selectedIntegration : undefined;
 
-      // Route to different endpoints based on AI mode
-      if (aiMode === 'standard') {
+      // Smart Mode Selection (Terminal 4 Enhancement)
+      // Automatically detect intent and switch mode if auto-mode is enabled
+      let effectiveMode = aiMode;
+      if (autoModeEnabled && !overrideMessage) {
+        const hasDocument = uploadedDocument !== null;
+        const intentResult = detectIntent(messageContent, { hasDocument });
+        setLastIntentClassification(intentResult);
+
+        // Only auto-switch if confidence is high enough
+        if (intentResult.confidence >= 0.6) {
+          effectiveMode = intentResult.mode;
+          setShowModeBadge(true);
+          // Auto-hide badge after 5 seconds
+          setTimeout(() => setShowModeBadge(false), 5000);
+        }
+      }
+
+      // Route to different endpoints based on effective AI mode (may be auto-detected)
+      if (effectiveMode === 'standard') {
         // Standard mode: Use general chat endpoint (no web search)
         // This provides direct, authoritative Varity Dashboard responses
         const response = await fetch(`${API_BASE_URL}/api/v1/ai/chat/general`, {
@@ -949,7 +1078,7 @@ export function AIChat() {
         if (!response.ok) throw new Error(`AI request failed: ${response.statusText}`);
         responseData = await response.json();
 
-      } else if (aiMode === 'deep_research') {
+      } else if (effectiveMode === 'deep_research') {
         // Deep Research mode: Use combined query with optional web search
         // User can toggle web search on/off for RAG-only or RAG+Web analysis
         const response = await fetch(`${API_BASE_URL}/api/v1/ai/query/combined`, {
@@ -968,7 +1097,7 @@ export function AIChat() {
         if (!response.ok) throw new Error(`AI request failed: ${response.statusText}`);
         responseData = await response.json();
 
-      } else if (aiMode === 'analyze') {
+      } else if (effectiveMode === 'analyze') {
         // Deep Analysis mode: Use research endpoint for comprehensive analysis
         // without web search, focused on business data analysis
         const response = await fetch(`${API_BASE_URL}/api/v1/ai/research`, {
@@ -1347,14 +1476,33 @@ export function AIChat() {
                 </div>
               </div>
 
-              {/* Data Status - Icon only with tooltip */}
+              {/* Data Status - ContextPreviewBadge - Terminal 4 Enhancement */}
               {!ragStatus.loading && (
+                <ContextPreviewBadge
+                  ragStatus={enhancedRagStatus}
+                  onClick={() => setShowContextPreview(!showContextPreview)}
+                />
+              )}
+
+              {/* Memory Indicator - Terminal 4 Enhancement */}
+              {messages.length > 5 && (
+                <MemoryIndicatorInline
+                  messages={messages.map(m => ({ content: m.content, role: m.role }))}
+                  className="text-white/70"
+                />
+              )}
+
+              {/* Smart Mode Badge - Terminal 4 Enhancement */}
+              {showModeBadge && lastIntentClassification && (
                 <div className="relative group">
-                  <div className={`p-1.5 rounded-md ${ragStatus.dataAvailable ? 'bg-green-500/10' : 'bg-yellow-500/10'}`}>
-                    <Database className={`w-3.5 h-3.5 ${ragStatus.dataAvailable ? 'text-green-400' : 'text-yellow-400'}`} />
+                  <div className={`px-2 py-1 rounded-md text-xs font-medium transition-opacity ${getModeBadgeColor(lastIntentClassification.mode)}`}>
+                    {lastIntentClassification.mode === 'analyze' && 'Analysis'}
+                    {lastIntentClassification.mode === 'deep_research' && 'Research'}
+                    {lastIntentClassification.mode === 'document' && 'Document'}
+                    {lastIntentClassification.mode === 'standard' && 'Standard'}
                   </div>
                   <div className="absolute bottom-full right-0 mb-1.5 px-2 py-1 bg-gray-900 text-white text-[10px] rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-20">
-                    {ragStatus.dataAvailable ? `${ragStatus.documentCount} docs indexed` : 'No data synced'}
+                    {getIntentExplanation(lastIntentClassification)}
                   </div>
                 </div>
               )}
@@ -1413,6 +1561,21 @@ export function AIChat() {
             </div>
           </div>
         </div>
+
+        {/* Context Preview Panel - Terminal 4 Enhancement */}
+        {showContextPreview && (
+          <div className="border-b border-gray-200 bg-gray-50 p-3">
+            <ContextPreview
+              ragStatus={enhancedRagStatus}
+              expanded={true}
+              onToggleExpanded={() => setShowContextPreview(false)}
+              onSync={(integration) => {
+                logger.info('Sync requested for:', integration);
+                // Future: trigger integration sync via backend
+              }}
+            />
+          </div>
+        )}
 
         {/* Privacy Banner - Subtle */}
         {showPrivacyBanner && (
@@ -1862,6 +2025,15 @@ export function AIChat() {
                             Using data
                           </span>
                         )}
+                        {/* Smart Mode Badge - show which mode was used for this response */}
+                        {idx === messages.length - 1 && lastIntentClassification?.autoSelected && (
+                          <span className={`text-xs px-2 py-0.5 rounded border ${getModeBadgeColor(lastIntentClassification.mode)}`}>
+                            {lastIntentClassification.mode === 'analyze' && 'Analysis Mode'}
+                            {lastIntentClassification.mode === 'deep_research' && 'Research Mode'}
+                            {lastIntentClassification.mode === 'document' && 'Document Mode'}
+                            {lastIntentClassification.mode === 'standard' && 'Standard Mode'}
+                          </span>
+                        )}
                       </div>
                     )}
                     <div className={`prose prose-base max-w-none leading-relaxed ${msg.role === 'user' ? 'prose-invert' : ''}`}>
@@ -1902,17 +2074,33 @@ export function AIChat() {
                         {msg.content}
                       </ReactMarkdown>
                     </div>
-                    {msg.sources && msg.sources.length > 0 && (
-                      <div className="mt-3 pt-3 border-t border-gray-100">
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          <span className="text-xs text-gray-500">Sources:</span>
-                          {msg.sources.map((source, i) => (
-                            <span key={i} className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded">
-                              {source}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
+                    {/* Citation Panel - Terminal 4 Enhancement */}
+                    {(() => {
+                      const messageCitations = buildCitationsFromMessage(msg);
+                      return messageCitations ? (
+                        <CitationPanel citations={messageCitations} />
+                      ) : null;
+                    })()}
+
+                    {/* Quick Actions from AI Response - Terminal 4 Enhancement */}
+                    {msg.role === 'assistant' && (isProviderConnected('google') || isProviderConnected('microsoft')) && (
+                      <QuickActions
+                        content={msg.content}
+                        onSendEmail={(data) => {
+                          setActionType('email');
+                          if (data.email) setEmailTo(data.email);
+                          if (data.title) setEmailSubject(data.title);
+                          setEmailBody(msg.content.substring(0, 500));
+                          setShowActionPanel(true);
+                        }}
+                        onCreateEvent={(data) => {
+                          // Future: integrate with calendar creation
+                          logger.info('Create event action:', data);
+                        }}
+                        maxActions={3}
+                        compact
+                        className="mt-3 pt-3 border-t border-gray-100"
+                      />
                     )}
                   </div>
                 )}
@@ -2225,7 +2413,7 @@ export function AIChat() {
                       <Sparkles className="w-4 h-4 text-gray-500 mt-0.5" />
                       <div className="flex-1">
                         <span className="text-sm font-medium text-gray-700">Standard</span>
-                        <p className="text-xs text-gray-400">Quick answers from your data</p>
+                        <p className="text-xs text-gray-500">Quick answers from your data</p>
                       </div>
                       {aiMode === 'standard' && <Check className="w-4 h-4 text-gray-500 mt-0.5" />}
                     </button>
@@ -2238,7 +2426,7 @@ export function AIChat() {
                       <Search className="w-4 h-4 text-purple-500 mt-0.5" />
                       <div className="flex-1">
                         <span className="text-sm font-medium text-gray-700">Deep Research</span>
-                        <p className="text-xs text-gray-400">Your data + web search</p>
+                        <p className="text-xs text-gray-500">Your data + web search</p>
                       </div>
                       {aiMode === 'deep_research' && <Check className="w-4 h-4 text-purple-500 mt-0.5" />}
                     </button>
@@ -2251,7 +2439,7 @@ export function AIChat() {
                       <BarChart3 className="w-4 h-4 text-blue-500 mt-0.5" />
                       <div className="flex-1">
                         <span className="text-sm font-medium text-gray-700">Deep Analysis</span>
-                        <p className="text-xs text-gray-400">Create reports & summaries</p>
+                        <p className="text-xs text-gray-500">Create reports & summaries</p>
                       </div>
                       {aiMode === 'analyze' && <Check className="w-4 h-4 text-blue-500 mt-0.5" />}
                     </button>
@@ -2264,7 +2452,7 @@ export function AIChat() {
                       <FileUp className="w-4 h-4 text-green-500 mt-0.5" />
                       <div className="flex-1">
                         <span className="text-sm font-medium text-gray-700">Document</span>
-                        <p className="text-xs text-gray-400">Upload & analyze files</p>
+                        <p className="text-xs text-gray-500">Upload & analyze files</p>
                       </div>
                       {aiMode === 'document' && <Check className="w-4 h-4 text-green-500 mt-0.5" />}
                     </button>

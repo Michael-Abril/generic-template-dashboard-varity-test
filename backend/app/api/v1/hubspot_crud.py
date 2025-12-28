@@ -83,10 +83,11 @@ async def get_hubspot_credentials(wallet_address: str) -> dict:
     """Get HubSpot OAuth credentials from Filecoin storage"""
     try:
         # Retrieve encrypted credentials from Filecoin
+        # NOTE: OAuth callback stores with data_type="oauth-credentials" (not "oauth_token")
         credentials_data = await filecoin_service.list_customer_files(
             customer_wallet=wallet_address,
             integration="hubspot",
-            data_type="oauth_token"
+            data_type="oauth-credentials"
         )
 
         if not credentials_data:
