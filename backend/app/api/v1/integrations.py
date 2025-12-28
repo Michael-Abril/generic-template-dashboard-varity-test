@@ -1307,13 +1307,15 @@ async def get_slack_channels(
         if not oauth_token:
             raise HTTPException(status_code=404, detail="Slack not connected")
 
-        # Get access token (auto-decrypted by OAuthToken model property)
-        access_token = oauth_token.access_token
-        if not access_token:
-            raise HTTPException(status_code=401, detail="Slack token expired or invalid")
+        # YELLOW-001 FIX: Use auth context to access tokens securely
+        with OAuthToken.auth_context(user_address):
+            # Get access token (auto-decrypted by OAuthToken model property)
+            access_token = oauth_token.access_token
+            if not access_token:
+                raise HTTPException(status_code=401, detail="Slack token expired or invalid")
 
-        # Initialize Slack adapter and get channels
-        credentials = {"access_token": access_token}
+            # Initialize Slack adapter and get channels
+            credentials = {"access_token": access_token}
         slack = SlackSync(credentials)
         channels = await slack.get_channels(limit=limit)
 
@@ -1361,13 +1363,15 @@ async def get_slack_messages(
         if not oauth_token:
             raise HTTPException(status_code=404, detail="Slack not connected")
 
-        # Get access token (auto-decrypted by OAuthToken model property)
-        access_token = oauth_token.access_token
-        if not access_token:
-            raise HTTPException(status_code=401, detail="Slack token expired or invalid")
+        # YELLOW-001 FIX: Use auth context to access tokens securely
+        with OAuthToken.auth_context(user_address):
+            # Get access token (auto-decrypted by OAuthToken model property)
+            access_token = oauth_token.access_token
+            if not access_token:
+                raise HTTPException(status_code=401, detail="Slack token expired or invalid")
 
-        # Initialize Slack adapter and get messages
-        credentials = {"access_token": access_token}
+            # Initialize Slack adapter and get messages
+            credentials = {"access_token": access_token}
         slack = SlackSync(credentials)
         messages = await slack.get_messages(channel=channel, limit=limit)
 
@@ -1415,13 +1419,15 @@ async def get_slack_users(
         if not oauth_token:
             raise HTTPException(status_code=404, detail="Slack not connected")
 
-        # Get access token (auto-decrypted by OAuthToken model property)
-        access_token = oauth_token.access_token
-        if not access_token:
-            raise HTTPException(status_code=401, detail="Slack token expired or invalid")
+        # YELLOW-001 FIX: Use auth context to access tokens securely
+        with OAuthToken.auth_context(user_address):
+            # Get access token (auto-decrypted by OAuthToken model property)
+            access_token = oauth_token.access_token
+            if not access_token:
+                raise HTTPException(status_code=401, detail="Slack token expired or invalid")
 
-        # Initialize Slack adapter and get users
-        credentials = {"access_token": access_token}
+            # Initialize Slack adapter and get users
+            credentials = {"access_token": access_token}
         slack = SlackSync(credentials)
         users = await slack.get_users(limit=limit)
 

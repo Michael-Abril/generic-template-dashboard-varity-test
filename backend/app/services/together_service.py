@@ -560,18 +560,32 @@ class TogetherBusinessService:
                         logger.info(f"Context limit reached at {total_chars} chars, truncating")
                         break
 
-                    data = result.get("data", {})
+                    # FIX: Use preview when data is None (minimal payload optimization)
+                    # RAG service stores only preview (500 chars) to save Qdrant memory
+                    # Full data should be fetched from Pinata if needed, but preview is
+                    # usually sufficient for context
+                    data = result.get("data")
+                    preview = result.get("preview", "")
                     cid = result.get("cid", "")
                     integration_name = result.get("integration", "")
                     data_type_name = result.get("data_type", "")
+                    score = result.get("score", 0)
+
+                    # Use data if available, otherwise use preview
+                    if data:
+                        data_str = json.dumps(data, indent=2)
+                    elif preview:
+                        data_str = preview
+                    else:
+                        logger.warning(f"Result {idx} has no data or preview, skipping")
+                        continue
 
                     # Truncate data to reasonable size
-                    data_str = json.dumps(data, indent=2)
                     if len(data_str) > MAX_CHARS_PER_ENTRY:
                         data_str = data_str[:MAX_CHARS_PER_ENTRY] + "\n... [truncated]"
 
                     context_entry = f"""
-Source {idx} (Integration: {integration_name}, Type: {data_type_name}):
+Source {idx} (Integration: {integration_name}, Type: {data_type_name}, Relevance: {score:.2f}):
 {data_str}
 """
                     context_parts.append(context_entry.strip())
@@ -1015,8 +1029,13 @@ Provide analysis in the specified format."""
                 )
 
                 for result in rag_results:
-                    data = result.get("data", {})
-                    context_parts.append(json.dumps(data, indent=2))
+                    # FIX: Use preview when data is None
+                    data = result.get("data")
+                    preview = result.get("preview", "")
+                    if data:
+                        context_parts.append(json.dumps(data, indent=2))
+                    elif preview:
+                        context_parts.append(preview)
             except Exception as e:
                 logger.warning(f"RAG query failed for streaming: {e}")
 
@@ -1303,18 +1322,29 @@ Guidelines:
                 if total_chars >= MAX_TOTAL_CHARS:
                     break
 
-                data = result.get("data", {})
+                # FIX: Use preview when data is None (minimal payload optimization)
+                data = result.get("data")
+                preview = result.get("preview", "")
                 cid = result.get("cid", "")
                 integration_name = result.get("integration", "")
                 data_type_name = result.get("data_type", "")
+                score = result.get("score", 0)
+
+                # Use data if available, otherwise use preview
+                if data:
+                    data_str = json.dumps(data, indent=2)
+                elif preview:
+                    data_str = preview
+                else:
+                    logger.warning(f"Result {idx} has no data or preview, skipping")
+                    continue
 
                 # Truncate data to reasonable size
-                data_str = json.dumps(data, indent=2)
                 if len(data_str) > MAX_CHARS_PER_ENTRY:
                     data_str = data_str[:MAX_CHARS_PER_ENTRY] + "\n... [truncated]"
 
                 context_entry = f"""
-Business Data Source {idx} (Integration: {integration_name}, Type: {data_type_name}):
+Business Data Source {idx} (Integration: {integration_name}, Type: {data_type_name}, Relevance: {score:.2f}):
 {data_str}
 """
                 context_parts.append(context_entry.strip())

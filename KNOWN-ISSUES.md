@@ -45,11 +45,16 @@
 ## ✅ CRITICAL SECURITY (FIXED - December 26, 2025)
 
 ### RED-001: Key Derivation Vulnerability - ✅ FIXED
-**File:** `backend/app/services/encryption_service.py:209-255`
+**File:** `backend/app/services/encryption_service.py:209-286`
 **Issue:** Was using PUBLIC wallet address for key derivation
 **Fix Applied:** Added server-side `ENCRYPTION_SECRET` to key derivation
 **Status:** ✅ RESOLVED - Server secret now required for key derivation
-**⚠️ Note:** Existing encrypted data needs re-encryption with new keys
+**Backwards Compatibility (Dec 28, 2025):** Added legacy key fallback for pre-fix data
+- New method `derive_legacy_key()` preserves old algorithm
+- `decrypt_oauth_token()` tries new key first, falls back to legacy if fails
+- `decrypt_file_with_wallet()` same fallback pattern
+- All previously encrypted data can still be decrypted
+- New encryptions use secure server_secret-based keys
 
 ### RED-002: Hardcoded OAuth State Secret - ✅ FIXED
 **File:** `backend/app/api/v1/oauth.py:60-62`
@@ -75,6 +80,11 @@
 - Raises `PermissionError` if no auth context or wallet mismatch
 - All token access in integrations.py, google.py, microsoft.py, etc. updated
 **Status:** ✅ RESOLVED - Security Hardening Team, December 28, 2025
+**Additional Fix (Dec 28, 2025):** 3 Slack live API endpoints were missing auth context:
+- `/api/v1/integrations/slack/channels` (line 1311)
+- `/api/v1/integrations/slack/messages` (line 1365)
+- `/api/v1/integrations/slack/users` (line 1419)
+All now wrapped with `OAuthToken.auth_context(user_address)`
 
 ### YELLOW-002: Most API Endpoints Exempt from Auth - ✅ FIXED
 **File:** `backend/app/middleware/auth.py:57-150`

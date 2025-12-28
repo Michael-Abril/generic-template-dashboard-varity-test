@@ -1,5 +1,149 @@
 # COMPLETED WORK - DO NOT REDO
-**Last Updated:** December 28, 2025 (Pipeline Debugging Complete)
+**Last Updated:** December 28, 2025 (RAG Context Fix)
+
+---
+
+## December 28, 2025 - RAG Context Not Being Used Fix
+
+### Issue Found: context_used: false despite 114 vectors in Qdrant
+
+**Root Cause:** The RAG service was optimized (Dec 26) to store only `preview` (500 chars) instead of full `data` to reduce Qdrant memory usage. However, the callers were never updated to use `preview` when `data` is None.
+
+**Evidence:**
+- `/api/v1/ai/rag/stats` showed 114 vectors indexed
+- `/api/v1/ai/rag-health` showed collection exists
+- But all AI queries returned `context_used: false` and `rag_sources: []`
+
+**Additional Issue:** `ai_query_service.py` expected fields `content` and `source` but RAG service returns `preview` and `integration`.
+
+### Files Fixed
+
+| File | Issue | Fix |
+|------|-------|-----|
+| `backend/app/services/ai_query_service.py` (lines 477-497) | Expected `doc.get("content")` | Now uses `preview` or `content` |
+| `backend/app/services/together_service.py` (lines 563-593) | `query_business_ai()` used `data` only | Now uses `preview` when `data` is None |
+| `backend/app/services/together_service.py` (lines 1316-1347) | `query_with_web_search()` same issue | Same fix |
+| `backend/app/services/together_service.py` (lines 1031-1038) | `stream_business_ai()` same issue | Same fix |
+| `backend/app/api/v1/ai.py` (lines 2700-2732) | `_build_rag_context()` same issue | Same fix |
+
+### Code Pattern Applied
+
+**Before (Broken):**
+```python
+data = result.get("data", {})
+data_str = json.dumps(data, indent=2)  # Empty "{}" when data is None
+```
+
+**After (Fixed):**
+```python
+data = result.get("data")
+preview = result.get("preview", "")
+if data:
+    data_str = json.dumps(data, indent=2)
+elif preview:
+    data_str = preview
+else:
+    continue  # Skip empty results
+```
+
+### Expected Outcome
+- AI queries should now use RAG context from indexed data
+- `context_used: true` in responses
+- `rag_sources` populated with CIDs
+- Business data should appear in AI responses
+
+---
+
+## December 28, 2025 - YELLOW-001 Auth Context Missing Fix ✅
+
+### Issue Found: Slack Live API Endpoints Missing OAuthToken.auth_context()
+
+**Root Cause:** The December 28 YELLOW-001 security fix added authentication context requirements to OAuthToken property access, but 3 Slack live API endpoints were not updated to use the new `OAuthToken.auth_context()` wrapper.
+
+**Error Message:**
+```
+"detail": "OAuth token access_token read requires authentication context. Use OAuthToken.auth_context(wallet) or OAuthToken.set_auth_context(wallet)."
+```
+
+**Affected Endpoints:**
+| Endpoint | Line | Status |
+|----------|------|--------|
+| `GET /api/v1/integrations/slack/channels` | 1311 | FIXED |
+| `GET /api/v1/integrations/slack/messages` | 1365 | FIXED |
+| `GET /api/v1/integrations/slack/users` | 1419 | FIXED |
+
+### Fix Applied to `backend/app/api/v1/integrations.py`
+
+**Before (Broken):**
+```python
+access_token = oauth_token.access_token  # Raises PermissionError!
+```
+
+**After (Fixed):**
+```python
+with OAuthToken.auth_context(user_address):
+    access_token = oauth_token.access_token  # Works!
+    credentials = {"access_token": access_token}
+```
+
+### Verification
+- Python syntax check: `python3 -m py_compile backend/app/api/v1/integrations.py` - OK
+- Frontend build: `npm run build` - OK (11/11 routes passing)
+
+---
+
+## December 28, 2025 - Decryption Legacy Key Fallback ✅
+
+### Issue Found: "Failed to decrypt data" Error Blocking All Sync
+
+**Root Cause:** The RED-001 security fix changed the key derivation algorithm to include `ENCRYPTION_SECRET`, but this broke compatibility with all data encrypted BEFORE the fix:
+
+| Component | OLD (pre-fix) | NEW (post-fix) |
+|-----------|---------------|----------------|
+| Salt | `varity-oauth-{wallet}-{chain_id}` | `varity-oauth-{wallet}-{chain_id}-{server_secret}` |
+| Key Input | `{wallet}` | `{wallet}-{server_secret}` |
+
+**Impact:** All OAuth tokens and Pinata data encrypted before the security fix could not be decrypted.
+
+### Fixes Applied to `backend/app/services/encryption_service.py`
+
+| Lines | Change | Purpose |
+|-------|--------|---------|
+| 209-238 | Added `derive_legacy_key()` method | Preserves OLD key derivation algorithm for backwards compatibility |
+| 332-351 | Added `_try_decrypt_with_key()` helper | Attempts decryption with given key, returns None on failure |
+| 353-407 | Refactored `decrypt_oauth_token()` | Tries new key first, falls back to legacy key if fails |
+| 665-729 | Refactored `decrypt_file_with_wallet()` | Same fallback pattern for file decryption |
+
+### How Fallback Works
+
+```python
+# 1. Try new key derivation (with server_secret)
+key = self.derive_customer_key(wallet_address)
+plaintext = self._try_decrypt_with_key(key, ciphertext, nonce, tag)
+
+if plaintext is None:
+    # 2. Fallback to legacy key derivation (without server_secret)
+    legacy_key = self.derive_legacy_key(wallet_address)
+    plaintext = self._try_decrypt_with_key(legacy_key, ciphertext, nonce, tag)
+```
+
+### Verification
+
+```bash
+# Syntax check passed
+python3 -m py_compile backend/app/services/encryption_service.py
+
+# After deployment, test sync:
+curl -X POST "https://generic-template-dashboard-production.up.railway.app/api/v1/integrations/slack/sync" \
+  -H "Content-Type: application/json" \
+  -d '{"wallet_address": "0x738C812FB221ba32E8726fe38961570a700e87b9"}'
+```
+
+### Security Notes
+
+- **New encryptions** always use the secure `derive_customer_key()` with server_secret
+- **Old data** can be decrypted using legacy fallback, with a warning logged
+- Logs recommend re-encrypting data with new keys when legacy fallback is used
 
 ---
 

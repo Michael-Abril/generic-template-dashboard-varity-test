@@ -29,6 +29,8 @@ export const varietyTestnet5 = defineChain({
 
 /**
  * Wagmi chain configuration (for Privy integration)
+ * NOTE: nativeCurrency should NOT have an address field - that's non-standard
+ * and can cause issues with wallet_switchEthereumChain
  */
 export const varietyTestnetWagmi = {
   id: 33529,
@@ -38,10 +40,12 @@ export const varietyTestnetWagmi = {
     name: "USDC",
     symbol: "USDC",
     decimals: 6,
-    address: "0x6Fd8ee6B4C2193e9E2e0E2EC5D295689B607c0cE",
   },
   rpcUrls: {
     default: {
+      http: ["https://rpc-varity-testnet-rroe52pwjp.t.conduit.xyz"],
+    },
+    public: {
       http: ["https://rpc-varity-testnet-rroe52pwjp.t.conduit.xyz"],
     },
   },
@@ -53,3 +57,6 @@ export const varietyTestnetWagmi = {
   },
   testnet: true,
 } as const;
+
+// USDC contract address on Varity L3 (for reference, not part of chain config)
+export const VARITY_USDC_ADDRESS = "0x6Fd8ee6B4C2193e9E2e0E2EC5D295689B607c0cE";

@@ -475,8 +475,25 @@ I'm here to be your business intelligence partner. How can I help you today?"""
         if rag_context and rag_context.get("documents"):
             base_prompt += "\n\nYOUR BUSINESS DATA (from connected integrations):\n"
             for i, doc in enumerate(rag_context["documents"][:5], 1):
-                content = doc.get("content", "")[:800]  # Increased context size
-                source = doc.get("source", "integration")
+                # Handle both legacy format (content/source) and new format (preview/integration)
+                # RAG service returns: preview, data, integration, data_type, score
+                content = doc.get("preview") or doc.get("content", "")
+                if not content and doc.get("data"):
+                    # If preview is empty but data exists, use data as content
+                    import json
+                    content = json.dumps(doc.get("data", {}), indent=2)
+                content = content[:800] if content else ""  # Limit context size
+
+                # Source can be integration name or legacy source field
+                source = doc.get("integration") or doc.get("source", "integration")
+                data_type = doc.get("data_type", "")
+                score = doc.get("score", 0)
+
+                if data_type:
+                    source = f"{source}/{data_type}"
+                if score:
+                    source = f"{source} (relevance: {score:.2f})"
+
                 base_prompt += f"\n{i}. [{source}]: {content}\n"
 
         # Add additional context if available

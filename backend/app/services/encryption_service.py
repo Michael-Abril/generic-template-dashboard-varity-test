@@ -206,6 +206,37 @@ class EncryptionService:
 
         return conditions
 
+    def derive_legacy_key(self, wallet_address: str) -> bytes:
+        """
+        LEGACY: Derive encryption key using OLD algorithm (without server secret).
+
+        This method exists for backwards compatibility to decrypt data that was
+        encrypted BEFORE the RED-001 security fix was applied.
+
+        WARNING: Do NOT use for new encryption! Use derive_customer_key instead.
+        """
+        # Normalize wallet address
+        wallet = wallet_address.lower()
+        if not wallet.startswith("0x"):
+            wallet = f"0x{wallet}"
+
+        # OLD salt formula (without server_secret)
+        salt = hashlib.sha256(
+            f"varity-oauth-{wallet}-{self.chain_id}".encode()
+        ).digest()[:16]
+
+        # OLD key derivation (wallet only, no server_secret)
+        kdf = PBKDF2HMAC(
+            algorithm=hashes.SHA256(),
+            length=32,
+            salt=salt,
+            iterations=100000,
+            backend=self.backend
+        )
+
+        key = kdf.derive(wallet.encode())
+        return key
+
     def derive_customer_key(self, wallet_address: str) -> bytes:
         """
         Derive a unique encryption key from customer's wallet address AND server secret.
@@ -230,7 +261,7 @@ class EncryptionService:
         server_secret = settings.encryption_secret
         if server_secret.startswith("CHANGE_ME"):
             logger.warning(
-                "⚠️  ENCRYPTION_SECRET not set! Using default value. "
+                "ENCRYPTION_SECRET not set! Using default value. "
                 "Set ENCRYPTION_SECRET env var in production!"
             )
 
@@ -298,13 +329,38 @@ class EncryptionService:
             "algorithm": "AES-256-GCM"
         }
 
+    def _try_decrypt_with_key(
+        self,
+        key: bytes,
+        ciphertext: bytes,
+        nonce: bytes,
+        tag: bytes
+    ) -> Optional[bytes]:
+        """
+        Attempt decryption with a given key. Returns plaintext or None if fails.
+        """
+        try:
+            cipher = Cipher(
+                algorithms.AES(key),
+                modes.GCM(nonce, tag),
+                backend=self.backend
+            )
+            decryptor = cipher.decryptor()
+            return decryptor.update(ciphertext) + decryptor.finalize()
+        except Exception:
+            return None
+
     def decrypt_oauth_token(
         self,
         wallet_address: str,
         encrypted_data: Dict[str, str]
     ) -> Dict[str, Any]:
         """
-        Decrypt OAuth token with customer's wallet-derived key
+        Decrypt OAuth token with customer's wallet-derived key.
+
+        BACKWARDS COMPATIBILITY: Tries new key derivation first (with server_secret),
+        then falls back to legacy key derivation (without server_secret) for data
+        encrypted before RED-001 security fix.
 
         Args:
             wallet_address: Customer's wallet (must match encryption wallet)
@@ -319,24 +375,34 @@ class EncryptionService:
                 f"Cannot decrypt: Token belongs to different wallet"
             )
 
-        # Derive key
-        key = self.derive_customer_key(wallet_address)
-
         # Decode from base64
         ciphertext = base64.b64decode(encrypted_data["encrypted_data"])
         nonce = base64.b64decode(encrypted_data["nonce"])
         tag = base64.b64decode(encrypted_data["tag"])
 
-        # Decrypt using AES-256-GCM
-        cipher = Cipher(
-            algorithms.AES(key),
-            modes.GCM(nonce, tag),
-            backend=self.backend
-        )
-        decryptor = cipher.decryptor()
+        # Try new key derivation first (with server_secret)
+        key = self.derive_customer_key(wallet_address)
+        plaintext = self._try_decrypt_with_key(key, ciphertext, nonce, tag)
 
-        # Decrypt
-        plaintext = decryptor.update(ciphertext) + decryptor.finalize()
+        if plaintext is None:
+            # Fallback to legacy key derivation (without server_secret)
+            # This handles data encrypted before RED-001 security fix
+            logger.info(
+                f"New key failed, trying legacy key for wallet {wallet_address[:15]}..."
+            )
+            legacy_key = self.derive_legacy_key(wallet_address)
+            plaintext = self._try_decrypt_with_key(legacy_key, ciphertext, nonce, tag)
+
+            if plaintext is not None:
+                logger.warning(
+                    f"Decrypted with LEGACY key for {wallet_address[:15]}... "
+                    "Consider re-encrypting data with new key."
+                )
+
+        if plaintext is None:
+            raise ValueError(
+                f"Decryption failed: Invalid key or corrupted data for wallet {wallet_address[:15]}..."
+            )
 
         return json.loads(plaintext.decode())
 
@@ -603,7 +669,11 @@ class EncryptionService:
         auth_signature: Optional[dict] = None
     ) -> bytes:
         """
-        Decrypt file using customer's wallet
+        Decrypt file using customer's wallet.
+
+        BACKWARDS COMPATIBILITY: Tries new key derivation first (with server_secret),
+        then falls back to legacy key derivation (without server_secret) for files
+        encrypted before RED-001 security fix.
 
         Args:
             encrypted_file: Encrypted file from encrypt_file_for_customer()
@@ -620,24 +690,33 @@ class EncryptionService:
                     "Wallet address does not match encrypted file owner"
                 )
 
-            # Derive customer-specific decryption key from wallet address
-            key = self.derive_customer_key(customer_wallet)
-
             # Extract encrypted data components
             ciphertext = base64.b64decode(encrypted_file["encrypted_content"])
             nonce = base64.b64decode(encrypted_file["nonce"])
             auth_tag = base64.b64decode(encrypted_file["auth_tag"])
 
-            # Decrypt using AES-256-GCM
-            cipher = Cipher(
-                algorithms.AES(key),
-                modes.GCM(nonce, auth_tag),
-                backend=self.backend
-            )
-            decryptor = cipher.decryptor()
+            # Try new key derivation first (with server_secret)
+            key = self.derive_customer_key(customer_wallet)
+            file_content = self._try_decrypt_with_key(key, ciphertext, nonce, auth_tag)
 
-            # Decrypt file content
-            file_content = decryptor.update(ciphertext) + decryptor.finalize()
+            if file_content is None:
+                # Fallback to legacy key derivation (without server_secret)
+                logger.info(
+                    f"New key failed for file, trying legacy key for wallet {customer_wallet[:15]}..."
+                )
+                legacy_key = self.derive_legacy_key(customer_wallet)
+                file_content = self._try_decrypt_with_key(legacy_key, ciphertext, nonce, auth_tag)
+
+                if file_content is not None:
+                    logger.warning(
+                        f"Decrypted file with LEGACY key for {customer_wallet[:15]}... "
+                        "Consider re-encrypting file with new key."
+                    )
+
+            if file_content is None:
+                raise ValueError(
+                    f"File decryption failed: Invalid key or corrupted data for wallet {customer_wallet[:15]}..."
+                )
 
             logger.info(
                 f"Decrypted file for customer {customer_wallet} using AES-256-GCM"

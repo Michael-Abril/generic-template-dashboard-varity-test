@@ -2697,13 +2697,21 @@ async def _build_rag_context(
             if rag_results:
                 tool_data = []
                 for result in rag_results:
-                    data = result.get("data", {})
+                    # FIX: Use preview when data is None (minimal payload optimization)
+                    # RAG service stores only preview (500 chars) to reduce Qdrant memory
+                    data = result.get("data")
+                    preview = result.get("preview", "")
                     cid = result.get("cid", "")
                     data_type = result.get("data_type", "unknown")
                     score = result.get("score", 0)
                     indexed_at = result.get("indexed_at", "")
 
-                    tool_data.append(data)
+                    # Use data if available, otherwise use preview as context
+                    if data:
+                        tool_data.append(data)
+                    elif preview:
+                        # Wrap preview in a dict for consistency
+                        tool_data.append({"preview": preview, "cid": cid})
 
                     # Add source with relevance score (new field)
                     context["sources"].append({

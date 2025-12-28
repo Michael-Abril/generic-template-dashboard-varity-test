@@ -1,74 +1,206 @@
 # Integration Test Results
 
-**Tested:** December 28, 2025 (Live Browser + API Testing)
-**Tester:** Integration Validator Agent
+**Tested:** December 28, 2025 23:30 UTC (Comprehensive Pipeline Testing)
+**Tester:** Integration Validator Agent (Opus 4.5)
 **Live URL:** https://app.varity.so
 **API URL:** https://generic-template-dashboard-production.up.railway.app
 **Test Wallet:** 0x738C812FB221ba32E8726fe38961570a700e87b9
 
 ---
 
-## LIVE TESTING SUMMARY (December 28, 2025)
+## EXECUTIVE SUMMARY (December 28, 2025 - Latest Test Run)
 
-### Backend Health
-```
-Status: HEALTHY
-Database: Connected
-Redis: Connected
-Pinata: Connected
-Version: 1.0.3-auth-fix
-Environment: Production
-```
+### THE CRITICAL FINDING
 
-### OAuth Connection Status (All 4 Connected)
-| Integration | Connected | Credential CID | Has Refresh Token |
-|-------------|:---------:|----------------|:-----------------:|
-| Google Workspace | YES | QmT2RnSSWKb9KZA8TiS3gjWs2d9kEC5oMw54U8A9SuttHK | YES |
-| Slack | YES | QmWgC6eNc8E6tXH33ft86QrnG23yN5M56RYGwnJDyM91fM | NO |
-| Microsoft 365 | YES | QmUV1RBdhx3goAAyTA66DHH5kvwV478uKmsoh2rVwbrTvP | YES |
-| QuickBooks | YES | QmfLVsJP3zRdgXYqn8ER627PJ6r4g2z1jQRw3KhnXMCZpq | YES |
+**Data IS stored in Pinata and indexed in Qdrant, but the retrieval layer is broken.**
 
----
+| Pipeline Stage | Status | Evidence |
+|----------------|--------|----------|
+| OAuth Tokens | WORKING | All 4 integrations connected |
+| Pinata Storage | WORKING | 50+ files stored (QuickBooks, Google, Slack) |
+| Qdrant Indexing | WORKING | 114 vectors indexed, status "green" |
+| Data Retrieval API | BROKEN | Returns `data_count: 0` for all integrations |
+| Live API Endpoints | BROKEN | Google: 500 error, Slack: auth context error |
+| Frontend Display | BROKEN | Shows "No data" or loading forever |
 
-## Summary Matrix (Updated with Live Testing)
+### Root Cause Identified
 
-| Integration | OAuth | Sync | RAG | Live API | Frontend | Overall | Notes |
-|-------------|:-----:|:----:|:---:|:--------:|:--------:|:-------:|-------|
-| **Google Workspace** | PASS | FAIL | FAIL | FAIL | PASS | **40% BROKEN** | Sync returns decrypt error, API errors |
-| **Slack** | PASS | FAIL | FAIL | FAIL | FAIL | **25% BROKEN** | "Failed to fetch channels" error |
-| **Microsoft 365** | PASS | FAIL | FAIL | FAIL | PASS | **40% BROKEN** | API returns 500 errors |
-| **QuickBooks** | PASS | FAIL | FAIL | FAIL | PASS | **40% BROKEN** | Sync returns empty error |
-| **Salesforce** | UNTESTED | UNTESTED | UNTESTED | UNTESTED | PASS | **UNTESTED** | Not connected |
-| **HubSpot** | UNTESTED | UNTESTED | UNTESTED | UNTESTED | PASS | **UNTESTED** | Not connected |
-
-**Legend:** PASS | PARTIAL | FAIL | BLOCKED | UNTESTED
+The `/api/v1/integrations/{tool}/data` endpoint returns empty arrays despite data existing in Pinata/Qdrant. The retrieval logic is not connecting to the stored data.
 
 ---
 
-## CRITICAL FINDINGS FROM LIVE TESTING
+## LIVE TESTING RESULTS (December 28, 2025 23:30 UTC)
 
-### Issue 1: Sync Trigger Decrypt Failure
-**Endpoint:** `POST /api/v1/sync/google_workspace/trigger`
-**Response:** `{"detail":"Failed to decrypt data: "}`
-**Impact:** Cannot sync any data from connected integrations
+### Stage 1: OAuth Status - ALL PASS
 
-### Issue 2: Slack Channels API Failure
-**Endpoint:** `GET /api/v1/integrations/slack/channels`
-**Response:** `{"detail":""}`
-**Frontend:** Shows "Failed to load Slack - Failed to fetch channels"
+```bash
+# All 4 integrations successfully connected
+```
 
-### Issue 3: Google API Errors
-**Endpoints:** `/api/v1/integrations/google/emails`, `/events`
-**Response:** `{"detail":"An unexpected error occurred"}`
+| Integration | Connected | Credential CID | Stored At | Has Refresh Token |
+|-------------|:---------:|----------------|-----------|:-----------------:|
+| Google Workspace | YES | QmT2RnSSWKb9... | Dec 20, 2025 | YES |
+| Slack | YES | QmWgC6eNc8E6... | Dec 26, 2025 | NO (bot token) |
+| Microsoft 365 | YES | QmUV1RBdhx3g... | Dec 20, 2025 | YES |
+| QuickBooks | YES | QmfLVsJP3zRd... | Dec 20, 2025 | YES |
 
-### Issue 4: Microsoft API Errors
-**Endpoint:** `/api/v1/integrations/microsoft/mail/messages`
-**Response:** `{"success":false,"error":"Internal server error"}`
+### Stage 2: Sync Trigger - ALL FAIL
 
-### Issue 5: AI RAG Falls Back to Web Search
-**Endpoint:** `POST /api/v1/ai/query/combined`
-**Behavior:** Returns web search results instead of local RAG data
-**Evidence:** `"context_used":false,"web_search_used":true`
+```bash
+curl -X POST ".../api/v1/integrations/google/sync" -d '{"wallet_address":"0x738C..."}'
+# Response: {"detail":""}
+```
+
+All sync triggers return empty `{"detail":""}` - likely 404 or routing issue.
+
+### Stage 3: Data Retrieval - ALL RETURN EMPTY
+
+```bash
+curl ".../api/v1/integrations/google/data?wallet_address=0x738C..."
+# Response: {"success":true,"integration":"google","data_count":0,"data":[]}
+```
+
+| Integration | API Response | Data Count |
+|-------------|--------------|------------|
+| Google | Success | 0 |
+| Slack | Success | 0 |
+| QuickBooks | Success | 0 |
+
+**This is the critical bug** - data exists but is not being retrieved.
+
+### Stage 4: Debug Pipeline - REVEALS DATA EXISTS
+
+```bash
+curl ".../api/v1/ai/debug/pipeline?wallet_address=0x738C..."
+```
+
+**Pinata Status: HEALTHY**
+| Integration | Data Types | File Count |
+|-------------|------------|------------|
+| QuickBooks | invoices, expenses, customers, vendors, payments | 20+ files |
+| Google | drive | 5+ files |
+| Slack | users, oauth-credentials | 2+ files |
+
+**Total: 50+ files stored with proper metadata**
+
+### Stage 5: RAG Stats - CONFIRMS INDEXING WORKS
+
+```bash
+curl ".../api/v1/ai/rag/stats?wallet_address=0x738C..."
+# Response: {"exists":true,"count":114,"vectors_count":114,"status":"green"}
+```
+
+**114 vectors indexed and ready for search.**
+
+### Stage 6: Live API Endpoints - BROKEN
+
+| Endpoint | Status | Error |
+|----------|--------|-------|
+| `/integrations/google/emails` | 500 | "An unexpected error occurred" |
+| `/integrations/google/events` | 500 | "An unexpected error occurred" |
+| `/integrations/google/files` | 500 | "An unexpected error occurred" |
+| `/integrations/slack/channels` | AUTH ERROR | "OAuth token access_token read requires authentication context" |
+
+### Stage 7: Frontend Testing (Browser MCP)
+
+| Page | Load Status | Data Display | Error Shown |
+|------|-------------|--------------|-------------|
+| `/dashboard` | CRASH | - | "Something Went Wrong" + TypeError |
+| `/dashboard/tools/google` | PARTIAL | Forever loading | "Loading Google Workspace data..." |
+| `/dashboard/tools/slack` | FAIL | Error message | Auth context error displayed |
+| `/dashboard/tools/quickbooks` | PASS | Empty state | "No Data Synced Yet" |
+| `/ai-assistant` | PASS | Shows 114 docs | Working chat interface |
+
+**Console Error on Dashboard:**
+```
+TypeError: Cannot read properties of undefined (reading 'length')
+```
+
+---
+
+## Summary Matrix (Updated December 28, 2025 23:30 UTC)
+
+| Integration | OAuth | Storage | Indexing | Retrieval | Live API | Frontend | Overall |
+|-------------|:-----:|:-------:|:--------:|:---------:|:--------:|:--------:|:-------:|
+| **Google** | PASS | PASS | PASS | FAIL | FAIL | PARTIAL | **50%** |
+| **Slack** | PASS | PASS | PASS | FAIL | FAIL | FAIL | **40%** |
+| **QuickBooks** | PASS | PASS | PASS | FAIL | N/A | PASS | **60%** |
+| **Microsoft** | PASS | ? | ? | FAIL | FAIL | PARTIAL | **40%** |
+
+**Legend:** PASS = Working | PARTIAL = Partially working | FAIL = Not working
+
+---
+
+## CRITICAL BUGS IDENTIFIED
+
+### BUG-PIPE-001: Data Retrieval Returns Empty
+**Severity:** P0 CRITICAL
+**Location:** `/api/v1/integrations/{tool}/data` endpoint
+**Symptom:** Returns `data_count: 0` despite data existing in Pinata
+**Impact:** All integration tool pages show "No data" even though data IS stored
+**Evidence:** Debug pipeline shows 50+ files, but data endpoint returns empty
+
+### BUG-PIPE-002: Google Live API Crashes
+**Severity:** P0 CRITICAL
+**Location:** `/api/v1/integrations/google/*` endpoints
+**Symptom:** Returns `{"detail":"An unexpected error occurred"}`
+**Impact:** Gmail, Calendar, Drive tabs cannot display data
+**Likely Cause:** Token decryption or API call failure (error being swallowed)
+
+### BUG-PIPE-003: Slack Auth Context Missing
+**Severity:** P0 CRITICAL
+**Location:** `/api/v1/integrations/slack/channels`
+**Symptom:** `OAuth token access_token read requires authentication context`
+**Impact:** Slack page completely broken
+**Fix Required:** Wrap endpoint in `OAuthToken.auth_context(wallet)`
+
+### BUG-PIPE-004: Dashboard TypeError Crash
+**Severity:** P0 CRITICAL
+**Location:** `/dashboard` page (DashboardContent.tsx)
+**Symptom:** `Cannot read properties of undefined (reading 'length')`
+**Impact:** Main dashboard completely inaccessible
+**Likely Cause:** API returns null/undefined where array expected
+
+---
+
+## WHAT WORKS VS WHAT IS BROKEN
+
+### WORKING (Green)
+1. OAuth flow and token storage for all 4 integrations
+2. Pinata file upload (50+ files stored)
+3. Qdrant vector indexing (114 vectors)
+4. AI Assistant UI loads and shows document count
+5. RAG stats endpoint confirms healthy index
+6. QuickBooks frontend UI (empty state)
+7. Settings page with all user data
+
+### BROKEN (Red)
+1. Data retrieval API returns empty for all integrations
+2. Google live API endpoints (500 errors)
+3. Slack live API endpoints (auth context error)
+4. Dashboard main page (TypeError crash)
+5. Sync trigger endpoints (empty response)
+6. Integration tool pages show no data
+
+---
+
+## IMMEDIATE ACTION ITEMS
+
+### Priority 1: Fix Data Retrieval
+**File:** `backend/app/api/v1/integrations.py` - `/integrations/{tool}/data` endpoint
+**Action:** Debug why Pinata data is not being returned
+
+### Priority 2: Fix Slack Auth Context
+**File:** `backend/app/api/v1/integrations.py` - Slack endpoints
+**Action:** Add `OAuthToken.auth_context(wallet)` wrapper
+
+### Priority 3: Fix Google API Errors
+**File:** `backend/app/api/v1/google.py`
+**Action:** Add proper error handling to expose actual error messages
+
+### Priority 4: Fix Dashboard Crash
+**File:** `src/components/pages/DashboardContent.tsx`
+**Action:** Add null checks for API response arrays
 
 ---
 
