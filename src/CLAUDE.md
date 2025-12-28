@@ -1,6 +1,6 @@
 # CLAUDE.md - Frontend (Next.js 14)
 
-**Last Updated:** December 23, 2025
+**Last Updated:** December 26, 2025
 **Framework:** Next.js 14 (App Router)
 **Language:** TypeScript
 **Styling:** Tailwind CSS
@@ -14,8 +14,17 @@
 
 | Feature | Location | Issue |
 |---------|----------|-------|
-| **Document Upload** | `AIChat.tsx` | File input hidden, no handler |
 | **Data Import** | `Settings page` | Shows "Coming Soon" badge |
+| **Analytics Mock Data** | `AnalyticsContent.tsx` | Uses mock generators instead of real API data |
+
+### ✅ Resolved (December 26, 2025)
+
+| Feature | Resolution |
+|---------|------------|
+| Document Upload | **WORKING** - Click-to-upload functional, drag-drop added |
+| Pinata Gateway | Switched to dedicated gateway `varity.mypinata.cloud` (no rate limits) |
+| Slack OAuth | Fixed token access (`oauth_token.access_token` property) |
+| Deduplication | Removed 21 duplicate/dead files |
 
 ### ✅ Resolved (December 23, 2025)
 
@@ -105,9 +114,15 @@ src/components/AIChat.tsx (2200+ lines)
 │   ├── POST /api/v1/ai/query/combined
 │   ├── POST /api/v1/ai/research
 │   ├── GET/POST /api/v1/conversations/
+│   ├── POST /api/v1/ai/upload/document (file extraction)
+│   ├── POST /api/v1/ai/analyze/document (AI analysis)
 │   └── POST /api/v1/integrations/{provider}/send-email
-└── Known Issues
-    ├── Document upload has no handler
+├── Document Upload (WORKING - Dec 26)
+│   ├── handleFileUpload() - Validates & extracts text
+│   ├── analyzeDocument() - Sends to AI for analysis
+│   ├── Supports: PDF, DOCX, TXT, MD, CSV, JSON, XML, HTML
+│   └── Analysis types: summary, key_points, sentiment, extraction, action_items
+└── Notes
     └── sendMessage modified to accept override parameter
 ```
 
@@ -201,6 +216,33 @@ src/components/onboarding/
 - Deleted 9 duplicate component files
 - Fixed text visibility (`text-gray-900`) across multiple pages
 - Added KPI data transformer in `dashboardService.ts`
+
+---
+
+## RECENT FIXES (December 26, 2025)
+
+### Pinata Gateway Fix (CRITICAL)
+- Switched from public gateway to dedicated gateway `varity.mypinata.cloud`
+- Public gateway had rate limits causing 429 errors
+- Added `PINATA_GATEWAY_URL` env var support in backend config
+- Added retry logic with exponential backoff
+
+### Slack OAuth Fix
+- Fixed `'OAuthToken' object has no attribute 'encrypted_token'` error
+- Changed all Slack endpoints to use `oauth_token.access_token` property
+- Required scopes: channels:read, channels:history, groups:read, groups:history, users:read, files:read, chat:write
+
+### Deduplication Phase (21 files removed)
+- `src/components/integrations/quickbooks/_full/` (10 files) - Dead code
+- `src/lib/analytics 2.ts` - Duplicate with space in name
+- `src/components/integrations/hubspot/index.tsx` - Redundant (kept index.ts)
+- Multiple backend adapter stubs and unused services
+
+### Document Upload Verification
+- **Status:** FULLY WORKING (not incomplete as previously documented)
+- Click-to-upload: Working via hidden file input + button trigger
+- Backend extraction: PDF (PyMuPDF), DOCX (python-docx), text files
+- Analysis modes: summary, key_points, sentiment, extraction, action_items
 
 ---
 

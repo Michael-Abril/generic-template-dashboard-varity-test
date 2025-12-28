@@ -589,6 +589,12 @@ async def oauth_callback_post(request: Request, db: AsyncSession = Depends(get_d
             credentials["shop_domain"] = state_data.get("shop_domain")
         elif integration == "zendesk":
             credentials["subdomain"] = state_data.get("subdomain")
+        elif integration == "hubspot":
+            # HubSpot returns hub_id (portal ID) in token response
+            # Fixed Dec 26, 2025: Extract hub_id for proper API calls
+            credentials["hub_id"] = token_response.get("hub_id")
+            credentials["user_id"] = token_response.get("user_id")
+            credentials["user"] = token_response.get("user")
 
         # Encrypt credentials with Lit Protocol
         encrypted_credentials = await encryption_service.encrypt_for_customer(
@@ -951,6 +957,12 @@ async def oauth_callback(
             credentials["shop_domain"] = state_data.get("shop_domain")
         elif integration == "zendesk":
             credentials["subdomain"] = state_data.get("subdomain")
+        elif integration == "hubspot":
+            # HubSpot returns hub_id (portal ID) in token response
+            # Fixed Dec 26, 2025: Extract hub_id for proper API calls
+            credentials["hub_id"] = token_response.get("hub_id")
+            credentials["user_id"] = token_response.get("user_id")
+            credentials["user"] = token_response.get("user")
 
         # Encrypt credentials with Lit Protocol
         encrypted_credentials = await encryption_service.encrypt_for_customer(

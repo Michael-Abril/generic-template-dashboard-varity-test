@@ -154,7 +154,8 @@ export default function SalesforcePage({ walletAddress, data, onRefresh }: Sales
         setContactFormOpen(true);
         break;
       default:
-        console.log('Create:', itemType, '- Coming soon');
+        // Other record types not yet implemented
+        break;
     }
   };
 

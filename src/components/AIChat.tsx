@@ -126,6 +126,7 @@ export function AIChat() {
   const [uploadedDocument, setUploadedDocument] = useState<{ name: string; content: string } | null>(null);
   const [selectedAnalysisType, setSelectedAnalysisType] = useState<AnalysisType>('summary');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [showPrivacyBanner, setShowPrivacyBanner] = useState(true);
   const [selectedIntegration, setSelectedIntegration] = useState<string>('all'); // Integration filter
@@ -2067,7 +2068,7 @@ export function AIChat() {
           type="file"
           ref={fileInputRef}
           onChange={handleFileUpload}
-          accept=".txt,.md,.csv,.pdf,.doc,.docx"
+          accept=".txt,.md,.csv,.pdf,.doc,.docx,.json,.xml,.html"
           className="hidden"
         />
 
@@ -2082,11 +2083,40 @@ export function AIChat() {
             </div>
             <div
               onClick={() => fileInputRef.current?.click()}
-              className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-colors"
+              onDragOver={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setIsDragging(true);
+              }}
+              onDragLeave={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setIsDragging(false);
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setIsDragging(false);
+                const file = e.dataTransfer.files[0];
+                if (file) {
+                  // Create a synthetic event to pass to handleFileUpload
+                  const syntheticEvent = {
+                    target: { files: [file] }
+                  } as unknown as React.ChangeEvent<HTMLInputElement>;
+                  handleFileUpload(syntheticEvent);
+                }
+              }}
+              className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors ${
+                isDragging
+                  ? 'border-blue-500 bg-blue-100'
+                  : 'border-gray-300 hover:border-blue-400 hover:bg-blue-50'
+              }`}
             >
-              <Upload className="w-10 h-10 text-gray-400 mx-auto mb-3" />
-              <p className="text-sm text-gray-600 mb-1">Click to upload or drag and drop</p>
-              <p className="text-xs text-gray-500">TXT, MD, CSV, PDF (max 5MB)</p>
+              <Upload className={`w-10 h-10 mx-auto mb-3 ${isDragging ? 'text-blue-500' : 'text-gray-400'}`} />
+              <p className="text-sm text-gray-600 mb-1">
+                {isDragging ? 'Drop file here' : 'Click to upload or drag and drop'}
+              </p>
+              <p className="text-xs text-gray-500">TXT, MD, CSV, PDF, DOCX (max 10MB)</p>
             </div>
           </div>
         )}

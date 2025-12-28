@@ -70,18 +70,33 @@ interface TabLayout {
 
 type TimePeriod = 'mtd' | 'qtd' | 'ytd' | 'custom';
 
-// Sample data generators for different widget types
-const generateSampleKPIData = (subtype?: string) => {
-  const samples: Record<string, { value: number; change: number; prefix?: string; suffix?: string }> = {
-    revenue: { value: 125000, change: 12.5, prefix: '$' },
-    customers: { value: 1234, change: 8.3 },
-    orders: { value: 567, change: -2.1 },
-    conversion: { value: 3.4, change: 0.5, suffix: '%' },
-    profit: { value: 45000, change: 15.2, prefix: '$' },
-    margin: { value: 32.5, change: 2.1, suffix: '%' },
-    pipeline: { value: 890000, change: 18.7, prefix: '$' },
-    deals: { value: 45, change: 5.0 },
-    growth: { value: 24.5, change: 3.2, suffix: '%' },
+// Sample data generators for different widget types (fallback when no real data)
+const generateSampleKPIData = (subtype?: string, realMetrics?: Record<string, number>) => {
+  // Use real data if available
+  if (realMetrics && subtype && realMetrics[subtype] !== undefined) {
+    const value = realMetrics[subtype];
+    const prefixes: Record<string, string> = { revenue: '$', profit: '$', pipeline: '$' };
+    const suffixes: Record<string, string> = { conversion: '%', margin: '%', growth: '%' };
+    return {
+      value,
+      change: realMetrics[`${subtype}_change`] || 0,
+      prefix: prefixes[subtype],
+      suffix: suffixes[subtype],
+      isRealData: true
+    };
+  }
+
+  // Fallback to sample data
+  const samples: Record<string, { value: number; change: number; prefix?: string; suffix?: string; isRealData?: boolean }> = {
+    revenue: { value: 125000, change: 12.5, prefix: '$', isRealData: false },
+    customers: { value: 1234, change: 8.3, isRealData: false },
+    orders: { value: 567, change: -2.1, isRealData: false },
+    conversion: { value: 3.4, change: 0.5, suffix: '%', isRealData: false },
+    profit: { value: 45000, change: 15.2, prefix: '$', isRealData: false },
+    margin: { value: 32.5, change: 2.1, suffix: '%', isRealData: false },
+    pipeline: { value: 890000, change: 18.7, prefix: '$', isRealData: false },
+    deals: { value: 45, change: 5.0, isRealData: false },
+    growth: { value: 24.5, change: 3.2, suffix: '%', isRealData: false },
   };
   return samples[subtype || 'revenue'] || samples.revenue;
 };
@@ -516,40 +531,59 @@ export default function AnalyticsContent() {
 
       case 'kpi':
       case 'metric': {
-        const kpiData = generateSampleKPIData(widget.subtype);
+        // Pass real metrics from analyticsData when available
+        const realMetrics = analyticsData?.metrics as Record<string, number> | undefined;
+        const kpiData = generateSampleKPIData(widget.subtype, realMetrics);
         return (
-          <KPIWidget
-            title={widget.title}
-            value={kpiData.value}
-            change={kpiData.change}
-            prefix={kpiData.prefix}
-            suffix={kpiData.suffix}
-            sparklineData={[100, 120, 110, 140, 130, kpiData.value / 1000]}
-          />
+          <div className="relative h-full">
+            {!kpiData.isRealData && (
+              <div className="absolute top-1 right-1 px-1.5 py-0.5 bg-amber-100 text-amber-700 text-[10px] font-medium rounded">
+                Demo Data
+              </div>
+            )}
+            <KPIWidget
+              title={widget.title}
+              value={kpiData.value}
+              change={kpiData.change}
+              prefix={kpiData.prefix}
+              suffix={kpiData.suffix}
+              sparklineData={[100, 120, 110, 140, 130, kpiData.value / 1000]}
+            />
+          </div>
         );
       }
 
       case 'table': {
         const tableData = generateSampleTableData();
         return (
-          <DataTableWidget
-            title={widget.title}
-            columns={tableData.columns}
-            data={tableData.data}
-            pageSize={5}
-          />
+          <div className="relative h-full">
+            <div className="absolute top-1 right-1 px-1.5 py-0.5 bg-amber-100 text-amber-700 text-[10px] font-medium rounded z-10">
+              Demo Data
+            </div>
+            <DataTableWidget
+              title={widget.title}
+              columns={tableData.columns}
+              data={tableData.data}
+              pageSize={5}
+            />
+          </div>
         );
       }
 
       case 'list': {
         const listData = generateSampleListData(widget.subtype);
         return (
-          <ListWidget
-            title={widget.title}
-            items={listData}
-            variant={widget.subtype === 'activity' ? 'activity' : 'ranked'}
-            maxItems={5}
-          />
+          <div className="relative h-full">
+            <div className="absolute top-1 right-1 px-1.5 py-0.5 bg-amber-100 text-amber-700 text-[10px] font-medium rounded z-10">
+              Demo Data
+            </div>
+            <ListWidget
+              title={widget.title}
+              items={listData}
+              variant={widget.subtype === 'activity' ? 'activity' : 'ranked'}
+              maxItems={5}
+            />
+          </div>
         );
       }
 
@@ -579,7 +613,7 @@ export default function AnalyticsContent() {
       default:
         return <div className="flex items-center justify-center h-full text-gray-400">Unknown widget type</div>;
     }
-  }, [activeTabId]);
+  }, [activeTabId, analyticsData]);
 
   // Show loading while checking authentication
   if (!authenticated) {

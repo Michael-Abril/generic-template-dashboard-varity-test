@@ -28,7 +28,8 @@ from .core.startup import startup_sequence, shutdown_sequence
 from .core.database import check_database_health
 
 # Import API routers
-from .api.v1 import marketplace_v2, marketplace_purchases, integrations, ai, oauth, sync, dashboard, admin, stats, conversations, export, team, onboarding, salesforce_crud, google, microsoft, quickbooks_crud, hubspot_crud, feedback, ai_analytics, projects
+# Note: marketplace_purchases was removed (superseded by marketplace_v2)
+from .api.v1 import marketplace_v2, integrations, ai, oauth, sync, dashboard, admin, stats, conversations, export, team, onboarding, salesforce_crud, google, microsoft, quickbooks_crud, hubspot_crud, feedback, ai_analytics, projects
 from .api.v1 import settings as settings_router
 
 # Import middleware
@@ -140,11 +141,7 @@ app.include_router(
     prefix="/api/v1/dashboard",
     tags=["Dashboard"]
 )
-app.include_router(
-    marketplace_purchases.router,
-    prefix="/api/v1",
-    tags=["Marketplace Purchases"]
-)
+# Note: marketplace_purchases router removed (superseded by marketplace_v2)
 app.include_router(
     admin.router,
     prefix="/api/v1/admin",

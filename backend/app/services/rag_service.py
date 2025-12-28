@@ -4,9 +4,15 @@ Multi-tenant vector database for business-specific knowledge retrieval
 
 Architecture:
 - Each business gets isolated Qdrant collection: business_{wallet_address}
-- Embeddings generated using Ollama (100% local, no external API calls)
+- Embeddings generated using Together.ai (primary) or Ollama (fallback)
 - Business A queries ONLY access Business A's collection
 - No cross-business data leakage possible
+
+Optimizations (Dec 26, 2025):
+- Embedding caching with TTL to reduce API calls
+- CID-based deduplication to prevent duplicate indexing
+- Score threshold filtering for relevance
+- Date range filtering for time-based queries
 """
 import json
 import uuid
@@ -15,7 +21,8 @@ import logging
 import httpx
 import asyncio
 import os
-from typing import List, Dict, Any, Optional
+import hashlib
+from typing import List, Dict, Any, Optional, Tuple
 
 from qdrant_client import QdrantClient
 from qdrant_client.models import (
@@ -25,8 +32,14 @@ from qdrant_client.models import (
     Filter,
     FieldCondition,
     MatchValue,
-    PayloadSchemaType
+    PayloadSchemaType,
+    Range
 )
+
+
+class EmbeddingGenerationError(Exception):
+    """Raised when embedding generation fails"""
+    pass
 
 from ..core.config import settings
 from .encryption_service import normalize_wallet_address
@@ -80,11 +93,18 @@ class BusinessRAGService:
         # Determine embedding provider
         self.use_together_embeddings = bool(self.together_api_key)
 
+        # Embedding cache for performance (reduce API calls)
+        # Format: {cache_key: (timestamp, embedding)}
+        self._embedding_cache: Dict[str, Tuple[float, List[float]]] = {}
+        self._cache_ttl = 300  # 5 minutes TTL
+        self._cache_max_size = 1000  # Max cached embeddings
+
         logger.info(
             f"BusinessRAGService initialized: "
             f"Qdrant={qdrant_url}, "
             f"Embeddings={'Together.ai' if self.use_together_embeddings else 'Ollama'}, "
-            f"Model={self.together_embedding_model if self.use_together_embeddings else self.ollama_embedding_model}"
+            f"Model={self.together_embedding_model if self.use_together_embeddings else self.ollama_embedding_model}, "
+            f"Cache=5min TTL, max 1000 entries"
         )
 
     async def _generate_embedding(self, text: str) -> List[float]:
@@ -96,7 +116,12 @@ class BusinessRAGService:
 
         Returns:
             List of floats representing the embedding vector
+
+        Raises:
+            EmbeddingGenerationError: If both providers fail
         """
+        last_error = None
+
         # Try Together.ai first if API key is available
         if self.use_together_embeddings:
             try:
@@ -114,8 +139,15 @@ class BusinessRAGService:
                 response.raise_for_status()
                 result = response.json()
                 # Together.ai returns embeddings in OpenAI-compatible format
-                return result["data"][0]["embedding"]
+                embedding = result["data"][0]["embedding"]
+                # Validate embedding
+                if len(embedding) != self.embedding_dimension:
+                    raise EmbeddingGenerationError(
+                        f"Invalid embedding dimension: {len(embedding)} != {self.embedding_dimension}"
+                    )
+                return embedding
             except Exception as e:
+                last_error = e
                 logger.warning(f"Together.ai embedding failed, trying Ollama: {str(e)}")
 
         # Fallback to Ollama for local development
@@ -129,11 +161,62 @@ class BusinessRAGService:
             )
             response.raise_for_status()
             result = response.json()
-            return result["embedding"]
-        except httpx.HTTPError as e:
+            embedding = result["embedding"]
+            # Validate embedding
+            if len(embedding) != self.embedding_dimension:
+                raise EmbeddingGenerationError(
+                    f"Invalid embedding dimension: {len(embedding)} != {self.embedding_dimension}"
+                )
+            return embedding
+        except Exception as e:
+            last_error = e
             logger.error(f"Failed to generate embedding (both providers failed): {str(e)}")
-            # Fallback: return zero vector if both fail
-            return [0.0] * self.embedding_dimension
+            # FIX 1.3: Raise exception instead of returning zero vector
+            # Zero vectors pollute the index with meaningless entries
+            raise EmbeddingGenerationError(
+                f"Embedding generation failed for both providers: {last_error}"
+            )
+
+    async def _generate_embedding_cached(self, text: str) -> List[float]:
+        """
+        Generate embedding with caching to reduce API calls
+
+        Args:
+            text: Text to embed
+
+        Returns:
+            List of floats representing the embedding vector (may be cached)
+        """
+        # Generate cache key from text hash
+        cache_key = hashlib.md5(text.encode()).hexdigest()
+
+        # Check cache
+        if cache_key in self._embedding_cache:
+            cached_time, embedding = self._embedding_cache[cache_key]
+            if time.time() - cached_time < self._cache_ttl:
+                logger.debug(f"Embedding cache hit for key {cache_key[:8]}...")
+                return embedding
+            else:
+                # Cache expired, remove
+                del self._embedding_cache[cache_key]
+
+        # Generate new embedding
+        embedding = await self._generate_embedding(text)
+
+        # Clean cache if too large
+        if len(self._embedding_cache) >= self._cache_max_size:
+            # Remove oldest entries
+            sorted_keys = sorted(
+                self._embedding_cache.keys(),
+                key=lambda k: self._embedding_cache[k][0]
+            )
+            for key in sorted_keys[:100]:  # Remove oldest 100
+                del self._embedding_cache[key]
+            logger.info(f"Embedding cache cleaned, removed 100 oldest entries")
+
+        # Cache the embedding
+        self._embedding_cache[cache_key] = (time.time(), embedding)
+        return embedding
 
     def _get_collection_name(self, business_wallet: str) -> str:
         """
@@ -199,6 +282,18 @@ class BusinessRAGService:
                 field_name="business_wallet",
                 field_schema=PayloadSchemaType.KEYWORD
             )
+            # FIX 2.3: Add indexed_at index for date range filtering
+            self.qdrant.create_payload_index(
+                collection_name=collection_name,
+                field_name="indexed_at",
+                field_schema=PayloadSchemaType.FLOAT
+            )
+            # FIX 3.1: Add cid index for deduplication lookups
+            self.qdrant.create_payload_index(
+                collection_name=collection_name,
+                field_name="cid",
+                field_schema=PayloadSchemaType.KEYWORD
+            )
 
             logger.info(
                 f"Created business collection with indexes: {collection_name} "
@@ -221,7 +316,8 @@ class BusinessRAGService:
         Ensure payload indexes exist on collection (for existing collections)
         Safe to call multiple times - will skip if index already exists
         """
-        for field_name in ["integration", "data_type", "business_wallet"]:
+        # Keyword indexes
+        for field_name in ["integration", "data_type", "business_wallet", "cid"]:
             try:
                 self.qdrant.create_payload_index(
                     collection_name=collection_name,
@@ -237,6 +333,75 @@ class BusinessRAGService:
                 else:
                     logger.warning(f"Failed to create index {field_name}: {idx_err}")
 
+        # Float index for date range queries
+        try:
+            self.qdrant.create_payload_index(
+                collection_name=collection_name,
+                field_name="indexed_at",
+                field_schema=PayloadSchemaType.FLOAT
+            )
+            logger.info(f"Created payload index: {collection_name}.indexed_at")
+        except Exception as idx_err:
+            err_str = str(idx_err).lower()
+            if "already exists" not in err_str and "already indexed" not in err_str:
+                logger.warning(f"Failed to create indexed_at index: {idx_err}")
+
+    async def _find_by_cid(self, collection_name: str, cid: str) -> Optional[str]:
+        """
+        Find a point by CID (for deduplication)
+
+        Args:
+            collection_name: Qdrant collection name
+            cid: Filecoin CID to search for
+
+        Returns:
+            Point ID if found, None otherwise
+        """
+        try:
+            # Scroll with CID filter
+            results = self.qdrant.scroll(
+                collection_name=collection_name,
+                scroll_filter=Filter(
+                    must=[
+                        FieldCondition(
+                            key="cid",
+                            match=MatchValue(value=cid)
+                        )
+                    ]
+                ),
+                limit=1
+            )
+
+            points = results[0]  # scroll returns (points, next_offset)
+            if points:
+                return str(points[0].id)
+            return None
+        except Exception as e:
+            logger.warning(f"CID lookup failed for {cid}: {e}")
+            return None
+
+    async def _update_point_timestamp(self, collection_name: str, point_id: str) -> bool:
+        """
+        Update the indexed_at timestamp of an existing point
+
+        Args:
+            collection_name: Qdrant collection name
+            point_id: Point ID to update
+
+        Returns:
+            True if updated successfully
+        """
+        try:
+            self.qdrant.set_payload(
+                collection_name=collection_name,
+                payload={"indexed_at": time.time()},
+                points=[point_id]
+            )
+            return True
+        except Exception as e:
+            logger.warning(f"Failed to update timestamp for {point_id}: {e}")
+            return False
+
     async def index_business_data(
         self,
         business_wallet: str,
@@ -248,6 +413,11 @@ class BusinessRAGService:
         """
         Index business data in their isolated Qdrant collection
 
+        Optimizations:
+        - FIX 2.1: Uses cached embeddings to reduce API calls
+        - FIX 3.1: Checks for existing CID to prevent duplicates
+        - FIX 3.2: Stores minimal payload (preview only, not full data)
+
         Args:
             business_wallet: Business wallet address
             cid: Filecoin CID of the data
@@ -256,12 +426,22 @@ class BusinessRAGService:
             data_type: Type of data
 
         Returns:
-            Point ID in Qdrant
+            Point ID in Qdrant (existing or new)
         """
         collection_name = self._get_collection_name(business_wallet)
 
         # Ensure collection exists
         await self.create_business_collection(business_wallet)
+
+        # FIX 3.1: Check for existing CID (deduplication)
+        existing_id = await self._find_by_cid(collection_name, cid)
+        if existing_id:
+            # Update timestamp but don't re-index
+            await self._update_point_timestamp(collection_name, existing_id)
+            logger.info(
+                f"Dedup: CID {cid[:20]}... already indexed as {existing_id}, updated timestamp"
+            )
+            return existing_id
 
         # Convert data to text for embedding
         if isinstance(data, dict):
@@ -269,21 +449,23 @@ class BusinessRAGService:
         else:
             text = str(data)
 
-        # Generate embedding using Ollama API
-        embedding = await self._generate_embedding(text)
+        # FIX 2.1: Generate embedding using cached method
+        embedding = await self._generate_embedding_cached(text)
 
         # Generate unique point ID
         point_id = str(uuid.uuid4())
 
-        # Prepare payload with metadata
+        # FIX 3.2: Store minimal payload (preview only, not full data)
+        # Full data should be retrieved from Pinata when needed
+        # This reduces Qdrant memory usage and potential data exposure
         payload = {
             "cid": cid,
-            "data": data,
+            "preview": text[:500],  # Short preview for display
             "integration": integration,
             "data_type": data_type,
             "business_wallet": business_wallet.lower(),
             "indexed_at": time.time(),
-            "text": text[:1000]  # Store first 1000 chars for preview
+            "record_count": len(data.get("records", [])) if isinstance(data, dict) else 0
         }
 
         # Upsert into Qdrant
@@ -300,7 +482,7 @@ class BusinessRAGService:
 
         logger.info(
             f"Indexed data: collection={collection_name}, "
-            f"CID={cid}, point_id={point_id}"
+            f"CID={cid}, point_id={point_id}, records={payload['record_count']}"
         )
 
         return point_id
@@ -309,9 +491,12 @@ class BusinessRAGService:
         self,
         business_wallet: str,
         query: str,
-        limit: int = 5,
+        limit: int = 10,
         integration: Optional[str] = None,
-        data_type: Optional[str] = None
+        data_type: Optional[str] = None,
+        date_from: Optional[float] = None,
+        date_to: Optional[float] = None,
+        score_threshold: float = 0.5
     ) -> List[Dict[str, Any]]:
         """
         Query ONLY this business's RAG data
@@ -319,12 +504,20 @@ class BusinessRAGService:
         CRITICAL: This ensures Business A cannot access Business B's data
         Each business queries their own isolated collection
 
+        Optimizations:
+        - FIX 2.1: Uses cached embeddings for queries
+        - FIX 2.2: Increased default limit and score threshold filtering
+        - FIX 2.3: Date range filtering support
+
         Args:
             business_wallet: Business wallet requesting query
             query: User's question/search query
-            limit: Maximum number of results
+            limit: Maximum number of results (default 10, was 5)
             integration: Optional filter by integration
             data_type: Optional filter by data type
+            date_from: Optional filter - only results indexed after this timestamp
+            date_to: Optional filter - only results indexed before this timestamp
+            score_threshold: Minimum relevance score (0-1, default 0.5)
 
         Returns:
             List of relevant data from THIS business's collection only
@@ -343,61 +536,80 @@ class BusinessRAGService:
                 return []
 
             # Ensure payload indexes exist for filtering (handles existing collections)
-            if integration or data_type:
-                self._ensure_payload_indexes(collection_name)
+            self._ensure_payload_indexes(collection_name)
 
-            # Embed query using Together.ai (primary) or Ollama (fallback)
-            query_embedding = await self._generate_embedding(query)
+            # FIX 2.1: Embed query using cached method
+            query_embedding = await self._generate_embedding_cached(query)
 
-            # Build filter for integration/data_type if provided
-            query_filter = None
-            if integration or data_type:
-                must_conditions = []
+            # Build filter conditions
+            must_conditions = []
 
-                if integration:
-                    must_conditions.append(
-                        FieldCondition(
-                            key="integration",
-                            match=MatchValue(value=integration)
-                        )
+            if integration:
+                must_conditions.append(
+                    FieldCondition(
+                        key="integration",
+                        match=MatchValue(value=integration)
                     )
+                )
 
-                if data_type:
-                    must_conditions.append(
-                        FieldCondition(
-                            key="data_type",
-                            match=MatchValue(value=data_type)
-                        )
+            if data_type:
+                must_conditions.append(
+                    FieldCondition(
+                        key="data_type",
+                        match=MatchValue(value=data_type)
                     )
+                )
 
-                if must_conditions:
-                    query_filter = Filter(must=must_conditions)
+            # FIX 2.3: Add date range filtering
+            if date_from is not None or date_to is not None:
+                range_params = {}
+                if date_from is not None:
+                    range_params["gte"] = date_from
+                if date_to is not None:
+                    range_params["lte"] = date_to
+                must_conditions.append(
+                    FieldCondition(
+                        key="indexed_at",
+                        range=Range(**range_params)
+                    )
+                )
+
+            query_filter = Filter(must=must_conditions) if must_conditions else None
 
             # Search in THIS business's collection ONLY
             # Use query_points for qdrant-client>=1.12.0 compatibility
+            # Request more results for score filtering
             search_result = self.qdrant.query_points(
                 collection_name=collection_name,
                 query=query_embedding,
-                limit=limit,
-                query_filter=query_filter
+                limit=limit * 2,  # Get extra for score filtering
+                query_filter=query_filter,
+                score_threshold=score_threshold  # FIX 2.2: Filter by relevance
             )
             results = search_result.points
 
-            # Format results
+            # Format results - limit to requested amount after score filtering
             formatted_results = []
-            for result in results:
+            for result in results[:limit]:
+                # Handle both new format (preview only) and legacy format (full data)
+                preview = result.payload.get("preview") or result.payload.get("text", "")
+                data = result.payload.get("data")  # May be None for new format
+
                 formatted_results.append({
                     "cid": result.payload.get("cid"),
-                    "data": result.payload.get("data"),
+                    "preview": preview[:500] if preview else "",
+                    "data": data,  # Will be None for minimal payload - caller should fetch from Pinata
                     "integration": result.payload.get("integration"),
                     "data_type": result.payload.get("data_type"),
                     "score": result.score,
-                    "indexed_at": result.payload.get("indexed_at")
+                    "indexed_at": result.payload.get("indexed_at"),
+                    "record_count": result.payload.get("record_count", 0)
                 })
 
             logger.info(
                 f"RAG query successful: collection={collection_name}, "
-                f"query='{query[:50]}...', results={len(formatted_results)}"
+                f"query='{query[:50]}...', results={len(formatted_results)}, "
+                f"score_threshold={score_threshold}"
             )
 
             return formatted_results

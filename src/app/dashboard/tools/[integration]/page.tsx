@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { usePrivy } from '@privy-io/react-auth';
 import { useWalletSync } from '@/app/providers';
+import { useToast } from '@/components/ui/Toast';
 import { Layout } from '@/components/Layout';
 import Link from 'next/link';
 import { SalesforcePage } from '@/components/integrations/salesforce';
@@ -218,6 +219,7 @@ function QuickBooksToolPage({
   onRefresh
 }: QuickBooksToolPageProps) {
   const router = useRouter();
+  const toast = useToast();
   const [activeSection, setActiveSection] = useState<string>('dashboard');
   const [activeSubSection, setActiveSubSection] = useState<string | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -530,27 +532,31 @@ function QuickBooksToolPage({
   const netIncome = totalPaid - totalExpenses;
 
   // Quick Create Menu Items (matches QuickBooks Online)
+  const handleQuickAction = (actionName: string) => {
+    toast.info(`${actionName} - Coming soon! QuickBooks integration requires production approval.`);
+  };
+
   const createMenuItems = {
     customers: [
-      { icon: FileText, label: 'Invoice', action: () => console.log('Create Invoice') },
-      { icon: Receipt, label: 'Sales Receipt', action: () => console.log('Create Sales Receipt') },
-      { icon: FileSpreadsheet, label: 'Estimate', action: () => console.log('Create Estimate') },
-      { icon: CreditCard, label: 'Receive Payment', action: () => console.log('Receive Payment') },
-      { icon: ArrowDownRight, label: 'Credit Memo', action: () => console.log('Create Credit Memo') },
+      { icon: FileText, label: 'Invoice', action: () => handleQuickAction('Create Invoice') },
+      { icon: Receipt, label: 'Sales Receipt', action: () => handleQuickAction('Create Sales Receipt') },
+      { icon: FileSpreadsheet, label: 'Estimate', action: () => handleQuickAction('Create Estimate') },
+      { icon: CreditCard, label: 'Receive Payment', action: () => handleQuickAction('Receive Payment') },
+      { icon: ArrowDownRight, label: 'Credit Memo', action: () => handleQuickAction('Create Credit Memo') },
     ],
     vendors: [
-      { icon: Receipt, label: 'Expense', action: () => console.log('Create Expense') },
-      { icon: Banknote, label: 'Check', action: () => console.log('Write Check') },
-      { icon: FileText, label: 'Bill', action: () => console.log('Create Bill') },
-      { icon: ShoppingCart, label: 'Purchase Order', action: () => console.log('Create PO') },
-      { icon: ArrowUpRight, label: 'Vendor Credit', action: () => console.log('Vendor Credit') },
-      { icon: CreditCard, label: 'Credit Card Credit', action: () => console.log('CC Credit') },
+      { icon: Receipt, label: 'Expense', action: () => handleQuickAction('Create Expense') },
+      { icon: Banknote, label: 'Check', action: () => handleQuickAction('Write Check') },
+      { icon: FileText, label: 'Bill', action: () => handleQuickAction('Create Bill') },
+      { icon: ShoppingCart, label: 'Purchase Order', action: () => handleQuickAction('Create PO') },
+      { icon: ArrowUpRight, label: 'Vendor Credit', action: () => handleQuickAction('Vendor Credit') },
+      { icon: CreditCard, label: 'Credit Card Credit', action: () => handleQuickAction('Credit Card Credit') },
     ],
     other: [
-      { icon: Landmark, label: 'Bank Deposit', action: () => console.log('Bank Deposit') },
-      { icon: ArrowUpRight, label: 'Transfer', action: () => console.log('Transfer') },
-      { icon: BookOpen, label: 'Journal Entry', action: () => console.log('Journal Entry') },
-      { icon: Calculator, label: 'Inventory Qty Adjustment', action: () => console.log('Inventory Adj') },
+      { icon: Landmark, label: 'Bank Deposit', action: () => handleQuickAction('Bank Deposit') },
+      { icon: ArrowUpRight, label: 'Transfer', action: () => handleQuickAction('Transfer') },
+      { icon: BookOpen, label: 'Journal Entry', action: () => handleQuickAction('Journal Entry') },
+      { icon: Calculator, label: 'Inventory Qty Adjustment', action: () => handleQuickAction('Inventory Adjustment') },
     ]
   };
 
@@ -558,11 +564,11 @@ function QuickBooksToolPage({
   const appCarouselItems = [
     { icon: FileText, label: 'Invoice', color: 'bg-green-500', action: () => setActiveSection('invoices') },
     { icon: Receipt, label: 'Expense', color: 'bg-orange-500', action: () => setActiveSection('expenses') },
-    { icon: Banknote, label: 'Check', color: 'bg-blue-500', action: () => console.log('Write Check') },
-    { icon: FileSpreadsheet, label: 'Estimate', color: 'bg-purple-500', action: () => console.log('Estimate') },
+    { icon: Banknote, label: 'Check', color: 'bg-blue-500', action: () => handleQuickAction('Write Check') },
+    { icon: FileSpreadsheet, label: 'Estimate', color: 'bg-purple-500', action: () => handleQuickAction('Create Estimate') },
     { icon: Users, label: 'Customers', color: 'bg-teal-500', action: () => setActiveSection('customers') },
     { icon: Truck, label: 'Vendors', color: 'bg-amber-500', action: () => setActiveSection('vendors') },
-    { icon: Package, label: 'Products', color: 'bg-indigo-500', action: () => console.log('Products') },
+    { icon: Package, label: 'Products', color: 'bg-indigo-500', action: () => handleQuickAction('View Products') },
     { icon: BarChart3, label: 'Reports', color: 'bg-pink-500', action: () => setActiveSection('reports') },
   ];
 
@@ -2323,6 +2329,7 @@ export default function IntegrationToolPage() {
   const integration = params.integration as string;
   const { authenticated, ready } = usePrivy();
   const { address } = useWalletSync();
+  const toast = useToast();
 
   const [activeTab, setActiveTab] = useState<string>('overview');
   const [data, setData] = useState<IntegrationData[]>([]);

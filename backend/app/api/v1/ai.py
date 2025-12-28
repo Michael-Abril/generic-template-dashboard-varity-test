@@ -2640,13 +2640,16 @@ async def _build_rag_context(
     filters: Optional[Dict[str, Any]] = None
 ) -> Dict[str, Any]:
     """
-    Build RAG context from user's tool data
+    Build RAG context from user's tool data using Qdrant vector search
+
+    UPDATED (Dec 26, 2025): Now uses Qdrant for semantic search instead of
+    fetching all files from Pinata. This is faster and more accurate.
 
     Args:
         wallet_address: User's wallet address
         tools: List of tools to query
         query: User's query
-        filters: Optional filters for data
+        filters: Optional filters for data (supports 'data_type')
 
     Returns:
         RAG context dictionary with relevant data
@@ -2659,104 +2662,94 @@ async def _build_rag_context(
         "sources": []
     }
 
-    # Fetch data from each tool
+    # Check if RAG service is available
+    if rag_service is None:
+        logger.warning("RAG service not available, returning empty context")
+        context["summary"] = (
+            "RAG service not available. Please ensure your integrations "
+            "are connected and synced from the Marketplace."
+        )
+        return context
+
+    # Use Qdrant vector search for each tool
     for tool in tools:
         try:
-            # List files for this integration
-            files = await filecoin_service.list_customer_files(
-                customer_wallet=wallet_address,
+            # Query Qdrant for semantically relevant documents
+            # This replaces the old Pinata file listing + keyword matching approach
+            rag_results = await rag_service.query_business_rag(
+                business_wallet=wallet_address,
+                query=query,
+                limit=10,  # Get top 10 per tool for comprehensive context
                 integration=tool,
-                limit=50
+                data_type=filters.get("data_type") if filters else None
             )
 
-            tool_data = []
-
-            # Retrieve and decrypt files
-            for file in files:
-                try:
-                    # Check if file matches query context
-                    if not _is_relevant_to_query(file, query):
-                        continue
-
-                    # Retrieve encrypted data
-                    encrypted = await filecoin_service.retrieve_data(file["cid"])
-
-                    # Decrypt
-                    decrypted = await encryption_service.decrypt_with_wallet(
-                        encrypted_data=encrypted,
-                        customer_wallet=wallet_address
-                    )
-
-                    # Parse JSON
-                    if isinstance(decrypted, str):
-                        data = json.loads(decrypted)
-                    else:
-                        data = decrypted
+            if rag_results:
+                tool_data = []
+                for result in rag_results:
+                    data = result.get("data", {})
+                    cid = result.get("cid", "")
+                    data_type = result.get("data_type", "unknown")
+                    score = result.get("score", 0)
+                    indexed_at = result.get("indexed_at", "")
 
                     tool_data.append(data)
 
-                    # Add source
+                    # Add source with relevance score (new field)
                     context["sources"].append({
                         "tool": tool,
-                        "data_type": file.get("data_type", "unknown"),
-                        "cid": file["cid"],
-                        "uploaded_at": file.get("uploaded_at", "")
+                        "data_type": data_type,
+                        "cid": cid,
+                        "relevance_score": score,
+                        "indexed_at": indexed_at
                     })
 
-                except Exception as e:
-                    logger.warning(f"Failed to process file {file.get('cid')}: {e}")
-                    continue
+                # Add tool data to context
+                if tool_data:
+                    context["data"][tool] = tool_data
 
-            # Add tool data to context
-            if tool_data:
-                context["data"][tool] = tool_data
+                logger.info(
+                    f"RAG context: found {len(tool_data)} relevant items for "
+                    f"tool={tool}, wallet={wallet_address[:10]}..."
+                )
 
         except Exception as e:
-            logger.error(f"Failed to fetch data for tool {tool}: {e}")
+            logger.warning(f"Qdrant query failed for tool {tool}: {e}")
             continue
 
-    # Build context summary for LLM
-    context["summary"] = _summarize_context(context)
+    # Add helpful message if no data found
+    if not context["sources"]:
+        context["summary"] = (
+            "No indexed business data found. If you've connected integrations, "
+            "try running a sync first. Your data will be indexed automatically."
+        )
+    else:
+        # Build context summary for LLM
+        context["summary"] = _summarize_context(context)
 
     return context
 
 
 def _is_relevant_to_query(file: Dict, query: str) -> bool:
     """
-    Check if a file is relevant to the query
+    DEPRECATED (Dec 26, 2025): This function is no longer used.
 
-    Simple keyword matching for MVP. In production, use embeddings.
+    The _build_rag_context() function now uses Qdrant vector search
+    for semantic relevance scoring instead of this keyword matching approach.
+
+    This function is kept for backward compatibility but always returns True.
+    It will be removed in a future version.
 
     Args:
         file: File metadata
         query: User's query
 
     Returns:
-        True if file seems relevant
+        True always (deprecated behavior)
     """
-    query_lower = query.lower()
-    data_type = file.get("data_type", "").lower()
-    integration = file.get("integration", "").lower()
-
-    # Keyword matching
-    keywords = {
-        "invoices": ["invoice", "bill", "revenue", "payment", "due", "overdue"],
-        "expenses": ["expense", "cost", "spend", "vendor"],
-        "customers": ["customer", "client"],
-        "leads": ["lead", "prospect"],
-        "opportunities": ["deal", "opportunity", "sale", "pipeline"]
-    }
-
-    # Check if query mentions this data type
-    for dt, kws in keywords.items():
-        if dt in data_type and any(kw in query_lower for kw in kws):
-            return True
-
-    # Default: include all for broad queries
-    if len(query_lower.split()) < 5:  # Short query, include everything
-        return True
-
-    return False
+    # Log deprecation warning (throttled to avoid spam)
+    logger.debug("_is_relevant_to_query is deprecated - using Qdrant for relevance")
+    return True  # Always return True since Qdrant handles relevance now
 
 
 def _summarize_context(context: Dict) -> str:
