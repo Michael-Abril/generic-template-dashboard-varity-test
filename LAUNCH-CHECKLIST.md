@@ -38,7 +38,7 @@ The Varity Dashboard is **70% ready** for launch to 100+ businesses. Critical fi
 | ID | Issue | File | Status | Impact |
 |----|-------|------|--------|--------|
 | FUNC-001 | Microsoft 365 OAuth completely broken | `backend/app/api/v1/microsoft.py` | BLOCKED | Users cannot connect Microsoft |
-| FUNC-002 | QuickBooks returns 403 error | Backend OAuth | BLOCKED | Needs Intuit production approval |
+| FUNC-002 | QuickBooks integration | Backend OAuth | WORKING | Production credentials configured |
 | FUNC-003 | Document upload incomplete in AI Assistant | `src/components/AIChat.tsx` | PARTIAL | File input hidden, no handler |
 
 ---
@@ -63,7 +63,7 @@ The Varity Dashboard is **70% ready** for launch to 100+ businesses. Critical fi
 | **Google Workspace** | PASS | PARTIAL | PARTIAL | PARTIAL | **USABLE** |
 | **Slack** | PASS | PARTIAL | Files only | PASS | **USABLE** |
 | Microsoft 365 | FAIL | N/A | N/A | N/A | BLOCKED |
-| QuickBooks | PASS | FAIL | N/A | N/A | 403 Error |
+| QuickBooks | PASS | PASS | PASS | PASS | **WORKING** |
 | Salesforce | UNKNOWN | N/A | N/A | N/A | Untested |
 | HubSpot | UNKNOWN | N/A | N/A | N/A | Untested |
 

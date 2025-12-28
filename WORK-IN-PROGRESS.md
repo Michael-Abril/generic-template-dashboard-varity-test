@@ -50,11 +50,11 @@ Phase 2-5 of the world-class UI audit was planned but not executed:
 
 ---
 
-## KNOWN BLOCKERS
+## STATUS NOTES
 
-| Blocker | Status | Resolution |
-|---------|--------|------------|
-| QuickBooks 403 Error | BLOCKED | Requires Intuit production app approval (1-2 weeks) |
+| Integration | Status | Notes |
+|-------------|--------|-------|
+| QuickBooks | PRODUCTION | Production credentials configured in Railway |
 
 ---
 

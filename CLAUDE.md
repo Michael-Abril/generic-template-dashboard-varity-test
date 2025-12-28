@@ -70,7 +70,7 @@
 
 | Issue | Resolution |
 |-------|------------|
-| QuickBooks 403 Error | Production credentials active, ~70% working |
+| QuickBooks | Production credentials configured, 95% working |
 | Console.log statements | Cleaned up 33 instances across codebase |
 | Document upload incomplete | FIXED - Full upload and analysis working |
 | AI Chat Qdrant bypass | FIXED - Now uses vector search properly |

@@ -182,7 +182,7 @@ export function AIChat() {
   const { address: syncedAddress, isLoading } = useWalletSync();
 
   // Use synced address if available, fallback to Privy wallet address
-  const address = syncedAddress || wallets[0]?.address;
+  const address = syncedAddress || wallets?.[0]?.address;
 
   // Conversation state
   const [conversations, setConversations] = useState<Conversation[]>([]);

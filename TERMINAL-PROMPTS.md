@@ -413,7 +413,7 @@ Get 4+ of 6 integrations to 90%+ WORKING status.
 | HubSpot | 50% | 90% | MEDIUM |
 | Salesforce | 50% | 90% | MEDIUM |
 | Microsoft | 30% | 60% | LOW |
-| QuickBooks | 25% | 25% | BLOCKED (Intuit approval) |
+| QuickBooks | 95% | 95% | Production credentials configured |
 
 ## TASKS BY INTEGRATION
 

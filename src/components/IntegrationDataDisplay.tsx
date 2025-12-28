@@ -34,7 +34,7 @@ interface IntegrationData {
 
 export function IntegrationDataDisplay({ integration }: { integration: string }) {
   const { wallets } = useWallets();
-  const address = wallets[0]?.address;
+  const address = wallets?.[0]?.address;
   const [data, setData] = useState<IntegrationData | null>(null);
   const [loading, setLoading] = useState(true);
 

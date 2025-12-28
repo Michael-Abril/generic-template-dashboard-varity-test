@@ -112,7 +112,7 @@ const ROLE_DEFINITIONS = {
 export default function SettingsPage() {
   const { authenticated, user } = usePrivy();
   const { wallets } = useWallets();
-  const address = wallets[0]?.address;
+  const address = wallets?.[0]?.address;
   const router = useRouter();
   const toast = useToast();
   const [activeTab, setActiveTab] = useState<SettingsTab>('account');

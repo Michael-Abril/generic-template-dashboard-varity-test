@@ -52,7 +52,7 @@ export default function HomePage() {
     const checkOnboardingAndRedirect = async () => {
       if (!authenticated || !ready || hasRedirected || isCheckingOnboarding) return;
 
-      const walletAddress = wallets[0]?.address;
+      const walletAddress = wallets?.[0]?.address;
       if (!walletAddress) return;
 
       setIsCheckingOnboarding(true);

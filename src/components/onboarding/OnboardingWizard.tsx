@@ -85,7 +85,7 @@ export function OnboardingWizard({
 }: OnboardingWizardProps) {
   const { authenticated } = usePrivy();
   const { wallets } = useWallets();
-  const address = wallets[0]?.address;
+  const address = wallets?.[0]?.address;
   const searchParams = useSearchParams();
   const router = useRouter();
 

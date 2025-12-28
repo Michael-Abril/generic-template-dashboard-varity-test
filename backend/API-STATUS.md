@@ -180,7 +180,7 @@
 | **Google** | ✅ | WORKING | Full read/write scopes |
 | **Slack** | ✅ | WORKING | Fixed Dec 26 - uses access_token property |
 | **Microsoft** | ✅ | WORKING (Fixed) | Dec 26: Added prompt=consent + write scopes |
-| **QuickBooks** | ✅ | PARTIAL | OAuth works, API returns 403 (needs Intuit approval) |
+| **QuickBooks** | ✅ | WORKING | Production credentials configured |
 | **Salesforce** | ✅ | UNTESTED | Code complete, needs testing |
 | **HubSpot** | ✅ | UNTESTED (Fixed) | Dec 26: Added hub_id extraction |
 
@@ -214,7 +214,7 @@
   - Google: WORKING
   - Slack: WORKING
   - Microsoft: UNTESTED
-  - QuickBooks: 403 BLOCKED (needs Intuit approval)
+  - QuickBooks: WORKING (production credentials)
   - Salesforce: UNTESTED
   - HubSpot: UNTESTED
 

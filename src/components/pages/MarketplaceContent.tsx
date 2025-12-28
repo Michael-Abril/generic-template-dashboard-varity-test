@@ -102,7 +102,7 @@ export default function MarketplaceContent() {
   const toast = useToast();
 
   // Use synced address from wallet sync
-  const address = syncedAddress || wallets[0]?.address;
+  const address = syncedAddress || wallets?.[0]?.address;
 
   // State management
   const [products, setProducts] = useState<ProductSummary[]>([]);

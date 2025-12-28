@@ -60,7 +60,7 @@ export const useWalletAuth = (): UseWalletAuthReturn => {
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
 
   // Get wallet address from Privy or thirdweb
-  const address = wallets[0]?.address || activeAccount?.address;
+  const address = wallets?.[0]?.address || activeAccount?.address;
 
   // Load session from localStorage on mount
   useEffect(() => {
@@ -104,7 +104,7 @@ export const useWalletAuth = (): UseWalletAuthReturn => {
    */
   const signMessage = async (message: string): Promise<string> => {
     // Try Privy wallet first
-    const privyWallet = wallets[0];
+    const privyWallet = wallets?.[0];
 
     if (privyWallet && 'signMessage' in privyWallet) {
       try {
