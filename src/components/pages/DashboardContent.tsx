@@ -42,7 +42,8 @@ import {
 
 export default function DashboardContent() {
   const { authenticated, ready } = usePrivy();
-  const { address } = useWalletSync();
+  const walletSync = useWalletSync();
+  const address = walletSync?.address ?? null;
   const router = useRouter();
 
   // State management for dashboard data
@@ -396,7 +397,7 @@ export default function DashboardContent() {
                   </ResponsiveContainer>
                 </div>
               ) : (
-                <div className="h-48 flex items-center justify-center text-gray-400">
+                <div className="h-48 flex items-center justify-center text-gray-500">
                   <div className="text-center">
                     <BarChart3 className="w-8 h-8 mx-auto mb-2" />
                     <p className="text-sm">No revenue data available</p>
@@ -452,7 +453,7 @@ export default function DashboardContent() {
                 ))}
               </div>
             ) : (
-              <div className="py-8 text-center text-gray-400">
+              <div className="py-8 text-center text-gray-500">
                 <ClipboardList className="w-8 h-8 mx-auto mb-2" />
                 <p className="text-sm">No recent activity</p>
               </div>

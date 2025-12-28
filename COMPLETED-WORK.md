@@ -1,5 +1,51 @@
 # COMPLETED WORK - DO NOT REDO
-**Last Updated:** December 28, 2025 (Post-Crash Documentation Complete)
+**Last Updated:** December 28, 2025 (Pipeline Debugging Complete)
+
+---
+
+## December 28, 2025 - Data Pipeline Debugging ✅
+
+### Issue Found: RAG Embedding Generation Failing
+
+**Root Cause:** The RAG service singleton was being created at module import time, before environment variables were fully loaded. This caused:
+1. `TOGETHER_API_KEY` was empty string when evaluated in `__init__`
+2. `use_together_embeddings = bool("")` = `False`
+3. All embedding requests went to Ollama fallback (which doesn't exist in production)
+4. Error: "Embedding generation failed for both providers: All connection attempts failed"
+
+**Evidence:** Debug pipeline endpoint showed:
+- Pinata: 50 files stored correctly for wallet
+- Qdrant: 114 documents indexed
+- But sample query returned 0 results due to embedding generation failure
+
+### Fixes Applied to `backend/app/services/rag_service.py`
+
+| Line | Change | Reason |
+|------|--------|--------|
+| 125-128 | Re-check `os.getenv("TOGETHER_API_KEY")` on each call | Handle late env var loading after singleton creation |
+| 133-140 | Create fresh `httpx.AsyncClient()` per request | Avoid async context issues with shared client |
+| 84 | Change Ollama port from 11435 to 11434 | Correct default Ollama port |
+| 90-91 | Remove `self.http_client` from `__init__` | Client now created fresh per request |
+| 130-134 | Add debug logging for embedding provider selection | Easier troubleshooting |
+
+### Before Fix (Failing)
+```python
+# In __init__ (called at import time, before env vars loaded)
+self.together_api_key = os.getenv("TOGETHER_API_KEY", "")  # Empty!
+self.use_together_embeddings = bool(self.together_api_key)  # False!
+```
+
+### After Fix (Working)
+```python
+# In _generate_embedding (called at request time, env vars loaded)
+together_api_key = os.getenv("TOGETHER_API_KEY", "") or self.together_api_key
+use_together = bool(together_api_key)  # True!
+```
+
+### Verification Steps
+1. Check syntax: `python3 -m py_compile app/services/rag_service.py` - OK
+2. After deployment: Test `/api/v1/ai/debug/pipeline?wallet_address=...`
+3. Expected: `sample_query_results > 0` instead of error
 
 ---
 

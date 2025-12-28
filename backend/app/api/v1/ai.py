@@ -1352,36 +1352,39 @@ async def get_context_items(
                 )
                 google_token = google_token.scalar_one_or_none()
 
-                if google_token and google_token.access_token:
-                    # Fetch live Gmail emails
-                    gmail_emails = await fetch_live_gmail_emails(
-                        access_token=google_token.access_token,
-                        limit=min(10, limit)  # Limit live emails to avoid slow API
-                    )
+                # YELLOW-001 FIX: Use auth context to access tokens securely
+                if google_token:
+                    with OAuthToken.auth_context(wallet_address.lower()):
+                        if google_token.access_token:
+                            # Fetch live Gmail emails
+                            gmail_emails = await fetch_live_gmail_emails(
+                                access_token=google_token.access_token,
+                                limit=min(10, limit)  # Limit live emails to avoid slow API
+                            )
 
-                    for email in gmail_emails:
-                        # Apply search filter if provided
-                        if search:
-                            search_lower = search.lower()
-                            if (search_lower not in email["subject"].lower() and
-                                search_lower not in email["from"].lower() and
-                                search_lower not in email.get("snippet", "").lower()):
-                                continue
+                            for email in gmail_emails:
+                                # Apply search filter if provided
+                                if search:
+                                    search_lower = search.lower()
+                                    if (search_lower not in email["subject"].lower() and
+                                        search_lower not in email["from"].lower() and
+                                        search_lower not in email.get("snippet", "").lower()):
+                                        continue
 
-                        items.append(ContextItem(
-                            id=f"live:google:gmail:{email['id']}",
-                            type="google",
-                            category="gmail",
-                            title=email["subject"],
-                            description=f"From: {email['from'][:50]}",
-                            source="live",
-                            metadata={
-                                "from": email["from"],
-                                "date": email["date"],
-                                "snippet": email.get("snippet", "")
-                            }
-                        ))
-                        integrations_found.add("google")
+                                items.append(ContextItem(
+                                    id=f"live:google:gmail:{email['id']}",
+                                    type="google",
+                                    category="gmail",
+                                    title=email["subject"],
+                                    description=f"From: {email['from'][:50]}",
+                                    source="live",
+                                    metadata={
+                                        "from": email["from"],
+                                        "date": email["date"],
+                                        "snippet": email.get("snippet", "")
+                                    }
+                                ))
+                                integrations_found.add("google")
 
             except Exception as e:
                 logger.warning(f"Failed to fetch live Gmail emails: {e}")
@@ -1400,36 +1403,39 @@ async def get_context_items(
                 )
                 ms_token = ms_token.scalar_one_or_none()
 
-                if ms_token and ms_token.access_token:
-                    # Fetch live Outlook emails
-                    outlook_emails = await fetch_live_outlook_emails(
-                        access_token=ms_token.access_token,
-                        limit=min(10, limit)
-                    )
+                # YELLOW-001 FIX: Use auth context to access tokens securely
+                if ms_token:
+                    with OAuthToken.auth_context(wallet_address.lower()):
+                        if ms_token.access_token:
+                            # Fetch live Outlook emails
+                            outlook_emails = await fetch_live_outlook_emails(
+                                access_token=ms_token.access_token,
+                                limit=min(10, limit)
+                            )
 
-                    for email in outlook_emails:
-                        # Apply search filter if provided
-                        if search:
-                            search_lower = search.lower()
-                            if (search_lower not in email["subject"].lower() and
-                                search_lower not in email["from"].lower() and
-                                search_lower not in email.get("snippet", "").lower()):
-                                continue
+                            for email in outlook_emails:
+                                # Apply search filter if provided
+                                if search:
+                                    search_lower = search.lower()
+                                    if (search_lower not in email["subject"].lower() and
+                                        search_lower not in email["from"].lower() and
+                                        search_lower not in email.get("snippet", "").lower()):
+                                        continue
 
-                        items.append(ContextItem(
-                            id=f"live:microsoft:outlook:{email['id']}",
-                            type="microsoft",
-                            category="outlook",
-                            title=email["subject"],
-                            description=f"From: {email['from'][:50]}",
-                            source="live",
-                            metadata={
-                                "from": email["from"],
-                                "date": email["date"],
-                                "snippet": email.get("snippet", "")
-                            }
-                        ))
-                        integrations_found.add("microsoft")
+                                items.append(ContextItem(
+                                    id=f"live:microsoft:outlook:{email['id']}",
+                                    type="microsoft",
+                                    category="outlook",
+                                    title=email["subject"],
+                                    description=f"From: {email['from'][:50]}",
+                                    source="live",
+                                    metadata={
+                                        "from": email["from"],
+                                        "date": email["date"],
+                                        "snippet": email.get("snippet", "")
+                                    }
+                                ))
+                                integrations_found.add("microsoft")
 
             except Exception as e:
                 logger.warning(f"Failed to fetch live Outlook emails: {e}")
@@ -1499,41 +1505,43 @@ async def fetch_context_by_ids(
                     oauth_tokens[provider] = token_result.scalar_one_or_none()
 
                 token = oauth_tokens.get(provider)
-                if not token or not token.access_token:
-                    context_data.append({
-                        "id": item_id,
-                        "data": None,
-                        "success": False,
-                        "error": f"No OAuth token for {provider}"
-                    })
-                    continue
+                # YELLOW-001 FIX: Use auth context to access tokens securely
+                with OAuthToken.auth_context(wallet_address.lower()):
+                    if not token or not token.access_token:
+                        context_data.append({
+                            "id": item_id,
+                            "data": None,
+                            "success": False,
+                            "error": f"No OAuth token for {provider}"
+                        })
+                        continue
 
-                # Fetch live email content
-                email_content = await fetch_live_email_content(
-                    provider=provider,
-                    email_id=email_id,
-                    access_token=token.access_token
-                )
+                    # Fetch live email content
+                    email_content = await fetch_live_email_content(
+                        provider=provider,
+                        email_id=email_id,
+                        access_token=token.access_token
+                    )
 
-                if email_content:
-                    context_data.append({
-                        "id": item_id,
-                        "data": {
-                            "type": "email",
-                            "provider": provider,
-                            "category": category,
-                            "content": email_content
-                        },
-                        "source": "live",
-                        "success": True
-                    })
-                else:
-                    context_data.append({
-                        "id": item_id,
-                        "data": None,
-                        "success": False,
-                        "error": "Failed to fetch email content"
-                    })
+                    if email_content:
+                        context_data.append({
+                            "id": item_id,
+                            "data": {
+                                "type": "email",
+                                "provider": provider,
+                                "category": category,
+                                "content": email_content
+                            },
+                            "source": "live",
+                            "success": True
+                        })
+                    else:
+                        context_data.append({
+                            "id": item_id,
+                            "data": None,
+                            "success": False,
+                            "error": "Failed to fetch email content"
+                        })
 
             else:
                 # This is an indexed item (CID) - retrieve from Pinata
@@ -1724,34 +1732,36 @@ async def general_chat(request: GeneralChatRequest, db: AsyncSession = Depends(g
                             oauth_tokens[provider] = token_result.scalar_one_or_none()
 
                         token = oauth_tokens.get(provider)
-                        if not token or not token.access_token:
-                            logger.warning(f"No OAuth token for {provider}")
-                            continue
+                        # YELLOW-001 FIX: Use auth context to access tokens securely
+                        with OAuthToken.auth_context(request.wallet_address.lower()):
+                            if not token or not token.access_token:
+                                logger.warning(f"No OAuth token for {provider}")
+                                continue
 
-                        # Fetch live email content
-                        email_content = await fetch_live_email_content(
-                            provider=provider,
-                            email_id=email_id,
-                            access_token=token.access_token
-                        )
+                            # Fetch live email content
+                            email_content = await fetch_live_email_content(
+                                provider=provider,
+                                email_id=email_id,
+                                access_token=token.access_token
+                            )
 
-                        if email_content:
-                            # Format email for context
-                            email_str = f"""Subject: {email_content.get('subject', 'No Subject')}
+                            if email_content:
+                                # Format email for context
+                                email_str = f"""Subject: {email_content.get('subject', 'No Subject')}
 From: {email_content.get('from', 'Unknown')}
 To: {email_content.get('to', '')}
 Date: {email_content.get('date', '')}
 
 {email_content.get('body', '')[:MAX_CHARS_PER_ENTRY]}"""
 
-                            context_entry = f"""
+                                context_entry = f"""
 --- Selected Email (from {provider} - {category}) ---
 {email_str}
 """
-                            context_parts.append(context_entry.strip())
-                            rag_sources.append(item_id)
-                            total_chars += len(context_entry)
-                            context_used = True
+                                context_parts.append(context_entry.strip())
+                                rag_sources.append(item_id)
+                                total_chars += len(context_entry)
+                                context_used = True
 
                     else:
                         # This is an indexed item (CID) - retrieve from Pinata

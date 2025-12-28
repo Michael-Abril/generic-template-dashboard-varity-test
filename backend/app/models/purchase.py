@@ -3,13 +3,23 @@ Purchase and Subscription Database Models
 
 Models for managing software purchases, subscriptions, OAuth tokens, and data sync logs.
 Supports tracking NFT licenses, subscription status, and integration synchronization.
+
+Security Note (YELLOW-001 Fix - December 28, 2025):
+OAuth token decryption now requires explicit authentication context.
+Call OAuthToken.set_auth_context(wallet_address) before accessing tokens.
 """
 
 from datetime import datetime
 from sqlalchemy import Column, Integer, String, Boolean, Numeric, Text, DateTime, ForeignKey, JSON, Enum as SQLEnum, UniqueConstraint, Index
 from sqlalchemy.orm import relationship
 import enum
+import threading
+import logging
 from app.core.database import Base
+
+# Thread-local storage for authentication context (YELLOW-001 fix)
+_auth_context = threading.local()
+_logger = logging.getLogger(__name__)
 
 
 class SubscriptionStatus(str, enum.Enum):
@@ -122,8 +132,54 @@ class Subscription(Base):
     pricing_plan = relationship("PricingPlan", foreign_keys=[pricing_plan_id])
 
 
+class OAuthTokenAuthContext:
+    """
+    Context manager for authenticated OAuth token access (YELLOW-001 fix).
+
+    Usage:
+        with OAuthToken.auth_context(authenticated_wallet):
+            token = await get_oauth_token(wallet, provider)
+            access_token = token.access_token  # Now allowed
+
+    Without auth context, accessing tokens raises SecurityError.
+    """
+
+    def __init__(self, wallet_address: str):
+        self.wallet_address = wallet_address.lower() if wallet_address else None
+        self._previous_context = None
+
+    def __enter__(self):
+        self._previous_context = getattr(_auth_context, 'wallet', None)
+        _auth_context.wallet = self.wallet_address
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        _auth_context.wallet = self._previous_context
+        return False
+
+
 class OAuthToken(Base):
-    """OAuth tokens for integration connections"""
+    """
+    OAuth tokens for integration connections.
+
+    SECURITY (YELLOW-001 fix - December 28, 2025):
+    Token decryption now requires authentication context to prevent
+    unauthorized access to tokens by callers who have object access but
+    haven't proven wallet ownership.
+
+    Usage:
+        # Method 1: Context manager (recommended)
+        with OAuthToken.auth_context(wallet_address):
+            token = await get_token(wallet_address, provider)
+            access = token.access_token  # Works
+
+        # Method 2: Static method
+        OAuthToken.set_auth_context(wallet_address)
+        try:
+            access = token.access_token  # Works
+        finally:
+            OAuthToken.clear_auth_context()
+    """
     __tablename__ = "oauth_tokens"
 
     id = Column(Integer, primary_key=True, index=True)
@@ -138,11 +194,74 @@ class OAuthToken(Base):
     token_type = Column(String(20), default="Bearer")
     expires_at = Column(DateTime)
 
+    @staticmethod
+    def auth_context(wallet_address: str) -> OAuthTokenAuthContext:
+        """Create an authentication context for token access."""
+        return OAuthTokenAuthContext(wallet_address)
+
+    @staticmethod
+    def set_auth_context(wallet_address: str):
+        """Set authentication context (use clear_auth_context when done)."""
+        _auth_context.wallet = wallet_address.lower() if wallet_address else None
+
+    @staticmethod
+    def clear_auth_context():
+        """Clear authentication context."""
+        _auth_context.wallet = None
+
+    @staticmethod
+    def get_auth_context() -> str:
+        """Get current authentication context wallet."""
+        return getattr(_auth_context, 'wallet', None)
+
+    def _verify_auth_context(self, operation: str) -> None:
+        """
+        Verify caller is authorized to access this token's sensitive data.
+
+        SECURITY: Prevents token access by callers who have object access
+        (e.g., through database query) but haven't proven wallet ownership.
+
+        Raises:
+            PermissionError: If no auth context or wallet mismatch
+        """
+        auth_wallet = getattr(_auth_context, 'wallet', None)
+
+        if auth_wallet is None:
+            _logger.warning(
+                f"SECURITY: OAuth token {operation} attempted without auth context "
+                f"for token_id={self.id}, provider={self.provider}"
+            )
+            raise PermissionError(
+                f"OAuth token {operation} requires authentication context. "
+                "Use OAuthToken.auth_context(wallet) or OAuthToken.set_auth_context(wallet)."
+            )
+
+        # Normalize addresses for comparison
+        token_wallet = self.user_address.lower() if self.user_address else None
+
+        if auth_wallet != token_wallet:
+            _logger.warning(
+                f"SECURITY: OAuth token {operation} wallet mismatch - "
+                f"auth_wallet={auth_wallet[:10]}... vs token_wallet={token_wallet[:10] if token_wallet else 'None'}... "
+                f"token_id={self.id}"
+            )
+            raise PermissionError(
+                f"OAuth token {operation} denied: authenticated wallet does not match token owner."
+            )
+
     @property
     def access_token(self) -> str:
-        """Decrypt and return access token"""
+        """
+        Decrypt and return access token.
+
+        SECURITY: Requires valid auth context matching token's user_address.
+        """
         if not self._access_token_encrypted:
             return None
+
+        # YELLOW-001 FIX: Verify authentication context before decryption
+        self._verify_auth_context("access_token read")
+
         from app.services.encryption_service import EncryptionService
         encryption_service = EncryptionService()
         return encryption_service.decrypt_token_field(self.user_address, self._access_token_encrypted)
@@ -159,9 +278,17 @@ class OAuthToken(Base):
 
     @property
     def refresh_token(self) -> str:
-        """Decrypt and return refresh token"""
+        """
+        Decrypt and return refresh token.
+
+        SECURITY: Requires valid auth context matching token's user_address.
+        """
         if not self._refresh_token_encrypted:
             return None
+
+        # YELLOW-001 FIX: Verify authentication context before decryption
+        self._verify_auth_context("refresh_token read")
+
         from app.services.encryption_service import EncryptionService
         encryption_service = EncryptionService()
         return encryption_service.decrypt_token_field(self.user_address, self._refresh_token_encrypted)

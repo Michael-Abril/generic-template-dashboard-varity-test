@@ -392,7 +392,9 @@ async def get_quickbooks_access_token(
             detail="QuickBooks realm_id not found. Please reconnect your QuickBooks account."
         )
 
-    return token.access_token, realm_id
+    # YELLOW-001 FIX: Use auth context to access tokens securely
+    with OAuthToken.auth_context(wallet_address.lower()):
+        return token.access_token, realm_id
 
 
 async def make_qb_request(

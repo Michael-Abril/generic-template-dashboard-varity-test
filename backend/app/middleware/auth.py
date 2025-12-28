@@ -17,10 +17,28 @@ import os
 
 logger = logging.getLogger(__name__)
 
-# Development mode - disables auth for testing (DO NOT USE IN PRODUCTION!)
-DEV_MODE = os.getenv("DEV_MODE", "false").lower() == "true"
-if DEV_MODE:
-    logger.warning("🚨 DEV_MODE is enabled - Wallet authentication is DISABLED! Do not use in production!")
+# YELLOW-003 FIX: Production safeguard for DEV_MODE (December 28, 2025)
+# DEV_MODE can only be enabled in non-production environments
+_IS_PRODUCTION = os.getenv("ENVIRONMENT", "development").lower() in ["production", "prod"]
+_DEV_MODE_REQUESTED = os.getenv("DEV_MODE", "false").lower() == "true"
+
+if _DEV_MODE_REQUESTED and _IS_PRODUCTION:
+    # SECURITY: Never allow DEV_MODE in production - fail hard
+    logger.critical(
+        "SECURITY CRITICAL: DEV_MODE=true in production environment! "
+        "This is a security violation and has been BLOCKED. "
+        "Remove DEV_MODE env var or set ENVIRONMENT to development."
+    )
+    DEV_MODE = False  # Force disabled in production
+elif _DEV_MODE_REQUESTED:
+    # In development, allow DEV_MODE but warn loudly
+    DEV_MODE = True
+    logger.warning(
+        "DEVELOPMENT: DEV_MODE is enabled - Wallet authentication is DISABLED! "
+        "This setting is BLOCKED in production environments."
+    )
+else:
+    DEV_MODE = False
 
 
 class WalletAuthMiddleware(BaseHTTPMiddleware):

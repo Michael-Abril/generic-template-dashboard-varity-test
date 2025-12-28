@@ -60,7 +60,7 @@ export default function ListWidget({
         {title && (
           <h3 className="font-semibold text-gray-900 mb-3">{title}</h3>
         )}
-        <div className="flex-1 flex items-center justify-center text-gray-400 text-sm">
+        <div className="flex-1 flex items-center justify-center text-gray-500 text-sm">
           {emptyMessage}
         </div>
       </div>

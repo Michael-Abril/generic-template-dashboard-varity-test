@@ -528,7 +528,7 @@ export default function AnalyticsContent() {
         if (widget.chart) {
           return <DynamicChart chart={widget.chart} />;
         }
-        return <div className="flex items-center justify-center h-full text-gray-400">No chart data</div>;
+        return <div className="flex items-center justify-center h-full text-gray-500">No chart data</div>;
 
       case 'kpi':
       case 'metric': {
@@ -612,7 +612,7 @@ export default function AnalyticsContent() {
         );
 
       default:
-        return <div className="flex items-center justify-center h-full text-gray-400">Unknown widget type</div>;
+        return <div className="flex items-center justify-center h-full text-gray-500">Unknown widget type</div>;
     }
   }, [activeTabId, analyticsData]);
 

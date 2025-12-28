@@ -57,7 +57,9 @@ async def get_access_token_from_db(wallet_address: str, db: AsyncSession) -> Opt
 
         logger.info(f"Microsoft token refreshed successfully for {wallet_address[:10]}...")
 
-    return token.access_token
+    # YELLOW-001 FIX: Use auth context to access tokens securely
+    with OAuthToken.auth_context(wallet_address.lower()):
+        return token.access_token
 
 
 # ============================================================================

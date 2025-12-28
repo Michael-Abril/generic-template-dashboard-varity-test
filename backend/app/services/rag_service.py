@@ -81,16 +81,16 @@ class BusinessRAGService:
         )
 
         # Ollama fallback for local development
-        self.ollama_url = os.getenv("OLLAMA_URL", "http://localhost:11435")
+        self.ollama_url = os.getenv("OLLAMA_URL", "http://localhost:11434")
         self.ollama_embedding_model = os.getenv("OLLAMA_EMBEDDING_MODEL", "nomic-embed-text")
 
         # Embedding dimension (m2-bert-80M-8k-retrieval = 768, nomic-embed-text = 768)
         self.embedding_dimension = 768
 
-        # HTTP client with timeout
-        self.http_client = httpx.AsyncClient(timeout=30.0)
+        # NOTE: HTTP client is created fresh for each request to avoid async context issues
+        # See _generate_embedding() method
 
-        # Determine embedding provider
+        # Determine embedding provider (may be re-evaluated at request time)
         self.use_together_embeddings = bool(self.together_api_key)
 
         # Embedding cache for performance (reduce API calls)
@@ -122,52 +122,66 @@ class BusinessRAGService:
         """
         last_error = None
 
+        # FIX: Re-check API key on each call to handle late env var loading
+        # The singleton may be created before env vars are fully loaded
+        together_api_key = os.getenv("TOGETHER_API_KEY", "") or self.together_api_key
+        use_together = bool(together_api_key)
+
+        logger.debug(
+            f"Embedding generation: use_together={use_together}, "
+            f"api_key_set={bool(together_api_key)}, "
+            f"model={self.together_embedding_model}"
+        )
+
         # Try Together.ai first if API key is available
-        if self.use_together_embeddings:
+        if use_together:
             try:
-                response = await self.http_client.post(
-                    f"{self.together_api_url}/embeddings",
-                    headers={
-                        "Authorization": f"Bearer {self.together_api_key}",
-                        "Content-Type": "application/json"
-                    },
-                    json={
-                        "model": self.together_embedding_model,
-                        "input": text
-                    }
-                )
-                response.raise_for_status()
-                result = response.json()
-                # Together.ai returns embeddings in OpenAI-compatible format
-                embedding = result["data"][0]["embedding"]
-                # Validate embedding
-                if len(embedding) != self.embedding_dimension:
-                    raise EmbeddingGenerationError(
-                        f"Invalid embedding dimension: {len(embedding)} != {self.embedding_dimension}"
+                # FIX: Create fresh HTTP client for each request to avoid async context issues
+                async with httpx.AsyncClient(timeout=30.0) as client:
+                    response = await client.post(
+                        f"{self.together_api_url}/embeddings",
+                        headers={
+                            "Authorization": f"Bearer {together_api_key}",
+                            "Content-Type": "application/json"
+                        },
+                        json={
+                            "model": self.together_embedding_model,
+                            "input": text
+                        }
                     )
-                return embedding
+                    response.raise_for_status()
+                    result = response.json()
+                    # Together.ai returns embeddings in OpenAI-compatible format
+                    embedding = result["data"][0]["embedding"]
+                    # Validate embedding
+                    if len(embedding) != self.embedding_dimension:
+                        raise EmbeddingGenerationError(
+                            f"Invalid embedding dimension: {len(embedding)} != {self.embedding_dimension}"
+                        )
+                    return embedding
             except Exception as e:
                 last_error = e
                 logger.warning(f"Together.ai embedding failed, trying Ollama: {str(e)}")
 
         # Fallback to Ollama for local development
         try:
-            response = await self.http_client.post(
-                f"{self.ollama_url}/api/embeddings",
-                json={
-                    "model": self.ollama_embedding_model,
-                    "prompt": text
-                }
-            )
-            response.raise_for_status()
-            result = response.json()
-            embedding = result["embedding"]
-            # Validate embedding
-            if len(embedding) != self.embedding_dimension:
-                raise EmbeddingGenerationError(
-                    f"Invalid embedding dimension: {len(embedding)} != {self.embedding_dimension}"
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.post(
+                    f"{self.ollama_url}/api/embeddings",
+                    json={
+                        "model": self.ollama_embedding_model,
+                        "prompt": text
+                    }
                 )
-            return embedding
+                response.raise_for_status()
+                result = response.json()
+                embedding = result["embedding"]
+                # Validate embedding
+                if len(embedding) != self.embedding_dimension:
+                    raise EmbeddingGenerationError(
+                        f"Invalid embedding dimension: {len(embedding)} != {self.embedding_dimension}"
+                    )
+                return embedding
         except Exception as e:
             last_error = e
             logger.error(f"Failed to generate embedding (both providers failed): {str(e)}")

@@ -226,8 +226,10 @@ async def get_salesforce_access_token(
             )
         logger.info(f"Salesforce token refreshed successfully for {wallet_address[:10]}...")
 
-    # Return access token and provider data (includes instance_url)
-    return token.access_token, token.provider_data or {}
+    # YELLOW-001 FIX: Use auth context to access tokens securely
+    with OAuthToken.auth_context(wallet_address.lower()):
+        # Return access token and provider data (includes instance_url)
+        return token.access_token, token.provider_data or {}
 
 
 # Lead endpoints

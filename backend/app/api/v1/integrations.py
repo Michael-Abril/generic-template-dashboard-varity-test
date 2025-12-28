@@ -79,62 +79,69 @@ async def refresh_oauth_token(
 
     Returns:
         True if refresh succeeded, False otherwise
+
+    Security Note (YELLOW-001):
+        Uses OAuthToken.auth_context to verify caller is authorized
+        to access this token's refresh_token for the refresh operation.
     """
     if provider not in TOKEN_REFRESH_CONFIGS:
         logger.warning(f"No refresh config for provider: {provider}")
         return False
 
-    if not oauth_token.refresh_token:
-        logger.warning(f"No refresh token available for {provider}")
-        return False
+    # YELLOW-001 FIX: Use auth context to access tokens securely
+    # Wrap all token access operations in auth context
+    with OAuthToken.auth_context(oauth_token.user_address):
+        if not oauth_token.refresh_token:
+            logger.warning(f"No refresh token available for {provider}")
+            return False
 
-    config = TOKEN_REFRESH_CONFIGS[provider]
+        config = TOKEN_REFRESH_CONFIGS[provider]
 
-    try:
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                config["token_url"],
-                data={
-                    "grant_type": "refresh_token",
-                    "refresh_token": oauth_token.refresh_token,
-                    "client_id": config["client_id"],
-                    "client_secret": config["client_secret"],
-                },
-                headers={
-                    "Content-Type": "application/x-www-form-urlencoded"
-                }
-            )
-
-            if response.status_code != 200:
-                logger.error(f"Token refresh failed for {provider}: {response.text}")
-                return False
-
-            token_data = response.json()
-
-            # Update the token in the database
-            oauth_token.access_token = token_data.get("access_token")
-
-            # Some providers return a new refresh token
-            if token_data.get("refresh_token"):
-                oauth_token.refresh_token = token_data.get("refresh_token")
-
-            # Update expiration
-            if token_data.get("expires_in"):
-                oauth_token.expires_at = datetime.utcnow() + timedelta(
-                    seconds=int(token_data["expires_in"])
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    config["token_url"],
+                    data={
+                        "grant_type": "refresh_token",
+                        "refresh_token": oauth_token.refresh_token,
+                        "client_id": config["client_id"],
+                        "client_secret": config["client_secret"],
+                    },
+                    headers={
+                        "Content-Type": "application/x-www-form-urlencoded"
+                    }
                 )
 
-            oauth_token.last_refreshed_at = datetime.utcnow()
-            oauth_token.updated_at = datetime.utcnow()
+                if response.status_code != 200:
+                    logger.error(f"Token refresh failed for {provider}: {response.text}")
+                    return False
 
-            await db.commit()
+                token_data = response.json()
 
-            logger.info(f"Successfully refreshed {provider} token for user {oauth_token.user_address[:10]}...")
-            return True
+                # Update the token in the database
+                oauth_token.access_token = token_data.get("access_token")
 
-    except Exception as e:
-        logger.error(f"Token refresh error for {provider}: {e}")
-        return False
+                # Some providers return a new refresh token
+                if token_data.get("refresh_token"):
+                    oauth_token.refresh_token = token_data.get("refresh_token")
+
+                # Update expiration
+                if token_data.get("expires_in"):
+                    oauth_token.expires_at = datetime.utcnow() + timedelta(
+                        seconds=int(token_data["expires_in"])
+                    )
+
+                oauth_token.last_refreshed_at = datetime.utcnow()
+                oauth_token.updated_at = datetime.utcnow()
+
+                await db.commit()
+
+                logger.info(f"Successfully refreshed {provider} token for user {oauth_token.user_address[:10]}...")
+                return True
+
+        except Exception as e:
+            logger.error(f"Token refresh error for {provider}: {e}")
+            return False
 
 router = APIRouter()
 
@@ -377,19 +384,21 @@ async def sync_tool_data(
 
             logger.info(f"Token refreshed successfully for {tool}")
 
-        # Get decrypted access token
-        access_token = oauth_token.access_token
-        if not access_token:
-            raise HTTPException(
-                status_code=500,
-                detail=f"Failed to decrypt OAuth token for {tool}"
-            )
+        # YELLOW-001 FIX: Use auth context to access tokens securely
+        with OAuthToken.auth_context(wallet_address):
+            # Get decrypted access token
+            access_token = oauth_token.access_token
+            if not access_token:
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Failed to decrypt OAuth token for {tool}"
+                )
 
-        # Build credentials dict
-        credentials = {
-            "access_token": access_token,
-            "refresh_token": oauth_token.refresh_token,
-        }
+            # Build credentials dict
+            credentials = {
+                "access_token": access_token,
+                "refresh_token": oauth_token.refresh_token,
+            }
 
         # Add provider-specific fields
         if oauth_token.provider_data:
@@ -1120,13 +1129,15 @@ async def send_slack_message(
         if not oauth_token:
             raise HTTPException(status_code=404, detail="Slack not connected")
 
-        # Get access token (auto-decrypted by OAuthToken model property)
-        access_token = oauth_token.access_token
-        if not access_token:
-            raise HTTPException(status_code=401, detail="Slack token expired or invalid")
+        # YELLOW-001 FIX: Use auth context to access tokens securely
+        with OAuthToken.auth_context(user_address):
+            # Get access token (auto-decrypted by OAuthToken model property)
+            access_token = oauth_token.access_token
+            if not access_token:
+                raise HTTPException(status_code=401, detail="Slack token expired or invalid")
 
-        # Initialize Slack adapter
-        credentials = {"access_token": access_token}
+            # Initialize Slack adapter
+            credentials = {"access_token": access_token}
         slack = SlackSync(credentials)
 
         # Send message
@@ -1177,13 +1188,15 @@ async def add_slack_reaction(
         if not oauth_token:
             raise HTTPException(status_code=404, detail="Slack not connected")
 
-        # Get access token (auto-decrypted by OAuthToken model property)
-        access_token = oauth_token.access_token
-        if not access_token:
-            raise HTTPException(status_code=401, detail="Slack token expired or invalid")
+        # YELLOW-001 FIX: Use auth context to access tokens securely
+        with OAuthToken.auth_context(user_address):
+            # Get access token (auto-decrypted by OAuthToken model property)
+            access_token = oauth_token.access_token
+            if not access_token:
+                raise HTTPException(status_code=401, detail="Slack token expired or invalid")
 
-        # Initialize Slack adapter
-        credentials = {"access_token": access_token}
+            # Initialize Slack adapter
+            credentials = {"access_token": access_token}
         slack = SlackSync(credentials)
 
         # Add reaction
@@ -1235,13 +1248,15 @@ async def get_slack_thread(
         if not oauth_token:
             raise HTTPException(status_code=404, detail="Slack not connected")
 
-        # Get access token (auto-decrypted by OAuthToken model property)
-        access_token = oauth_token.access_token
-        if not access_token:
-            raise HTTPException(status_code=401, detail="Slack token expired or invalid")
+        # YELLOW-001 FIX: Use auth context to access tokens securely
+        with OAuthToken.auth_context(user_address):
+            # Get access token (auto-decrypted by OAuthToken model property)
+            access_token = oauth_token.access_token
+            if not access_token:
+                raise HTTPException(status_code=401, detail="Slack token expired or invalid")
 
-        # Initialize Slack adapter
-        credentials = {"access_token": access_token}
+            # Initialize Slack adapter
+            credentials = {"access_token": access_token}
         slack = SlackSync(credentials)
 
         # Get thread replies

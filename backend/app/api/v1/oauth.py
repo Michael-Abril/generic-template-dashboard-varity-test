@@ -44,6 +44,7 @@ logger = logging.getLogger(__name__)
 
 # Constants
 HTTP_TIMEOUT = 30.0  # HIGH-O5: HTTP timeout for all external requests
+OAUTH_STATE_TTL = 1800  # 30 minutes TTL for OAuth state in Redis
 
 router = APIRouter()
 
@@ -51,7 +52,87 @@ router = APIRouter()
 filecoin_service = FilecoinService()
 encryption_service = EncryptionService()
 
-# OAuth state storage (in production, use Redis)
+
+class OAuthStateManager:
+    """
+    YELLOW-004 FIX: Redis-backed OAuth state storage (December 28, 2025)
+
+    Provides distributed OAuth state storage that works across multiple instances.
+    Falls back to in-memory storage if Redis is not available.
+
+    State is also self-contained (encoded with signature) so it survives
+    even if both Redis and memory are lost.
+    """
+
+    def __init__(self):
+        self._memory_states = {}  # Fallback for when Redis is unavailable
+        self._redis_available = None  # Cache Redis availability check
+
+    async def _get_redis(self):
+        """Get Redis client, caching availability check."""
+        if self._redis_available is False:
+            return None
+
+        try:
+            from app.core.database import get_redis
+            redis = await get_redis()
+            if redis is None:
+                self._redis_available = False
+                logger.info("OAuth state: Redis not available, using in-memory fallback")
+            else:
+                self._redis_available = True
+            return redis
+        except Exception as e:
+            logger.warning(f"OAuth state: Redis error, using in-memory fallback: {e}")
+            self._redis_available = False
+            return None
+
+    async def store(self, state_token: str, state_data: dict) -> None:
+        """Store OAuth state in Redis (or memory fallback)."""
+        redis = await self._get_redis()
+
+        if redis:
+            try:
+                key = f"oauth_state:{state_token}"
+                await redis.setex(key, OAUTH_STATE_TTL, json.dumps(state_data))
+                logger.debug(f"OAuth state stored in Redis: {state_token[:16]}...")
+                return
+            except Exception as e:
+                logger.warning(f"Failed to store OAuth state in Redis: {e}")
+
+        # Fallback to memory
+        self._memory_states[state_token] = state_data
+        logger.debug(f"OAuth state stored in memory: {state_token[:16]}...")
+
+    async def retrieve(self, state_token: str) -> Optional[dict]:
+        """Retrieve OAuth state from Redis (or memory fallback)."""
+        redis = await self._get_redis()
+
+        if redis:
+            try:
+                key = f"oauth_state:{state_token}"
+                data = await redis.get(key)
+                if data:
+                    # Delete after retrieval (one-time use)
+                    await redis.delete(key)
+                    logger.debug(f"OAuth state retrieved from Redis: {state_token[:16]}...")
+                    return json.loads(data)
+            except Exception as e:
+                logger.warning(f"Failed to retrieve OAuth state from Redis: {e}")
+
+        # Try memory fallback
+        if state_token in self._memory_states:
+            data = self._memory_states.pop(state_token)
+            logger.debug(f"OAuth state retrieved from memory: {state_token[:16]}...")
+            return data
+
+        return None
+
+
+# Initialize OAuth state manager
+oauth_state_manager = OAuthStateManager()
+
+# Legacy in-memory dict for backwards compatibility (will be removed in future)
 # NOTE: This is in-memory and will be lost on restart. We also encode data in state as backup.
 oauth_states = {}
 
@@ -413,8 +494,9 @@ async def start_oauth_flow(
             code_verifier=code_verifier  # Store PKCE verifier for token exchange
         )
 
-        # Also store in memory for faster lookup (optional, state is self-validating)
-        oauth_states[state] = {
+        # YELLOW-004 FIX: Store in Redis (or memory fallback) for faster lookup
+        # State is also self-validating via encoded signature, so this is optimization
+        state_data = {
             "integration": integration,
             "wallet_address": validated_wallet,  # CRIT-O4: Use validated wallet
             "shop_domain": request.shop_domain,
@@ -422,6 +504,10 @@ async def start_oauth_flow(
             "redirect_uri": redirect_uri,
             "code_verifier": code_verifier
         }
+        await oauth_state_manager.store(state, state_data)
+
+        # Legacy memory storage (for backwards compatibility during transition)
+        oauth_states[state] = state_data
 
         # Build authorization URL
         authorize_url = config["authorize_url"]
@@ -530,12 +616,15 @@ async def oauth_callback_post(request: Request, db: AsyncSession = Depends(get_d
                 detail="Missing required fields: provider, code, state, wallet_address"
             )
 
-        # Validate state - try memory first, then decode as fallback
-        state_data = None
-        if state in oauth_states:
+        # YELLOW-004 FIX: Try Redis first, then memory, then decode as fallback
+        state_data = await oauth_state_manager.retrieve(state)
+
+        # Legacy memory fallback
+        if not state_data and state in oauth_states:
             state_data = oauth_states.pop(state)
-        else:
-            # Fallback: decode self-contained state (survives backend restart)
+
+        # Final fallback: decode self-contained state (survives backend restart)
+        if not state_data:
             state_data = decode_oauth_state(state)
             if not state_data:
                 raise HTTPException(
@@ -916,12 +1005,15 @@ async def oauth_callback(
         Success message with redirect to frontend
     """
     try:
-        # Validate state - try memory first, then decode as fallback
-        state_data = None
-        if state in oauth_states:
+        # YELLOW-004 FIX: Try Redis first, then memory, then decode as fallback
+        state_data = await oauth_state_manager.retrieve(state)
+
+        # Legacy memory fallback
+        if not state_data and state in oauth_states:
             state_data = oauth_states.pop(state)
-        else:
-            # Fallback: decode self-contained state (survives backend restart)
+
+        # Final fallback: decode self-contained state (survives backend restart)
+        if not state_data:
             state_data = decode_oauth_state(state)
             if not state_data:
                 raise HTTPException(

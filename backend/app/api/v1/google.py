@@ -359,8 +359,10 @@ async def get_google_access_token(wallet_address: str, db: AsyncSession) -> str:
             )
         logger.info(f"Google token refreshed successfully for {normalized_wallet[:10]}...")
 
-    # Use the property which auto-decrypts (same pattern as Slack fix Dec 26, 2025)
-    return token.access_token
+    # YELLOW-001 FIX: Use auth context to access tokens securely
+    with OAuthToken.auth_context(normalized_wallet):
+        # Use the property which auto-decrypts (same pattern as Slack fix Dec 26, 2025)
+        return token.access_token
 
 
 # ============================================================================

@@ -146,7 +146,7 @@ export default function TextWidget({
               )}
             </div>
           ) : (
-            <div className="h-full flex flex-col items-center justify-center text-gray-400">
+            <div className="h-full flex flex-col items-center justify-center text-gray-500">
               <Type className="w-8 h-8 mb-2" />
               <span className="text-sm">{placeholder}</span>
             </div>
