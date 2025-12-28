@@ -55,10 +55,13 @@ class ErrorBoundaryInner extends Component<Props, State> {
             <p className="text-gray-600 mb-6">
               We encountered an unexpected error. Please try refreshing the page.
             </p>
-            {this.state.error && process.env.NODE_ENV === 'development' && (
+            {this.state.error && (
               <div className="bg-gray-50 rounded-lg p-4 mb-6 text-left">
                 <p className="text-xs font-mono text-gray-700 break-words">
                   {this.state.error.message}
+                </p>
+                <p className="text-xs font-mono text-gray-500 mt-2 break-words">
+                  {this.state.error.stack?.split('\n').slice(0, 3).join('\n')}
                 </p>
               </div>
             )}
