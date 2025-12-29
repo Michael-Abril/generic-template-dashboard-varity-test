@@ -15,14 +15,15 @@
 | **Frontend (Vercel)** | ✅ WORKING | Live at https://app.varity.so |
 | **Backend (Railway)** | ✅ WORKING | Live at https://generic-template-dashboard-production.up.railway.app |
 | **Pinata Gateway** | ✅ FIXED | Using dedicated gateway `varity.mypinata.cloud` (no rate limits) |
-| **Qdrant (RAG)** | ⚠️ PARTIAL | Deployed, but not all data being indexed |
+| **Qdrant (RAG)** | ✅ WORKING | Planning data fully indexed, integrations partial |
 
-### Data Pipeline Status (CRITICAL)
+### Data Pipeline Status
 
-| Component | Status | Issue |
+| Component | Status | Notes |
 |-----------|--------|-------|
 | **Pinata Storage** | ✅ WORKING | Dedicated gateway deployed Dec 26, 2025 |
-| **RAG Indexing** | ⚠️ NOT FULLY WORKING | Data not consistently going to Qdrant on sync |
+| **RAG Indexing (Planning)** | ✅ WORKING | Tasks + Milestones fully indexed with delete support |
+| **RAG Indexing (Integrations)** | ⚠️ PARTIAL | Not all integrations indexed consistently |
 | **Live API Calls** | ⚠️ PARTIAL | Not all integrations have live endpoints |
 | **Hybrid Data Model** | ⚠️ DOCUMENTED | Architecture defined but not fully implemented |
 
@@ -42,9 +43,11 @@
 | **OAuth Flow (HubSpot)** | ✅ | ❓ TESTING | User testing with free account |
 | **Data Sync (Google)** | ✅ | ⚠️ PARTIAL | Syncs but RAG indexing incomplete |
 | **Data Sync (Slack)** | ✅ | ⚠️ PARTIAL | Channels/messages via live API, files to RAG |
-| **AI Assistant** | ✅ | ✅ WORKING | Chat works, RAG limited by indexing issues |
+| **AI Assistant** | ✅ | ✅ WORKING | Chat works, RAG queries planning data |
 | **Onboarding Flow** | ✅ | ✅ WORKING | 6-step wizard complete |
 | **Dashboard KPIs** | ✅ | ✅ WORKING | Clean redesigned UI with AI insights |
+| **Planning (Tasks)** | ✅ | ✅ WORKING | Full CRUD, RAG indexed, WCAG accessible |
+| **Planning (Roadmap)** | ✅ | ✅ WORKING | Milestones with progress, RAG indexed |
 | **Marketplace** | ✅ | ✅ WORKING | OAuth-only (USDC purchases post-MVP) |
 | **Team Management** | ✅ | ✅ WORKING | Frontend makes API calls to backend |
 | **Data Import** | ✅ | ⏳ COMING SOON | UI shows "Coming Soon" badge |
@@ -75,6 +78,9 @@
 | Document upload incomplete | FIXED - Full upload and analysis working |
 | AI Chat Qdrant bypass | FIXED - Now uses vector search properly |
 | Error boundaries missing | ADDED - IntegrationErrorBoundary.tsx |
+| Planning feature missing | ADDED - Tasks + Roadmap with full RAG integration |
+| ARIA accessibility gaps | FIXED - WCAG 2.1 AA compliance on planning widgets |
+| Reindex rate limiting | ADDED - 60s cooldown per wallet on /reindex endpoint |
 
 ### LOW PRIORITY (Polish)
 
@@ -154,7 +160,9 @@ https://app.varity.so/oauth/callback/hubspot      ← developers.hubspot.com
 | **Homepage** | `/` | ✅ 100% | Hero, FAQ, marketing complete |
 | **Onboarding** | `/onboarding` | ✅ 100% | 6-step wizard, email collection |
 | **AI Assistant** | `/ai-assistant` | ✅ 100% | Chat, RAG, document upload all working |
-| **Dashboard** | `/dashboard` | ✅ 100% | Clean redesigned UI with AI insights widget |
+| **Dashboard** | `/dashboard` | ✅ 100% | Tasks + Roadmap widgets, AI insights |
+| **Tasks** | `/dashboard/tasks` | ✅ 100% | Full task management, WCAG accessible |
+| **Roadmap** | `/dashboard/roadmap` | ✅ 100% | Milestone tracking, progress bars |
 | **Marketplace** | `/marketplace` | ✅ 100% | OAuth-only connections (USDC post-MVP) |
 | **Settings** | `/settings` | ✅ 95% | All tabs work, data import "Coming Soon" |
 
@@ -315,6 +323,51 @@ npm run build
 | **Quick Actions** | `QuickActions.tsx` | One-click action buttons |
 | **Memory Indicator** | `MemoryIndicator.tsx` | Shows conversation context tracking |
 | **Staleness Indicator** | `StalenessIndicator.tsx` | Warns about outdated data |
+
+---
+
+## PLANNING FEATURE (December 28, 2025)
+
+Full task management and company roadmap with RAG integration.
+
+### API Endpoints
+
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/api/v1/planning/tasks` | GET | List tasks with filters |
+| `/api/v1/planning/tasks` | POST | Create task (auto-indexes to Qdrant) |
+| `/api/v1/planning/tasks/{id}` | PATCH | Update task (re-indexes) |
+| `/api/v1/planning/tasks/{id}` | DELETE | Delete task (removes from Qdrant) |
+| `/api/v1/planning/tasks/{id}/complete` | POST | Mark complete |
+| `/api/v1/planning/roadmap` | GET | Get roadmap with milestones |
+| `/api/v1/planning/roadmap/milestones` | POST | Create milestone |
+| `/api/v1/planning/roadmap/milestones/{id}` | PATCH | Update milestone |
+| `/api/v1/planning/roadmap/milestones/{id}` | DELETE | Delete milestone |
+| `/api/v1/planning/rag-health` | GET | Check Qdrant indexing status |
+| `/api/v1/planning/reindex` | POST | Re-index all planning data (60s rate limit) |
+
+### RAG Integration
+
+- **Data Type:** `planning`
+- **Integration:** `varity`
+- **CID Format:** `planning-task-{id}`, `planning-milestone-{id}`
+- **Indexed Fields:** title, description, priority, category, status, due_date, timeframe
+
+**AI can answer:**
+- "What are my overdue tasks?"
+- "What are my Q1 goals?"
+- "Show me high priority sales tasks"
+- "What milestones need attention?"
+
+### Accessibility (WCAG 2.1 AA)
+
+| Feature | Implementation |
+|---------|---------------|
+| Screen readers | `role="list"`, `role="listitem"`, `aria-label` |
+| Progress bars | `role="progressbar"` with `aria-valuenow/min/max` |
+| Checkboxes | `role="checkbox"` with `aria-checked` |
+| Alerts | `role="alert"` with `aria-live="assertive"` |
+| Loading | `aria-busy="true"` |
 
 ---
 
@@ -485,9 +538,17 @@ https://app.varity.so/dashboard/tools/google  # Google Workspace tools
 ```
 generic-template-dashboard/
 ├── src/                          # Next.js 14 frontend
-│   ├── app/                      # App Router pages
+│   ├── app/
+│   │   ├── dashboard/
+│   │   │   ├── tasks/page.tsx    # Full task management (NEW Dec 28)
+│   │   │   └── roadmap/page.tsx  # Full roadmap management (NEW Dec 28)
+│   │   └── ...                   # App Router pages
 │   ├── components/
-│   │   ├── ai/                   # AI enhancement components (NEW Dec 28)
+│   │   ├── planning/             # Planning components (NEW Dec 28)
+│   │   │   ├── TasksWidget.tsx   # Dashboard widget, WCAG accessible
+│   │   │   ├── RoadmapWidget.tsx # Dashboard widget, WCAG accessible
+│   │   │   └── index.ts
+│   │   ├── ai/                   # AI enhancement components
 │   │   │   ├── IntentDetector.ts
 │   │   │   ├── ActionDetector.ts
 │   │   │   ├── ContextPreview.tsx
@@ -497,33 +558,36 @@ generic-template-dashboard/
 │   │   │   ├── MemoryIndicator.tsx
 │   │   │   └── StalenessIndicator.tsx
 │   │   ├── integrations/
-│   │   │   ├── IntegrationErrorBoundary.tsx  # NEW Dec 28
+│   │   │   ├── IntegrationErrorBoundary.tsx
 │   │   │   ├── google/
-│   │   │   ├── quickbooks/       # Full UI (Dec 28)
+│   │   │   ├── quickbooks/
 │   │   │   ├── microsoft/
 │   │   │   ├── slack/
 │   │   │   ├── salesforce/
 │   │   │   └── hubspot/
 │   │   └── ...
-│   ├── hooks/                    # React hooks
-│   ├── lib/                      # Utilities
-│   ├── services/                 # API client
+│   ├── services/
+│   │   └── planningService.ts    # Planning API client (NEW Dec 28)
 │   └── types/
-│       └── ai.ts                 # AI types (NEW Dec 28)
+│       ├── planning.ts           # Planning types (NEW Dec 28)
+│       └── ai.ts
 │
 ├── backend/                      # FastAPI backend
 │   ├── app/
 │   │   ├── api/v1/
-│   │   │   ├── quickbooks_crud.py  # +1,793 lines (Dec 28)
+│   │   │   ├── planning.py       # Tasks + Milestones CRUD (NEW Dec 28)
+│   │   │   ├── quickbooks_crud.py
 │   │   │   └── ...
-│   │   ├── adapters/             # 25 integration adapters
+│   │   ├── models/
+│   │   │   └── planning.py       # Task + Milestone models (NEW Dec 28)
 │   │   ├── core/
 │   │   │   ├── config.py
 │   │   │   ├── database.py
-│   │   │   └── validators.py     # NEW: Security module (Dec 28)
-│   │   ├── services/             # Business logic
-│   │   └── models/               # SQLAlchemy models
-│   └── alembic/                  # Database migrations
+│   │   │   └── validators.py     # Security validation module
+│   │   └── services/
+│   │       └── rag_service.py    # + delete_point_by_cid() method
+│   └── alembic/versions/
+│       └── add_planning_tables.py  # Migration (NEW Dec 28)
 │
 ├── CLAUDE.md                     # This file
 ├── README.md                     # Project overview

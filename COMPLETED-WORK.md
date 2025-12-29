@@ -1,5 +1,132 @@
 # COMPLETED WORK - DO NOT REDO
-**Last Updated:** December 29, 2025 (Bug Terminator Agent - Data Staleness Fixes)
+**Last Updated:** December 28, 2025 (Planning Feature + RAG Integration + ARIA Accessibility)
+
+---
+
+## December 28, 2025 - Planning Feature with RAG Integration ✅ 100% COMPLETE
+
+### Feature: Tasks (To-Do List) + Company Roadmap
+
+Full task management and company roadmap with RAG integration for AI queries.
+
+### Backend Implementation
+
+**Files Created:**
+- `backend/app/api/v1/planning.py` (~950 lines)
+- `backend/app/models/planning.py` (~250 lines)
+- `backend/alembic/versions/add_planning_tables.py`
+
+**API Endpoints:**
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/api/v1/planning/tasks` | GET | List tasks with filters |
+| `/api/v1/planning/tasks` | POST | Create task (auto-indexes to Qdrant) |
+| `/api/v1/planning/tasks/{id}` | PATCH | Update task (re-indexes) |
+| `/api/v1/planning/tasks/{id}` | DELETE | Delete task (removes from Qdrant) |
+| `/api/v1/planning/tasks/{id}/complete` | POST | Mark complete |
+| `/api/v1/planning/roadmap` | GET | Get roadmap with milestones |
+| `/api/v1/planning/roadmap/milestones` | POST | Create milestone |
+| `/api/v1/planning/roadmap/milestones/{id}` | PATCH | Update milestone |
+| `/api/v1/planning/roadmap/milestones/{id}` | DELETE | Delete milestone |
+| `/api/v1/planning/rag-health` | GET | Check Qdrant indexing status |
+| `/api/v1/planning/reindex` | POST | Re-index all planning data (60s rate limit) |
+
+**RAG Integration:**
+- `index_task_in_rag()` - Indexes task to Qdrant on create/update
+- `index_milestone_in_rag()` - Indexes milestone to Qdrant on create/update
+- `delete_task_from_rag()` - Removes task from Qdrant on delete
+- `delete_milestone_from_rag()` - Removes milestone from Qdrant on delete
+- Added `delete_point_by_cid()` public method to `rag_service.py`
+
+**Rate Limiting (reindex endpoint):**
+- 60-second cooldown per wallet
+- Returns HTTP 429 with `Retry-After` header
+- Memory leak prevention (cleans entries older than 5 minutes)
+
+### Frontend Implementation
+
+**Files Created:**
+- `src/components/planning/TasksWidget.tsx` (~370 lines)
+- `src/components/planning/RoadmapWidget.tsx` (~320 lines)
+- `src/components/planning/index.ts`
+- `src/app/dashboard/tasks/page.tsx`
+- `src/app/dashboard/roadmap/page.tsx`
+- `src/services/planningService.ts`
+- `src/types/planning.ts`
+
+**TasksWidget Features:**
+- Quick-add task with Enter key
+- Priority dots (High=red, Medium=amber, Low=gray)
+- Category badges (Sales, Finance, Operations, Marketing)
+- Completion animation with scale transition
+- Overdue task highlighting
+- Due date display (Today, Tomorrow, Overdue)
+- Progress bar in stats footer
+
+**RoadmapWidget Features:**
+- Overall progress bar for current timeframe
+- Milestone cards with goal icons
+- Status badges (Planned, In Progress, Completed, At Risk)
+- Progress color coding by percentage
+- Quick stats footer (In Progress, Completed, Need Attention)
+
+### ARIA Accessibility (WCAG 2.1 AA)
+
+**TasksWidget.tsx (10 improvements):**
+- `role="region"` with `aria-labelledby="tasks-widget-title"` on container
+- `id="tasks-widget-title"` on header
+- `aria-busy="true"` and `aria-label="Loading tasks"` on loading state
+- `role="alert"` and `aria-live="assertive"` on error state
+- `aria-label="New task title"` on quick add input
+- `role="list"` and `aria-label="Task list"` on task list container
+- `role="listitem"` on each task item
+- `role="checkbox"` with `aria-checked` and `aria-label` on complete buttons
+- `role="status"` with `aria-label` on priority dots
+- `role="progressbar"` with `aria-valuenow/min/max` on progress bar
+
+**RoadmapWidget.tsx (9 improvements):**
+- `role="region"` with `aria-labelledby="roadmap-widget-title"` on container
+- `id="roadmap-widget-title"` on header
+- `aria-busy="true"` and `aria-label="Loading roadmap"` on loading state
+- `role="alert"` and `aria-live="assertive"` on error state
+- `role="progressbar"` with `aria-valuenow/min/max` on overall progress
+- `role="list"` and `aria-label="Milestones"` on milestone list
+- `role="listitem"` with `aria-label` on each milestone
+- `role="progressbar"` on milestone progress bars
+- `role="status"` with `aria-label` on status badges
+- `role="group"` with `aria-label="Milestone statistics"` on stats footer
+
+### AI Assistant Integration
+
+**Queries now supported:**
+- "What are my overdue tasks?"
+- "What are my Q1 goals?"
+- "Show me high priority sales tasks"
+- "What milestones need attention?"
+
+**RAG Details:**
+- Data Type: `planning`
+- Integration: `varity`
+- CID Format: `planning-task-{id}`, `planning-milestone-{id}`
+- Indexed Fields: title, description, priority, category, status, due_date, timeframe
+
+### Build Verification
+
+```bash
+npm run build  # ✅ All 13 routes compile successfully
+python3 -m py_compile backend/app/api/v1/planning.py  # ✅ PASS
+```
+
+### Files Modified
+
+| File | Changes |
+|------|---------|
+| `backend/app/services/rag_service.py` | Added `delete_point_by_cid()` public method |
+| `backend/app/api/v1/__init__.py` | Registered planning router |
+| `backend/app/main.py` | Registered planning router |
+| `backend/app/models/__init__.py` | Exported planning models |
+| `src/components/pages/DashboardContent.tsx` | Added TasksWidget and RoadmapWidget |
+| `CLAUDE.md` | Added Planning feature documentation |
 
 ---
 

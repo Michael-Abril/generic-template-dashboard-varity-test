@@ -1,5 +1,5 @@
 # KNOWN ISSUES - Varity Dashboard
-**Last Updated:** December 29, 2025 (QuickBooks CRUD Fixed)
+**Last Updated:** December 28, 2025 (Planning Feature + ARIA Accessibility)
 
 ---
 
@@ -41,6 +41,28 @@ curl "https://generic-template-dashboard-production.up.railway.app/api/v1/quickb
 ---
 
 ## ✅ RESOLVED ISSUES (December 28, 2025)
+
+### Planning Feature RAG Integration - ✅ COMPLETE
+**Files:** `backend/app/api/v1/planning.py`, `src/components/planning/TasksWidget.tsx`, `src/components/planning/RoadmapWidget.tsx`
+**Implementation:**
+- Full CRUD for Tasks and Milestones with RAG indexing
+- `delete_point_by_cid()` method for Qdrant cleanup on delete
+- RAG health endpoint (`GET /api/v1/planning/rag-health`)
+- Re-index endpoint (`POST /api/v1/planning/reindex`) with 60s rate limiting
+- WCAG 2.1 AA accessibility on both widgets (19 ARIA improvements)
+**AI Queries Enabled:** "What are my overdue tasks?", "What are my Q1 goals?"
+**Status:** ✅ COMPLETE - Planning data fully indexed in Qdrant
+
+### Planning Widget ARIA Accessibility - ✅ FIXED
+**Files:** `TasksWidget.tsx`, `RoadmapWidget.tsx`
+**Changes:**
+- Added `role="region"` with `aria-labelledby` to containers
+- Added `role="list"` and `role="listitem"` for semantic structure
+- Added `role="checkbox"` with `aria-checked` for task completion
+- Added `role="progressbar"` with `aria-valuenow/min/max` for progress bars
+- Added `role="alert"` with `aria-live="assertive"` for error states
+- Added `aria-busy="true"` for loading states
+**Status:** ✅ COMPLETE - WCAG 2.1 AA compliant
 
 ### Dashboard Page Crash - ✅ FIXED
 **File:** `src/components/pages/DashboardContent.tsx`, `src/app/providers.tsx`, and 7 other files
