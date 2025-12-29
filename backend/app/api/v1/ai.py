@@ -806,7 +806,8 @@ async def debug_data_pipeline(
             "status": "unknown",
             "collection_exists": False,
             "document_count": 0,
-            "sample_query_results": 0
+            "sample_query_results": 0,
+            "embedding_model": rag_service.get_embedding_model() if rag_service else None
         },
         "summary": {
             "data_available": False,
@@ -867,13 +868,20 @@ async def debug_data_pipeline(
                 sample_results = await rag_service.query_business_rag(
                     business_wallet=wallet_address,
                     query="summary of my business data",
-                    limit=3
+                    limit=3,
+                    score_threshold=0.3  # Lower threshold for diagnostic query
                 )
                 result["qdrant"]["sample_query_results"] = len(sample_results)
 
                 if len(sample_results) == 0:
                     result["summary"]["issues"].append(
-                        "Qdrant collection exists but sample query returned no results"
+                        "Qdrant collection exists but sample query returned no results - likely EMBEDDING MODEL MISMATCH"
+                    )
+                    result["summary"]["issues"].append(
+                        f"Current model: {rag_service.get_embedding_model()}. Documents indexed with old model need re-embedding."
+                    )
+                    result["summary"]["recommendations"].append(
+                        f"Run force-reindex-all to re-embed all documents with current model: POST /api/v1/integrations/force-reindex-all?wallet_address={wallet_address}"
                     )
             else:
                 result["summary"]["issues"].append(

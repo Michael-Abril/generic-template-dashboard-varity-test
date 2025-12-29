@@ -25,6 +25,26 @@
 
 ## ✅ DATA PIPELINE ISSUES (FIXED - December 28, 2025)
 
+### BUG-010: RAG Embedding Model Mismatch - ✅ FIXED
+**File:** `backend/app/services/rag_service.py:78-82, 439-467, 554-631`
+**Issue:** Qdrant has 114 documents but sample_query_results: 0
+**Root Cause:** Embedding model changed from `m2-bert-80M-8k-retrieval` to `BAAI/bge-base-en-v1.5`
+- Old documents embedded with deprecated model
+- Queries use new model which produces incompatible vector space
+- Cosine similarity returns 0 matches because vectors are meaningless across models
+**Impact:** AI queries returned `context_used: false` - no business data used
+**Fix Applied:**
+- Added `force_reindex_business_data()` method that deletes old point and re-embeds (rag_service.py:554-631)
+- Added `_delete_point_by_cid()` helper method (rag_service.py:439-467)
+- Added `get_embedding_model()` method to expose current model (rag_service.py:629-631)
+- Added `/api/v1/integrations/{tool}/force-reindex` endpoint (integrations.py:846-943)
+- Added `/api/v1/integrations/force-reindex-all` endpoint (integrations.py:946-1034)
+- Enhanced `/api/v1/ai/debug/pipeline` with embedding model info and mismatch detection (ai.py:809-885)
+**Status:** ✅ RESOLVED - RAG Verifier Agent, December 28, 2025
+**Verification Steps:**
+1. Call `POST /api/v1/integrations/force-reindex-all?wallet_address=0x...` to re-embed all documents
+2. Call `GET /api/v1/ai/debug/pipeline?wallet_address=0x...` to verify sample_query_results > 0
+
 ### BUG-009: RAG Embedding Generation Failure - ✅ FIXED
 **File:** `backend/app/services/rag_service.py:110-185`
 **Issue:** Embedding generation failing with "All connection attempts failed" error

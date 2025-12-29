@@ -843,6 +843,197 @@ async def reindex_tool_data(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/{tool}/force-reindex")
+async def force_reindex_tool_data(
+    tool: str,
+    wallet_address: str = Query(..., description="User's wallet address")
+):
+    """
+    Force re-index ALL data for an integration with NEW embeddings.
+
+    CRITICAL: Use this endpoint when the embedding model has changed.
+    The Dec 28 2025 model change from m2-bert-80M-8k-retrieval to BAAI/bge-base-en-v1.5
+    requires all documents to be re-embedded for queries to work.
+
+    This endpoint:
+    1. Retrieves all files from Pinata for this integration
+    2. DELETES existing Qdrant points for each CID
+    3. Generates NEW embeddings with current model
+    4. Stores new points in Qdrant
+
+    Args:
+        tool: Tool identifier (e.g., 'google', 'quickbooks')
+        wallet_address: User's wallet address
+
+    Returns:
+        Force re-indexing result with count and any errors
+    """
+    try:
+        # Normalize integration name
+        normalized_tool = normalize_integration_name(tool)
+
+        # CRITICAL: Normalize wallet address for consistent storage/retrieval
+        normalized_wallet = normalize_wallet_address(wallet_address)
+
+        logger.info(
+            f"Force re-indexing {tool} (normalized: {normalized_tool}) data for wallet {wallet_address} "
+            f"(normalized: {normalized_wallet}) with model {rag_service.get_embedding_model()}"
+        )
+
+        # List all files for this integration
+        files = await filecoin_service.list_customer_files(
+            customer_wallet=normalized_wallet,
+            integration=normalized_tool,
+            limit=100
+        )
+
+        if not files:
+            return {
+                "success": True,
+                "integration": tool,
+                "message": f"No data found for {tool}. Run sync first.",
+                "indexed_count": 0,
+                "embedding_model": rag_service.get_embedding_model()
+            }
+
+        indexed_count = 0
+        errors = []
+
+        for file in files:
+            try:
+                cid = file.get("cid")
+                data_type = file.get("metadata", {}).get("data_type", "unknown")
+
+                # Retrieve and decrypt the data
+                encrypted = await filecoin_service.retrieve_data(cid)
+                decrypted = await encryption_service.decrypt_with_wallet(
+                    encrypted_data=encrypted,
+                    customer_wallet=normalized_wallet
+                )
+
+                # Force re-index in Qdrant (deletes old, creates new with current embedding model)
+                await rag_service.force_reindex_business_data(
+                    business_wallet=normalized_wallet,
+                    cid=cid,
+                    data=decrypted,
+                    integration=normalized_tool,
+                    data_type=data_type
+                )
+                indexed_count += 1
+                logger.info(f"Force re-indexed {data_type} for {normalized_wallet[:10]}..., CID: {cid}")
+
+            except Exception as e:
+                errors.append({"cid": file.get("cid"), "error": str(e)})
+                logger.warning(f"Failed to force re-index {file.get('cid')}: {e}")
+                continue
+
+        return {
+            "success": True,
+            "integration": tool,
+            "wallet_address": normalized_wallet,
+            "indexed_count": indexed_count,
+            "total_files": len(files),
+            "embedding_model": rag_service.get_embedding_model(),
+            "errors": errors if errors else None,
+            "message": f"Force re-indexed {indexed_count}/{len(files)} files with new embeddings"
+        }
+
+    except Exception as e:
+        logger.error(f"Force re-indexing failed for {tool}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/force-reindex-all")
+async def force_reindex_all_data(
+    wallet_address: str = Query(..., description="User's wallet address")
+):
+    """
+    Force re-index ALL data across ALL integrations with NEW embeddings.
+
+    CRITICAL: Use this endpoint when the embedding model has changed.
+    This will re-embed all documents for all integrations.
+
+    WARNING: This can be slow for accounts with lots of data.
+
+    Args:
+        wallet_address: User's wallet address
+
+    Returns:
+        Force re-indexing result with count per integration
+    """
+    try:
+        normalized_wallet = normalize_wallet_address(wallet_address)
+
+        logger.info(
+            f"Force re-indexing ALL data for wallet {normalized_wallet[:10]}... "
+            f"with model {rag_service.get_embedding_model()}"
+        )
+
+        # List all files for this wallet (no integration filter)
+        files = await filecoin_service.list_customer_files(
+            customer_wallet=normalized_wallet,
+            limit=500  # Higher limit for all integrations
+        )
+
+        if not files:
+            return {
+                "success": True,
+                "message": "No data found. Sync some integrations first.",
+                "indexed_count": 0,
+                "embedding_model": rag_service.get_embedding_model()
+            }
+
+        indexed_count = 0
+        errors = []
+        integrations_processed = set()
+
+        for file in files:
+            try:
+                cid = file.get("cid")
+                metadata = file.get("metadata", {})
+                integration = metadata.get("integration", "unknown")
+                data_type = metadata.get("data_type", "unknown")
+                integrations_processed.add(integration)
+
+                # Retrieve and decrypt the data
+                encrypted = await filecoin_service.retrieve_data(cid)
+                decrypted = await encryption_service.decrypt_with_wallet(
+                    encrypted_data=encrypted,
+                    customer_wallet=normalized_wallet
+                )
+
+                # Force re-index in Qdrant
+                await rag_service.force_reindex_business_data(
+                    business_wallet=normalized_wallet,
+                    cid=cid,
+                    data=decrypted,
+                    integration=integration,
+                    data_type=data_type
+                )
+                indexed_count += 1
+                logger.info(f"Force re-indexed {integration}/{data_type} CID: {cid[:20]}...")
+
+            except Exception as e:
+                errors.append({"cid": file.get("cid"), "error": str(e)})
+                logger.warning(f"Failed to force re-index {file.get('cid')}: {e}")
+                continue
+
+        return {
+            "success": True,
+            "wallet_address": normalized_wallet,
+            "indexed_count": indexed_count,
+            "total_files": len(files),
+            "integrations_processed": list(integrations_processed),
+            "embedding_model": rag_service.get_embedding_model(),
+            "errors": errors if errors else None,
+            "message": f"Force re-indexed {indexed_count}/{len(files)} files across {len(integrations_processed)} integrations"
+        }
+
+    except Exception as e:
+        logger.error(f"Force re-indexing all failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/{tool}/schema")
 async def get_tool_schema(tool: str):
     """

@@ -436,6 +436,36 @@ class BusinessRAGService:
             logger.warning(f"Failed to update timestamp for {point_id}: {e}")
             return False
 
+    async def _delete_point_by_cid(self, collection_name: str, cid: str) -> bool:
+        """
+        Delete a point by CID (for force re-indexing)
+
+        Args:
+            collection_name: Qdrant collection name
+            cid: Filecoin CID to delete
+
+        Returns:
+            True if deleted successfully
+        """
+        try:
+            # Delete points matching this CID
+            self.qdrant.delete(
+                collection_name=collection_name,
+                points_selector=Filter(
+                    must=[
+                        FieldCondition(
+                            key="cid",
+                            match=MatchValue(value=cid)
+                        )
+                    ]
+                )
+            )
+            logger.info(f"Deleted point with CID {cid[:20]}... for re-embedding")
+            return True
+        except Exception as e:
+            logger.warning(f"Failed to delete point with CID {cid}: {e}")
+            return False
+
     async def index_business_data(
         self,
         business_wallet: str,
@@ -520,6 +550,85 @@ class BusinessRAGService:
         )
 
         return point_id
+
+    async def force_reindex_business_data(
+        self,
+        business_wallet: str,
+        cid: str,
+        data: dict,
+        integration: str,
+        data_type: str
+    ) -> str:
+        """
+        Force re-index business data by deleting existing point and creating new one.
+
+        Use this when the embedding model has changed and old embeddings are incompatible.
+        Unlike index_business_data(), this ALWAYS generates new embeddings.
+
+        Args:
+            business_wallet: Business wallet address
+            cid: Filecoin CID of the data
+            data: Data to index (will be embedded)
+            integration: Integration name
+            data_type: Type of data
+
+        Returns:
+            Point ID in Qdrant
+        """
+        collection_name = self._get_collection_name(business_wallet)
+
+        # Ensure collection exists
+        await self.create_business_collection(business_wallet)
+
+        # Delete existing point with this CID if it exists
+        await self._delete_point_by_cid(collection_name, cid)
+
+        # Convert data to text for embedding
+        if isinstance(data, dict):
+            text = json.dumps(data, indent=2)
+        else:
+            text = str(data)
+
+        # Generate NEW embedding (no cache to ensure fresh embedding with current model)
+        embedding = await self._generate_embedding(text)
+
+        # Generate unique point ID
+        point_id = str(uuid.uuid4())
+
+        # Store minimal payload
+        payload = {
+            "cid": cid,
+            "preview": text[:500],
+            "integration": integration,
+            "data_type": data_type,
+            "business_wallet": business_wallet.lower(),
+            "indexed_at": time.time(),
+            "record_count": len(data.get("records", [])) if isinstance(data, dict) else 0,
+            "embedding_model": self.together_embedding_model  # Track which model was used
+        }
+
+        # Upsert into Qdrant
+        self.qdrant.upsert(
+            collection_name=collection_name,
+            points=[
+                PointStruct(
+                    id=point_id,
+                    vector=embedding,
+                    payload=payload
+                )
+            ]
+        )
+
+        logger.info(
+            f"Force re-indexed: collection={collection_name}, "
+            f"CID={cid}, point_id={point_id}, model={self.together_embedding_model}"
+        )
+
+        return point_id
+
+    def get_embedding_model(self) -> str:
+        """Return the current embedding model being used"""
+        return self.together_embedding_model
 
     async def query_business_rag(
         self,

@@ -1,5 +1,92 @@
 # COMPLETED WORK - DO NOT REDO
-**Last Updated:** December 28, 2025 (Pipeline Tracer Agent - Data Pipeline Fixes)
+**Last Updated:** December 28, 2025 (RAG Verifier Agent - Embedding Model Mismatch Fix)
+
+---
+
+## December 28, 2025 - RAG Verifier Agent: Force Re-Indexing for Embedding Model Change
+
+### Issue: 114 Documents Indexed but 0 Query Results
+
+**Root Cause:** Embedding model was changed from `m2-bert-80M-8k-retrieval` (deprecated) to `BAAI/bge-base-en-v1.5` (current). The 114 documents indexed in Qdrant were embedded with the OLD model, but queries now use the NEW model. Even though both produce 768-dimensional vectors, different embedding models create incompatible vector spaces - cosine similarity between vectors from different models is meaningless.
+
+**Evidence from `/api/v1/ai/debug/pipeline`:**
+```json
+{
+  "qdrant": {
+    "document_count": 114,
+    "sample_query_results": 0
+  }
+}
+```
+
+### Fix: Force Re-Indexing System
+
+**Files Modified:**
+1. `backend/app/services/rag_service.py` - Added force re-indexing methods
+2. `backend/app/api/v1/integrations.py` - Added force re-index endpoints
+3. `backend/app/api/v1/ai.py` - Enhanced debug endpoint with embedding model info
+
+### New Methods in rag_service.py
+
+| Method | Purpose |
+|--------|---------|
+| `_delete_point_by_cid()` | Delete existing point by CID for re-embedding |
+| `force_reindex_business_data()` | Delete old point, generate fresh embedding with current model, store new point |
+| `get_embedding_model()` | Return current embedding model name |
+
+**Key Difference from `index_business_data()`:**
+- `index_business_data()` has CID deduplication - if CID exists, it just updates timestamp
+- `force_reindex_business_data()` ALWAYS deletes and re-embeds, bypassing dedup
+
+### New API Endpoints
+
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/api/v1/integrations/{tool}/force-reindex` | POST | Force re-embed all documents for one integration |
+| `/api/v1/integrations/force-reindex-all` | POST | Force re-embed ALL documents across ALL integrations |
+
+**Usage:**
+```bash
+# Re-embed all documents for this wallet
+curl -X POST "https://generic-template-dashboard-production.up.railway.app/api/v1/integrations/force-reindex-all?wallet_address=0x738C812FB221ba32E8726fe38961570a700e87b9"
+
+# Response includes count and embedding model used
+{
+  "success": true,
+  "indexed_count": 114,
+  "embedding_model": "BAAI/bge-base-en-v1.5",
+  "message": "Force re-indexed 114/114 files across 4 integrations"
+}
+```
+
+### Enhanced Debug Endpoint
+
+`/api/v1/ai/debug/pipeline` now includes:
+- `embedding_model`: Current model being used
+- Better issue detection: Identifies embedding model mismatch as cause when documents exist but queries return 0
+- Recommendation: Provides the exact `force-reindex-all` command to run
+
+### Verification
+
+**Syntax Check:**
+```bash
+python3 -m py_compile backend/app/services/rag_service.py   # OK
+python3 -m py_compile backend/app/api/v1/integrations.py    # OK
+python3 -m py_compile backend/app/api/v1/ai.py              # OK
+```
+
+**Frontend Build:**
+```bash
+npm run build  # SUCCESS
+```
+
+### Post-Deploy Steps
+
+After deploying to Railway:
+1. Call `POST /api/v1/integrations/force-reindex-all?wallet_address=0x738C812FB221ba32E8726fe38961570a700e87b9`
+2. Wait for completion (may take 1-2 minutes for 114 documents)
+3. Call `GET /api/v1/ai/debug/pipeline?wallet_address=0x738C812FB221ba32E8726fe38961570a700e87b9`
+4. Verify `sample_query_results > 0`
 
 ---
 
