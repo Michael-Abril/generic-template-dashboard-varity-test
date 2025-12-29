@@ -1287,62 +1287,102 @@ async def get_context_items(
     items: List[ContextItem] = []
     integrations_found: set = set()
 
-    # Get indexed items from Pinata
+    # Get indexed items from Qdrant (primary source - has all indexed data)
     try:
-        files = await filecoin_service.list_customer_files(
-            customer_wallet=wallet_address,
-            integration=integration,
-            data_type=category,
-            limit=limit * 2  # Get more to allow for filtering
-        )
+        if rag_service:
+            qdrant_items = await rag_service.get_context_items(
+                business_wallet=wallet_address,
+                integration=integration,
+                data_type=category,
+                limit=limit
+            )
 
-        for f in files:
-            metadata = f.get("metadata", {})
-            file_integration = metadata.get("integration", "unknown")
-            file_category = metadata.get("data_type", "unknown")
-            integrations_found.add(file_integration)
+            for qdrant_item in qdrant_items:
+                # Apply search filter if provided
+                if search:
+                    search_lower = search.lower()
+                    if (search_lower not in qdrant_item["title"].lower() and
+                        search_lower not in qdrant_item["category"].lower() and
+                        search_lower not in qdrant_item.get("description", "").lower()):
+                        continue
 
-            # Try to get a meaningful title
-            cid = f.get("cid", "")
-            title = f"{file_category.title()} data from {file_integration}"
+                items.append(ContextItem(
+                    id=qdrant_item["id"],
+                    type=qdrant_item["type"],
+                    category=qdrant_item["category"],
+                    title=qdrant_item["title"],
+                    description=qdrant_item.get("description", ""),
+                    source=qdrant_item["source"],
+                    metadata=qdrant_item["metadata"]
+                ))
+                integrations_found.add(qdrant_item["type"])
 
-            # For Drive files, try to get better metadata
-            if file_category == "drive":
-                title = f"Google Drive files ({metadata.get('chunk_id', 'latest')})"
-            elif file_category == "contacts":
-                title = f"Google Contacts"
-            elif file_category == "invoices":
-                title = f"QuickBooks Invoices"
-            elif file_category == "customers":
-                title = f"QuickBooks Customers"
-            elif file_category == "expenses":
-                title = f"QuickBooks Expenses"
-
-            # Apply search filter if provided
-            if search:
-                search_lower = search.lower()
-                if search_lower not in title.lower() and search_lower not in file_category.lower():
-                    continue
-
-            items.append(ContextItem(
-                id=cid,
-                type=file_integration,
-                category=file_category,
-                title=title,
-                description=f"Last synced: {f.get('timestamp', 'unknown')}",
-                source="indexed",
-                metadata={
-                    "size": f.get("size"),
-                    "chunk_id": metadata.get("chunk_id"),
-                    "timestamp": f.get("timestamp")
-                }
-            ))
-
-            if len(items) >= limit:
-                break
+            logger.info(f"Retrieved {len(items)} indexed items from Qdrant for {wallet_address[:10]}...")
+        else:
+            logger.warning("RAG service not available, skipping Qdrant indexed items")
 
     except Exception as e:
-        logger.error(f"Failed to get indexed items: {e}")
+        logger.error(f"Failed to get indexed items from Qdrant: {e}")
+
+    # Fallback: If no Qdrant items, try Pinata files (legacy support)
+    if not items:
+        try:
+            files = await filecoin_service.list_customer_files(
+                customer_wallet=wallet_address,
+                integration=integration,
+                data_type=category,
+                limit=limit * 2  # Get more to allow for filtering
+            )
+
+            for f in files:
+                metadata = f.get("metadata", {})
+                file_integration = metadata.get("integration", "unknown")
+                file_category = metadata.get("data_type", "unknown")
+                integrations_found.add(file_integration)
+
+                # Try to get a meaningful title
+                cid = f.get("cid", "")
+                title = f"{file_category.title()} data from {file_integration}"
+
+                # For Drive files, try to get better metadata
+                if file_category == "drive":
+                    title = f"Google Drive files ({metadata.get('chunk_id', 'latest')})"
+                elif file_category == "contacts":
+                    title = f"Google Contacts"
+                elif file_category == "invoices":
+                    title = f"QuickBooks Invoices"
+                elif file_category == "customers":
+                    title = f"QuickBooks Customers"
+                elif file_category == "expenses":
+                    title = f"QuickBooks Expenses"
+
+                # Apply search filter if provided
+                if search:
+                    search_lower = search.lower()
+                    if search_lower not in title.lower() and search_lower not in file_category.lower():
+                        continue
+
+                items.append(ContextItem(
+                    id=cid,
+                    type=file_integration,
+                    category=file_category,
+                    title=title,
+                    description=f"Last synced: {f.get('timestamp', 'unknown')}",
+                    source="indexed",
+                    metadata={
+                        "size": f.get("size"),
+                        "chunk_id": metadata.get("chunk_id"),
+                        "timestamp": f.get("timestamp")
+                    }
+                ))
+
+                if len(items) >= limit:
+                    break
+
+            logger.info(f"Retrieved {len(items)} indexed items from Pinata (fallback) for {wallet_address[:10]}...")
+
+        except Exception as e:
+            logger.error(f"Failed to get indexed items from Pinata: {e}")
 
     # Add live emails from Gmail/Outlook (ephemeral, not stored in Pinata)
     if include_live and (integration is None or integration in ["google", "microsoft"]):

@@ -1006,7 +1006,33 @@ export function GmailInbox({ walletAddress, data }: GmailInboxProps) {
                 </div>
               </div>
             </div>
-          ))}
+                ))}
+
+                {/* Thread expand/collapse button */}
+                {thread.emailCount > 1 && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleThread(thread.threadId);
+                    }}
+                    className="px-4 py-2 text-sm text-blue-600 hover:bg-blue-50 transition-colors flex items-center gap-1"
+                  >
+                    {isExpanded ? (
+                      <>
+                        <ChevronLeft className="h-4 w-4" />
+                        <span>Hide {thread.emailCount - 1} older message{thread.emailCount - 1 > 1 ? 's' : ''}</span>
+                      </>
+                    ) : (
+                      <>
+                        <ChevronRight className="h-4 w-4" />
+                        <span>Show {thread.emailCount - 1} older message{thread.emailCount - 1 > 1 ? 's' : ''}</span>
+                      </>
+                    )}
+                  </button>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
@@ -1014,6 +1040,51 @@ export function GmailInbox({ walletAddress, data }: GmailInboxProps) {
 
   const renderEmailDetail = () => {
     if (!selectedEmail) return null;
+
+    // Extract attachments from payload
+    const extractAttachments = (payload: EmailPayload | undefined): Array<{ filename: string; mimeType: string; size: number; attachmentId?: string }> => {
+      const attachments: Array<{ filename: string; mimeType: string; size: number; attachmentId?: string }> = [];
+
+      if (!payload) return attachments;
+
+      const processPayload = (part: EmailPayload | EmailPart) => {
+        if (part.filename && part.body?.attachmentId) {
+          attachments.push({
+            filename: part.filename,
+            mimeType: part.mimeType || 'application/octet-stream',
+            size: part.body?.size || 0,
+            attachmentId: part.body.attachmentId
+          });
+        }
+
+        if (part.parts) {
+          part.parts.forEach(processPayload);
+        }
+      };
+
+      processPayload(payload);
+      return attachments;
+    };
+
+    const attachments = extractAttachments(selectedEmail.payload);
+
+    const formatFileSize = (bytes: number): string => {
+      if (bytes < 1024) return bytes + ' B';
+      if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+      return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+    };
+
+    const getFileIcon = (mimeType: string) => {
+      if (mimeType.startsWith('image/')) return '🖼️';
+      if (mimeType.startsWith('video/')) return '🎥';
+      if (mimeType.startsWith('audio/')) return '🎵';
+      if (mimeType.includes('pdf')) return '📄';
+      if (mimeType.includes('zip') || mimeType.includes('compressed')) return '📦';
+      if (mimeType.includes('document') || mimeType.includes('word')) return '📝';
+      if (mimeType.includes('spreadsheet') || mimeType.includes('excel')) return '📊';
+      if (mimeType.includes('presentation') || mimeType.includes('powerpoint')) return '📽️';
+      return '📎';
+    };
 
     return (
       <div className="flex-1 bg-white flex flex-col">
@@ -1073,6 +1144,37 @@ export function GmailInbox({ walletAddress, data }: GmailInboxProps) {
               <p className="text-gray-900 leading-relaxed whitespace-pre-wrap text-base">
                 {selectedEmail.body || selectedEmail.snippet}
               </p>
+            </div>
+          )}
+
+          {/* Attachments Section */}
+          {attachments.length > 0 && (
+            <div className="mt-6 pt-6 border-t border-gray-200">
+              <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                <Paperclip className="h-4 w-4" />
+                Attachments ({attachments.length})
+              </h3>
+              <div className="space-y-2">
+                {attachments.map((attachment, index) => (
+                  <a
+                    key={index}
+                    href={`${process.env.NEXT_PUBLIC_API_URL}/api/v1/integrations/google/emails/${selectedEmail.id}/attachments/${attachment.attachmentId}?wallet_address=${walletAddress}`}
+                    download={attachment.filename}
+                    className="flex items-center gap-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 hover:border-gray-300 transition-colors group"
+                  >
+                    <span className="text-2xl">{getFileIcon(attachment.mimeType)}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-900 truncate">{attachment.filename}</p>
+                      <p className="text-xs text-gray-500">
+                        {formatFileSize(attachment.size)} • {attachment.mimeType.split('/')[1]?.toUpperCase() || 'FILE'}
+                      </p>
+                    </div>
+                    <button className="px-3 py-1.5 text-sm font-medium text-blue-600 bg-blue-50 rounded-md group-hover:bg-blue-100 transition-colors">
+                      Download
+                    </button>
+                  </a>
+                ))}
+              </div>
             </div>
           )}
         </div>
@@ -1250,6 +1352,118 @@ export function GmailInbox({ walletAddress, data }: GmailInboxProps) {
             threadId: selectedEmail?.threadId
           } : undefined}
         />
+      )}
+
+      {/* Keyboard Shortcuts Modal */}
+      {showKeyboardShortcuts && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[80vh] overflow-auto">
+            <div className="sticky top-0 bg-white border-b px-6 py-4 flex items-center justify-between">
+              <h2 className="text-xl font-bold text-gray-900">Keyboard Shortcuts</h2>
+              <button
+                onClick={() => setShowKeyboardShortcuts(false)}
+                className="p-2 hover:bg-gray-100 rounded-full text-gray-500 hover:text-gray-700"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="p-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wide">Compose & Actions</h3>
+                  <div className="space-y-2">
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-600">Compose email</span>
+                      <kbd className="px-2 py-1 bg-gray-100 rounded text-sm font-mono">c</kbd>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-600">Reply</span>
+                      <kbd className="px-2 py-1 bg-gray-100 rounded text-sm font-mono">r</kbd>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-600">Reply all</span>
+                      <kbd className="px-2 py-1 bg-gray-100 rounded text-sm font-mono">Shift + a</kbd>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-600">Forward</span>
+                      <kbd className="px-2 py-1 bg-gray-100 rounded text-sm font-mono">f</kbd>
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wide">Navigation</h3>
+                  <div className="space-y-2">
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-600">Next conversation</span>
+                      <kbd className="px-2 py-1 bg-gray-100 rounded text-sm font-mono">j</kbd>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-600">Previous conversation</span>
+                      <kbd className="px-2 py-1 bg-gray-100 rounded text-sm font-mono">k</kbd>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-600">Search</span>
+                      <kbd className="px-2 py-1 bg-gray-100 rounded text-sm font-mono">/</kbd>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-600">Close / Go back</span>
+                      <kbd className="px-2 py-1 bg-gray-100 rounded text-sm font-mono">Esc</kbd>
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wide">Email Management</h3>
+                  <div className="space-y-2">
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-600">Archive</span>
+                      <kbd className="px-2 py-1 bg-gray-100 rounded text-sm font-mono">e</kbd>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-600">Delete</span>
+                      <kbd className="px-2 py-1 bg-gray-100 rounded text-sm font-mono">#</kbd>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-600">Star / Unstar</span>
+                      <kbd className="px-2 py-1 bg-gray-100 rounded text-sm font-mono">s</kbd>
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wide">Search Operators</h3>
+                  <div className="space-y-2 text-sm">
+                    <div className="text-gray-600">
+                      <code className="bg-gray-100 px-1 rounded">from:name</code> - From sender
+                    </div>
+                    <div className="text-gray-600">
+                      <code className="bg-gray-100 px-1 rounded">to:name</code> - To recipient
+                    </div>
+                    <div className="text-gray-600">
+                      <code className="bg-gray-100 px-1 rounded">subject:text</code> - In subject
+                    </div>
+                    <div className="text-gray-600">
+                      <code className="bg-gray-100 px-1 rounded">has:attachment</code> - Has files
+                    </div>
+                    <div className="text-gray-600">
+                      <code className="bg-gray-100 px-1 rounded">after:2024-01-01</code> - After date
+                    </div>
+                    <div className="text-gray-600">
+                      <code className="bg-gray-100 px-1 rounded">before:2024-12-31</code> - Before date
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-6 pt-6 border-t">
+                <p className="text-sm text-gray-500 text-center">
+                  Press <kbd className="px-2 py-1 bg-gray-100 rounded text-sm font-mono">?</kbd> anytime to show/hide shortcuts
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
