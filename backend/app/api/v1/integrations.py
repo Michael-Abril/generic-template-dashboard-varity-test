@@ -268,9 +268,15 @@ async def get_installed_integrations(
             needs_reauth = False
             # Use timezone-aware datetime for comparison
             now = datetime.now(timezone.utc)
-            if token.expires_at and token.expires_at < now:
-                sync_status = "expired"
-                needs_reauth = True
+            if token.expires_at:
+                # Ensure token.expires_at is timezone-aware before comparison
+                expires_at = token.expires_at
+                if expires_at.tzinfo is None:
+                    # If naive, assume UTC
+                    expires_at = expires_at.replace(tzinfo=timezone.utc)
+                if expires_at < now:
+                    sync_status = "expired"
+                    needs_reauth = True
 
             installed_tools.append(
                 {
@@ -373,7 +379,16 @@ async def sync_tool_data(
         # Check if token is expired and try to refresh
         # Use timezone-aware datetime for comparison
         now = datetime.now(timezone.utc)
-        if oauth_token.expires_at and oauth_token.expires_at < now:
+        if oauth_token.expires_at:
+            # Ensure expires_at is timezone-aware before comparison
+            expires_at = oauth_token.expires_at
+            if expires_at.tzinfo is None:
+                expires_at = expires_at.replace(tzinfo=timezone.utc)
+            should_refresh = expires_at < now
+        else:
+            should_refresh = False
+
+        if should_refresh:
             logger.info(f"OAuth token for {tool} is expired, attempting refresh...")
 
             refresh_success = await refresh_oauth_token(oauth_token, provider, db)
