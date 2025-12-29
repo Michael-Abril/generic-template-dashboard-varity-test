@@ -6,7 +6,7 @@ import { useWallets } from '@privy-io/react-auth';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Layout } from '@/components/Layout';
-import { User, Bell, CreditCard, Users, Lock, Database, Download, Upload, Trash2, UserPlus, X, Crown, Shield, UserCheck, Eye, Check, X as XIcon } from 'lucide-react';
+import { User, Bell, CreditCard, Users, Lock, Database, Download, Upload, Trash2, UserPlus, X, Crown, Shield, UserCheck, Eye, Check, X as XIcon, HardDrive } from 'lucide-react';
 import { useToast } from '@/components/ui/Toast';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
@@ -24,6 +24,22 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_
  */
 
 type SettingsTab = 'account' | 'notifications' | 'billing' | 'team' | 'security' | 'data';
+
+interface StorageIntegration {
+  file_count: number;
+  data_types: string[];
+  total_bytes: number;
+  total_size_formatted: string;
+  latest_sync: string;
+}
+
+interface StorageUsageData {
+  success: boolean;
+  total_files: number;
+  total_bytes: number;
+  total_size_formatted: string;
+  integrations: Record<string, StorageIntegration>;
+}
 
 // Tabs that are disabled (coming soon)
 const DISABLED_TABS: SettingsTab[] = ['billing', 'security'];
@@ -154,6 +170,10 @@ export default function SettingsPage() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
 
+  // Storage usage state
+  const [storageData, setStorageData] = useState<StorageUsageData | null>(null);
+  const [storageLoading, setStorageLoading] = useState(false);
+
   // Redirect if not authenticated
   useEffect(() => {
     if (!authenticated) {
@@ -242,6 +262,51 @@ export default function SettingsPage() {
         status: 'active',
         wallet_address: address
       }]);
+    }
+  };
+
+  // Fetch storage usage
+  const fetchStorageUsage = async () => {
+    if (!address) return;
+    setStorageLoading(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/v1/storage-usage?wallet_address=${address}`);
+      if (response.ok) {
+        const data = await response.json();
+        setStorageData(data);
+      }
+    } catch (error) {
+      console.error('Error fetching storage usage:', error);
+    } finally {
+      setStorageLoading(false);
+    }
+  };
+
+  // Load storage usage when activeTab is 'data'
+  useEffect(() => {
+    if (activeTab === 'data' && address && !storageData) {
+      fetchStorageUsage();
+    }
+  }, [activeTab, address]);
+
+  // Format relative time
+  const formatRelativeTime = (dateString: string): string => {
+    try {
+      const date = new Date(dateString);
+      const now = new Date();
+      const diffMs = now.getTime() - date.getTime();
+      const diffMins = Math.floor(diffMs / 60000);
+      const diffHours = Math.floor(diffMs / 3600000);
+      const diffDays = Math.floor(diffMs / 86400000);
+
+      if (diffMins < 1) return 'Just now';
+      if (diffMins < 60) return `${diffMins} min${diffMins > 1 ? 's' : ''} ago`;
+      if (diffHours < 24) return `${diffHours} hr${diffHours > 1 ? 's' : ''} ago`;
+      if (diffDays === 1) return 'Yesterday';
+      if (diffDays < 7) return `${diffDays} days ago`;
+      return date.toLocaleDateString();
+    } catch {
+      return 'Unknown';
     }
   };
 
@@ -1254,9 +1319,85 @@ export default function SettingsPage() {
                         </div>
                       </div>
 
+                      {/* Storage Usage */}
+                      <div className="border-t border-gray-200 pt-6">
+                        <h3 className="font-semibold text-gray-900 mb-4">Your Data Storage</h3>
+
+                        {storageLoading ? (
+                          <div className="flex items-center justify-center py-8">
+                            <div className="w-6 h-6 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                            <span className="ml-3 text-gray-600">Loading storage usage...</span>
+                          </div>
+                        ) : storageData && storageData.total_files > 0 ? (
+                          <div className="bg-white border border-gray-200 rounded-lg p-6">
+                            <div className="flex items-center gap-3 mb-4">
+                              <Database className="w-6 h-6 text-blue-600" />
+                              <div>
+                                <p className="text-lg font-semibold text-gray-900">
+                                  {storageData.total_size_formatted} across {storageData.total_files} file{storageData.total_files !== 1 ? 's' : ''}
+                                </p>
+                              </div>
+                            </div>
+
+                            <div className="space-y-3 mt-4">
+                              {Object.entries(storageData.integrations).map(([integration, data]) => {
+                                const integrationDisplayNames: Record<string, { name: string; icon: string }> = {
+                                  google: { name: 'Google Workspace', icon: '🔵' },
+                                  slack: { name: 'Slack', icon: '💬' },
+                                  quickbooks: { name: 'QuickBooks', icon: '📊' },
+                                  microsoft: { name: 'Microsoft 365', icon: '🔷' },
+                                  salesforce: { name: 'Salesforce', icon: '☁️' },
+                                  hubspot: { name: 'HubSpot', icon: '🧡' }
+                                };
+                                const displayInfo = integrationDisplayNames[integration] || { name: integration, icon: '📁' };
+
+                                return (
+                                  <div key={integration} className="border border-gray-200 rounded-lg p-4 hover:border-blue-300 transition-colors">
+                                    <div className="flex items-start justify-between">
+                                      <div className="flex-1">
+                                        <div className="flex items-center gap-2 mb-1">
+                                          <span className="text-xl">{displayInfo.icon}</span>
+                                          <h4 className="font-semibold text-gray-900">{displayInfo.name}</h4>
+                                        </div>
+                                        <p className="text-sm text-gray-600 mb-2">
+                                          {data.data_types.join(', ')}
+                                        </p>
+                                        <div className="flex items-center gap-4 text-sm text-gray-500">
+                                          <span className="flex items-center gap-1">
+                                            <HardDrive className="w-4 h-4" />
+                                            {data.total_size_formatted}
+                                          </span>
+                                          <span>·</span>
+                                          <span>{data.file_count} file{data.file_count !== 1 ? 's' : ''}</span>
+                                          <span>·</span>
+                                          <span>Last sync: {formatRelativeTime(data.latest_sync)}</span>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+
+                            <div className="mt-4 pt-4 border-t border-gray-200">
+                              <p className="text-sm text-gray-600 flex items-center gap-2">
+                                <Lock className="w-4 h-4 text-green-600" />
+                                Encrypted with your wallet key
+                              </p>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="bg-gray-50 border border-gray-200 rounded-lg p-8 text-center">
+                            <Database className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                            <p className="text-gray-600 font-medium mb-1">No data stored yet</p>
+                            <p className="text-sm text-gray-500">Connect an integration to get started</p>
+                          </div>
+                        )}
+                      </div>
+
                       {/* Storage Info */}
                       <div className="border-t border-gray-200 pt-6">
-                        <h3 className="font-semibold text-gray-900 mb-4">Data Storage</h3>
+                        <h3 className="font-semibold text-gray-900 mb-4">Decentralized Storage</h3>
                         <div className="bg-gradient-to-br from-blue-50 to-purple-50 border border-blue-100 rounded-lg p-6">
                           <div className="flex items-center gap-3 mb-3">
                             <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-purple-600 rounded-lg flex items-center justify-center">

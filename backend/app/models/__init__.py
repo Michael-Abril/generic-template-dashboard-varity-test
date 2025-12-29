@@ -57,6 +57,23 @@ from app.models.project import (
     ProjectFileCreate,
     ProjectFileResponse
 )
+from app.models.planning import (
+    Task,
+    Milestone,
+    TaskPriority,
+    TaskCategory,
+    MilestoneStatus,
+    TimeframeType,
+    GoalType,
+    TaskCreate,
+    TaskUpdate,
+    TaskResponse,
+    TaskListResponse,
+    MilestoneCreate,
+    MilestoneUpdate,
+    MilestoneResponse,
+    RoadmapResponse
+)
 
 __all__ = [
     "Category",
@@ -101,5 +118,21 @@ __all__ = [
     "ProjectResponse",
     "ProjectWithFiles",
     "ProjectFileCreate",
-    "ProjectFileResponse"
+    "ProjectFileResponse",
+    # Planning
+    "Task",
+    "Milestone",
+    "TaskPriority",
+    "TaskCategory",
+    "MilestoneStatus",
+    "TimeframeType",
+    "GoalType",
+    "TaskCreate",
+    "TaskUpdate",
+    "TaskResponse",
+    "TaskListResponse",
+    "MilestoneCreate",
+    "MilestoneUpdate",
+    "MilestoneResponse",
+    "RoadmapResponse"
 ]

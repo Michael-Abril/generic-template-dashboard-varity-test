@@ -29,7 +29,7 @@ from .core.database import check_database_health
 
 # Import API routers
 # Note: marketplace_purchases was removed (superseded by marketplace_v2)
-from .api.v1 import marketplace_v2, integrations, ai, oauth, sync, dashboard, admin, stats, conversations, export, team, onboarding, salesforce_crud, google, microsoft, quickbooks_crud, hubspot_crud, feedback, ai_analytics, projects
+from .api.v1 import marketplace_v2, integrations, ai, oauth, sync, dashboard, admin, stats, conversations, export, team, onboarding, salesforce_crud, google, microsoft, quickbooks_crud, hubspot_crud, feedback, ai_analytics, projects, planning
 from .api.v1 import settings as settings_router
 
 # Import middleware
@@ -211,6 +211,11 @@ app.include_router(
     ai_analytics.router,
     prefix="/api/v1/ai/analytics",
     tags=["AI Analytics"]
+)
+app.include_router(
+    planning.router,
+    prefix="/api/v1",
+    tags=["Planning"]
 )
 
 # Initialize services

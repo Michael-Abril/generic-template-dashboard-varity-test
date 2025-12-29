@@ -115,8 +115,9 @@ export function GmailInbox({ walletAddress, data }: GmailInboxProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedEmails, setSelectedEmails] = useState<Set<string>>(new Set());
   const [emails, setEmails] = useState<Email[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true); // Start loading until we verify wallet/fetch
   const [refreshing, setRefreshing] = useState(false);
+  const [hasFetchedOnce, setHasFetchedOnce] = useState(false);
   const [replyContext, setReplyContext] = useState<{ to: string; subject: string; type: 'reply' | 'replyAll' | 'forward' } | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(0);
@@ -196,10 +197,15 @@ export function GmailInbox({ walletAddress, data }: GmailInboxProps) {
 
   // Fetch emails from live Gmail API
   const fetchEmailsFromAPI = useCallback(async () => {
-    if (!walletAddress) return;
+    if (!walletAddress) {
+      // Keep loading state if wallet isn't ready yet
+      setLoading(true);
+      return;
+    }
 
     setLoading(true);
     setApiError(null);
+    setHasFetchedOnce(true);
     try {
       const response = await fetch(
         `${process.env.NEXT_PUBLIC_API_URL}/api/v1/integrations/google/emails?wallet_address=${walletAddress}&max_results=5000`
@@ -280,6 +286,13 @@ export function GmailInbox({ walletAddress, data }: GmailInboxProps) {
   useEffect(() => {
     fetchEmailsFromAPI();
   }, [fetchEmailsFromAPI]);
+
+  // Explicit retry when wallet becomes available (handles race conditions)
+  useEffect(() => {
+    if (walletAddress && !hasFetchedOnce) {
+      fetchEmailsFromAPI();
+    }
+  }, [walletAddress, hasFetchedOnce, fetchEmailsFromAPI]);
 
   const loadEmails = async () => {
     setRefreshing(true);
@@ -621,7 +634,38 @@ export function GmailInbox({ walletAddress, data }: GmailInboxProps) {
       </div>
 
       {/* Email List */}
-      {paginatedEmails.length === 0 ? (
+      {loading ? (
+        <div className="flex flex-col items-center justify-center py-16">
+          <div className="p-4 bg-blue-100 rounded-full mb-4 animate-pulse">
+            <RefreshCw className="h-12 w-12 text-blue-500 animate-spin" />
+          </div>
+          <h3 className="text-lg font-semibold text-gray-900 mb-2">
+            Loading emails...
+          </h3>
+          <p className="text-gray-600 text-center max-w-sm">
+            {!walletAddress ? 'Waiting for wallet connection...' : 'Fetching your Gmail inbox...'}
+          </p>
+        </div>
+      ) : apiError ? (
+        <div className="flex flex-col items-center justify-center py-16">
+          <div className="p-4 bg-red-100 rounded-full mb-4">
+            <AlertCircle className="h-12 w-12 text-red-500" />
+          </div>
+          <h3 className="text-lg font-semibold text-gray-900 mb-2">
+            Unable to load emails
+          </h3>
+          <p className="text-gray-600 text-center max-w-sm mb-4">
+            {apiError}
+          </p>
+          <button
+            onClick={loadEmails}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2"
+          >
+            <RefreshCw className="h-4 w-4" />
+            Try Again
+          </button>
+        </div>
+      ) : paginatedEmails.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16">
           <div className="p-4 bg-gray-100 rounded-full mb-4">
             {searchQuery ? (

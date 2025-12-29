@@ -872,6 +872,48 @@ class BusinessRAGService:
             logger.error(f"Qdrant health check failed: {str(e)}")
             return False
 
+    async def delete_point_by_cid(
+        self,
+        business_wallet: str,
+        cid: str
+    ) -> bool:
+        """
+        Delete a point from Qdrant by CID
+
+        Public method for removing indexed data when items are deleted.
+
+        Args:
+            business_wallet: Business wallet address
+            cid: The CID of the point to delete (e.g., "planning-task-123")
+
+        Returns:
+            True if deleted successfully, False otherwise
+        """
+        try:
+            collection_name = self._get_collection_name(business_wallet)
+
+            # Check if collection exists
+            collections = self.qdrant.get_collections().collections
+            collection_names = [c.name for c in collections]
+
+            if collection_name not in collection_names:
+                logger.info(f"Collection {collection_name} does not exist, nothing to delete")
+                return True
+
+            # Use the internal delete method
+            result = await self._delete_point_by_cid(collection_name, cid)
+
+            if result:
+                logger.info(f"Deleted point with CID {cid} from {collection_name}")
+            else:
+                logger.warning(f"Failed to delete point with CID {cid} from {collection_name}")
+
+            return result
+
+        except Exception as e:
+            logger.error(f"Error deleting point by CID {cid}: {str(e)}")
+            return False
+
 
 # Create singleton instance for import
 try:

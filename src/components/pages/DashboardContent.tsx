@@ -29,6 +29,7 @@ import {
   TrendingDown,
 } from 'lucide-react';
 import { FeedbackNotification } from '@/components/feedback';
+import { TasksWidget, RoadmapWidget } from '@/components/planning';
 import {
   BarChart,
   Bar,
@@ -407,6 +408,14 @@ export default function DashboardContent() {
               )}
             </div>
           </div>
+
+          {/* Tasks & Roadmap Row */}
+          {address && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+              <TasksWidget walletAddress={address} />
+              <RoadmapWidget walletAddress={address} />
+            </div>
+          )}
 
           {/* Recent Activity */}
           <div className="bg-white border border-gray-200 rounded-xl p-5">
