@@ -227,7 +227,9 @@ async def get_salesforce_access_token(
         )
 
     # Check if token needs refresh
-    if token.expires_at and token.expires_at < datetime.utcnow():
+    # Use timezone-aware datetime for comparison
+    now = datetime.now(timezone.utc)
+    if token.expires_at and token.expires_at < now:
         logger.info(f"Salesforce token expired for {wallet_address[:10]}..., attempting refresh")
         refresh_success = await refresh_oauth_token(token, "salesforce", db)
         if not refresh_success:

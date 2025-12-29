@@ -12,28 +12,28 @@ import {
   ChevronRight,
   RefreshCw,
   Search,
-  Filter,
   Tag,
-  MoreVertical,
   Paperclip,
   Reply,
   ReplyAll,
   Forward,
-  Download,
   X,
   MailOpen,
-  MailWarning,
   Clock,
   Pencil,
   Eye,
   EyeOff,
-  AlertCircle
+  AlertCircle,
+  Wifi,
+  WifiOff
 } from 'lucide-react';
+import { GmailInboxSkeleton, GmailRowSkeleton } from '@/components/ui/Skeleton';
 import { EmailComposer } from './EmailComposer';
+import type { GmailData } from '@/types/google';
 
 interface GmailInboxProps {
   walletAddress: string;
-  data: any;
+  data: GmailData | null;
 }
 
 interface Email {
@@ -635,16 +635,10 @@ export function GmailInbox({ walletAddress, data }: GmailInboxProps) {
 
       {/* Email List */}
       {loading ? (
-        <div className="flex flex-col items-center justify-center py-16">
-          <div className="p-4 bg-blue-100 rounded-full mb-4 animate-pulse">
-            <RefreshCw className="h-12 w-12 text-blue-500 animate-spin" />
-          </div>
-          <h3 className="text-lg font-semibold text-gray-900 mb-2">
-            Loading emails...
-          </h3>
-          <p className="text-gray-600 text-center max-w-sm">
-            {!walletAddress ? 'Waiting for wallet connection...' : 'Fetching your Gmail inbox...'}
-          </p>
+        <div className="divide-y divide-gray-100">
+          {[...Array(10)].map((_, i) => (
+            <GmailRowSkeleton key={i} />
+          ))}
         </div>
       ) : apiError ? (
         <div className="flex flex-col items-center justify-center py-16">

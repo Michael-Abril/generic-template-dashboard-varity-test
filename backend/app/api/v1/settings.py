@@ -398,6 +398,7 @@ async def get_storage_usage(
 
     Returns the actual files stored in Pinata grouped by integration,
     showing file counts and data types for each connected service.
+    Includes per-data-type counts for professional display.
     """
     try:
         logger.info(f"Getting storage usage for wallet {wallet_address}")
@@ -414,37 +415,101 @@ async def get_storage_usage(
                 "wallet_address": wallet_address,
                 "total_files": 0,
                 "integrations": {},
+                "uploaded_content": {"total_files": 0, "files": []},
                 "message": "No data stored yet. Connect an integration and sync data."
             }
 
-        # Group files by integration
+        # Integration display name mappings for consistency
+        integration_aliases = {
+            "google_workspace": "google",  # Normalize google_workspace to google
+        }
+
+        # Data types to exclude from user-facing counts (internal/system data)
+        excluded_data_types = {"oauth-credentials", "oauth_credentials"}
+
+        # Friendly display names for data types
+        data_type_display_names = {
+            "gmail": "Emails",
+            "calendar": "Events",
+            "drive": "Files",
+            "contacts": "Contacts",
+            "tasks": "Tasks",
+            "invoices": "Invoices",
+            "expenses": "Expenses",
+            "customers": "Customers",
+            "vendors": "Vendors",
+            "payments": "Payments",
+            "users": "Users",
+            "channels": "Channels",
+            "messages": "Messages",
+            "files": "Files",
+            "deals": "Deals",
+            "companies": "Companies",
+            "tickets": "Tickets",
+            "opportunities": "Opportunities",
+            "accounts": "Accounts",
+            "leads": "Leads",
+            "mail": "Emails",
+            "onedrive": "Files",
+        }
+
+        # Group files by integration with per-data-type counts
         by_integration: Dict[str, Dict[str, Any]] = {}
+        uploaded_content = {"total_files": 0, "total_bytes": 0, "files": []}
         total_size = 0
 
         for f in files:
             metadata = f.get("metadata", {})
-            integration = metadata.get("integration", "unknown")
+            raw_integration = metadata.get("integration", "unknown")
             data_type = metadata.get("data_type", "unknown")
             file_size = f.get("size", 0)
+            timestamp = f.get("timestamp")
+            filename = metadata.get("filename", f.get("name", ""))
+
+            # Skip excluded data types from counts
+            if data_type.lower() in excluded_data_types:
+                total_size += file_size
+                continue
+
+            # Check if this is uploaded content (manual uploads from AI Assistant)
+            if raw_integration in ("uploads", "documents", "uploaded", "manual"):
+                uploaded_content["total_files"] += 1
+                uploaded_content["total_bytes"] += file_size
+                uploaded_content["files"].append({
+                    "name": filename,
+                    "size": file_size,
+                    "uploaded_at": timestamp,
+                    "type": data_type
+                })
+                total_size += file_size
+                continue
+
+            # Normalize integration name
+            integration = integration_aliases.get(raw_integration, raw_integration)
 
             if integration not in by_integration:
                 by_integration[integration] = {
                     "file_count": 0,
-                    "data_types": [],
+                    "data_types": {},  # Changed from list to dict for counts
                     "total_bytes": 0,
-                    "latest_sync": None
+                    "latest_sync": None,
+                    "sync_status": "success"  # Will be determined later
                 }
 
             by_integration[integration]["file_count"] += 1
             by_integration[integration]["total_bytes"] += file_size
             total_size += file_size
 
-            # Track unique data types
-            if data_type not in by_integration[integration]["data_types"]:
-                by_integration[integration]["data_types"].append(data_type)
+            # Track counts per data type
+            data_type_key = data_type.lower()
+            if data_type_key not in by_integration[integration]["data_types"]:
+                by_integration[integration]["data_types"][data_type_key] = {
+                    "count": 0,
+                    "display_name": data_type_display_names.get(data_type_key, data_type.title())
+                }
+            by_integration[integration]["data_types"][data_type_key]["count"] += 1
 
             # Track latest sync timestamp
-            timestamp = f.get("timestamp")
             if timestamp:
                 current_latest = by_integration[integration]["latest_sync"]
                 if not current_latest or timestamp > current_latest:
@@ -467,13 +532,17 @@ async def get_storage_usage(
                 by_integration[integration]["total_bytes"]
             )
 
+        # Format uploaded content size
+        uploaded_content["total_size_formatted"] = format_size(uploaded_content["total_bytes"])
+
         return {
             "success": True,
             "wallet_address": wallet_address,
             "total_files": len(files),
             "total_bytes": total_size,
             "total_size_formatted": format_size(total_size),
-            "integrations": by_integration
+            "integrations": by_integration,
+            "uploaded_content": uploaded_content
         }
 
     except Exception as e:

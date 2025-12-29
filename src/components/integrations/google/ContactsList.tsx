@@ -18,20 +18,11 @@ import {
   ChevronLeft,
   ChevronRight
 } from 'lucide-react';
-
-interface Contact {
-  resourceName: string;
-  names?: Array<{ givenName?: string; familyName?: string; displayName?: string }>;
-  emailAddresses?: Array<{ value: string; type?: string }>;
-  phoneNumbers?: Array<{ value: string; type?: string }>;
-  organizations?: Array<{ name?: string; title?: string }>;
-}
+import type { Contact, ContactsData } from '@/types/google';
 
 interface ContactsListProps {
   walletAddress: string;
-  data: {
-    contacts?: Contact[];
-  };
+  data: ContactsData | null;
 }
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL;

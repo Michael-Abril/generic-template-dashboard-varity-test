@@ -9,23 +9,7 @@ import {
   Plus,
   Circle
 } from 'lucide-react';
-
-interface Channel {
-  id: string;
-  name: string;
-  type: 'channel' | 'dm';
-  is_private?: boolean;
-  unread?: number;
-  online?: boolean;
-  status_text?: string;
-}
-
-interface ChannelListProps {
-  channels: Channel[];
-  dms: Channel[];
-  selectedChannel: Channel | null;
-  onSelectChannel: (channel: Channel) => void;
-}
+import { SlackChannel, ChannelListProps } from '@/types/slack';
 
 export function ChannelList({
   channels,

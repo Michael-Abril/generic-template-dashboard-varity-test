@@ -36,10 +36,11 @@ import {
   Clock,
   Cloud
 } from 'lucide-react';
+import type { DriveData } from '@/types/google';
 
 interface DriveExplorerProps {
   walletAddress: string;
-  data: any;
+  data: DriveData | null;
 }
 
 interface DriveFile {

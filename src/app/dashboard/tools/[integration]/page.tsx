@@ -2827,19 +2827,18 @@ export default function IntegrationToolPage() {
   // Render Slack-native UI for Slack integration
   if (integration === 'slack') {
     // Transform data into format expected by SlackPage
-    const slackData = {
-      data: data.reduce((acc, item) => {
-        acc[item.data_type] = item.data;
-        return acc;
-      }, {} as Record<string, any>)
-    };
+    // SlackWorkspaceData expects: { workspace?, channels?, users?, messages? }
+    const slackData = data.reduce((acc, item) => {
+      acc[item.data_type] = item.data;
+      return acc;
+    }, {} as Record<string, unknown>);
 
     return (
       <Layout>
         <IntegrationErrorBoundary integrationName="slack" onRetry={refreshData}>
           <SlackPage
             walletAddress={address}
-            data={slackData}
+            data={slackData as import('@/types/slack').SlackWorkspaceData}
           />
         </IntegrationErrorBoundary>
       </Layout>

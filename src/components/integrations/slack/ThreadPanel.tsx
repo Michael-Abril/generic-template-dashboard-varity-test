@@ -3,25 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { MessageComposer } from './MessageComposer';
 import { Smile, MoreVertical, Bookmark, Share } from 'lucide-react';
-
-interface ThreadMessage {
-  id: string;
-  user: string;
-  text: string;
-  timestamp: string;
-  reactions?: Array<{
-    emoji: string;
-    count: number;
-  }>;
-}
-
-interface ThreadPanelProps {
-  thread: any;
-  channelId: string;
-  walletAddress: string;
-  onSendReply: (text: string, files?: File[]) => void;
-  onReaction: (messageTs: string, emoji: string) => void;
-}
+import { SlackThreadMessage, ThreadPanelProps } from '@/types/slack';
 
 export function ThreadPanel({
   thread,
@@ -30,7 +12,7 @@ export function ThreadPanel({
   onSendReply,
   onReaction
 }: ThreadPanelProps) {
-  const [replies, setReplies] = useState<ThreadMessage[]>([]);
+  const [replies, setReplies] = useState<SlackThreadMessage[]>([]);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -53,17 +35,18 @@ export function ThreadPanel({
         const data = await response.json();
 
         if (data.success && data.data) {
-          // Transform Slack messages to ThreadMessage format
-          const transformedReplies = data.data
-            .filter((msg: any) => msg.ts !== thread.timestamp) // Exclude parent message
-            .map((msg: any) => ({
-              id: msg.ts,
+          // Transform Slack messages to SlackThreadMessage format
+          const transformedReplies: SlackThreadMessage[] = data.data
+            .filter((msg: SlackThreadMessage) => msg.timestamp !== thread.timestamp) // Exclude parent message
+            .map((msg: SlackThreadMessage) => ({
+              id: msg.id || msg.timestamp,
               user: msg.user || 'Unknown',
               text: msg.text || '',
-              timestamp: msg.ts,
-              reactions: msg.reactions?.map((r: any) => ({
-                emoji: r.name,
-                count: r.count
+              timestamp: msg.timestamp,
+              reactions: msg.reactions?.map((r) => ({
+                emoji: r.emoji,
+                count: r.count,
+                users: r.users
               })) || []
             }));
 
@@ -133,7 +116,7 @@ export function ThreadPanel({
             <div className="text-gray-900 break-words">{thread.text}</div>
             {thread.reactions && thread.reactions.length > 0 && (
               <div className="flex flex-wrap gap-1 mt-2">
-                {thread.reactions.map((reaction: any, idx: number) => (
+                {thread.reactions.map((reaction, idx: number) => (
                   <button
                     key={idx}
                     onClick={() => onReaction(thread.timestamp, reaction.emoji)}

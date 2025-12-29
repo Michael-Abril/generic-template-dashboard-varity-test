@@ -128,6 +128,8 @@ export interface PriorityConfig {
   label: string;
   color: string;
   dotColor: string;
+  bgColor: string;
+  textColor: string;
 }
 
 export interface MilestoneStatusConfig {
@@ -179,16 +181,22 @@ export const TASK_PRIORITIES: Record<TaskPriority, PriorityConfig> = {
     label: 'Urgent',
     color: 'red',
     dotColor: 'bg-red-500',
+    bgColor: 'bg-red-100',
+    textColor: 'text-red-700',
   },
   medium: {
     label: 'Medium',
     color: 'amber',
     dotColor: 'bg-amber-500',
+    bgColor: 'bg-amber-100',
+    textColor: 'text-amber-700',
   },
   low: {
     label: 'Low',
     color: 'gray',
     dotColor: 'bg-gray-400',
+    bgColor: 'bg-gray-100',
+    textColor: 'text-gray-600',
   },
 };
 

@@ -22,23 +22,27 @@ import { ChannelList } from './ChannelList';
 import { MessageList } from './MessageList';
 import { MessageComposer } from './MessageComposer';
 import { ThreadPanel } from './ThreadPanel';
-
-interface SlackPageProps {
-  walletAddress: string;
-  data?: any; // Optional - we use live API instead
-}
+import {
+  SlackChannel,
+  SlackMessage,
+  SlackUser,
+  SlackChannelsResponse,
+  SlackUsersResponse,
+  SlackMessagesResponse,
+  SlackPageProps
+} from '@/types/slack';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
 export function SlackPage({ walletAddress }: SlackPageProps) {
-  const [selectedChannel, setSelectedChannel] = useState<any>(null);
-  const [selectedThread, setSelectedThread] = useState<any>(null);
+  const [selectedChannel, setSelectedChannel] = useState<SlackChannel | null>(null);
+  const [selectedThread, setSelectedThread] = useState<SlackMessage | null>(null);
   const [showSearch, setShowSearch] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [channels, setChannels] = useState<any[]>([]);
-  const [dms, setDms] = useState<any[]>([]);
-  const [messages, setMessages] = useState<any[]>([]);
-  const [allMessages, setAllMessages] = useState<any[]>([]);
+  const [channels, setChannels] = useState<SlackChannel[]>([]);
+  const [dms, setDms] = useState<SlackChannel[]>([]);
+  const [messages, setMessages] = useState<SlackMessage[]>([]);
+  const [allMessages, setAllMessages] = useState<SlackMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -65,17 +69,17 @@ export function SlackPage({ walletAddress }: SlackPageProps) {
           throw new Error(err.detail || 'Failed to fetch users');
         }
 
-        const channelsData = await channelsRes.json();
-        const usersData = await usersRes.json();
+        const channelsData = await channelsRes.json() as SlackChannelsResponse;
+        const usersData = await usersRes.json() as SlackUsersResponse;
 
         const fetchedChannels = channelsData.channels || [];
         setChannels(fetchedChannels);
 
         // Create DM list from users
-        const dmsList = (usersData.users || []).map((user: any) => ({
+        const dmsList: SlackChannel[] = (usersData.users || []).map((user: SlackUser) => ({
           id: user.id,
           name: user.real_name || user.name,
-          type: 'dm',
+          type: 'dm' as const,
           unread: 0,
           online: true,
           status_text: user.status_text,
@@ -90,9 +94,10 @@ export function SlackPage({ walletAddress }: SlackPageProps) {
           await fetchMessagesForChannel(firstChannel.id);
         }
 
-      } catch (err: any) {
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : 'Failed to load workspace';
         console.error('Failed to fetch Slack data:', err);
-        setError(err.message || 'Failed to load workspace');
+        setError(errorMessage);
       } finally {
         setLoading(false);
       }
@@ -116,11 +121,11 @@ export function SlackPage({ walletAddress }: SlackPageProps) {
         throw new Error(err.detail || 'Failed to fetch messages');
       }
 
-      const data = await response.json();
+      const data = await response.json() as SlackMessagesResponse;
       const fetchedMessages = data.messages || [];
       setMessages(fetchedMessages);
       setAllMessages(fetchedMessages); // For search within channel
-    } catch (err: any) {
+    } catch (err) {
       console.error('Failed to fetch messages:', err);
       setMessages([]);
     } finally {
@@ -128,7 +133,7 @@ export function SlackPage({ walletAddress }: SlackPageProps) {
     }
   };
 
-  const handleChannelSelect = async (channel: any) => {
+  const handleChannelSelect = async (channel: SlackChannel) => {
     setSelectedChannel(channel);
     setSelectedThread(null);
     setSearchQuery('');
@@ -137,7 +142,7 @@ export function SlackPage({ walletAddress }: SlackPageProps) {
     await fetchMessagesForChannel(channel.id);
   };
 
-  const handleThreadSelect = (message: any) => {
+  const handleThreadSelect = (message: SlackMessage) => {
     setSelectedThread(message);
   };
 
@@ -170,6 +175,7 @@ export function SlackPage({ walletAddress }: SlackPageProps) {
   };
 
   const handleReaction = async (messageTs: string, emoji: string) => {
+    if (!selectedChannel) return;
     try {
       await fetch(
         `${API_URL}/api/v1/integrations/slack/reactions`,
@@ -200,7 +206,7 @@ export function SlackPage({ walletAddress }: SlackPageProps) {
     }
 
     // Search within current channel's messages
-    const searchResults = allMessages.filter((m: any) => {
+    const searchResults = allMessages.filter((m: SlackMessage) => {
       const text = m.text?.toLowerCase() || '';
       const user = m.user?.toLowerCase() || '';
       const searchTerm = query.toLowerCase();

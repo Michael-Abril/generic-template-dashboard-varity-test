@@ -13,8 +13,19 @@ import {
   Settings,
   ChevronRight,
   Loader2,
+  Pencil,
+  Trash2,
+  Calendar,
+  X,
 } from 'lucide-react';
-import { getRoadmap, updateMilestoneProgress } from '@/services/planningService';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from '@/components/ui/dialog';
+import { getRoadmap, updateMilestoneProgress, updateMilestone, deleteMilestone } from '@/services/planningService';
 import {
   Milestone,
   MilestoneStatus,
@@ -48,6 +59,17 @@ export function RoadmapWidget({ walletAddress }: RoadmapWidgetProps) {
     inProgress: 0,
     atRisk: 0,
   });
+
+  // Milestone dialog state
+  const [selectedMilestone, setSelectedMilestone] = useState<Milestone | null>(null);
+  const [showMilestoneDialog, setShowMilestoneDialog] = useState(false);
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [editMode, setEditMode] = useState(false);
+  const [localProgress, setLocalProgress] = useState(0);
+  const [editedTitle, setEditedTitle] = useState('');
+  const [editedDescription, setEditedDescription] = useState('');
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   const fetchRoadmap = useCallback(async () => {
     try {
@@ -110,6 +132,100 @@ export function RoadmapWidget({ walletAddress }: RoadmapWidgetProps) {
     if (progress >= 50) return 'bg-blue-500';
     if (progress >= 25) return 'bg-yellow-500';
     return 'bg-gray-400';
+  };
+
+  // Dialog handlers
+  const handleOpenMilestoneDialog = (milestone: Milestone) => {
+    setSelectedMilestone(milestone);
+    setLocalProgress(milestone.progress_percent);
+    setEditedTitle(milestone.title);
+    setEditedDescription(milestone.description || '');
+    setEditMode(false);
+    setConfirmDelete(false);
+    setShowMilestoneDialog(true);
+  };
+
+  const handleCloseMilestoneDialog = () => {
+    setShowMilestoneDialog(false);
+    setSelectedMilestone(null);
+    setEditMode(false);
+    setConfirmDelete(false);
+  };
+
+  const handleUpdateProgress = async (newProgress: number) => {
+    if (!selectedMilestone) return;
+
+    setIsUpdating(true);
+    try {
+      const updated = await updateMilestoneProgress(
+        selectedMilestone.id,
+        walletAddress,
+        newProgress
+      );
+      // Update local state
+      setMilestones(prev =>
+        prev.map(m => (m.id === updated.id ? updated : m))
+      );
+      setSelectedMilestone(updated);
+      setLocalProgress(updated.progress_percent);
+      // Refresh to update stats
+      await fetchRoadmap();
+    } catch (err) {
+      logger.error('Error updating milestone progress:', err);
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const handleUpdateMilestone = async () => {
+    if (!selectedMilestone) return;
+
+    setIsUpdating(true);
+    try {
+      const updated = await updateMilestone(
+        selectedMilestone.id,
+        walletAddress,
+        {
+          title: editedTitle,
+          description: editedDescription || undefined,
+        }
+      );
+      // Update local state
+      setMilestones(prev =>
+        prev.map(m => (m.id === updated.id ? updated : m))
+      );
+      setSelectedMilestone(updated);
+      setEditMode(false);
+    } catch (err) {
+      logger.error('Error updating milestone:', err);
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const handleDeleteMilestone = async () => {
+    if (!selectedMilestone) return;
+
+    setIsDeleting(true);
+    try {
+      await deleteMilestone(selectedMilestone.id, walletAddress);
+      // Remove from local state
+      setMilestones(prev => prev.filter(m => m.id !== selectedMilestone.id));
+      handleCloseMilestoneDialog();
+      // Refresh to update stats
+      await fetchRoadmap();
+    } catch (err) {
+      logger.error('Error deleting milestone:', err);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const handleMilestoneKeyDown = (e: React.KeyboardEvent, milestone: Milestone) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      handleOpenMilestoneDialog(milestone);
+    }
   };
 
   if (isLoading) {
@@ -230,12 +346,14 @@ export function RoadmapWidget({ walletAddress }: RoadmapWidgetProps) {
       ) : (
         <div className="space-y-3" role="list" aria-label="Milestones">
           {displayMilestones.map((milestone) => (
-            <Link
+            <div
               key={milestone.id}
-              href="/dashboard/roadmap"
-              role="listitem"
-              aria-label={`${milestone.title}: ${milestone.progress_percent}% complete, ${MILESTONE_STATUSES[milestone.status].label}`}
-              className="group block p-3 -mx-1 rounded-lg hover:bg-gray-50 transition-colors"
+              role="button"
+              tabIndex={0}
+              onClick={() => handleOpenMilestoneDialog(milestone)}
+              onKeyDown={(e) => handleMilestoneKeyDown(e, milestone)}
+              aria-label={`${milestone.title}: ${milestone.progress_percent}% complete, ${MILESTONE_STATUSES[milestone.status].label}. Click to view details.`}
+              className="group block p-3 -mx-1 rounded-lg hover:bg-gray-50 transition-colors cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1"
             >
               <div className="flex items-start gap-3">
                 {/* Goal Icon */}
@@ -282,7 +400,7 @@ export function RoadmapWidget({ walletAddress }: RoadmapWidgetProps) {
                   <div className="mt-1 text-xs text-gray-500">{milestone.progress_percent}%</div>
                 </div>
               </div>
-            </Link>
+            </div>
           ))}
 
           {/* Show more link if there are more milestones */}
@@ -318,6 +436,248 @@ export function RoadmapWidget({ walletAddress }: RoadmapWidgetProps) {
           </div>
         </div>
       )}
+
+      {/* Milestone Detail Dialog */}
+      <Dialog open={showMilestoneDialog} onOpenChange={setShowMilestoneDialog}>
+        <DialogContent className="max-w-md">
+          {selectedMilestone && (
+            <>
+              <DialogHeader>
+                <div className="flex items-start justify-between">
+                  <div className="flex items-center gap-3">
+                    {/* Goal Type Icon */}
+                    <div
+                      className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0"
+                      style={{ backgroundColor: `${selectedMilestone.color}20` }}
+                      aria-hidden="true"
+                    >
+                      {(() => {
+                        const Icon = GOAL_ICONS[selectedMilestone.goal_type] || Target;
+                        return <Icon className="w-5 h-5" style={{ color: selectedMilestone.color }} />;
+                      })()}
+                    </div>
+                    <div>
+                      {editMode ? (
+                        <input
+                          type="text"
+                          value={editedTitle}
+                          onChange={(e) => setEditedTitle(e.target.value)}
+                          className="text-lg font-semibold text-gray-900 bg-gray-50 border border-gray-300 rounded-md px-2 py-1 w-full focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          aria-label="Milestone title"
+                        />
+                      ) : (
+                        <DialogTitle className="text-gray-900">{selectedMilestone.title}</DialogTitle>
+                      )}
+                      <div className="flex items-center gap-2 mt-1">
+                        {getStatusBadge(selectedMilestone.status)}
+                        <span className="text-xs text-gray-500">
+                          {GOAL_TYPES[selectedMilestone.goal_type]?.label || 'Goal'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    onClick={handleCloseMilestoneDialog}
+                    className="p-1 text-gray-400 hover:text-gray-600 rounded-md hover:bg-gray-100 transition-colors"
+                    aria-label="Close dialog"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+              </DialogHeader>
+
+              <div className="mt-4 space-y-4">
+                {/* Description */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                  {editMode ? (
+                    <textarea
+                      value={editedDescription}
+                      onChange={(e) => setEditedDescription(e.target.value)}
+                      rows={3}
+                      className="w-full text-sm text-gray-900 bg-gray-50 border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                      placeholder="Add a description..."
+                      aria-label="Milestone description"
+                    />
+                  ) : (
+                    <DialogDescription className="text-gray-600">
+                      {selectedMilestone.description || 'No description provided.'}
+                    </DialogDescription>
+                  )}
+                </div>
+
+                {/* Metadata */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">Timeframe</label>
+                    <p className="text-sm text-gray-900">{selectedMilestone.timeframe_value}</p>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">Target Date</label>
+                    <div className="flex items-center gap-1">
+                      <Calendar className="w-3.5 h-3.5 text-gray-400" aria-hidden="true" />
+                      <p className="text-sm text-gray-900">
+                        {selectedMilestone.target_date
+                          ? new Date(selectedMilestone.target_date).toLocaleDateString('en-US', {
+                              month: 'short',
+                              day: 'numeric',
+                              year: 'numeric',
+                            })
+                          : 'Not set'}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Progress Section */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="block text-sm font-medium text-gray-700">Progress</label>
+                    <span className="text-sm font-semibold text-gray-900">{localProgress}%</span>
+                  </div>
+                  <div
+                    className="h-2.5 bg-gray-200 rounded-full overflow-hidden mb-2"
+                    role="progressbar"
+                    aria-valuenow={localProgress}
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-label="Milestone progress"
+                  >
+                    <div
+                      className={`h-full rounded-full transition-all duration-300 ${getProgressColor(
+                        localProgress,
+                        selectedMilestone.status
+                      )}`}
+                      style={{ width: `${localProgress}%` }}
+                    />
+                  </div>
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    value={localProgress}
+                    onChange={(e) => setLocalProgress(Number(e.target.value))}
+                    className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                    aria-label="Adjust progress"
+                  />
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex flex-col gap-2 pt-2">
+                  {/* Update Progress Button */}
+                  {localProgress !== selectedMilestone.progress_percent && !editMode && (
+                    <button
+                      onClick={() => handleUpdateProgress(localProgress)}
+                      disabled={isUpdating}
+                      className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      aria-label="Update progress"
+                    >
+                      {isUpdating ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          Updating...
+                        </>
+                      ) : (
+                        <>
+                          <CheckCircle2 className="w-4 h-4" />
+                          Update Progress to {localProgress}%
+                        </>
+                      )}
+                    </button>
+                  )}
+
+                  {/* Edit Mode Buttons */}
+                  {editMode ? (
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => {
+                          setEditMode(false);
+                          setEditedTitle(selectedMilestone.title);
+                          setEditedDescription(selectedMilestone.description || '');
+                        }}
+                        className="flex-1 px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+                        aria-label="Cancel editing"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={handleUpdateMilestone}
+                        disabled={isUpdating || !editedTitle.trim()}
+                        className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        aria-label="Save changes"
+                      >
+                        {isUpdating ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            Saving...
+                          </>
+                        ) : (
+                          'Save Changes'
+                        )}
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setEditMode(true)}
+                        className="flex-1 flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+                        aria-label="Edit milestone"
+                      >
+                        <Pencil className="w-4 h-4" />
+                        Edit
+                      </button>
+                      {confirmDelete ? (
+                        <div className="flex-1 flex gap-1">
+                          <button
+                            onClick={() => setConfirmDelete(false)}
+                            className="flex-1 px-3 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+                            aria-label="Cancel delete"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            onClick={handleDeleteMilestone}
+                            disabled={isDeleting}
+                            className="flex-1 flex items-center justify-center gap-1 px-3 py-2 bg-red-600 text-white text-sm font-medium rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                            aria-label="Confirm delete"
+                          >
+                            {isDeleting ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                              'Confirm'
+                            )}
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => setConfirmDelete(true)}
+                          className="flex-1 flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium text-red-600 bg-red-50 rounded-lg hover:bg-red-100 transition-colors"
+                          aria-label="Remove milestone"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                          Remove
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* View Full Roadmap Link */}
+                <div className="pt-2 border-t border-gray-100">
+                  <Link
+                    href="/dashboard/roadmap"
+                    className="flex items-center justify-center gap-1 text-sm text-blue-600 hover:text-blue-700 font-medium transition-colors"
+                    onClick={handleCloseMilestoneDialog}
+                  >
+                    View full roadmap
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </Link>
+                </div>
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

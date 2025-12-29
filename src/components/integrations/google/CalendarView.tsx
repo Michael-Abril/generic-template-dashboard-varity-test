@@ -9,18 +9,20 @@ import {
   Clock,
   MapPin,
   Users,
-  Video,
   X,
   Edit3,
   Trash2,
   Copy,
-  AlertCircle
+  AlertCircle,
+  RefreshCw
 } from 'lucide-react';
+import { CalendarSkeleton, CalendarEventSkeleton } from '@/components/ui/Skeleton';
 import { EventForm } from './EventForm';
+import type { CalendarData } from '@/types/google';
 
 interface CalendarViewProps {
   walletAddress: string;
-  data: any;
+  data: CalendarData | null;
 }
 
 interface CalendarEvent {

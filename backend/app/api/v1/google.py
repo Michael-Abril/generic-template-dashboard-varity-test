@@ -349,7 +349,9 @@ async def get_google_access_token(wallet_address: str, db: AsyncSession) -> str:
         )
 
     # Check if token needs refresh (expires_at is already DateTime, not string)
-    if token.expires_at and token.expires_at < datetime.utcnow():
+    # Use timezone-aware datetime for comparison
+    now = datetime.now(timezone.utc)
+    if token.expires_at and token.expires_at < now:
         logger.info(f"Google token expired for {normalized_wallet[:10]}..., attempting refresh")
         refresh_success = await refresh_oauth_token(token, "google", db)
         if not refresh_success:
@@ -506,7 +508,7 @@ async def create_calendar_event(
         if request.add_google_meet:
             event_payload["conferenceData"] = {
                 "createRequest": {
-                    "requestId": f"meet-{datetime.utcnow().timestamp()}",
+                    "requestId": f"meet-{datetime.now(timezone.utc).timestamp()}",
                     "conferenceSolutionKey": {"type": "hangoutsMeet"}
                 }
             }
@@ -983,7 +985,7 @@ async def list_events(
                     "maxResults": max_results,
                     "singleEvents": True,
                     "orderBy": "startTime",
-                    "timeMin": datetime.utcnow().isoformat() + "Z"
+                    "timeMin": datetime.now(timezone.utc).isoformat() + "Z"
                 }
             )
 

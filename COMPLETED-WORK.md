@@ -1,5 +1,40 @@
 # COMPLETED WORK - DO NOT REDO
-**Last Updated:** December 28, 2025 (Planning Feature + RAG Integration + ARIA Accessibility)
+**Last Updated:** December 29, 2025 (Token Expiration Timezone Fixes)
+
+---
+
+## December 29, 2025 - Google Integration Token Expiration Timezone Fix ✅ COMPLETE
+
+### Bug: Token Expiration Check Uses Naive Datetime
+
+**Discovery:** Code review by Bug Terminator Agent
+**Issue:** All integration token expiration checks used deprecated `datetime.utcnow()` (naive datetime)
+**Impact:** Potential timezone comparison issues when checking if OAuth tokens are expired
+
+**Files Fixed:**
+- `backend/app/api/v1/google.py:352-354`
+- `backend/app/api/v1/integrations.py:270-272, 375-377`
+- `backend/app/api/v1/hubspot_crud.py:137-139`
+- `backend/app/api/v1/salesforce_crud.py:230-232`
+- `backend/app/api/v1/quickbooks_crud.py:375-377`
+- `backend/app/api/v1/microsoft.py:46-48`
+
+**Fix Applied:**
+```python
+# BEFORE (naive datetime):
+if token.expires_at and token.expires_at < datetime.utcnow():
+
+# AFTER (timezone-aware):
+now = datetime.now(timezone.utc)
+if token.expires_at and token.expires_at < now:
+```
+
+**Benefits:**
+- Correct timezone handling for all OAuth token expiration checks
+- Future-proof (datetime.utcnow() is deprecated in Python 3.12+)
+- Consistent with Python best practices for timezone-aware datetime
+
+**Status:** ✅ COMPLETE - All 7 instances fixed across 6 integration files
 
 ---
 

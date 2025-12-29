@@ -6,7 +6,7 @@ import { useWallets } from '@privy-io/react-auth';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Layout } from '@/components/Layout';
-import { User, Bell, CreditCard, Users, Lock, Database, Download, Upload, Trash2, UserPlus, X, Crown, Shield, UserCheck, Eye, Check, X as XIcon, HardDrive } from 'lucide-react';
+import { User, Bell, CreditCard, Users, Lock, Database, Download, Upload, Trash2, UserPlus, X, Crown, Shield, UserCheck, Eye, Check, X as XIcon, HardDrive, ChevronDown, ChevronRight, RefreshCw, FileText, Clock } from 'lucide-react';
 import { useToast } from '@/components/ui/Toast';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
@@ -25,12 +25,32 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_
 
 type SettingsTab = 'account' | 'notifications' | 'billing' | 'team' | 'security' | 'data';
 
+interface DataTypeInfo {
+  count: number;
+  display_name: string;
+}
+
 interface StorageIntegration {
   file_count: number;
-  data_types: string[];
+  data_types: Record<string, DataTypeInfo>;
   total_bytes: number;
   total_size_formatted: string;
   latest_sync: string;
+  sync_status: string;
+}
+
+interface UploadedFile {
+  name: string;
+  size: number;
+  uploaded_at: string;
+  type: string;
+}
+
+interface UploadedContent {
+  total_files: number;
+  total_bytes: number;
+  total_size_formatted: string;
+  files: UploadedFile[];
 }
 
 interface StorageUsageData {
@@ -39,6 +59,7 @@ interface StorageUsageData {
   total_bytes: number;
   total_size_formatted: string;
   integrations: Record<string, StorageIntegration>;
+  uploaded_content: UploadedContent;
 }
 
 // Tabs that are disabled (coming soon)
@@ -173,6 +194,20 @@ export default function SettingsPage() {
   // Storage usage state
   const [storageData, setStorageData] = useState<StorageUsageData | null>(null);
   const [storageLoading, setStorageLoading] = useState(false);
+  const [expandedIntegrations, setExpandedIntegrations] = useState<Set<string>>(new Set());
+
+  // Toggle integration expansion
+  const toggleIntegration = (integration: string) => {
+    setExpandedIntegrations(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(integration)) {
+        newSet.delete(integration);
+      } else {
+        newSet.add(integration);
+      }
+      return newSet;
+    });
+  };
 
   // Redirect if not authenticated
   useEffect(() => {
@@ -1319,9 +1354,21 @@ export default function SettingsPage() {
                         </div>
                       </div>
 
-                      {/* Storage Usage */}
+                      {/* Storage Usage - Professional Design */}
                       <div className="border-t border-gray-200 pt-6">
-                        <h3 className="font-semibold text-gray-900 mb-4">Your Data Storage</h3>
+                        <div className="flex items-center justify-between mb-4">
+                          <h3 className="font-semibold text-gray-900">Your Data Storage</h3>
+                          {storageData && storageData.total_files > 0 && (
+                            <button
+                              onClick={fetchStorageUsage}
+                              disabled={storageLoading}
+                              className="flex items-center gap-2 text-sm text-blue-600 hover:text-blue-700 disabled:opacity-50"
+                            >
+                              <RefreshCw className={`w-4 h-4 ${storageLoading ? 'animate-spin' : ''}`} />
+                              Refresh
+                            </button>
+                          )}
+                        </div>
 
                         {storageLoading ? (
                           <div className="flex items-center justify-center py-8">
@@ -1329,68 +1376,156 @@ export default function SettingsPage() {
                             <span className="ml-3 text-gray-600">Loading storage usage...</span>
                           </div>
                         ) : storageData && storageData.total_files > 0 ? (
-                          <div className="bg-white border border-gray-200 rounded-lg p-6">
-                            <div className="flex items-center gap-3 mb-4">
-                              <Database className="w-6 h-6 text-blue-600" />
-                              <div>
-                                <p className="text-lg font-semibold text-gray-900">
-                                  {storageData.total_size_formatted} across {storageData.total_files} file{storageData.total_files !== 1 ? 's' : ''}
-                                </p>
+                          <div className="space-y-4">
+                            {/* Summary Card */}
+                            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-100 rounded-xl p-5">
+                              <div className="flex items-center gap-4">
+                                <div className="w-12 h-12 bg-blue-600 rounded-xl flex items-center justify-center">
+                                  <Database className="w-6 h-6 text-white" />
+                                </div>
+                                <div>
+                                  <p className="text-2xl font-bold text-gray-900">{storageData.total_size_formatted}</p>
+                                  <p className="text-sm text-gray-600">
+                                    {storageData.total_files} file{storageData.total_files !== 1 ? 's' : ''} across {Object.keys(storageData.integrations).length} integration{Object.keys(storageData.integrations).length !== 1 ? 's' : ''}
+                                  </p>
+                                </div>
                               </div>
                             </div>
 
-                            <div className="space-y-3 mt-4">
-                              {Object.entries(storageData.integrations).map(([integration, data]) => {
-                                const integrationDisplayNames: Record<string, { name: string; icon: string }> = {
-                                  google: { name: 'Google Workspace', icon: '🔵' },
-                                  slack: { name: 'Slack', icon: '💬' },
-                                  quickbooks: { name: 'QuickBooks', icon: '📊' },
-                                  microsoft: { name: 'Microsoft 365', icon: '🔷' },
-                                  salesforce: { name: 'Salesforce', icon: '☁️' },
-                                  hubspot: { name: 'HubSpot', icon: '🧡' }
-                                };
-                                const displayInfo = integrationDisplayNames[integration] || { name: integration, icon: '📁' };
+                            {/* Connected Integrations */}
+                            <div>
+                              <h4 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                                <span className="w-1.5 h-1.5 bg-green-500 rounded-full"></span>
+                                Connected Integrations
+                              </h4>
+                              <div className="space-y-2">
+                                {Object.entries(storageData.integrations).map(([integration, data]) => {
+                                  const integrationDisplayNames: Record<string, { name: string; icon: string; color: string }> = {
+                                    google: { name: 'Google Workspace', icon: '🔵', color: 'from-blue-500 to-blue-600' },
+                                    google_workspace: { name: 'Google Workspace', icon: '🔵', color: 'from-blue-500 to-blue-600' },
+                                    slack: { name: 'Slack', icon: '💬', color: 'from-purple-500 to-purple-600' },
+                                    quickbooks: { name: 'QuickBooks', icon: '📊', color: 'from-green-500 to-green-600' },
+                                    microsoft: { name: 'Microsoft 365', icon: '🔷', color: 'from-blue-600 to-indigo-600' },
+                                    salesforce: { name: 'Salesforce', icon: '☁️', color: 'from-sky-500 to-sky-600' },
+                                    hubspot: { name: 'HubSpot', icon: '🧡', color: 'from-orange-500 to-orange-600' }
+                                  };
+                                  const displayInfo = integrationDisplayNames[integration] || { name: integration.charAt(0).toUpperCase() + integration.slice(1), icon: '📁', color: 'from-gray-500 to-gray-600' };
+                                  const isExpanded = expandedIntegrations.has(integration);
+                                  const dataTypeEntries = Object.entries(data.data_types || {});
 
-                                return (
-                                  <div key={integration} className="border border-gray-200 rounded-lg p-4 hover:border-blue-300 transition-colors">
-                                    <div className="flex items-start justify-between">
-                                      <div className="flex-1">
-                                        <div className="flex items-center gap-2 mb-1">
-                                          <span className="text-xl">{displayInfo.icon}</span>
-                                          <h4 className="font-semibold text-gray-900">{displayInfo.name}</h4>
+                                  return (
+                                    <div key={integration} className="bg-white border border-gray-200 rounded-lg overflow-hidden hover:border-blue-300 transition-all">
+                                      {/* Integration Header - Clickable */}
+                                      <button
+                                        onClick={() => toggleIntegration(integration)}
+                                        className="w-full p-4 flex items-center justify-between text-left hover:bg-gray-50 transition-colors"
+                                        aria-expanded={isExpanded}
+                                        aria-controls={`integration-details-${integration}`}
+                                      >
+                                        <div className="flex items-center gap-3">
+                                          <span className="text-2xl">{displayInfo.icon}</span>
+                                          <div>
+                                            <h5 className="font-semibold text-gray-900">{displayInfo.name}</h5>
+                                            <div className="flex items-center gap-3 text-sm text-gray-500 mt-0.5">
+                                              <span className="flex items-center gap-1">
+                                                <HardDrive className="w-3.5 h-3.5" />
+                                                {data.total_size_formatted}
+                                              </span>
+                                              <span>•</span>
+                                              <span>{data.file_count} file{data.file_count !== 1 ? 's' : ''}</span>
+                                              <span>•</span>
+                                              <span className="flex items-center gap-1">
+                                                <Clock className="w-3.5 h-3.5" />
+                                                {formatRelativeTime(data.latest_sync)}
+                                              </span>
+                                            </div>
+                                          </div>
                                         </div>
-                                        <p className="text-sm text-gray-600 mb-2">
-                                          {data.data_types.join(', ')}
-                                        </p>
-                                        <div className="flex items-center gap-4 text-sm text-gray-500">
-                                          <span className="flex items-center gap-1">
-                                            <HardDrive className="w-4 h-4" />
-                                            {data.total_size_formatted}
-                                          </span>
-                                          <span>·</span>
-                                          <span>{data.file_count} file{data.file_count !== 1 ? 's' : ''}</span>
-                                          <span>·</span>
-                                          <span>Last sync: {formatRelativeTime(data.latest_sync)}</span>
+                                        <div className="flex items-center gap-2">
+                                          {dataTypeEntries.length > 0 && (
+                                            <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full font-medium">
+                                              {dataTypeEntries.length} type{dataTypeEntries.length !== 1 ? 's' : ''}
+                                            </span>
+                                          )}
+                                          {isExpanded ? (
+                                            <ChevronDown className="w-5 h-5 text-gray-400" />
+                                          ) : (
+                                            <ChevronRight className="w-5 h-5 text-gray-400" />
+                                          )}
                                         </div>
-                                      </div>
+                                      </button>
+
+                                      {/* Expanded Details */}
+                                      {isExpanded && dataTypeEntries.length > 0 && (
+                                        <div
+                                          id={`integration-details-${integration}`}
+                                          className="px-4 pb-4 pt-0 border-t border-gray-100"
+                                        >
+                                          <div className="pt-3 grid grid-cols-2 sm:grid-cols-3 gap-2">
+                                            {dataTypeEntries.map(([typeKey, typeInfo]) => (
+                                              <div
+                                                key={typeKey}
+                                                className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2"
+                                              >
+                                                <span className="text-sm text-gray-700">{typeInfo.display_name}</span>
+                                                <span className="text-sm font-semibold text-gray-900 bg-white px-2 py-0.5 rounded-md border border-gray-200">
+                                                  {typeInfo.count}
+                                                </span>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        </div>
+                                      )}
                                     </div>
-                                  </div>
-                                );
-                              })}
+                                  );
+                                })}
+                              </div>
                             </div>
 
-                            <div className="mt-4 pt-4 border-t border-gray-200">
-                              <p className="text-sm text-gray-600 flex items-center gap-2">
-                                <Lock className="w-4 h-4 text-green-600" />
-                                Encrypted with your wallet key
-                              </p>
+                            {/* Uploaded Content Section */}
+                            {storageData.uploaded_content && storageData.uploaded_content.total_files > 0 && (
+                              <div>
+                                <h4 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                                  <span className="w-1.5 h-1.5 bg-purple-500 rounded-full"></span>
+                                  Uploaded Content
+                                </h4>
+                                <div className="bg-white border border-gray-200 rounded-lg p-4">
+                                  <div className="flex items-center gap-3 mb-3">
+                                    <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
+                                      <FileText className="w-5 h-5 text-purple-600" />
+                                    </div>
+                                    <div>
+                                      <p className="font-medium text-gray-900">
+                                        {storageData.uploaded_content.total_files} file{storageData.uploaded_content.total_files !== 1 ? 's' : ''}
+                                      </p>
+                                      <p className="text-sm text-gray-500">{storageData.uploaded_content.total_size_formatted}</p>
+                                    </div>
+                                  </div>
+                                  <p className="text-xs text-gray-500">
+                                    Documents uploaded directly via AI Assistant
+                                  </p>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Security Notice */}
+                            <div className="flex items-center gap-2 text-sm text-gray-600 bg-green-50 border border-green-100 rounded-lg px-4 py-3">
+                              <Lock className="w-4 h-4 text-green-600 flex-shrink-0" />
+                              <span>All data is encrypted with your wallet key and stored on decentralized storage</span>
                             </div>
                           </div>
                         ) : (
                           <div className="bg-gray-50 border border-gray-200 rounded-lg p-8 text-center">
                             <Database className="w-12 h-12 text-gray-300 mx-auto mb-3" />
                             <p className="text-gray-600 font-medium mb-1">No data stored yet</p>
-                            <p className="text-sm text-gray-500">Connect an integration to get started</p>
+                            <p className="text-sm text-gray-500 mb-4">Connect an integration to get started</p>
+                            <Link
+                              href="/marketplace"
+                              className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-700 text-sm font-medium"
+                            >
+                              Browse integrations
+                              <ChevronRight className="w-4 h-4" />
+                            </Link>
                           </div>
                         )}
                       </div>

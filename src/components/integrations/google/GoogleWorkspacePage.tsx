@@ -29,10 +29,11 @@ import { CalendarView } from './CalendarView';
 import { DriveExplorer } from './DriveExplorer';
 import { ContactsList } from './ContactsList';
 import { TasksList } from './TasksList';
+import type { GoogleWorkspaceData } from '@/types/google';
 
 interface GoogleWorkspacePageProps {
   walletAddress: string;
-  data: any;
+  data: GoogleWorkspaceData | null;
   onSync: () => void;
   onRefresh: () => void;
   loading: boolean;
@@ -70,7 +71,7 @@ export function GoogleWorkspacePage({
     const query = searchQuery.toLowerCase();
 
     // Check Gmail
-    const gmailMatch = data?.gmail?.messages?.some((msg: any) =>
+    const gmailMatch = data?.gmail?.messages?.some(msg =>
       msg.subject?.toLowerCase().includes(query) ||
       msg.from?.toLowerCase().includes(query) ||
       msg.snippet?.toLowerCase().includes(query)
@@ -81,7 +82,7 @@ export function GoogleWorkspacePage({
     }
 
     // Check Calendar
-    const calendarMatch = data?.calendar?.events?.some((evt: any) =>
+    const calendarMatch = data?.calendar?.events?.some(evt =>
       evt.summary?.toLowerCase().includes(query) ||
       evt.description?.toLowerCase().includes(query) ||
       evt.location?.toLowerCase().includes(query)
@@ -92,7 +93,7 @@ export function GoogleWorkspacePage({
     }
 
     // Check Drive
-    const driveMatch = data?.drive?.files?.some((file: any) =>
+    const driveMatch = data?.drive?.files?.some(file =>
       file.name?.toLowerCase().includes(query)
     );
     if (driveMatch) {
@@ -106,10 +107,10 @@ export function GoogleWorkspacePage({
 
   // Check if we have any data synced
   const hasData = data && (
-    (data.gmail?.messages?.length > 0) ||
-    (data.calendar?.events?.length > 0) ||
-    (data.drive?.files?.length > 0) ||
-    (data.contacts?.contacts?.length > 0)
+    ((data.gmail?.messages?.length ?? 0) > 0) ||
+    ((data.calendar?.events?.length ?? 0) > 0) ||
+    ((data.drive?.files?.length ?? 0) > 0) ||
+    ((data.contacts?.contacts?.length ?? 0) > 0)
   );
 
   const handleSync = async () => {
@@ -187,9 +188,9 @@ export function GoogleWorkspacePage({
         <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
           <h2 className="text-lg font-bold text-gray-900">Recent Activity</h2>
         </div>
-        {data?.gmail?.messages?.length > 0 ? (
+        {data?.gmail?.messages && data.gmail.messages.length > 0 ? (
           <div className="divide-y divide-gray-100">
-            {data?.gmail?.messages?.slice(0, 5).map((message: any, index: number) => (
+            {data.gmail.messages.slice(0, 5).map((message, index: number) => (
               <div
                 key={index}
                 className="p-4 hover:bg-blue-50 cursor-pointer transition-colors"
@@ -267,15 +268,15 @@ export function GoogleWorkspacePage({
       case 'home':
         return renderHome();
       case 'gmail':
-        return <GmailInbox walletAddress={walletAddress} data={data?.gmail} />;
+        return <GmailInbox walletAddress={walletAddress} data={data?.gmail ?? null} />;
       case 'calendar':
-        return <CalendarView walletAddress={walletAddress} data={data?.calendar} />;
+        return <CalendarView walletAddress={walletAddress} data={data?.calendar ?? null} />;
       case 'drive':
-        return <DriveExplorer walletAddress={walletAddress} data={data?.drive} />;
+        return <DriveExplorer walletAddress={walletAddress} data={data?.drive ?? null} />;
       case 'contacts':
-        return <ContactsList walletAddress={walletAddress} data={data?.contacts} />;
+        return <ContactsList walletAddress={walletAddress} data={data?.contacts ?? null} />;
       case 'tasks':
-        return <TasksList walletAddress={walletAddress} data={data?.tasks} />;
+        return <TasksList walletAddress={walletAddress} data={data?.tasks ?? null} />;
       default:
         return renderHome();
     }

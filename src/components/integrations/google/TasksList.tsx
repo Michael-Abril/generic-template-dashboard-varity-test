@@ -1,10 +1,11 @@
 'use client';
 
 import { CheckSquare, Clock, ArrowRight } from 'lucide-react';
+import type { TasksData } from '@/types/google';
 
 interface TasksListProps {
   walletAddress: string;
-  data: any;
+  data: TasksData | null;
 }
 
 export function TasksList({ walletAddress, data }: TasksListProps) {

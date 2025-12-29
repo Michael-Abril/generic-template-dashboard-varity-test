@@ -11,8 +11,17 @@ import {
   CheckCircle2,
   Circle,
   Loader2,
+  Pencil,
+  Trash2,
+  X,
 } from 'lucide-react';
-import { getTasks, createTask, completeTask } from '@/services/planningService';
+import { getTasks, createTask, completeTask, updateTask, deleteTask } from '@/services/planningService';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import {
   Task,
   TaskPriority,
@@ -37,6 +46,20 @@ export function TasksWidget({ walletAddress }: TasksWidgetProps) {
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [isCreating, setIsCreating] = useState(false);
   const [completingTaskId, setCompletingTaskId] = useState<number | null>(null);
+
+  // Task detail dialog state
+  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+  const [showTaskDialog, setShowTaskDialog] = useState(false);
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [editMode, setEditMode] = useState(false);
+  const [editForm, setEditForm] = useState({
+    title: '',
+    description: '',
+    priority: 'medium' as TaskPriority,
+    category: 'operations' as TaskCategory,
+    due_date: ''
+  });
 
   // Stats
   const [stats, setStats] = useState({
@@ -111,6 +134,65 @@ export function TasksWidget({ walletAddress }: TasksWidgetProps) {
     } finally {
       setCompletingTaskId(null);
     }
+  };
+
+  const handleOpenTaskDialog = (task: Task, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSelectedTask(task);
+    setEditForm({
+      title: task.title,
+      description: task.description || '',
+      priority: task.priority,
+      category: task.category,
+      due_date: task.due_date || ''
+    });
+    setEditMode(false);
+    setShowTaskDialog(true);
+  };
+
+  const handleUpdateTask = async () => {
+    if (!selectedTask) return;
+
+    setIsUpdating(true);
+    try {
+      const updatedTask = await updateTask(selectedTask.id, walletAddress, editForm);
+      setTasks((prev) =>
+        prev.map((t) => (t.id === selectedTask.id ? updatedTask : t))
+      );
+      setSelectedTask(updatedTask);
+      setEditMode(false);
+    } catch (err) {
+      logger.error('Error updating task:', err);
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const handleDeleteTask = async () => {
+    if (!selectedTask) return;
+
+    if (!confirm('Are you sure you want to remove this task?')) return;
+
+    setIsDeleting(true);
+    try {
+      await deleteTask(selectedTask.id, walletAddress);
+      setTasks((prev) => prev.filter((t) => t.id !== selectedTask.id));
+      setStats((prev) => ({ ...prev, total: prev.total - 1 }));
+      setShowTaskDialog(false);
+      setSelectedTask(null);
+    } catch (err) {
+      logger.error('Error deleting task:', err);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const handleCompleteFromDialog = async () => {
+    if (!selectedTask) return;
+
+    await handleComplete(selectedTask.id);
+    setShowTaskDialog(false);
+    setSelectedTask(null);
   };
 
   // Filter uncompleted tasks for display
@@ -311,8 +393,20 @@ export function TasksWidget({ walletAddress }: TasksWidgetProps) {
                   )}
                 </button>
 
-                {/* Task Content */}
-                <div className="flex-1 min-w-0">
+                {/* Task Content - Clickable */}
+                <div
+                  className="flex-1 min-w-0 cursor-pointer"
+                  onClick={(e) => handleOpenTaskDialog(task, e)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      handleOpenTaskDialog(task, e as any);
+                    }
+                  }}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`View details for task: ${task.title}`}
+                >
                   <div className="flex items-center gap-2">
                     <span className="text-sm text-gray-900 truncate">{task.title}</span>
                     {getPriorityDot(task.priority)}
@@ -366,6 +460,221 @@ export function TasksWidget({ walletAddress }: TasksWidgetProps) {
           </div>
         </div>
       )}
+
+      {/* Task Detail Dialog */}
+      <Dialog open={showTaskDialog} onOpenChange={setShowTaskDialog}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <div className="flex items-center justify-between">
+              <DialogTitle className="text-gray-900">Task Details</DialogTitle>
+              <button
+                onClick={() => setShowTaskDialog(false)}
+                className="text-gray-400 hover:text-gray-600 transition-colors"
+                aria-label="Close dialog"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+          </DialogHeader>
+
+          {selectedTask && (
+            <div className="space-y-4">
+              {/* Edit Mode */}
+              {editMode ? (
+                <div className="space-y-4">
+                  {/* Title */}
+                  <div>
+                    <label htmlFor="edit-title" className="block text-sm font-medium text-gray-900 mb-1">
+                      Title
+                    </label>
+                    <input
+                      id="edit-title"
+                      type="text"
+                      value={editForm.title}
+                      onChange={(e) => setEditForm({ ...editForm, title: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
+                    />
+                  </div>
+
+                  {/* Description */}
+                  <div>
+                    <label htmlFor="edit-description" className="block text-sm font-medium text-gray-900 mb-1">
+                      Description
+                    </label>
+                    <textarea
+                      id="edit-description"
+                      value={editForm.description}
+                      onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+                      rows={3}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
+                    />
+                  </div>
+
+                  {/* Priority and Category */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label htmlFor="edit-priority" className="block text-sm font-medium text-gray-900 mb-1">
+                        Priority
+                      </label>
+                      <select
+                        id="edit-priority"
+                        value={editForm.priority}
+                        onChange={(e) => setEditForm({ ...editForm, priority: e.target.value as TaskPriority })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
+                      >
+                        <option value="low">Low</option>
+                        <option value="medium">Medium</option>
+                        <option value="high">Urgent</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label htmlFor="edit-category" className="block text-sm font-medium text-gray-900 mb-1">
+                        Category
+                      </label>
+                      <select
+                        id="edit-category"
+                        value={editForm.category}
+                        onChange={(e) => setEditForm({ ...editForm, category: e.target.value as TaskCategory })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
+                      >
+                        <option value="sales">Sales</option>
+                        <option value="marketing">Marketing</option>
+                        <option value="operations">Operations</option>
+                        <option value="finance">Finance</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Due Date */}
+                  <div>
+                    <label htmlFor="edit-due-date" className="block text-sm font-medium text-gray-900 mb-1">
+                      Due Date
+                    </label>
+                    <input
+                      id="edit-due-date"
+                      type="date"
+                      value={editForm.due_date}
+                      onChange={(e) => setEditForm({ ...editForm, due_date: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
+                    />
+                  </div>
+
+                  {/* Edit Mode Actions */}
+                  <div className="flex gap-3 pt-4 border-t border-gray-200">
+                    <button
+                      onClick={handleUpdateTask}
+                      disabled={isUpdating || !editForm.title.trim()}
+                      className="flex-1 px-4 py-2.5 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+                      aria-label="Save changes"
+                    >
+                      {isUpdating ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          Saving...
+                        </>
+                      ) : (
+                        'Save Changes'
+                      )}
+                    </button>
+                    <button
+                      onClick={() => setEditMode(false)}
+                      disabled={isUpdating}
+                      className="px-4 py-2.5 border border-gray-300 text-gray-900 font-medium rounded-lg hover:bg-gray-50 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                /* View Mode */
+                <div className="space-y-4">
+                  {/* Title */}
+                  <div>
+                    <h3 className="text-xl font-semibold text-gray-900">{selectedTask.title}</h3>
+                  </div>
+
+                  {/* Priority and Category Badges */}
+                  <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-gray-900">Priority:</span>
+                      <span className={`px-3 py-1 rounded-full text-sm font-medium ${
+                        selectedTask.priority === 'high' ? 'bg-red-100 text-red-700' :
+                        selectedTask.priority === 'medium' ? 'bg-amber-100 text-amber-700' :
+                        'bg-gray-100 text-gray-700'
+                      }`}>
+                        {TASK_PRIORITIES[selectedTask.priority].label}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-gray-900">Category:</span>
+                      {getCategoryBadge(selectedTask.category)}
+                    </div>
+                  </div>
+
+                  {/* Due Date */}
+                  {selectedTask.due_date && (
+                    <div className="flex items-center gap-2">
+                      <Calendar className="w-4 h-4 text-gray-500" />
+                      <span className="text-sm text-gray-900">
+                        Due: {getRelativeDueDate(selectedTask.due_date)}
+                      </span>
+                      {isTaskOverdue(selectedTask) && (
+                        <span className="text-xs font-medium text-red-600 bg-red-50 px-2 py-0.5 rounded-full">
+                          Overdue
+                        </span>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Description */}
+                  {selectedTask.description && (
+                    <div className="pt-3 border-t border-gray-200">
+                      <h4 className="text-sm font-medium text-gray-900 mb-2">Description</h4>
+                      <p className="text-sm text-gray-900 whitespace-pre-wrap">{selectedTask.description}</p>
+                    </div>
+                  )}
+
+                  {/* Action Buttons */}
+                  <div className="flex gap-3 pt-4 border-t border-gray-200">
+                    <button
+                      onClick={handleCompleteFromDialog}
+                      className="flex-1 px-4 py-2.5 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 transition-colors flex items-center justify-center gap-2"
+                      aria-label="Mark task as done"
+                    >
+                      <CheckCircle2 className="w-4 h-4" />
+                      Mark as Done
+                    </button>
+                    <button
+                      onClick={() => setEditMode(true)}
+                      className="flex-1 px-4 py-2.5 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
+                      aria-label="Edit task"
+                    >
+                      <Pencil className="w-4 h-4" />
+                      Edit
+                    </button>
+                    <button
+                      onClick={handleDeleteTask}
+                      disabled={isDeleting}
+                      className="px-4 py-2.5 bg-red-600 text-white font-medium rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+                      aria-label="Remove task"
+                    >
+                      {isDeleting ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <>
+                          <Trash2 className="w-4 h-4" />
+                          Remove
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

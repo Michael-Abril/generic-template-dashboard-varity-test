@@ -12,27 +12,7 @@ import {
   Image as ImageIcon,
   Download
 } from 'lucide-react';
-
-interface Message {
-  id: string;
-  user: string;
-  text: string;
-  timestamp: string;
-  thread_ts?: string;
-  reply_count?: number;
-  attachments?: any[];
-  reactions?: Array<{
-    emoji: string;
-    count: number;
-    users: string[];
-  }>;
-}
-
-interface MessageListProps {
-  messages: Message[];
-  onThreadClick: (message: Message) => void;
-  onReaction: (messageTs: string, emoji: string) => void;
-}
+import { SlackMessage, MessageListProps } from '@/types/slack';
 
 export function MessageList({
   messages,

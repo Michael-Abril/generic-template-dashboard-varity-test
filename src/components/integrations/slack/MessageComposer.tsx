@@ -19,12 +19,7 @@ import {
   Mic,
   X
 } from 'lucide-react';
-
-interface MessageComposerProps {
-  onSend: (text: string, files?: File[]) => void;
-  placeholder?: string;
-  initialValue?: string;
-}
+import { MessageComposerProps } from '@/types/slack';
 
 export function MessageComposer({
   onSend,

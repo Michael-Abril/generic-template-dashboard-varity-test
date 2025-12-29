@@ -8,7 +8,7 @@ from fastapi import APIRouter, HTTPException, Query, Depends
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 import logging
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 import json
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,7 +16,6 @@ from sqlalchemy import select, and_
 from sqlalchemy.orm import selectinload
 
 import httpx
-from datetime import timedelta
 
 from app.services.filecoin_service import FilecoinService
 from app.services.encryption_service import EncryptionService, normalize_wallet_address
@@ -127,12 +126,12 @@ async def refresh_oauth_token(
 
                 # Update expiration
                 if token_data.get("expires_in"):
-                    oauth_token.expires_at = datetime.utcnow() + timedelta(
+                    oauth_token.expires_at = datetime.now(timezone.utc) + timedelta(
                         seconds=int(token_data["expires_in"])
                     )
 
-                oauth_token.last_refreshed_at = datetime.utcnow()
-                oauth_token.updated_at = datetime.utcnow()
+                oauth_token.last_refreshed_at = datetime.now(timezone.utc)
+                oauth_token.updated_at = datetime.now(timezone.utc)
 
                 await db.commit()
 
@@ -267,7 +266,9 @@ async def get_installed_integrations(
             # Determine sync status
             sync_status = "connected"
             needs_reauth = False
-            if token.expires_at and token.expires_at < datetime.utcnow():
+            # Use timezone-aware datetime for comparison
+            now = datetime.now(timezone.utc)
+            if token.expires_at and token.expires_at < now:
                 sync_status = "expired"
                 needs_reauth = True
 
@@ -370,7 +371,9 @@ async def sync_tool_data(
             )
 
         # Check if token is expired and try to refresh
-        if oauth_token.expires_at and oauth_token.expires_at < datetime.utcnow():
+        # Use timezone-aware datetime for comparison
+        now = datetime.now(timezone.utc)
+        if oauth_token.expires_at and oauth_token.expires_at < now:
             logger.info(f"OAuth token for {tool} is expired, attempting refresh...")
 
             refresh_success = await refresh_oauth_token(oauth_token, provider, db)
@@ -464,7 +467,7 @@ async def sync_tool_data(
             )
 
         # Update last_sync_at timestamp
-        oauth_token.last_sync_at = datetime.utcnow()
+        oauth_token.last_sync_at = datetime.now(timezone.utc)
         await db.commit()
 
         # =====================================================================
