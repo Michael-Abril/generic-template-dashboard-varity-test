@@ -20,7 +20,7 @@ A company-specific AI dashboard with encrypted data storage on Filecoin/IPFS. Ea
 
 ---
 
-## Current Status (December 23, 2025)
+## Current Status (December 29, 2025)
 
 ### What Works
 
@@ -28,6 +28,7 @@ A company-specific AI dashboard with encrypted data storage on Filecoin/IPFS. Ea
 |---------|--------|
 | Frontend (Vercel) | ✅ Live |
 | Backend (Railway) | ✅ Live |
+| **CI/CD Pipeline** | ✅ GitHub Actions + Husky + Playwright |
 | Google OAuth + Sync | ✅ Working |
 | AI Assistant | ✅ Working |
 | Onboarding | ✅ Working |
@@ -230,6 +231,40 @@ PINATA_API_KEY=...
 FRONTEND_URL=https://app.varity.so
 # + OAuth credentials for each provider
 ```
+
+---
+
+## CI/CD Guardrails (NEW - December 29, 2025)
+
+Comprehensive guardrail system to prevent regressions:
+
+### Pre-commit Hooks (Husky)
+```bash
+# Automatically runs on every commit:
+npm run type-check  # TypeScript validation
+npm run build       # Full build verification
+# Commit is BLOCKED if either fails
+```
+
+### GitHub Actions CI Pipeline
+- **Build & Type Check** - Runs on every push/PR
+- **API Health Checks** - Verifies backend endpoints
+- **E2E Tests (Playwright)** - Full browser testing
+- **Blocks merge** if any check fails
+
+### Running Tests Locally
+```bash
+npm run test:e2e        # Run E2E tests headless
+npm run test:e2e:ui     # Run with Playwright UI
+```
+
+### Test Files
+| File | Purpose |
+|------|---------|
+| `tests/e2e/api-health.spec.ts` | API endpoint validation |
+| `tests/e2e/homepage.spec.ts` | Homepage/public pages |
+| `tests/e2e/google-workspace.spec.ts` | Integration pages |
+| `tests/e2e/data-sync.spec.ts` | Data pipeline health |
 
 ---
 

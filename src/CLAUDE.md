@@ -1,10 +1,11 @@
 # CLAUDE.md - Frontend (Next.js 14)
 
-**Last Updated:** December 26, 2025
+**Last Updated:** December 29, 2025
 **Framework:** Next.js 14 (App Router)
 **Language:** TypeScript
 **Styling:** Tailwind CSS
 **Production:** https://app.varity.so (Vercel)
+**Testing:** Playwright E2E + Husky Pre-commit Hooks
 
 ---
 
@@ -16,6 +17,14 @@
 |---------|----------|-------|
 | **Data Import** | `Settings page` | Shows "Coming Soon" badge |
 | **Analytics Mock Data** | `AnalyticsContent.tsx` | Uses mock generators instead of real API data |
+
+### ✅ Resolved (December 29, 2025)
+
+| Feature | Resolution |
+|---------|------------|
+| No pre-commit checks | **ADDED** - Husky pre-commit hooks (TypeScript + Build) |
+| No E2E tests | **ADDED** - Playwright test suite (4 test files) |
+| Regression cycle | **FIXED** - CI/CD guardrails block broken code |
 
 ### ✅ Resolved (December 26, 2025)
 
@@ -60,18 +69,24 @@
 
 ---
 
-## CODE QUALITY RULES (MUST FOLLOW)
+## CODE QUALITY RULES (ENFORCED BY GUARDRAILS)
 
 ```bash
-# After EVERY change:
-npm run build
+# Pre-commit hooks AUTOMATICALLY run:
+# 1. npm run type-check  (TypeScript validation)
+# 2. npm run build       (Full build verification)
+
+# If either fails, your commit is BLOCKED.
 
 # This catches:
 # - TypeScript errors
 # - ESLint errors
 # - Build-time issues
 
-# NEVER skip this step
+# CI Pipeline adds:
+# - E2E tests (Playwright)
+# - API health checks
+# - Blocks merge on any failure
 ```
 
 ---
@@ -440,7 +455,17 @@ const handleAction = async (id: string) => {
 
 ---
 
-## TESTING
+## TESTING & CI/CD GUARDRAILS (December 29, 2025)
+
+### Automated Guardrails
+
+| When | What Runs | Blocks On Failure |
+|------|-----------|:-----------------:|
+| `git commit` | TypeScript + Build | ✅ Yes |
+| Push to main | Full CI Pipeline | ✅ Yes |
+| Pull Request | Full CI + E2E Tests | ✅ Yes |
+
+### Commands
 
 ```bash
 # Type check
@@ -452,9 +477,30 @@ npm run lint
 # Build (catches all errors)
 npm run build
 
+# E2E tests (Playwright)
+npm run test:e2e        # Headless
+npm run test:e2e:ui     # With Playwright UI
+
 # Development server
 npm run dev  # http://localhost:3001
 ```
+
+### E2E Test Files
+
+| File | What It Tests |
+|------|---------------|
+| `tests/e2e/api-health.spec.ts` | API endpoints responding |
+| `tests/e2e/homepage.spec.ts` | Homepage and public pages |
+| `tests/e2e/google-workspace.spec.ts` | Integration pages |
+| `tests/e2e/data-sync.spec.ts` | Data pipeline health |
+
+### Pre-commit Hooks
+
+The pre-commit hook (`.husky/pre-commit`) automatically runs:
+1. `npm run type-check` - TypeScript validation
+2. `npm run build` - Full build verification
+
+**If either fails, the commit is BLOCKED.**
 
 ---
 

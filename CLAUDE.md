@@ -1,8 +1,9 @@
 # CLAUDE.md - Varity Generic Dashboard Template
 
-**Last Updated:** December 28, 2025
+**Last Updated:** December 29, 2025
 **Status:** LIVE at https://app.varity.so
 **Build Status:** Passing (Frontend: Vercel | Backend: Railway)
+**CI/CD:** GitHub Actions + Husky Pre-commit Hooks + Playwright E2E
 
 ---
 
@@ -16,6 +17,22 @@
 | **Backend (Railway)** | ✅ WORKING | Live at https://generic-template-dashboard-production.up.railway.app |
 | **Pinata Gateway** | ✅ FIXED | Using dedicated gateway `varity.mypinata.cloud` (no rate limits) |
 | **Qdrant (RAG)** | ✅ WORKING | Planning data fully indexed, integrations partial |
+| **CI/CD Pipeline** | ✅ WORKING | GitHub Actions + Husky pre-commit + Playwright E2E |
+
+### CI/CD Guardrails (NEW - December 29, 2025)
+
+| Guardrail | Tool | What It Catches |
+|-----------|------|-----------------|
+| **Pre-commit Hooks** | Husky | Build errors BEFORE committing |
+| **CI Pipeline** | GitHub Actions | Broken PRs BEFORE merging |
+| **E2E Tests** | Playwright | UI regressions, broken pages |
+| **API Health Checks** | CI Pipeline | Backend/AI service failures |
+
+**Files:**
+- `.husky/pre-commit` - Runs TypeScript check + build on every commit
+- `.github/workflows/ci.yml` - Full CI pipeline with E2E tests
+- `playwright.config.ts` - Playwright configuration
+- `tests/e2e/*.spec.ts` - E2E test suites
 
 ### Data Pipeline Status
 
@@ -68,6 +85,16 @@
 | Issue | Location | Impact |
 |-------|----------|--------|
 | TypeScript `any` types | Various API responses | Type safety |
+
+### ✅ RESOLVED (December 29, 2025)
+
+| Issue | Resolution |
+|-------|------------|
+| Regression cycle | FIXED - Comprehensive CI/CD guardrail system implemented |
+| No pre-commit checks | ADDED - Husky pre-commit hooks (TypeScript + Build) |
+| No CI pipeline | ADDED - GitHub Actions with E2E tests |
+| No E2E tests | ADDED - Playwright test suite (4 test files) |
+| Build errors reaching prod | BLOCKED - Pre-commit + CI now catch before merge |
 
 ### ✅ RESOLVED (December 28, 2025)
 
@@ -266,7 +293,7 @@ src/components/onboarding/
 git clone https://github.com/varity-labs/generic-template-dashboard.git
 cd generic-template-dashboard
 
-# Install dependencies
+# Install dependencies (includes Husky pre-commit hooks)
 npm install --legacy-peer-deps
 
 # Build to check for errors
@@ -276,16 +303,32 @@ npm run build
 git add . && git commit -m "fix: description" && git push origin main
 ```
 
-### Code Quality Rules (MUST FOLLOW)
+### Code Quality Rules (ENFORCED BY GUARDRAILS)
 
 ```bash
-# After EVERY frontend change:
-npm run build
+# Pre-commit hooks AUTOMATICALLY run:
+# 1. npm run type-check  (TypeScript validation)
+# 2. npm run build       (Full build verification)
 
-# Fix ALL TypeScript errors before committing
-# Fix ALL ESLint warnings where possible
-# This step must NEVER be skipped
+# If either fails, the commit is BLOCKED
+
+# Run E2E tests locally:
+npm run test:e2e        # Headless
+npm run test:e2e:ui     # With Playwright UI
+
+# CI Pipeline runs on every push/PR:
+# 1. Build & Type Check
+# 2. API Health Checks
+# 3. Playwright E2E Tests
 ```
+
+### Guardrails Enforcement
+
+| When | What Runs | Blocks On Failure |
+|------|-----------|:-----------------:|
+| `git commit` | TypeScript + Build | ✅ Yes |
+| Push to main | Full CI Pipeline | ✅ Yes |
+| Pull Request | Full CI + E2E Tests | ✅ Yes |
 
 ---
 
@@ -502,6 +545,14 @@ FRONTEND_URL=https://app.varity.so
 
 ## TESTING CHECKLIST
 
+### CI/CD Guardrails (December 29, 2025)
+
+- [x] Pre-commit hooks working (Husky)
+- [x] GitHub Actions CI pipeline created
+- [x] Playwright E2E tests added
+- [x] API health check tests added
+- [x] CI blocks merge on failure
+
 ### Before Launch
 
 - [x] Test QuickBooks OAuth flow (~70% working, production keys active)
@@ -537,6 +588,21 @@ https://app.varity.so/dashboard/tools/google  # Google Workspace tools
 
 ```
 generic-template-dashboard/
+├── .husky/                       # Pre-commit hooks (NEW Dec 29)
+│   └── pre-commit                # TypeScript + Build check
+│
+├── .github/workflows/            # CI/CD Pipeline (NEW Dec 29)
+│   └── ci.yml                    # Build, E2E tests, API health
+│
+├── tests/                        # E2E Tests (NEW Dec 29)
+│   └── e2e/
+│       ├── api-health.spec.ts    # API endpoint tests
+│       ├── homepage.spec.ts      # Homepage/public page tests
+│       ├── google-workspace.spec.ts  # Integration tests
+│       └── data-sync.spec.ts     # Data pipeline tests
+│
+├── playwright.config.ts          # Playwright configuration (NEW Dec 29)
+│
 ├── src/                          # Next.js 14 frontend
 │   ├── app/
 │   │   ├── dashboard/
