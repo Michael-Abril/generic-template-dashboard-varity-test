@@ -53,6 +53,16 @@ interface Email {
   payload?: EmailPayload;
 }
 
+interface EmailThread {
+  threadId: string;
+  emails: Email[];
+  latestEmail: Email;
+  emailCount: number;
+  hasUnread: boolean;
+  hasStarred: boolean;
+  hasAttachment: boolean;
+}
+
 // Helper to decode base64 email body
 const decodeEmailBody = (payload: EmailPayload | EmailPart | undefined): { text: string; html: string } => {
   let text = '';
@@ -122,6 +132,8 @@ export function GmailInbox({ walletAddress, data }: GmailInboxProps) {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(0);
   const [apiError, setApiError] = useState<string | null>(null);
+  const [expandedThreads, setExpandedThreads] = useState<Set<string>>(new Set());
+  const [showKeyboardShortcuts, setShowKeyboardShortcuts] = useState(false);
   const EMAILS_PER_PAGE = 25;
 
   // Extract unique user labels from emails (excluding system labels)
@@ -145,14 +157,91 @@ export function GmailInbox({ walletAddress, data }: GmailInboxProps) {
   // Label colors for display
   const labelColors = ['bg-green-500', 'bg-purple-500', 'bg-blue-500', 'bg-yellow-500', 'bg-red-500', 'bg-pink-500', 'bg-indigo-500', 'bg-teal-500'];
 
-  // Filter emails based on search query and selected label
-  const filteredEmails = useMemo(() => {
-    let filtered = emails;
+  // Group emails into threads
+  const emailThreads = useMemo(() => {
+    const threadMap = new Map<string, EmailThread>();
+
+    emails.forEach(email => {
+      const threadId = email.threadId || email.id;
+
+      if (!threadMap.has(threadId)) {
+        threadMap.set(threadId, {
+          threadId,
+          emails: [email],
+          latestEmail: email,
+          emailCount: 1,
+          hasUnread: email.unread || false,
+          hasStarred: email.starred || false,
+          hasAttachment: email.hasAttachment || false
+        });
+      } else {
+        const thread = threadMap.get(threadId)!;
+        thread.emails.push(email);
+        thread.emailCount++;
+        thread.hasUnread = thread.hasUnread || (email.unread || false);
+        thread.hasStarred = thread.hasStarred || (email.starred || false);
+        thread.hasAttachment = thread.hasAttachment || (email.hasAttachment || false);
+
+        // Update latest email (assuming emails are in date order)
+        const emailDate = new Date(email.date).getTime();
+        const latestDate = new Date(thread.latestEmail.date).getTime();
+        if (emailDate > latestDate) {
+          thread.latestEmail = email;
+        }
+      }
+    });
+
+    return Array.from(threadMap.values());
+  }, [emails]);
+
+  // Parse advanced search query
+  const parseSearchQuery = (query: string) => {
+    const filters = {
+      from: '',
+      to: '',
+      subject: '',
+      hasAttachment: false,
+      afterDate: null as Date | null,
+      beforeDate: null as Date | null,
+      generalQuery: ''
+    };
+
+    const parts = query.split(/\s+/);
+    const generalParts: string[] = [];
+
+    parts.forEach(part => {
+      if (part.startsWith('from:')) {
+        filters.from = part.substring(5).toLowerCase();
+      } else if (part.startsWith('to:')) {
+        filters.to = part.substring(3).toLowerCase();
+      } else if (part.startsWith('subject:')) {
+        filters.subject = part.substring(8).toLowerCase();
+      } else if (part === 'has:attachment') {
+        filters.hasAttachment = true;
+      } else if (part.startsWith('after:')) {
+        const dateStr = part.substring(6);
+        filters.afterDate = new Date(dateStr);
+      } else if (part.startsWith('before:')) {
+        const dateStr = part.substring(7);
+        filters.beforeDate = new Date(dateStr);
+      } else {
+        generalParts.push(part);
+      }
+    });
+
+    filters.generalQuery = generalParts.join(' ').toLowerCase();
+    return filters;
+  };
+
+  // Filter threads based on search query and selected label
+  const filteredThreads = useMemo(() => {
+    let filtered = emailThreads;
 
     // Filter by label
     if (selectedLabel !== 'INBOX') {
-      filtered = filtered.filter(email => {
-        if (selectedLabel === 'STARRED') return email.starred;
+      filtered = filtered.filter(thread => {
+        const email = thread.latestEmail;
+        if (selectedLabel === 'STARRED') return thread.hasStarred;
         if (selectedLabel === 'SENT') return email.labels?.includes('SENT');
         if (selectedLabel === 'DRAFTS') return email.labels?.includes('DRAFT');
         if (selectedLabel === 'TRASH') return email.labels?.includes('TRASH');
@@ -171,24 +260,62 @@ export function GmailInbox({ walletAddress, data }: GmailInboxProps) {
 
     // Filter by search query
     if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(email =>
-        email.from.toLowerCase().includes(query) ||
-        email.to.toLowerCase().includes(query) ||
-        email.subject.toLowerCase().includes(query) ||
-        email.snippet.toLowerCase().includes(query)
-      );
+      const filters = parseSearchQuery(searchQuery);
+
+      filtered = filtered.filter(thread => {
+        // Check all emails in thread for matches
+        return thread.emails.some(email => {
+          // From filter
+          if (filters.from && !email.from.toLowerCase().includes(filters.from)) {
+            return false;
+          }
+
+          // To filter
+          if (filters.to && !email.to.toLowerCase().includes(filters.to)) {
+            return false;
+          }
+
+          // Subject filter
+          if (filters.subject && !email.subject.toLowerCase().includes(filters.subject)) {
+            return false;
+          }
+
+          // Attachment filter
+          if (filters.hasAttachment && !email.hasAttachment) {
+            return false;
+          }
+
+          // Date filters
+          if (filters.afterDate || filters.beforeDate) {
+            const emailDate = new Date(email.date);
+            if (filters.afterDate && emailDate < filters.afterDate) return false;
+            if (filters.beforeDate && emailDate > filters.beforeDate) return false;
+          }
+
+          // General query
+          if (filters.generalQuery) {
+            return (
+              email.from.toLowerCase().includes(filters.generalQuery) ||
+              email.to.toLowerCase().includes(filters.generalQuery) ||
+              email.subject.toLowerCase().includes(filters.generalQuery) ||
+              email.snippet.toLowerCase().includes(filters.generalQuery)
+            );
+          }
+
+          return true;
+        });
+      });
     }
 
     return filtered;
-  }, [emails, searchQuery, selectedLabel]);
+  }, [emailThreads, searchQuery, selectedLabel, userLabels]);
 
-  // Paginate emails
-  const totalPages = Math.ceil(filteredEmails.length / EMAILS_PER_PAGE);
-  const paginatedEmails = useMemo(() => {
+  // Paginate threads
+  const totalPages = Math.ceil(filteredThreads.length / EMAILS_PER_PAGE);
+  const paginatedThreads = useMemo(() => {
     const start = currentPage * EMAILS_PER_PAGE;
-    return filteredEmails.slice(start, start + EMAILS_PER_PAGE);
-  }, [filteredEmails, currentPage]);
+    return filteredThreads.slice(start, start + EMAILS_PER_PAGE);
+  }, [filteredThreads, currentPage]);
 
   // Reset page when filter changes
   useEffect(() => {
@@ -313,6 +440,11 @@ export function GmailInbox({ walletAddress, data }: GmailInboxProps) {
       if (showComposer) return;
 
       switch (e.key.toLowerCase()) {
+        case '?':
+          // Show keyboard shortcuts help
+          e.preventDefault();
+          setShowKeyboardShortcuts(!showKeyboardShortcuts);
+          break;
         case 'c':
           // Compose new email
           e.preventDefault();
@@ -341,28 +473,30 @@ export function GmailInbox({ walletAddress, data }: GmailInboxProps) {
           }
           break;
         case 'j':
-          // Move to next email in list
-          if (filteredEmails.length > 0) {
-            const currentIndex = selectedEmail
-              ? filteredEmails.findIndex(e => e.id === selectedEmail.id)
-              : -1;
-            const nextIndex = Math.min(currentIndex + 1, filteredEmails.length - 1);
-            setSelectedEmail(filteredEmails[nextIndex]);
+          // Move to next thread in list
+          if (filteredThreads.length > 0) {
+            const currentThread = selectedEmail ? filteredThreads.find(t => t.threadId === selectedEmail.threadId) : null;
+            const currentIndex = currentThread ? filteredThreads.indexOf(currentThread) : -1;
+            const nextIndex = Math.min(currentIndex + 1, filteredThreads.length - 1);
+            setSelectedEmail(filteredThreads[nextIndex].latestEmail);
           }
           break;
         case 'k':
-          // Move to previous email in list
-          if (filteredEmails.length > 0) {
-            const currentIndex = selectedEmail
-              ? filteredEmails.findIndex(e => e.id === selectedEmail.id)
-              : filteredEmails.length;
+          // Move to previous thread in list
+          if (filteredThreads.length > 0) {
+            const currentThread = selectedEmail ? filteredThreads.find(t => t.threadId === selectedEmail.threadId) : null;
+            const currentIndex = currentThread ? filteredThreads.indexOf(currentThread) : filteredThreads.length;
             const prevIndex = Math.max(currentIndex - 1, 0);
-            setSelectedEmail(filteredEmails[prevIndex]);
+            setSelectedEmail(filteredThreads[prevIndex].latestEmail);
           }
           break;
         case 'escape':
-          // Close email detail view
-          setSelectedEmail(null);
+          // Close email detail view or shortcuts modal
+          if (showKeyboardShortcuts) {
+            setShowKeyboardShortcuts(false);
+          } else {
+            setSelectedEmail(null);
+          }
           break;
         case '/':
           // Focus search
@@ -398,7 +532,7 @@ export function GmailInbox({ walletAddress, data }: GmailInboxProps) {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedEmail, selectedEmails, filteredEmails, showComposer]);
+  }, [selectedEmail, selectedEmails, filteredThreads, showComposer, showKeyboardShortcuts]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -534,28 +668,83 @@ export function GmailInbox({ walletAddress, data }: GmailInboxProps) {
     setSelectedEmails(newSelected);
   };
 
+  const toggleThread = (threadId: string) => {
+    const newExpanded = new Set(expandedThreads);
+    if (newExpanded.has(threadId)) {
+      newExpanded.delete(threadId);
+    } else {
+      newExpanded.add(threadId);
+    }
+    setExpandedThreads(newExpanded);
+  };
+
   const renderEmailList = () => (
     <div className="flex-1 overflow-auto">
       {/* Search Bar */}
       <div className="sticky top-0 bg-white border-b px-4 py-3 z-10">
-        <div className="flex items-center gap-2 bg-gray-100 rounded-lg px-4 py-2 border border-gray-200 focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-100 transition-all mb-3">
-          <Search className="h-4 w-4 text-gray-500" />
-          <input
-            type="text"
-            placeholder="Search emails by sender, subject, or content..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="bg-transparent border-none outline-none text-sm w-full text-gray-900 placeholder:text-gray-500"
-          />
+        <div className="mb-3">
+          <div className="flex items-center gap-2 bg-gray-100 rounded-lg px-4 py-2 border border-gray-200 focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-100 transition-all">
+            <Search className="h-4 w-4 text-gray-500" />
+            <input
+              type="text"
+              placeholder="Search: Try 'from:john' or 'has:attachment' or 'after:2024-01-01'"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="bg-transparent border-none outline-none text-sm w-full text-gray-900 placeholder:text-gray-500"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="p-1 hover:bg-gray-200 rounded"
+              >
+                <X className="h-3 w-3 text-gray-500" />
+              </button>
+            )}
+          </div>
           {searchQuery && (
-            <button
-              onClick={() => setSearchQuery('')}
-              className="p-1 hover:bg-gray-200 rounded"
-            >
-              <X className="h-3 w-3 text-gray-500" />
-            </button>
+            <div className="mt-1 px-2 text-xs text-gray-500">
+              Search operators: from:, to:, subject:, has:attachment, after:YYYY-MM-DD, before:YYYY-MM-DD
+            </div>
           )}
         </div>
+
+        {/* Category Tabs (Gmail-style) */}
+        {selectedLabel === 'INBOX' && (
+          <div className="flex gap-4 mb-3 border-b border-gray-200 -mx-4 px-4">
+            {['INBOX', 'CATEGORY_PRIMARY', 'CATEGORY_SOCIAL', 'CATEGORY_PROMOTIONS', 'CATEGORY_UPDATES'].map((category) => {
+              const labels = {
+                'INBOX': 'All',
+                'CATEGORY_PRIMARY': 'Primary',
+                'CATEGORY_SOCIAL': 'Social',
+                'CATEGORY_PROMOTIONS': 'Promotions',
+                'CATEGORY_UPDATES': 'Updates'
+              };
+              const isActive = selectedLabel === category;
+              const count = category === 'INBOX'
+                ? emailThreads.length
+                : emailThreads.filter(t => t.latestEmail.labels?.includes(category)).length;
+
+              return (
+                <button
+                  key={category}
+                  onClick={() => setSelectedLabel(category)}
+                  className={`pb-2 px-1 text-sm font-medium border-b-2 transition-colors ${
+                    isActive
+                      ? 'border-blue-600 text-blue-600'
+                      : 'border-transparent text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  {labels[category as keyof typeof labels]}
+                  {count > 0 && (
+                    <span className={`ml-1 ${isActive ? 'text-blue-600' : 'text-gray-400'}`}>
+                      ({count})
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        )}
 
         {/* Toolbar */}
         <div className="flex items-center justify-between">
@@ -563,10 +752,10 @@ export function GmailInbox({ walletAddress, data }: GmailInboxProps) {
             <input
               type="checkbox"
               className="rounded border-gray-300 w-4 h-4"
-              checked={selectedEmails.size > 0 && selectedEmails.size === filteredEmails.length}
+              checked={selectedEmails.size > 0 && selectedEmails.size === filteredThreads.flatMap(t => t.emails).length}
               onChange={(e) => {
                 if (e.target.checked) {
-                  setSelectedEmails(new Set(filteredEmails.map(e => e.id)));
+                  setSelectedEmails(new Set(filteredThreads.flatMap(t => t.emails.map(e => e.id))));
                 } else {
                   setSelectedEmails(new Set());
                 }
@@ -579,6 +768,13 @@ export function GmailInbox({ walletAddress, data }: GmailInboxProps) {
               title="Refresh"
             >
               <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+            </button>
+            <button
+              onClick={() => setShowKeyboardShortcuts(true)}
+              className="p-2 hover:bg-gray-100 rounded-full text-gray-600 hover:text-gray-900 transition-colors"
+              title="Keyboard shortcuts (?)"
+            >
+              <span className="text-sm font-medium">?</span>
             </button>
             {selectedEmails.size > 0 && (
               <>
@@ -611,9 +807,9 @@ export function GmailInbox({ walletAddress, data }: GmailInboxProps) {
           </div>
           <div className="flex items-center gap-1 text-sm text-gray-600">
             <span>
-              {filteredEmails.length === 0
-                ? '0 results'
-                : `${currentPage * EMAILS_PER_PAGE + 1}-${Math.min((currentPage + 1) * EMAILS_PER_PAGE, filteredEmails.length)} of ${filteredEmails.length}`}
+              {filteredThreads.length === 0
+                ? '0 conversations'
+                : `${currentPage * EMAILS_PER_PAGE + 1}-${Math.min((currentPage + 1) * EMAILS_PER_PAGE, filteredThreads.length)} of ${filteredThreads.length}`}
             </span>
             <button
               onClick={() => setCurrentPage(p => Math.max(0, p - 1))}
@@ -659,7 +855,7 @@ export function GmailInbox({ walletAddress, data }: GmailInboxProps) {
             Try Again
           </button>
         </div>
-      ) : paginatedEmails.length === 0 ? (
+      ) : paginatedThreads.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16">
           <div className="p-4 bg-gray-100 rounded-full mb-4">
             {searchQuery ? (
@@ -679,7 +875,13 @@ export function GmailInbox({ walletAddress, data }: GmailInboxProps) {
         </div>
       ) : (
         <div className="divide-y divide-gray-100">
-          {paginatedEmails.map((email) => (
+          {paginatedThreads.map((thread) => {
+            const isExpanded = expandedThreads.has(thread.threadId);
+            const displayEmails = isExpanded ? thread.emails : [thread.latestEmail];
+
+            return (
+              <div key={thread.threadId}>
+                {displayEmails.map((email, index) => (
             <div
               key={email.id}
               className={`
@@ -729,6 +931,11 @@ export function GmailInbox({ walletAddress, data }: GmailInboxProps) {
                 <div className="flex-1 min-w-0 flex items-center gap-2">
                   <span className={`truncate text-sm ${email.unread ? 'font-semibold text-gray-900' : 'text-gray-800'}`}>
                     {email.subject}
+                    {index === 0 && thread.emailCount > 1 && (
+                      <span className="ml-2 text-xs font-medium text-gray-600 bg-gray-100 px-2 py-0.5 rounded">
+                        {thread.emailCount}
+                      </span>
+                    )}
                   </span>
                   <span className="text-gray-400 text-sm">-</span>
                   <span className="text-sm text-gray-500 truncate flex-1">{email.snippet}</span>

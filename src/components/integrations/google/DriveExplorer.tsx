@@ -52,6 +52,7 @@ interface DriveFile {
   owners?: string[];
   webViewLink?: string;
   starred?: boolean;
+  parent_folder_id?: string;
 }
 
 type ViewMode = 'grid' | 'list';
@@ -130,7 +131,10 @@ export function DriveExplorer({ walletAddress, data }: DriveExplorerProps) {
   const [selectedFile, setSelectedFile] = useState<DriveFile | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [showUploadModal, setShowUploadModal] = useState(false);
-  const [currentPath, setCurrentPath] = useState(['My Drive']);
+  const [currentPath, setCurrentPath] = useState<Array<{ name: string; id: string | null }>>([
+    { name: 'My Drive', id: null }
+  ]);
+  const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
   const [files, setFiles] = useState<DriveFile[]>([]);
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -153,18 +157,26 @@ export function DriveExplorer({ walletAddress, data }: DriveExplorerProps) {
     return formatFileSize(String(totalBytes));
   }, [files]);
 
-  // Filter files based on search query and sidebar section
+  // Filter files based on search query, sidebar section, and current folder
   const filteredFiles = useMemo(() => {
     let result = files;
+
+    // Filter by current folder in My Drive section
+    if (sidebarSection === 'my-drive') {
+      result = result.filter(file => {
+        const fileParentId = file.parent_folder_id || null;
+        return fileParentId === currentFolderId;
+      });
+    }
 
     // Filter by sidebar section
     switch (sidebarSection) {
       case 'starred':
-        result = result.filter(file => file.starred);
+        result = files.filter(file => file.starred);
         break;
       case 'recent':
         // Sort by modified time, most recent first
-        result = [...result].sort((a, b) =>
+        result = [...files].sort((a, b) =>
           new Date(b.modifiedTime).getTime() - new Date(a.modifiedTime).getTime()
         );
         break;
@@ -175,11 +187,11 @@ export function DriveExplorer({ walletAddress, data }: DriveExplorerProps) {
         break;
       case 'shared':
         // Filter files that have other owners
-        result = result.filter(file =>
+        result = files.filter(file =>
           file.owners && file.owners.length > 0 && file.owners[0] !== 'me'
         );
         break;
-      // 'my-drive' shows all files
+      // 'my-drive' already filtered by folder above
     }
 
     // Then filter by search query
@@ -192,7 +204,7 @@ export function DriveExplorer({ walletAddress, data }: DriveExplorerProps) {
     }
 
     return result;
-  }, [files, searchQuery, sidebarSection]);
+  }, [files, searchQuery, sidebarSection, currentFolderId]);
 
   // Pagination logic
   const totalPages = Math.ceil(filteredFiles.length / FILES_PER_PAGE);
@@ -237,10 +249,17 @@ export function DriveExplorer({ walletAddress, data }: DriveExplorerProps) {
 
   const handleFileClick = (file: DriveFile) => {
     if (file.mimeType.includes('folder')) {
-      setCurrentPath([...currentPath, file.name]);
+      setCurrentPath([...currentPath, { name: file.name, id: file.id }]);
+      setCurrentFolderId(file.id);
     } else {
       setSelectedFile(file);
     }
+  };
+
+  const handleBreadcrumbClick = (index: number) => {
+    const newPath = currentPath.slice(0, index + 1);
+    setCurrentPath(newPath);
+    setCurrentFolderId(newPath[newPath.length - 1].id);
   };
 
   const handleDownload = async (file: DriveFile) => {
@@ -771,7 +790,8 @@ export function DriveExplorer({ walletAddress, data }: DriveExplorerProps) {
           <button
             onClick={() => {
               setSidebarSection('my-drive');
-              setCurrentPath(['My Drive']);
+              setCurrentPath([{ name: 'My Drive', id: null }]);
+              setCurrentFolderId(null);
             }}
             className={`w-full flex items-center gap-3 px-3 py-2 rounded-full text-sm transition-colors ${
               sidebarSection === 'my-drive'
@@ -785,7 +805,8 @@ export function DriveExplorer({ walletAddress, data }: DriveExplorerProps) {
           <button
             onClick={() => {
               setSidebarSection('shared');
-              setCurrentPath(['Shared with me']);
+              setCurrentPath([{ name: 'Shared with me', id: null }]);
+              setCurrentFolderId(null);
             }}
             className={`w-full flex items-center gap-3 px-3 py-2 rounded-full text-sm transition-colors ${
               sidebarSection === 'shared'
@@ -799,7 +820,8 @@ export function DriveExplorer({ walletAddress, data }: DriveExplorerProps) {
           <button
             onClick={() => {
               setSidebarSection('recent');
-              setCurrentPath(['Recent']);
+              setCurrentPath([{ name: 'Recent', id: null }]);
+              setCurrentFolderId(null);
             }}
             className={`w-full flex items-center gap-3 px-3 py-2 rounded-full text-sm transition-colors ${
               sidebarSection === 'recent'
@@ -813,7 +835,8 @@ export function DriveExplorer({ walletAddress, data }: DriveExplorerProps) {
           <button
             onClick={() => {
               setSidebarSection('starred');
-              setCurrentPath(['Starred']);
+              setCurrentPath([{ name: 'Starred', id: null }]);
+              setCurrentFolderId(null);
             }}
             className={`w-full flex items-center gap-3 px-3 py-2 rounded-full text-sm transition-colors ${
               sidebarSection === 'starred'
@@ -827,7 +850,8 @@ export function DriveExplorer({ walletAddress, data }: DriveExplorerProps) {
           <button
             onClick={() => {
               setSidebarSection('trash');
-              setCurrentPath(['Trash']);
+              setCurrentPath([{ name: 'Trash', id: null }]);
+              setCurrentFolderId(null);
             }}
             className={`w-full flex items-center gap-3 px-3 py-2 rounded-full text-sm transition-colors ${
               sidebarSection === 'trash'
@@ -861,18 +885,18 @@ export function DriveExplorer({ walletAddress, data }: DriveExplorerProps) {
             {/* Section Title / Breadcrumb */}
             <div className="flex items-center gap-2">
               {sidebarSection === 'my-drive' ? (
-                currentPath.map((path, index) => (
+                currentPath.map((pathItem, index) => (
                   <div key={index} className="flex items-center gap-2">
                     {index > 0 && <ChevronRight className="h-4 w-4 text-gray-400" />}
                     <button
-                      onClick={() => setCurrentPath(currentPath.slice(0, index + 1))}
+                      onClick={() => handleBreadcrumbClick(index)}
                       className={`font-medium text-lg ${
                         index === currentPath.length - 1
                           ? 'text-gray-900'
                           : 'text-gray-600 hover:text-gray-900'
                       }`}
                     >
-                      {path}
+                      {pathItem.name}
                     </button>
                   </div>
                 ))

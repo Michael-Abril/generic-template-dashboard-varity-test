@@ -914,6 +914,140 @@ class BusinessRAGService:
             logger.error(f"Error deleting point by CID {cid}: {str(e)}")
             return False
 
+    async def get_context_items(
+        self,
+        business_wallet: str,
+        integration: Optional[str] = None,
+        data_type: Optional[str] = None,
+        limit: int = 100
+    ) -> List[Dict[str, Any]]:
+        """
+        Get all indexed context items from Qdrant for display in Context Picker
+
+        This method scrolls through the business's Qdrant collection to get
+        all indexed items with their metadata for selection in the AI context picker.
+
+        Args:
+            business_wallet: Business wallet address
+            integration: Optional filter by integration
+            data_type: Optional filter by data type
+            limit: Maximum number of items to return
+
+        Returns:
+            List of context items with metadata
+        """
+        collection_name = self._get_collection_name(business_wallet)
+
+        try:
+            # Check if collection exists
+            collections = self.qdrant.get_collections().collections
+            collection_names = [c.name for c in collections]
+
+            if collection_name not in collection_names:
+                logger.info(f"No collection found for {business_wallet[:10]}...")
+                return []
+
+            # Build filter conditions
+            must_conditions = []
+
+            if integration:
+                must_conditions.append(
+                    FieldCondition(
+                        key="integration",
+                        match=MatchValue(value=integration)
+                    )
+                )
+
+            if data_type:
+                must_conditions.append(
+                    FieldCondition(
+                        key="data_type",
+                        match=MatchValue(value=data_type)
+                    )
+                )
+
+            scroll_filter = Filter(must=must_conditions) if must_conditions else None
+
+            # Scroll through collection to get all points
+            results = self.qdrant.scroll(
+                collection_name=collection_name,
+                scroll_filter=scroll_filter,
+                limit=limit,
+                with_payload=True,
+                with_vectors=False  # Don't need vectors, just metadata
+            )
+
+            points = results[0]  # scroll returns (points, next_offset)
+
+            # Format results for context picker
+            context_items = []
+            for point in points:
+                payload = point.payload
+                context_items.append({
+                    "id": payload.get("cid", str(point.id)),
+                    "type": payload.get("integration", "unknown"),
+                    "category": payload.get("data_type", "unknown"),
+                    "title": self._generate_title_from_payload(payload),
+                    "description": payload.get("preview", "")[:100],
+                    "source": "indexed",
+                    "metadata": {
+                        "cid": payload.get("cid"),
+                        "indexed_at": payload.get("indexed_at"),
+                        "record_count": payload.get("record_count", 0)
+                    }
+                })
+
+            logger.info(
+                f"Retrieved {len(context_items)} context items from {collection_name}"
+            )
+
+            return context_items
+
+        except Exception as e:
+            logger.error(f"Failed to get context items for {business_wallet}: {str(e)}")
+            return []
+
+    def _generate_title_from_payload(self, payload: Dict[str, Any]) -> str:
+        """
+        Generate a human-readable title from payload metadata
+
+        Args:
+            payload: Point payload from Qdrant
+
+        Returns:
+            Human-readable title string
+        """
+        integration = payload.get("integration", "unknown")
+        data_type = payload.get("data_type", "unknown")
+        record_count = payload.get("record_count", 0)
+
+        # Try to extract specific titles based on data type
+        if data_type == "drive":
+            return f"Google Drive files ({record_count} items)"
+        elif data_type == "contacts":
+            return f"Google Contacts ({record_count} contacts)"
+        elif data_type == "invoices":
+            return f"QuickBooks Invoices ({record_count} invoices)"
+        elif data_type == "customers":
+            return f"QuickBooks Customers ({record_count} customers)"
+        elif data_type == "expenses":
+            return f"QuickBooks Expenses ({record_count} expenses)"
+        elif data_type == "planning":
+            # For planning items, use the preview if available
+            preview = payload.get("preview", "")
+            if preview:
+                # Try to extract title from JSON preview
+                try:
+                    import json
+                    data = json.loads(preview)
+                    if "title" in data:
+                        return data["title"]
+                except:
+                    pass
+            return f"Planning Item"
+        else:
+            return f"{integration.title()} {data_type.title()} ({record_count} items)"
+
 
 # Create singleton instance for import
 try:

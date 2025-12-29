@@ -119,6 +119,7 @@ export interface DriveFile {
   owners?: string[];
   webViewLink?: string;
   starred?: boolean;
+  parent_folder_id?: string;
 }
 
 export interface DriveData {
