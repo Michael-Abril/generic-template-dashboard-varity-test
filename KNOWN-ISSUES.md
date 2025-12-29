@@ -5,6 +5,27 @@
 
 ## 🟠 INTEGRATION BLOCKERS (Updated December 29, 2025)
 
+### Microsoft 365 OAuth Scope Issue - ⚠️ USER ACTION REQUIRED
+**Discovery:** Integration testing on December 29, 2025
+**Issue:** Users who connected Microsoft 365 before Dec 26, 2025 have OLD OAuth tokens without:
+- `Files.ReadWrite` (needed for OneDrive file operations)
+- `Tasks.ReadWrite` (needed for Tasks API)
+
+**Symptoms:**
+- OneDrive files endpoint returns 404
+- Tasks endpoint returns 401 Unauthorized
+
+**Root Cause:** OAuth scopes were expanded on Dec 26, 2025 but existing tokens retain old scopes.
+
+**Resolution:** Users must **disconnect and reconnect** Microsoft 365:
+1. Go to Settings → Integrations
+2. Click "Disconnect" on Microsoft 365
+3. Click "Connect" to re-authenticate with new scopes
+
+**Note:** This is NOT a code bug - the scopes in `oauth.py` are correct. Users just need to reconnect.
+
+---
+
 ### BUG-QB-001: QuickBooks CRUD Encryption Method (CRITICAL) - ✅ FIXED
 **File:** `backend/app/api/v1/quickbooks_crud.py:614`
 **Issue:** Used `decrypt_for_customer()` which does not exist in EncryptionService
