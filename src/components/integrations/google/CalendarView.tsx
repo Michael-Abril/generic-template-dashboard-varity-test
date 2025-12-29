@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 import { CalendarSkeleton, CalendarEventSkeleton } from '@/components/ui/Skeleton';
 import { EventForm } from './EventForm';
-import type { CalendarData } from '@/types/google';
+import type { CalendarData, CalendarApiEvent } from '@/types/google';
 
 interface CalendarViewProps {
   walletAddress: string;
@@ -92,7 +92,7 @@ export function CalendarView({ walletAddress, data }: CalendarViewProps) {
       const eventsData = result.events || [];
 
       // Parse events from API response
-      const parsedEvents = eventsData.map((event: any) => ({
+      const parsedEvents: CalendarEvent[] = eventsData.map((event: CalendarApiEvent) => ({
         id: event.id || `event-${Math.random().toString(36).substr(2, 9)}`,
         summary: event.summary || '(No Title)',
         description: event.description || '',
@@ -100,7 +100,7 @@ export function CalendarView({ walletAddress, data }: CalendarViewProps) {
         end: event.end || new Date().toISOString(),
         location: event.location || '',
         attendees: event.attendees || [],
-        status: event.status || 'confirmed',
+        status: (event.status as 'confirmed' | 'tentative' | 'cancelled') || 'confirmed',
         colorId: event.colorId
       }));
 
@@ -113,7 +113,7 @@ export function CalendarView({ walletAddress, data }: CalendarViewProps) {
       }
       // Fall back to data prop if API fails
       if (data?.events) {
-        const parsedEvents = data.events.map((event: any) => ({
+        const parsedEvents: CalendarEvent[] = data.events.map((event) => ({
           id: event.id || `event-${Math.random().toString(36).substr(2, 9)}`,
           summary: event.summary || '(No Title)',
           description: event.description || '',
@@ -684,6 +684,20 @@ export function CalendarView({ walletAddress, data }: CalendarViewProps) {
   };
 
   const renderView = () => {
+    if (loading) {
+      return (
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-center">
+            <div className="p-4 bg-blue-50 rounded-full mb-4 mx-auto w-fit">
+              <RefreshCw className="h-8 w-8 text-blue-600 animate-spin" />
+            </div>
+            <p className="text-gray-900 font-medium">Loading your calendar...</p>
+            <p className="text-sm text-gray-500 mt-1">Fetching events from Google Calendar</p>
+          </div>
+        </div>
+      );
+    }
+
     switch (viewMode) {
       case 'day':
         return renderDayView();

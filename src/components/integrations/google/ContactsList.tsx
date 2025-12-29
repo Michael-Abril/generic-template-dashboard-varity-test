@@ -12,12 +12,13 @@ import {
   Edit3,
   Trash2,
   X,
-  User,
   Loader2,
   AlertCircle,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  UserPlus
 } from 'lucide-react';
+import { ContactRowSkeleton } from '@/components/ui/Skeleton';
 import type { Contact, ContactsData } from '@/types/google';
 
 interface ContactsListProps {
@@ -327,13 +328,41 @@ export function ContactsList({ walletAddress, data }: ContactsListProps) {
 
       {/* Contacts List */}
       <div className="flex-1 overflow-y-auto">
-        {filteredContacts.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full text-gray-500">
-            <Users className="h-12 w-12 text-gray-300 mb-4" />
-            <p className="text-lg font-medium">No contacts found</p>
-            <p className="text-sm">
-              {searchQuery ? 'Try a different search term' : 'Click "Add Contact" to create one'}
+        {loading && contacts.length === 0 ? (
+          <div className="divide-y divide-gray-100">
+            {[...Array(8)].map((_, i) => (
+              <ContactRowSkeleton key={i} />
+            ))}
+          </div>
+        ) : filteredContacts.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-full py-12">
+            <div className="p-4 bg-green-50 rounded-full mb-4">
+              {searchQuery ? (
+                <Search className="h-12 w-12 text-gray-400" />
+              ) : (
+                <UserPlus className="h-12 w-12 text-green-500" />
+              )}
+            </div>
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">
+              {searchQuery ? 'No contacts found' : 'No contacts yet'}
+            </h3>
+            <p className="text-gray-600 text-center max-w-sm mb-4">
+              {searchQuery
+                ? `No contacts match "${searchQuery}". Try a different search term.`
+                : 'Add your first contact to get started. Your Google contacts will appear here after syncing.'}
             </p>
+            {!searchQuery && (
+              <button
+                onClick={() => {
+                  resetForm();
+                  setShowCreateModal(true);
+                }}
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                <Plus className="h-4 w-4" />
+                Add Your First Contact
+              </button>
+            )}
           </div>
         ) : (
           <div className="divide-y">

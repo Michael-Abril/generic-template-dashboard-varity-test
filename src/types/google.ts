@@ -7,6 +7,51 @@
 // Gmail Types
 // ============================================================================
 
+/** Email body content structure */
+export interface EmailBody {
+  data?: string;
+  size?: number;
+  attachmentId?: string;
+}
+
+/** Email part structure for multipart messages */
+export interface EmailPart {
+  partId?: string;
+  mimeType?: string;
+  filename?: string;
+  headers?: Array<{ name: string; value: string }>;
+  body?: EmailBody;
+  parts?: EmailPart[];
+}
+
+/** Gmail message payload structure */
+export interface EmailPayload {
+  partId?: string;
+  mimeType?: string;
+  filename?: string;
+  headers?: Array<{ name: string; value: string }>;
+  body?: EmailBody;
+  parts?: EmailPart[];
+}
+
+/** API response structure for Gmail messages */
+export interface GmailApiMessage {
+  id: string;
+  threadId?: string;
+  from?: string;
+  to?: string;
+  subject?: string;
+  snippet?: string;
+  body?: string;
+  bodyHtml?: string;
+  date?: string;
+  starred?: boolean;
+  unread?: boolean;
+  hasAttachment?: boolean;
+  labels?: string[];
+  payload?: EmailPayload;
+}
+
 export interface GmailMessage {
   id: string;
   threadId: string;
@@ -21,19 +66,7 @@ export interface GmailMessage {
   unread?: boolean;
   hasAttachment?: boolean;
   labels?: string[];
-  payload?: {
-    mimeType?: string;
-    body?: {
-      data?: string;
-    };
-    parts?: Array<{
-      mimeType?: string;
-      body?: {
-        data?: string;
-      };
-      parts?: any[];
-    }>;
-  };
+  payload?: EmailPayload;
 }
 
 export interface GmailData {
@@ -43,6 +76,19 @@ export interface GmailData {
 // ============================================================================
 // Calendar Types
 // ============================================================================
+
+/** API response structure for calendar events */
+export interface CalendarApiEvent {
+  id?: string;
+  summary?: string;
+  description?: string;
+  start?: string;
+  end?: string;
+  location?: string;
+  attendees?: string[];
+  status?: string;
+  colorId?: string;
+}
 
 export interface CalendarEvent {
   id: string;

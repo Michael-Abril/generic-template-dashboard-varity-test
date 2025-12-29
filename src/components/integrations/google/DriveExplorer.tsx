@@ -22,7 +22,6 @@ import {
   ChevronRight,
   ChevronLeft,
   Search,
-  Filter,
   Plus,
   X,
   Eye,
@@ -36,6 +35,7 @@ import {
   Clock,
   Cloud
 } from 'lucide-react';
+import { DriveFileSkeleton } from '@/components/ui/Skeleton';
 import type { DriveData } from '@/types/google';
 
 interface DriveExplorerProps {
@@ -960,9 +960,10 @@ export function DriveExplorer({ walletAddress, data }: DriveExplorerProps) {
         {/* Content */}
         <div className="flex-1 overflow-auto">
         {loading ? (
-          <div className="flex flex-col items-center justify-center h-full py-12">
-            <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600 mb-4"></div>
-            <p className="text-gray-700">Loading files...</p>
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4 p-6">
+            {[...Array(12)].map((_, i) => (
+              <DriveFileSkeleton key={i} />
+            ))}
           </div>
         ) : filteredFiles.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full py-12">

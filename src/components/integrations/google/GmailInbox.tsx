@@ -29,7 +29,7 @@ import {
 } from 'lucide-react';
 import { GmailInboxSkeleton, GmailRowSkeleton } from '@/components/ui/Skeleton';
 import { EmailComposer } from './EmailComposer';
-import type { GmailData } from '@/types/google';
+import type { GmailData, EmailPayload, EmailPart, GmailApiMessage } from '@/types/google';
 
 interface GmailInboxProps {
   walletAddress: string;
@@ -50,11 +50,11 @@ interface Email {
   unread?: boolean;
   hasAttachment?: boolean;
   labels?: string[];
-  payload?: any;
+  payload?: EmailPayload;
 }
 
 // Helper to decode base64 email body
-const decodeEmailBody = (payload: any): { text: string; html: string } => {
+const decodeEmailBody = (payload: EmailPayload | EmailPart | undefined): { text: string; html: string } => {
   let text = '';
   let html = '';
 
@@ -223,7 +223,7 @@ export function GmailInbox({ walletAddress, data }: GmailInboxProps) {
       const emailsData = result.emails || [];
 
       // Parse emails from API response
-      const parsedEmails = emailsData.map((msg: any) => {
+      const parsedEmails: Email[] = emailsData.map((msg: GmailApiMessage) => {
         // Decode email body from payload if present
         const { text, html } = decodeEmailBody(msg.payload);
 
@@ -254,7 +254,7 @@ export function GmailInbox({ walletAddress, data }: GmailInboxProps) {
       }
       // Fall back to data prop if API fails
       if (data?.messages) {
-        const parsedEmails = data.messages.map((msg: any) => {
+        const parsedEmails: Email[] = data.messages.map((msg) => {
           const { text, html } = decodeEmailBody(msg.payload);
           return {
             id: msg.id || `email-${Math.random().toString(36).substr(2, 9)}`,
