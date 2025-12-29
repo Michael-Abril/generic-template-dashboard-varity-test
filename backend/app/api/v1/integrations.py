@@ -646,7 +646,7 @@ async def get_tool_data(
     wallet_address: str = Query(..., description="User's wallet address"),
     data_type: Optional[str] = Query(None, description="Specific data type (e.g., 'invoices')"),
     limit: int = Query(1000, description="Maximum results to return (max 1000, Pinata limit)"),
-    latest_only: bool = Query(True, description="Only return most recent data per type (faster)")
+    latest_only: bool = Query(False, description="Return all data per type (set True for faster but incomplete loading)")
 ):
     """
     Retrieve tool data from Filecoin
@@ -661,7 +661,7 @@ async def get_tool_data(
         wallet_address: User's wallet address
         data_type: Optional filter for specific data type
         limit: Maximum number of results
-        latest_only: If True, only returns most recent file per data_type (default, much faster)
+        latest_only: If True, only returns most recent file per data_type (faster but incomplete)
 
     Returns:
         Tool data (decrypted)

@@ -2381,8 +2381,8 @@ export default function IntegrationToolPage() {
       const now = new Date();
       const cacheAgeMinutes = (now.getTime() - cachedAt.getTime()) / (1000 * 60);
 
-      // Cache valid for 60 minutes
-      if (cacheAgeMinutes < 60 && cacheData.data?.length > 0) {
+      // Cache valid for 15 minutes - Fix Dec 29, 2025 (data staleness)
+      if (cacheAgeMinutes < 15 && cacheData.data?.length > 0) {
         return cacheData;
       }
       return null;

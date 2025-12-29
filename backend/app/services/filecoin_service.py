@@ -464,6 +464,10 @@ class FilecoinService:
                     f"integration={integration}. This may indicate a sync issue."
                 )
 
+            # Sort files by timestamp descending (newest first) - Fix Dec 29, 2025
+            # This ensures that when latest_only groups by data_type, the newest file wins
+            files = sorted(files, key=lambda f: f.get('timestamp', ''), reverse=True)
+
             return files
 
         except httpx.HTTPStatusError as e:
