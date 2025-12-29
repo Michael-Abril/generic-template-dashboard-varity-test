@@ -432,6 +432,7 @@ class GoogleWorkspaceSync:
                 # Transform files
                 files = []
                 for file in all_files_raw:
+                    parents = file.get("parents", [])
                     files.append({
                         "id": file["id"],
                         "name": file.get("name", ""),
@@ -443,7 +444,8 @@ class GoogleWorkspaceSync:
                         "owners": [o.get("emailAddress") for o in file.get("owners", [])],
                         "starred": file.get("starred", False),
                         "shared": file.get("shared", False),
-                        "parents": file.get("parents", []),
+                        "parents": parents,
+                        "parent_folder_id": parents[0] if parents else None,  # First parent is direct parent
                         "iconLink": file.get("iconLink", ""),
                         "thumbnailLink": file.get("thumbnailLink", "")
                     })

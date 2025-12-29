@@ -349,17 +349,22 @@ async def get_google_access_token(wallet_address: str, db: AsyncSession) -> str:
         )
 
     # Check if token needs refresh (expires_at is already DateTime, not string)
-    # Use timezone-aware datetime for comparison
+    # Handle both naive and timezone-aware datetimes to avoid comparison errors
     now = datetime.now(timezone.utc)
-    if token.expires_at and token.expires_at < now:
-        logger.info(f"Google token expired for {normalized_wallet[:10]}..., attempting refresh")
-        refresh_success = await refresh_oauth_token(token, "google", db)
-        if not refresh_success:
-            raise HTTPException(
-                status_code=401,
-                detail="Access token expired and refresh failed. Please reconnect Google Workspace."
-            )
-        logger.info(f"Google token refreshed successfully for {normalized_wallet[:10]}...")
+    if token.expires_at:
+        # Make comparison safe: if token.expires_at is naive, assume it's UTC
+        expires_at_aware = token.expires_at
+        if token.expires_at.tzinfo is None:
+            expires_at_aware = token.expires_at.replace(tzinfo=timezone.utc)
+        if expires_at_aware < now:
+            logger.info(f"Google token expired for {normalized_wallet[:10]}..., attempting refresh")
+            refresh_success = await refresh_oauth_token(token, "google", db)
+            if not refresh_success:
+                raise HTTPException(
+                    status_code=401,
+                    detail="Access token expired and refresh failed. Please reconnect Google Workspace."
+                )
+            logger.info(f"Google token refreshed successfully for {normalized_wallet[:10]}...")
 
     # YELLOW-001 FIX: Use auth context to access tokens securely
     with OAuthToken.auth_context(normalized_wallet):
