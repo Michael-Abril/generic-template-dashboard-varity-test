@@ -83,6 +83,19 @@ class TicketCreate(BaseModel):
     hubspot_owner_id: Optional[str] = None
 
 
+class EmailCreate(BaseModel):
+    """Email engagement creation request - Added Dec 28, 2025 to complete RAG coverage"""
+    subject: str
+    body_html: Optional[str] = None
+    body_text: Optional[str] = None
+    from_email: Optional[str] = None
+    to_email: str
+    cc: Optional[List[str]] = None
+    bcc: Optional[List[str]] = None
+    association_type: Optional[str] = "contact"  # contact, company, or deal
+    association_id: Optional[str] = None
+
+
 # Helper function to get HubSpot access token from Database OAuthToken
 # FIXED Dec 28, 2025: Uses Database OAuthToken model (same pattern as google.py, salesforce_crud.py)
 # Previously used Filecoin with data_type="oauth-credentials" which was inconsistent
@@ -496,4 +509,177 @@ async def delete_ticket(
         raise
     except Exception as e:
         logger.error(f"Failed to delete ticket for {wallet_address[:10]}...")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================================
+# EMAIL CRUD ENDPOINTS - Added Dec 28, 2025 to complete RAG coverage
+# RAG stores emails, these endpoints provide real-time CRUD operations
+# HubSpot uses "engagements" API for emails
+# ============================================================================
+
+@router.post("/emails")
+async def create_email(
+    wallet_address: str = Query(...),
+    email: EmailCreate = Body(...),
+    db: AsyncSession = Depends(get_db)
+):
+    """Create an email engagement in HubSpot"""
+    try:
+        access_token = await get_hubspot_access_token(wallet_address, db)
+
+        # Build email engagement data for HubSpot API
+        engagement_data = {
+            "engagement": {
+                "active": True,
+                "type": "EMAIL"
+            },
+            "metadata": {
+                "subject": email.subject,
+                "from": {"email": email.from_email} if email.from_email else None,
+                "to": [{"email": email.to_email}]
+            }
+        }
+
+        # Add body content
+        if email.body_html:
+            engagement_data["metadata"]["html"] = email.body_html
+        if email.body_text:
+            engagement_data["metadata"]["text"] = email.body_text
+
+        # Add CC/BCC if provided
+        if email.cc:
+            engagement_data["metadata"]["cc"] = [{"email": e} for e in email.cc]
+        if email.bcc:
+            engagement_data["metadata"]["bcc"] = [{"email": e} for e in email.bcc]
+
+        # Add associations if provided
+        if email.association_id:
+            association_key = f"{email.association_type}Ids" if email.association_type else "contactIds"
+            engagement_data["associations"] = {
+                association_key: [int(email.association_id)] if email.association_id.isdigit() else []
+            }
+
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                "https://api.hubapi.com/engagements/v1/engagements",
+                headers={
+                    "Authorization": f"Bearer {access_token}",
+                    "Content-Type": "application/json"
+                },
+                json=engagement_data,
+                timeout=30.0
+            )
+
+            if response.status_code == 200:
+                result = response.json()
+                logger.info(f"Email created for {wallet_address[:10]}...: id={result.get('engagement', {}).get('id')}")
+                return {
+                    "success": True,
+                    "id": str(result.get("engagement", {}).get("id")),
+                    "message": "Email engagement created successfully"
+                }
+            else:
+                logger.error(f"HubSpot API error: {response.text}")
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail=f"HubSpot API error: {response.text[:200]}"
+                )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to create email for {wallet_address[:10]}...")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.patch("/emails/{email_id}")
+async def update_email(
+    email_id: str,
+    wallet_address: str = Query(...),
+    subject: Optional[str] = Body(None),
+    body_html: Optional[str] = Body(None),
+    body_text: Optional[str] = Body(None),
+    db: AsyncSession = Depends(get_db)
+):
+    """Update an email engagement in HubSpot"""
+    try:
+        access_token = await get_hubspot_access_token(wallet_address, db)
+
+        update_data = {"metadata": {}}
+        if subject is not None:
+            update_data["metadata"]["subject"] = subject
+        if body_html is not None:
+            update_data["metadata"]["html"] = body_html
+        if body_text is not None:
+            update_data["metadata"]["text"] = body_text
+
+        if not update_data["metadata"]:
+            raise HTTPException(status_code=400, detail="No fields to update")
+
+        async with httpx.AsyncClient() as client:
+            response = await client.patch(
+                f"https://api.hubapi.com/engagements/v1/engagements/{email_id}",
+                headers={
+                    "Authorization": f"Bearer {access_token}",
+                    "Content-Type": "application/json"
+                },
+                json=update_data,
+                timeout=30.0
+            )
+
+            if response.status_code == 200:
+                logger.info(f"Email updated for {wallet_address[:10]}...: id={email_id}")
+                return {
+                    "success": True,
+                    "message": "Email engagement updated successfully"
+                }
+            else:
+                logger.error(f"HubSpot API error: {response.text}")
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail=f"HubSpot API error: {response.text[:200]}"
+                )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to update email for {wallet_address[:10]}...")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/emails/{email_id}")
+async def delete_email(
+    email_id: str,
+    wallet_address: str = Query(...),
+    db: AsyncSession = Depends(get_db)
+):
+    """Delete an email engagement from HubSpot"""
+    try:
+        access_token = await get_hubspot_access_token(wallet_address, db)
+
+        async with httpx.AsyncClient() as client:
+            response = await client.delete(
+                f"https://api.hubapi.com/engagements/v1/engagements/{email_id}",
+                headers={"Authorization": f"Bearer {access_token}"},
+                timeout=30.0
+            )
+
+            if response.status_code == 204:
+                logger.info(f"Email deleted for {wallet_address[:10]}...: id={email_id}")
+                return {
+                    "success": True,
+                    "message": "Email engagement deleted successfully"
+                }
+            else:
+                logger.error(f"HubSpot API error: {response.text}")
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail=f"HubSpot API error: {response.text[:200]}"
+                )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to delete email for {wallet_address[:10]}...")
         raise HTTPException(status_code=500, detail=str(e))

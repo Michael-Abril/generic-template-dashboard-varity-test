@@ -611,9 +611,9 @@ async def _get_synced_data(
 
         # Retrieve and decrypt the data
         encrypted_data = await filecoin_service.retrieve_data(cid)
-        decrypted_data = await encryption_service.decrypt_for_customer(
+        decrypted_data = await encryption_service.decrypt_file_with_wallet(
             encrypted_data=encrypted_data,
-            customer_wallet=wallet_address
+            wallet_address=wallet_address
         )
 
         # Extract records

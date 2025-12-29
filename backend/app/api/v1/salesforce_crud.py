@@ -175,6 +175,17 @@ class CaseCreate(BaseModel):
     reason: Optional[str] = None
 
 
+class TaskCreate(BaseModel):
+    """Task creation request - Added Dec 28, 2025 to complete RAG coverage"""
+    subject: str
+    status: str = "Not Started"
+    priority: str = "Normal"
+    description: Optional[str] = None
+    activity_date: Optional[str] = None  # Due date in YYYY-MM-DD format
+    who_id: Optional[str] = None  # Related contact/lead ID
+    what_id: Optional[str] = None  # Related account/opportunity ID
+
+
 # Helper function to get Salesforce access token and provider data
 # FIXED Dec 28, 2025: Uses Database OAuthToken model (same pattern as google.py)
 # Previously used Filecoin with wrong data_type="oauth_token" causing 100% failure
@@ -1029,4 +1040,164 @@ async def convert_lead(
         raise
     except Exception as e:
         logger.error(f"Failed to convert lead: {e}")
+        raise HTTPException(status_code=500, detail=sanitize_error_message(e))
+
+
+# ============================================================================
+# TASK CRUD ENDPOINTS - Added Dec 28, 2025 to complete RAG coverage
+# RAG stores tasks, these endpoints provide real-time CRUD operations
+# ============================================================================
+
+@router.post("/tasks")
+async def create_task(
+    task: TaskCreate,
+    wallet_address: str = Query(...),
+    db: AsyncSession = Depends(get_db)
+):
+    """Create a new task in Salesforce"""
+    try:
+        access_token, provider_data = await get_salesforce_access_token(wallet_address, db)
+        instance_url = validate_instance_url(provider_data.get("instance_url"), "Salesforce")
+
+        # Build task data
+        task_data = {
+            "Subject": task.subject,
+            "Status": task.status,
+            "Priority": task.priority
+        }
+
+        if task.description:
+            task_data["Description"] = task.description
+        if task.activity_date:
+            task_data["ActivityDate"] = task.activity_date
+        if task.who_id:
+            validate_salesforce_id(task.who_id, "WhoId")
+            task_data["WhoId"] = task.who_id
+        if task.what_id:
+            validate_salesforce_id(task.what_id, "WhatId")
+            task_data["WhatId"] = task.what_id
+
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"{instance_url}/services/data/v58.0/sobjects/Task",
+                headers={
+                    "Authorization": f"Bearer {access_token}",
+                    "Content-Type": "application/json"
+                },
+                json=task_data,
+                timeout=HTTP_TIMEOUT
+            )
+
+            if response.status_code == 201:
+                result = response.json()
+                return {
+                    "success": True,
+                    "id": result.get("id"),
+                    "message": "Task created successfully"
+                }
+            else:
+                logger.error(f"Salesforce API error: {response.text}")
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail=f"Salesforce API error: {sanitize_salesforce_error(response.text)}"
+                )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to create task: {e}")
+        raise HTTPException(status_code=500, detail=sanitize_error_message(e))
+
+
+@router.patch("/tasks/{task_id}")
+async def update_task(
+    task_id: str,
+    wallet_address: str = Query(...),
+    subject: Optional[str] = Body(None),
+    status: Optional[str] = Body(None),
+    priority: Optional[str] = Body(None),
+    description: Optional[str] = Body(None),
+    activity_date: Optional[str] = Body(None),
+    db: AsyncSession = Depends(get_db)
+):
+    """Update an existing task in Salesforce"""
+    try:
+        validate_salesforce_id(task_id, "task_id")
+        access_token, provider_data = await get_salesforce_access_token(wallet_address, db)
+        instance_url = validate_instance_url(provider_data.get("instance_url"), "Salesforce")
+
+        update_data = {}
+        if subject is not None:
+            update_data["Subject"] = subject
+        if status is not None:
+            update_data["Status"] = status
+        if priority is not None:
+            update_data["Priority"] = priority
+        if description is not None:
+            update_data["Description"] = description
+        if activity_date is not None:
+            update_data["ActivityDate"] = activity_date
+
+        if not update_data:
+            raise HTTPException(status_code=400, detail="No fields to update")
+
+        async with httpx.AsyncClient() as client:
+            response = await client.patch(
+                f"{instance_url}/services/data/v58.0/sobjects/Task/{task_id}",
+                headers={
+                    "Authorization": f"Bearer {access_token}",
+                    "Content-Type": "application/json"
+                },
+                json=update_data,
+                timeout=HTTP_TIMEOUT
+            )
+
+            if response.status_code == 204:
+                return {"success": True, "message": "Task updated successfully"}
+            else:
+                logger.error(f"Salesforce API error: {response.text}")
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail=f"Salesforce API error: {sanitize_salesforce_error(response.text)}"
+                )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to update task: {e}")
+        raise HTTPException(status_code=500, detail=sanitize_error_message(e))
+
+
+@router.delete("/tasks/{task_id}")
+async def delete_task(
+    task_id: str,
+    wallet_address: str = Query(...),
+    db: AsyncSession = Depends(get_db)
+):
+    """Delete a task from Salesforce"""
+    try:
+        validate_salesforce_id(task_id, "task_id")
+        access_token, provider_data = await get_salesforce_access_token(wallet_address, db)
+        instance_url = validate_instance_url(provider_data.get("instance_url"), "Salesforce")
+
+        async with httpx.AsyncClient() as client:
+            response = await client.delete(
+                f"{instance_url}/services/data/v58.0/sobjects/Task/{task_id}",
+                headers={"Authorization": f"Bearer {access_token}"},
+                timeout=HTTP_TIMEOUT
+            )
+
+            if response.status_code == 204:
+                return {"success": True, "message": "Task deleted successfully"}
+            else:
+                logger.error(f"Salesforce API error: {response.text}")
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail=f"Salesforce API error: {sanitize_salesforce_error(response.text)}"
+                )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to delete task: {e}")
         raise HTTPException(status_code=500, detail=sanitize_error_message(e))

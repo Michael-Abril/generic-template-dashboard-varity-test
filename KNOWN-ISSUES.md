@@ -1,25 +1,41 @@
 # KNOWN ISSUES - Varity Dashboard
-**Last Updated:** December 28, 2025 (All YELLOW Security Vulnerabilities Fixed)
+**Last Updated:** December 29, 2025 (QuickBooks CRUD Fixed)
 
 ---
 
-## 🔴 ACTIVE ISSUES (December 28, 2025)
+## 🟠 INTEGRATION BLOCKERS (Updated December 29, 2025)
 
-### Dashboard Page Crash - INVESTIGATING
-**File:** `src/components/pages/DashboardContent.tsx`
-**Issue:** Dashboard page (`/dashboard`) shows "Something Went Wrong" error page
-**Observed:** Other pages (marketplace, ai-assistant, settings, analytics, integrations) work correctly
-**Possible Causes:**
-1. Runtime error in API response handling
-2. Data-specific issue with user's synced data
-3. Recharts rendering with unexpected data
-**Investigation Steps Taken:**
-- Build passes (`npm run build` succeeds)
-- Code review found no obvious issues
-- Added null-safe access for walletSync context
-**Status:** NEEDS SERVER LOGS - Requires browser console or backend error logs to diagnose
-**Workaround:** Users can access other pages directly (not from dashboard)
-**Priority:** HIGH - Dashboard is the main entry point
+### BUG-QB-001: QuickBooks CRUD Encryption Method (CRITICAL) - ✅ FIXED
+**File:** `backend/app/api/v1/quickbooks_crud.py:614`
+**Issue:** Used `decrypt_for_customer()` which does not exist in EncryptionService
+**Error:** `'EncryptionService' object has no attribute 'decrypt_for_customer'`
+**Impact:** All QuickBooks CRUD endpoints (invoices, expenses, customers, vendors) returned 500 errors
+**Fix Applied:** Changed to `decrypt_file_with_wallet(encrypted_data, wallet_address)`
+**Status:** ✅ RESOLVED - Bug Terminator Agent, December 29, 2025 (awaiting Railway deployment)
+**Test Command:**
+```bash
+curl "https://generic-template-dashboard-production.up.railway.app/api/v1/quickbooks/invoices?wallet_address=0x738C812FB221ba32E8726fe38961570a700e87b9"
+```
+
+---
+
+## ✅ RESOLVED ISSUES (December 28, 2025)
+
+### Dashboard Page Crash - ✅ FIXED
+**File:** `src/components/pages/DashboardContent.tsx`, `src/app/providers.tsx`, and 7 other files
+**Issue:** Dashboard page (`/dashboard`) was showing "Something Went Wrong" error page
+**Root Cause:** Unsafe `wallets[0]` array access when `wallets` array was undefined
+**Fix Applied:** Changed all 9 instances of `wallets[0]` to `wallets?.[0]` with optional chaining
+**Files Fixed:**
+- `src/hooks/useWalletAuth.ts` (2 instances)
+- `src/components/AIChat.tsx`
+- `src/app/page.tsx`
+- `src/app/settings/page.tsx`
+- `src/components/IntegrationDataDisplay.tsx`
+- `src/components/onboarding/OnboardingWizard.tsx`
+- `src/components/pages/MarketplaceContent.tsx`
+**Status:** ✅ RESOLVED - Dashboard now loads with real data (QuickBooks $5 revenue, Google 50 emails)
+**Verified:** Browser MCP test at 7:30 PM PT showed dashboard working correctly
 
 ---
 
