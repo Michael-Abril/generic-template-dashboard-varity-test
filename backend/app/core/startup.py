@@ -22,19 +22,23 @@ logger = logging.getLogger(__name__)
 
 async def init_database() -> bool:
     """
-    Initialize database:
-    1. Create all tables if not exist
-    2. Verify database connectivity
+    Initialize database connection and verify connectivity.
+
+    NOTE: Table creation is handled by Alembic migrations in start.sh.
+    DO NOT use Base.metadata.create_all() here - it bypasses migrations
+    and creates incomplete schemas.
 
     Returns:
-        bool: True if successful, False otherwise
+        bool: True if database is accessible, False otherwise
     """
     import traceback
+    from sqlalchemy import text
+
     try:
-        logger.info("Initializing database...")
+        logger.info("Initializing database connection...")
 
         # Log DATABASE_URL (masked) for debugging
-        from app.core.database import DATABASE_URL, engine, Base
+        from app.core.database import DATABASE_URL, engine
         if DATABASE_URL:
             # Mask password in URL for logging
             masked_url = DATABASE_URL[:50] + "..." if len(DATABASE_URL) > 50 else DATABASE_URL
@@ -43,22 +47,27 @@ async def init_database() -> bool:
             logger.error("DATABASE_URL is not set!")
             return False
 
-        # Import all models to register them with Base before creating tables
-        from app.models.marketplace import Product, Category, PricingPlan  # noqa: F401
-        from app.models.purchase import Purchase, Subscription  # noqa: F401
-        from app.models.user_settings import UserSettings, APIKey  # noqa: F401
-        from app.models.conversation import Conversation, Message  # noqa: F401
-
-        # Create all tables
-        logger.info("Attempting to connect to database and create tables...")
+        # Verify database connectivity (DO NOT create tables - Alembic handles that)
+        logger.info("Verifying database connection...")
         async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
+            await conn.execute(text("SELECT 1"))
 
-        logger.info("✅ Database tables created successfully")
+            # Check alembic_version to verify migrations ran
+            try:
+                result = await conn.execute(text("SELECT version_num FROM alembic_version LIMIT 1"))
+                version = result.scalar()
+                if version:
+                    logger.info(f"✅ Database at migration version: {version}")
+                else:
+                    logger.warning("⚠️  No alembic_version found - migrations may not have run")
+            except Exception:
+                logger.warning("⚠️  Could not check alembic_version - migrations may be pending")
+
+        logger.info("✅ Database connection verified successfully")
         return True
     except Exception as e:
         # Log FULL exception details for debugging
-        logger.error(f"❌ Database initialization failed: {type(e).__name__}: {e}")
+        logger.error(f"❌ Database connection failed: {type(e).__name__}: {e}")
         logger.error(f"Full traceback:\n{traceback.format_exc()}")
         return False
 
