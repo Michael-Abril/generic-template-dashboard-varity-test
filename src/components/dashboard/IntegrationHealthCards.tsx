@@ -66,33 +66,58 @@ export function IntegrationHealthCards({ walletAddress, className = '' }: Integr
 
     try {
       const apiBase = process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
-      const response = await fetch(`${apiBase}/api/v1/integrations/status?wallet_address=${walletAddress}`);
 
-      if (!response.ok) {
-        throw new Error(`Failed to fetch integration status: ${response.status}`);
+      // Try the status endpoint first
+      let response = await fetch(`${apiBase}/api/v1/integrations/status?wallet_address=${walletAddress}`);
+      let data = response.ok ? await response.json() : null;
+
+      // If status endpoint returns empty or fails, try OAuth tokens endpoint as fallback
+      if (!data || !data.integrations || data.integrations.length === 0) {
+        const tokensResponse = await fetch(`${apiBase}/api/v1/oauth/tokens?wallet_address=${walletAddress}`);
+        if (tokensResponse.ok) {
+          const tokensData = await tokensResponse.json();
+          // Transform OAuth tokens to integration format
+          if (tokensData.tokens && Array.isArray(tokensData.tokens)) {
+            const transformedFromTokens: Integration[] = tokensData.tokens.map((token: {
+              provider: string;
+              created_at?: string;
+              updated_at?: string;
+              is_valid?: boolean;
+            }) => ({
+              id: token.provider,
+              name: INTEGRATION_NAMES[token.provider] || token.provider,
+              provider: token.provider,
+              status: token.is_valid !== false ? 'connected' : 'error',
+              lastSyncTime: token.updated_at || token.created_at,
+              icon: INTEGRATION_ICONS[token.provider] || '',
+            }));
+            setIntegrations(transformedFromTokens);
+            return;
+          }
+        }
       }
 
-      const data = await response.json();
+      // Transform backend response to frontend format from status endpoint
+      if (data && data.integrations) {
+        const transformedIntegrations: Integration[] = (data.integrations || []).map((int: {
+          provider: string;
+          status: string;
+          last_sync?: string;
+          sync_status?: string;
+          data_count?: number;
+        }) => ({
+          id: int.provider,
+          name: INTEGRATION_NAMES[int.provider] || int.provider,
+          provider: int.provider,
+          status: mapStatus(int.status),
+          lastSyncTime: int.last_sync,
+          lastSyncStatus: int.sync_status as 'success' | 'partial' | 'failed' | undefined,
+          dataCount: int.data_count,
+          icon: INTEGRATION_ICONS[int.provider] || '',
+        }));
 
-      // Transform backend response to frontend format
-      const transformedIntegrations: Integration[] = (data.integrations || []).map((int: {
-        provider: string;
-        status: string;
-        last_sync?: string;
-        sync_status?: string;
-        data_count?: number;
-      }) => ({
-        id: int.provider,
-        name: INTEGRATION_NAMES[int.provider] || int.provider,
-        provider: int.provider,
-        status: mapStatus(int.status),
-        lastSyncTime: int.last_sync,
-        lastSyncStatus: int.sync_status as 'success' | 'partial' | 'failed' | undefined,
-        dataCount: int.data_count,
-        icon: INTEGRATION_ICONS[int.provider] || '',
-      }));
-
-      setIntegrations(transformedIntegrations);
+        setIntegrations(transformedIntegrations);
+      }
     } catch (err) {
       logger.error('Error fetching integration status:', err);
       setError('Unable to load integration status');

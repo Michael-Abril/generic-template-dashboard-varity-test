@@ -9,34 +9,69 @@ import { useWalletSync } from '@/hooks/useWalletSync';
 import { logger } from '@/lib/logger';
 import {
   getKPIs,
-  getRevenueTrend,
   getRecentActivity,
   KPIResponse,
-  RevenueTrendResponse,
   RecentActivityResponse,
 } from '@/services/dashboardService';
 import {
   Plug,
   AlertTriangle,
-  BarChart3,
   ClipboardList,
   ArrowRight,
   RefreshCw,
   Clock,
 } from 'lucide-react';
 import { FeedbackNotification } from '@/components/feedback';
-import { TasksWidget, RoadmapWidget } from '@/components/planning';
-import { AIInsightWidget, IntegrationHealthCards, EnhancedKPICard } from '@/components/dashboard';
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  Cell,
-} from 'recharts';
+import { TasksWidget } from '@/components/planning';
+import { AIInsightWidget, IntegrationHealthCards, EnhancedKPICard, DashboardQuickActions } from '@/components/dashboard';
+
+// Default KPIs matching requirements: Revenue MTD, Cash Flow, Open Tasks, Unread Emails
+const getDefaultKPIs = () => [
+  {
+    id: 'revenue-mtd',
+    title: 'Revenue MTD',
+    value: '$0',
+    change: { value: 0, period: 'vs last month' },
+    icon: '💰',
+    source: 'QuickBooks',
+    trend: 'neutral' as const,
+    color: 'green' as const,
+    helpText: 'Monthly revenue from QuickBooks',
+  },
+  {
+    id: 'cash-flow',
+    title: 'Cash Flow',
+    value: '$0',
+    change: { value: 0, period: 'vs last month' },
+    icon: '📊',
+    source: 'QuickBooks',
+    trend: 'neutral' as const,
+    color: 'blue' as const,
+    helpText: 'Net cash flow from QuickBooks',
+  },
+  {
+    id: 'open-tasks',
+    title: 'Open Tasks',
+    value: '0',
+    change: { value: 0, period: '0 overdue' },
+    icon: '✅',
+    source: 'Varity Tasks',
+    trend: 'neutral' as const,
+    color: 'purple' as const,
+    helpText: 'Active tasks from your task list',
+  },
+  {
+    id: 'unread-emails',
+    title: 'Unread Emails',
+    value: '0',
+    change: { value: 0, period: '0 urgent' },
+    icon: '📧',
+    source: 'Gmail',
+    trend: 'neutral' as const,
+    color: 'orange' as const,
+    helpText: 'Unread emails from Gmail',
+  },
+];
 
 export default function DashboardContent() {
   const { authenticated, ready } = usePrivy();
@@ -46,7 +81,6 @@ export default function DashboardContent() {
 
   // State management for dashboard data
   const [kpisData, setKpisData] = useState<KPIResponse | null>(null);
-  const [revenueTrendData, setRevenueTrendData] = useState<RevenueTrendResponse | null>(null);
   const [recentActivityData, setRecentActivityData] = useState<RecentActivityResponse | null>(null);
 
   // User settings for feedback notifications
@@ -58,14 +92,12 @@ export default function DashboardContent() {
 
   // Loading states
   const [isLoadingKPIs, setIsLoadingKPIs] = useState(true);
-  const [isLoadingRevenue, setIsLoadingRevenue] = useState(true);
   const [isLoadingActivity, setIsLoadingActivity] = useState(true);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   // Error states
   const [kpisError, setKpisError] = useState<string | null>(null);
-  const [revenueError, setRevenueError] = useState<string | null>(null);
   const [activityError, setActivityError] = useState<string | null>(null);
 
   // Check if any integration is connected (has data) - use has_data from backend
@@ -89,7 +121,6 @@ export default function DashboardContent() {
 
   const fetchDashboardData = async () => {
     fetchKPIs();
-    fetchRevenueTrend();
     fetchRecentActivity();
     fetchUserSettings();
   };
@@ -107,21 +138,6 @@ export default function DashboardContent() {
       setKpisError('Unable to load KPIs. Please try again.');
     } finally {
       setIsLoadingKPIs(false);
-    }
-  };
-
-  const fetchRevenueTrend = async () => {
-    if (!address) return;
-    setIsLoadingRevenue(true);
-    setRevenueError(null);
-    try {
-      const data = await getRevenueTrend(address);
-      setRevenueTrendData(data);
-    } catch (error) {
-      logger.error('Error fetching revenue trend:', error);
-      setRevenueError('Unable to load revenue trend.');
-    } finally {
-      setIsLoadingRevenue(false);
     }
   };
 
@@ -172,6 +188,14 @@ export default function DashboardContent() {
     return lastUpdated.toLocaleTimeString();
   };
 
+  // Get time-based greeting
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) return 'Good morning';
+    if (hour < 17) return 'Good afternoon';
+    return 'Good evening';
+  };
+
   // Loading state while checking authentication
   if (!ready || !authenticated) {
     return (
@@ -220,12 +244,15 @@ export default function DashboardContent() {
     <Layout>
       <div className="min-h-screen bg-gray-50">
         <div className="px-4 sm:px-6 py-6 max-w-7xl mx-auto">
-          {/* Header with Global Sync Status */}
+          {/* Header with Personalized Greeting */}
           <div className="flex items-center justify-between mb-6">
             <div>
               <h1 className="text-2xl font-bold text-gray-900">
-                Business Overview
+                {getGreeting()}, {userSettings?.companyName ? userSettings.companyName.split(' ')[0] : 'there'}
               </h1>
+              <p className="text-sm text-gray-600 mt-0.5">
+                Here&apos;s your business at a glance
+              </p>
               <div className="flex items-center gap-4 mt-1">
                 {lastUpdated && (
                   <p className="text-sm text-gray-500 flex items-center gap-1">
@@ -261,42 +288,69 @@ export default function DashboardContent() {
             />
           )}
 
-          {/* KPI Cards Row with Enhanced Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-            {isLoadingKPIs ? (
-              <>
-                {[1, 2, 3, 4].map((i) => (
-                  <div key={i} className="bg-white border border-gray-200 rounded-xl p-5 animate-pulse">
-                    <div className="flex items-center gap-2 mb-3">
-                      <div className="w-10 h-10 bg-gray-200 rounded-lg" />
-                      <div>
-                        <div className="h-4 bg-gray-200 rounded w-20 mb-1" />
-                        <div className="h-2 bg-gray-200 rounded w-12" />
+          {/* Quick Actions Bar */}
+          {address && (
+            <DashboardQuickActions
+              walletAddress={address}
+              className="mb-6"
+            />
+          )}
+
+          {/* KPI Cards Row - Single row of 4 cards matching requirements */}
+          <div className="mb-6 overflow-x-auto pb-2 -mx-4 px-4 sm:mx-0 sm:px-0">
+            <div className="grid grid-cols-4 gap-4 min-w-[800px] sm:min-w-0">
+              {isLoadingKPIs ? (
+                <>
+                  {[1, 2, 3, 4].map((i) => (
+                    <div key={i} className="bg-white border border-gray-200 rounded-xl p-5 animate-pulse">
+                      <div className="flex items-center gap-2 mb-3">
+                        <div className="w-10 h-10 bg-gray-200 rounded-lg" />
+                        <div>
+                          <div className="h-4 bg-gray-200 rounded w-20 mb-1" />
+                          <div className="h-2 bg-gray-200 rounded w-12" />
+                        </div>
                       </div>
+                      <div className="h-8 bg-gray-200 rounded w-24 mb-3" />
+                      <div className="h-4 bg-gray-200 rounded w-16 mb-3" />
+                      <div className="h-9 bg-gray-200 rounded w-full" />
                     </div>
-                    <div className="h-8 bg-gray-200 rounded w-24 mb-3" />
-                    <div className="h-4 bg-gray-200 rounded w-16 mb-3" />
-                    <div className="h-9 bg-gray-200 rounded w-full" />
-                  </div>
-                ))}
-              </>
-            ) : kpisData && kpisData.kpis && kpisData.kpis.length > 0 ? (
-              kpisData.kpis.map((kpi, index) => (
-                <Link key={index} href="/analytics" className="block">
-                  <EnhancedKPICard
-                    title={kpi.title}
-                    value={kpi.value}
-                    change={kpi.change}
-                    icon={kpi.icon}
-                    source={kpi.source}
-                    trend={kpi.trend as 'up' | 'down' | 'neutral'}
-                    color={kpi.color as 'blue' | 'green' | 'orange' | 'purple' | 'red'}
-                    lastSynced={kpisData.last_updated}
-                    helpText={`Data from ${kpi.source || 'connected integrations'}`}
-                  />
-                </Link>
-              ))
-            ) : null}
+                  ))}
+                </>
+              ) : kpisData && kpisData.kpis && kpisData.kpis.length > 0 ? (
+                // Show exactly 4 KPIs - use first 4 from backend or pad with placeholders
+                [...kpisData.kpis.slice(0, 4), ...getDefaultKPIs()].slice(0, 4).map((kpi, index) => (
+                  <Link key={index} href="/analytics" className="block">
+                    <EnhancedKPICard
+                      title={kpi.title}
+                      value={kpi.value}
+                      change={kpi.change}
+                      icon={kpi.icon}
+                      source={kpi.source}
+                      trend={kpi.trend as 'up' | 'down' | 'neutral'}
+                      color={kpi.color as 'blue' | 'green' | 'orange' | 'purple' | 'red'}
+                      lastSynced={kpisData.last_updated}
+                      helpText={`Data from ${kpi.source || 'connected integrations'}`}
+                    />
+                  </Link>
+                ))
+              ) : (
+                // Show default KPIs when no data
+                getDefaultKPIs().map((kpi, index) => (
+                  <Link key={index} href="/analytics" className="block">
+                    <EnhancedKPICard
+                      title={kpi.title}
+                      value={kpi.value}
+                      change={kpi.change}
+                      icon={kpi.icon}
+                      source={kpi.source}
+                      trend={kpi.trend}
+                      color={kpi.color}
+                      helpText={kpi.helpText}
+                    />
+                  </Link>
+                ))
+              )}
+            </div>
           </div>
 
           {/* Error notification for KPIs */}
@@ -315,95 +369,21 @@ export default function DashboardContent() {
             </div>
           )}
 
-          {/* AI Insight Widget + Revenue Chart Row */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-            {/* AI Insight Widget - Enhanced */}
-            <div className="lg:col-span-1">
-              {address && (
-                <AIInsightWidget
-                  walletAddress={address}
-                  kpiData={kpisData}
-                  recentActivity={recentActivityData?.activities}
-                  onRefresh={handleRefresh}
-                  isLoading={isRefreshing}
-                />
-              )}
-            </div>
+          {/* Row 3: AI Insight (1/2) + Recent Activity (1/2) - Per Requirements Wireframe */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+            {/* AI Insight Widget - 50% width */}
+            {address && (
+              <AIInsightWidget
+                walletAddress={address}
+                kpiData={kpisData}
+                recentActivity={recentActivityData?.activities}
+                onRefresh={handleRefresh}
+                isLoading={isRefreshing}
+              />
+            )}
 
-            {/* Revenue Trend Chart */}
-            <div className="lg:col-span-2 bg-white border border-gray-200 rounded-xl p-5">
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <h3 className="font-semibold text-gray-900">Revenue Trend</h3>
-                  <p className="text-sm text-gray-500">
-                    {revenueTrendData ? revenueTrendData.period : 'Last 6 months'}
-                  </p>
-                </div>
-                <Link
-                  href="/analytics"
-                  className="text-sm font-medium text-blue-600 hover:text-blue-700 flex items-center gap-1"
-                >
-                  View details
-                  <ArrowRight className="w-3.5 h-3.5" />
-                </Link>
-              </div>
-
-              {isLoadingRevenue ? (
-                <div className="h-48 flex items-center justify-center">
-                  <div className="flex items-end gap-3">
-                    {[1, 2, 3, 4, 5, 6].map((i) => (
-                      <div key={i} className="w-10 bg-gray-200 animate-pulse rounded-t" style={{ height: `${30 + i * 12}px` }} />
-                    ))}
-                  </div>
-                </div>
-              ) : revenueTrendData && revenueTrendData.data && revenueTrendData.data.length > 0 ? (
-                <div className="h-48">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={revenueTrendData.data} margin={{ top: 5, right: 5, left: 0, bottom: 0 }}>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
-                      <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#6b7280' }} />
-                      <YAxis
-                        axisLine={false}
-                        tickLine={false}
-                        tick={{ fontSize: 11, fill: '#6b7280' }}
-                        tickFormatter={(value) => `$${(value / 1000).toFixed(0)}K`}
-                        width={50}
-                      />
-                      <Tooltip
-                        formatter={(value) => [`$${(value ?? 0).toLocaleString()}`, 'Revenue']}
-                        contentStyle={{ backgroundColor: '#fff', border: '1px solid #e5e7eb', borderRadius: '8px' }}
-                      />
-                      <Bar dataKey="value" radius={[4, 4, 0, 0]} maxBarSize={50}>
-                        {revenueTrendData.data.map((_, index, arr) => (
-                          <Cell key={`cell-${index}`} fill={index === arr.length - 1 ? '#3b82f6' : '#e5e7eb'} />
-                        ))}
-                      </Bar>
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              ) : (
-                <div className="h-48 flex items-center justify-center text-gray-500">
-                  <div className="text-center">
-                    <BarChart3 className="w-8 h-8 mx-auto mb-2" />
-                    <p className="text-sm">No revenue data available</p>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Tasks & Roadmap Row */}
-          {address && (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-              <TasksWidget walletAddress={address} />
-              <RoadmapWidget walletAddress={address} />
-            </div>
-          )}
-
-          {/* Recent Activity + Integration Health Row */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Recent Activity - 2/3 width */}
-            <div className="lg:col-span-2 bg-white border border-gray-200 rounded-xl p-5">
+            {/* Recent Activity - 50% width */}
+            <div className="bg-white border border-gray-200 rounded-xl p-5">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-semibold text-gray-900">Recent Activity</h3>
                 <Link
@@ -473,12 +453,17 @@ export default function DashboardContent() {
                 </div>
               )}
             </div>
+          </div>
 
-            {/* Integration Health Cards - 1/3 width */}
+          {/* Row 4: My Tasks (1/2) + Integration Health (1/2) - Per Requirements Wireframe */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Tasks Widget - 50% width */}
+            {address && <TasksWidget walletAddress={address} />}
+
+            {/* Integration Health Cards - 50% width */}
             {address && (
               <IntegrationHealthCards
                 walletAddress={address}
-                className="lg:col-span-1"
               />
             )}
           </div>

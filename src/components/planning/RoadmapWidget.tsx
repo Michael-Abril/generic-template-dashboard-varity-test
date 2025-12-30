@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import Link from 'next/link';
 import {
   ArrowRight,
   Target,
@@ -70,6 +69,9 @@ export function RoadmapWidget({ walletAddress }: RoadmapWidgetProps) {
   const [editedTitle, setEditedTitle] = useState('');
   const [editedDescription, setEditedDescription] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(false);
+
+  // View All modal state
+  const [showViewAllModal, setShowViewAllModal] = useState(false);
 
   const fetchRoadmap = useCallback(async () => {
     try {
@@ -296,13 +298,13 @@ export function RoadmapWidget({ walletAddress }: RoadmapWidgetProps) {
             </span>
           )}
         </div>
-        <Link
-          href="/dashboard/roadmap"
+        <button
+          onClick={() => setShowViewAllModal(true)}
           className="text-sm font-medium text-blue-600 hover:text-blue-700 flex items-center gap-1"
         >
           View all
           <ArrowRight className="w-3.5 h-3.5" />
-        </Link>
+        </button>
       </div>
 
       {/* Overall Progress */}
@@ -335,13 +337,13 @@ export function RoadmapWidget({ walletAddress }: RoadmapWidgetProps) {
           <Target className="w-10 h-10 text-gray-300 mx-auto mb-2" />
           <p className="text-sm font-medium text-gray-900">No goals yet</p>
           <p className="text-xs text-gray-500 mt-1">Create your first milestone to track progress</p>
-          <Link
-            href="/dashboard/roadmap"
+          <button
+            onClick={() => setShowViewAllModal(true)}
             className="inline-flex items-center gap-1 mt-3 text-sm text-blue-600 hover:text-blue-700 font-medium"
           >
             <Target className="w-4 h-4" />
             Add a goal
-          </Link>
+          </button>
         </div>
       ) : (
         <div className="space-y-3" role="list" aria-label="Milestones">
@@ -405,12 +407,12 @@ export function RoadmapWidget({ walletAddress }: RoadmapWidgetProps) {
 
           {/* Show more link if there are more milestones */}
           {milestones.length > 4 && (
-            <Link
-              href="/dashboard/roadmap"
-              className="block pt-2 text-center text-sm text-gray-500 hover:text-blue-600 transition-colors"
+            <button
+              onClick={() => setShowViewAllModal(true)}
+              className="w-full pt-2 text-center text-sm text-gray-500 hover:text-blue-600 transition-colors"
             >
               +{milestones.length - 4} more goals
-            </Link>
+            </button>
           )}
         </div>
       )}
@@ -664,18 +666,144 @@ export function RoadmapWidget({ walletAddress }: RoadmapWidgetProps) {
 
                 {/* View Full Roadmap Link */}
                 <div className="pt-2 border-t border-gray-100">
-                  <Link
-                    href="/dashboard/roadmap"
-                    className="flex items-center justify-center gap-1 text-sm text-blue-600 hover:text-blue-700 font-medium transition-colors"
-                    onClick={handleCloseMilestoneDialog}
+                  <button
+                    className="flex items-center justify-center gap-1 text-sm text-blue-600 hover:text-blue-700 font-medium transition-colors w-full"
+                    onClick={() => {
+                      handleCloseMilestoneDialog();
+                      setShowViewAllModal(true);
+                    }}
                   >
                     View full roadmap
                     <ArrowRight className="w-3.5 h-3.5" />
-                  </Link>
+                  </button>
                 </div>
               </div>
             </>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* View All Roadmap Modal */}
+      <Dialog open={showViewAllModal} onOpenChange={setShowViewAllModal}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <div className="flex items-center justify-between">
+              <DialogTitle className="text-gray-900">Company Roadmap</DialogTitle>
+              <button
+                onClick={() => setShowViewAllModal(false)}
+                className="text-gray-400 hover:text-gray-600 transition-colors"
+                aria-label="Close dialog"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+          </DialogHeader>
+
+          {/* Overall Progress */}
+          <div className="p-4 bg-gray-50 rounded-lg border-b border-gray-200">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-semibold text-gray-900">{currentTimeframe} Goals</span>
+              <span className="text-sm text-gray-600">
+                {stats.completed}/{stats.total} Completed
+              </span>
+            </div>
+            <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-blue-500 rounded-full transition-all duration-500"
+                style={{ width: `${overallProgress}%` }}
+              />
+            </div>
+            <div className="mt-2 flex items-center justify-between text-xs text-gray-500">
+              <span>{overallProgress}% complete</span>
+              <div className="flex gap-4">
+                <span className="text-blue-600">{stats.inProgress} in progress</span>
+                {stats.atRisk > 0 && (
+                  <span className="text-amber-600">{stats.atRisk} need attention</span>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Scrollable Milestones List */}
+          <div className="flex-1 overflow-y-auto py-4">
+            {milestones.length === 0 ? (
+              <div className="text-center py-8">
+                <Target className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                <p className="text-gray-600">No milestones yet</p>
+                <p className="text-sm text-gray-400 mt-1">Create your first goal to track progress</p>
+              </div>
+            ) : (
+              <div className="space-y-3 px-1">
+                {milestones.map((milestone) => (
+                  <div
+                    key={milestone.id}
+                    className="p-4 rounded-lg border border-gray-200 hover:bg-gray-50 cursor-pointer transition-colors"
+                    onClick={() => {
+                      setShowViewAllModal(false);
+                      handleOpenMilestoneDialog(milestone);
+                    }}
+                    role="button"
+                    tabIndex={0}
+                  >
+                    <div className="flex items-start gap-3">
+                      {/* Goal Icon */}
+                      <div
+                        className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0"
+                        style={{ backgroundColor: `${milestone.color}20` }}
+                      >
+                        {(() => {
+                          const Icon = GOAL_ICONS[milestone.goal_type] || Target;
+                          return <Icon className="w-5 h-5" style={{ color: milestone.color }} />;
+                        })()}
+                      </div>
+
+                      {/* Content */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-sm font-medium text-gray-900">{milestone.title}</span>
+                          {getStatusBadge(milestone.status)}
+                        </div>
+                        {milestone.description && (
+                          <p className="text-xs text-gray-500 line-clamp-2 mb-2">{milestone.description}</p>
+                        )}
+                        <div className="flex items-center gap-3 text-xs text-gray-500">
+                          <span>{milestone.timeframe_value}</span>
+                          {milestone.target_date && (
+                            <span className="flex items-center gap-1">
+                              <Calendar className="w-3 h-3" />
+                              {new Date(milestone.target_date).toLocaleDateString('en-US', {
+                                month: 'short',
+                                day: 'numeric',
+                              })}
+                            </span>
+                          )}
+                        </div>
+                        {/* Progress Bar */}
+                        <div className="mt-2">
+                          <div className="flex items-center justify-between text-xs mb-1">
+                            <span className="text-gray-500">Progress</span>
+                            <span className="font-medium text-gray-700">{milestone.progress_percent}%</span>
+                          </div>
+                          <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                            <div
+                              className={`h-full rounded-full transition-all duration-300 ${getProgressColor(
+                                milestone.progress_percent,
+                                milestone.status
+                              )}`}
+                              style={{ width: `${milestone.progress_percent}%` }}
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Arrow */}
+                      <ChevronRight className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </DialogContent>
       </Dialog>
     </div>

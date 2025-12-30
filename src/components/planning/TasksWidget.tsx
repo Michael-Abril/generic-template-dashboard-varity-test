@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import Link from 'next/link';
 import {
   Plus,
   Check,
@@ -60,6 +59,9 @@ export function TasksWidget({ walletAddress }: TasksWidgetProps) {
     category: 'operations' as TaskCategory,
     due_date: ''
   });
+
+  // View All modal state
+  const [showViewAllModal, setShowViewAllModal] = useState(false);
 
   // Stats
   const [stats, setStats] = useState({
@@ -287,13 +289,13 @@ export function TasksWidget({ walletAddress }: TasksWidgetProps) {
             </span>
           )}
         </div>
-        <Link
-          href="/dashboard/tasks"
+        <button
+          onClick={() => setShowViewAllModal(true)}
           className="text-sm font-medium text-blue-600 hover:text-blue-700 flex items-center gap-1"
         >
           View all
           <ArrowRight className="w-3.5 h-3.5" />
-        </Link>
+        </button>
       </div>
 
       {/* Quick Add */}
@@ -431,12 +433,12 @@ export function TasksWidget({ walletAddress }: TasksWidgetProps) {
 
           {/* Show more link if there are more tasks */}
           {uncompletedTasks.length > 5 && (
-            <Link
-              href="/dashboard/tasks"
-              className="block pt-2 text-center text-sm text-gray-500 hover:text-blue-600 transition-colors"
+            <button
+              onClick={() => setShowViewAllModal(true)}
+              className="w-full pt-2 text-center text-sm text-gray-500 hover:text-blue-600 transition-colors"
             >
               +{uncompletedTasks.length - 5} more tasks
-            </Link>
+            </button>
           )}
         </div>
       )}
@@ -675,6 +677,234 @@ export function TasksWidget({ walletAddress }: TasksWidgetProps) {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* View All Tasks Modal */}
+      <Dialog open={showViewAllModal} onOpenChange={setShowViewAllModal}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <div className="flex items-center justify-between">
+              <DialogTitle className="text-gray-900">All Tasks</DialogTitle>
+              <button
+                onClick={() => setShowViewAllModal(false)}
+                className="text-gray-400 hover:text-gray-600 transition-colors"
+                aria-label="Close dialog"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+          </DialogHeader>
+
+          {/* Quick Add in Modal */}
+          <div className="px-1 py-3 border-b border-gray-200">
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={newTaskTitle}
+                onChange={(e) => setNewTaskTitle(e.target.value)}
+                placeholder="Add a new task..."
+                className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleQuickAdd();
+                }}
+              />
+              <button
+                onClick={handleQuickAdd}
+                disabled={!newTaskTitle.trim() || isCreating}
+                className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
+              >
+                {isCreating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+                Add
+              </button>
+            </div>
+          </div>
+
+          {/* Scrollable Task List */}
+          <div className="flex-1 overflow-y-auto py-4">
+            {tasks.length === 0 ? (
+              <div className="text-center py-8">
+                <CheckCircle2 className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                <p className="text-gray-600">No tasks yet</p>
+                <p className="text-sm text-gray-400 mt-1">Add your first task above</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {/* Overdue Tasks */}
+                {overdueTasks.length > 0 && (
+                  <div className="mb-4">
+                    <p className="text-xs font-medium text-red-600 uppercase tracking-wide mb-2 px-2">
+                      Overdue ({overdueTasks.length})
+                    </p>
+                    {overdueTasks.map((task) => (
+                      <TaskRowItem
+                        key={task.id}
+                        task={task}
+                        isCompleting={completingTaskId === task.id}
+                        onComplete={handleComplete}
+                        onOpenDetails={(e) => {
+                          setShowViewAllModal(false);
+                          handleOpenTaskDialog(task, e);
+                        }}
+                        getPriorityDot={getPriorityDot}
+                        getCategoryBadge={getCategoryBadge}
+                      />
+                    ))}
+                  </div>
+                )}
+
+                {/* Today's Tasks */}
+                {todayTasks.length > 0 && (
+                  <div className="mb-4">
+                    <p className="text-xs font-medium text-blue-600 uppercase tracking-wide mb-2 px-2">
+                      Today ({todayTasks.length})
+                    </p>
+                    {todayTasks.map((task) => (
+                      <TaskRowItem
+                        key={task.id}
+                        task={task}
+                        isCompleting={completingTaskId === task.id}
+                        onComplete={handleComplete}
+                        onOpenDetails={(e) => {
+                          setShowViewAllModal(false);
+                          handleOpenTaskDialog(task, e);
+                        }}
+                        getPriorityDot={getPriorityDot}
+                        getCategoryBadge={getCategoryBadge}
+                      />
+                    ))}
+                  </div>
+                )}
+
+                {/* Upcoming Tasks */}
+                {upcomingTasks.length > 0 && (
+                  <div className="mb-4">
+                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2 px-2">
+                      Upcoming ({upcomingTasks.length})
+                    </p>
+                    {upcomingTasks.map((task) => (
+                      <TaskRowItem
+                        key={task.id}
+                        task={task}
+                        isCompleting={completingTaskId === task.id}
+                        onComplete={handleComplete}
+                        onOpenDetails={(e) => {
+                          setShowViewAllModal(false);
+                          handleOpenTaskDialog(task, e);
+                        }}
+                        getPriorityDot={getPriorityDot}
+                        getCategoryBadge={getCategoryBadge}
+                      />
+                    ))}
+                  </div>
+                )}
+
+                {/* Completed Tasks */}
+                {tasks.filter(t => t.is_completed).length > 0 && (
+                  <div className="mb-4">
+                    <p className="text-xs font-medium text-green-600 uppercase tracking-wide mb-2 px-2">
+                      Completed ({tasks.filter(t => t.is_completed).length})
+                    </p>
+                    {tasks.filter(t => t.is_completed).slice(0, 5).map((task) => (
+                      <div
+                        key={task.id}
+                        className="flex items-center gap-3 p-2 mx-2 rounded-lg bg-gray-50 opacity-60"
+                      >
+                        <CheckCircle2 className="w-5 h-5 text-green-500 flex-shrink-0" />
+                        <span className="text-sm text-gray-500 line-through truncate">{task.title}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Footer Stats */}
+          <div className="border-t border-gray-200 pt-3 mt-2">
+            <div className="flex items-center justify-between text-sm text-gray-600">
+              <span>{stats.completed} of {stats.total} completed</span>
+              <div className="flex items-center gap-4">
+                {stats.overdue > 0 && (
+                  <span className="text-red-600">{stats.overdue} overdue</span>
+                )}
+                {stats.today > 0 && (
+                  <span className="text-blue-600">{stats.today} due today</span>
+                )}
+              </div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+// Helper component for task rows in the View All modal
+function TaskRowItem({
+  task,
+  isCompleting,
+  onComplete,
+  onOpenDetails,
+  getPriorityDot,
+  getCategoryBadge,
+}: {
+  task: Task;
+  isCompleting: boolean;
+  onComplete: (id: number) => void;
+  onOpenDetails: (e: React.MouseEvent) => void;
+  getPriorityDot: (priority: TaskPriority) => React.ReactNode;
+  getCategoryBadge: (category: TaskCategory) => React.ReactNode;
+}) {
+  const isOverdue = isTaskOverdue(task);
+  const isDueToday = isTaskDueToday(task);
+
+  return (
+    <div
+      className={`group flex items-center gap-3 p-2 mx-2 rounded-lg hover:bg-gray-50 transition-all ${
+        isCompleting ? 'opacity-50 scale-95' : ''
+      }`}
+    >
+      {/* Checkbox */}
+      <button
+        onClick={() => onComplete(task.id)}
+        disabled={isCompleting}
+        className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all hover:scale-110 flex-shrink-0 ${
+          isOverdue
+            ? 'border-red-300 hover:border-red-500 hover:bg-red-50'
+            : 'border-gray-300 hover:border-blue-500 hover:bg-blue-50'
+        }`}
+      >
+        {isCompleting ? (
+          <Check className="w-3 h-3 text-green-500" />
+        ) : (
+          <Check className="w-3 h-3 text-transparent group-hover:text-gray-400" />
+        )}
+      </button>
+
+      {/* Task Content - Clickable */}
+      <div
+        className="flex-1 min-w-0 cursor-pointer"
+        onClick={onOpenDetails}
+        role="button"
+        tabIndex={0}
+      >
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-gray-900 truncate">{task.title}</span>
+          {getPriorityDot(task.priority)}
+        </div>
+        <div className="flex items-center gap-2 mt-0.5">
+          {getCategoryBadge(task.category)}
+          {task.due_date && (
+            <span
+              className={`flex items-center gap-1 text-xs ${
+                isOverdue ? 'text-red-600 font-medium' : isDueToday ? 'text-blue-600' : 'text-gray-500'
+              }`}
+            >
+              <Calendar className="w-3 h-3" />
+              {getRelativeDueDate(task.due_date)}
+            </span>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
