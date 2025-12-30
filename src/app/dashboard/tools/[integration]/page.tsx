@@ -15,6 +15,9 @@ import { QuickBooksPage } from '@/components/integrations/quickbooks';
 import { GoogleWorkspacePage } from '@/components/integrations/google';
 import { Microsoft365Page } from '@/components/integrations/microsoft';
 import { IntegrationErrorBoundary } from '@/components/integrations/IntegrationErrorBoundary';
+import { SyncHealthCard, SyncHealthData } from '@/components/integrations/SyncHealthCard';
+import { IntegrationPageHeader, IntegrationTabs } from '@/components/integrations/IntegrationPageHeader';
+import { StatusBadge, IntegrationStatus } from '@/components/ui/StatusBadge';
 import {
   RefreshCw,
   FileText,
@@ -2935,53 +2938,74 @@ export default function IntegrationToolPage() {
     );
   }
 
+  // Calculate sync health data for the SyncHealthCard
+  const getSyncHealthData = (): SyncHealthData => {
+    // Calculate total records across all data types
+    const totalRecords = data.reduce((sum, item) => {
+      const records = item.data?.records || [];
+      return sum + (Array.isArray(records) ? records.length : 0);
+    }, 0);
+
+    // Build data types breakdown
+    const dataTypesBreakdown = config.dataTypes.map(type => ({
+      type,
+      count: getRecordsForType(type).length,
+      lastUpdated: lastSync || undefined,
+    })).filter(dt => dt.count > 0);
+
+    // Determine status
+    let status: IntegrationStatus = 'connected';
+    if (error) status = 'error';
+    else if (syncing) status = 'syncing';
+    else if (data.length === 0) status = 'attention';
+
+    return {
+      status,
+      lastSync,
+      recordsCount: totalRecords,
+      errorMessage: error,
+      dataTypes: dataTypesBreakdown,
+    };
+  };
+
+  // Build tabs configuration
+  const tabs = [
+    { id: 'overview', label: 'Overview' },
+    { id: 'sync-history', label: 'Sync History' },
+    ...config.dataTypes.map(type => ({
+      id: type,
+      label: type.charAt(0).toUpperCase() + type.slice(1),
+      count: getRecordsForType(type).length,
+    })),
+    { id: 'settings', label: 'Settings' },
+  ];
+
   // Generic integration UI for all other integrations
   return (
     <Layout>
       <div className="min-h-screen bg-gray-50">
+        {/* New Header Component */}
+        <IntegrationPageHeader
+          integrationName={config.name}
+          integrationLogo={integration}
+          status={error ? 'error' : data.length > 0 ? 'connected' : 'attention'}
+          lastSync={lastSync}
+          syncing={syncing}
+          onSync={syncData}
+          onExport={() => {
+            // TODO: Implement export functionality
+            toast.info('Export', 'Export functionality coming soon');
+          }}
+        />
+
+        {/* Tab Navigation */}
+        <IntegrationTabs
+          tabs={tabs}
+          activeTab={activeTab}
+          onTabChange={setActiveTab}
+        />
+
         <div className="px-4 sm:px-6 py-6">
-          {/* Breadcrumb */}
-          <div className="flex items-center gap-2 text-sm text-gray-500 mb-4">
-            <Link href="/dashboard" className="hover:text-gray-700">Dashboard</Link>
-            <ChevronRight className="w-4 h-4" />
-            <span className="text-gray-900 font-medium">{config.name}</span>
-          </div>
-
-          {/* Header */}
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
-            <div className="flex items-center gap-4">
-              <div className={`w-14 h-14 ${config.bgColor} rounded-xl flex items-center justify-center`}>
-                <span className={`text-2xl font-bold ${config.color}`}>
-                  {config.name.charAt(0)}
-                </span>
-              </div>
-              <div>
-                <h1 className="text-2xl font-bold text-gray-900">{config.name}</h1>
-                <p className="text-sm text-gray-500">
-                  {lastSync
-                    ? `Last synced: ${new Date(lastSync).toLocaleString()}`
-                    : 'No data synced yet'
-                  }
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-3">
-              <button
-                onClick={syncData}
-                disabled={syncing}
-                className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-              >
-                <RefreshCw className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} />
-                {syncing ? 'Syncing...' : 'Sync Data'}
-              </button>
-              <button className="inline-flex items-center gap-2 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-all">
-                <Download className="w-4 h-4" />
-                Export
-              </button>
-            </div>
-          </div>
-
           {/* Error Message */}
           {error && (
             <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
@@ -2994,38 +3018,6 @@ export default function IntegrationToolPage() {
               </div>
             </div>
           )}
-
-          {/* Tab Navigation */}
-          <div className="border-b border-gray-200 mb-6">
-            <nav className="flex gap-6 overflow-x-auto">
-              <button
-                onClick={() => setActiveTab('overview')}
-                className={`pb-3 px-1 border-b-2 font-medium text-sm whitespace-nowrap transition-colors ${
-                  activeTab === 'overview'
-                    ? 'border-blue-600 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                Overview
-              </button>
-              {config.dataTypes.map(type => (
-                <button
-                  key={type}
-                  onClick={() => setActiveTab(type)}
-                  className={`pb-3 px-1 border-b-2 font-medium text-sm whitespace-nowrap capitalize transition-colors ${
-                    activeTab === type
-                      ? 'border-blue-600 text-blue-600'
-                      : 'border-transparent text-gray-500 hover:text-gray-700'
-                  }`}
-                >
-                  {type}
-                  <span className="ml-2 px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-600">
-                    {getRecordsForType(type).length}
-                  </span>
-                </button>
-              ))}
-            </nav>
-          </div>
 
           {/* Content */}
           {loading ? (
@@ -3051,6 +3043,47 @@ export default function IntegrationToolPage() {
           ) : activeTab === 'overview' ? (
             /* Overview Tab */
             <div className="space-y-6">
+              {/* Sync Health Card - New! */}
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div className="lg:col-span-2">
+                  <SyncHealthCard
+                    integrationName={config.name}
+                    health={getSyncHealthData()}
+                    onSyncNow={syncData}
+                    syncing={syncing}
+                  />
+                </div>
+                <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl border border-blue-100 p-6">
+                  <h3 className="font-semibold text-gray-900 mb-3">Quick Actions</h3>
+                  <div className="space-y-2">
+                    <button
+                      onClick={syncData}
+                      disabled={syncing}
+                      className="w-full flex items-center gap-3 px-4 py-3 bg-white rounded-lg border border-gray-200 hover:bg-gray-50 transition-all disabled:opacity-50"
+                    >
+                      <RefreshCw className={`w-5 h-5 text-blue-600 ${syncing ? 'animate-spin' : ''}`} />
+                      <span className="text-sm font-medium text-gray-700">
+                        {syncing ? 'Syncing...' : 'Sync All Data'}
+                      </span>
+                    </button>
+                    <button
+                      onClick={() => toast.info('Export', 'Export functionality coming soon')}
+                      className="w-full flex items-center gap-3 px-4 py-3 bg-white rounded-lg border border-gray-200 hover:bg-gray-50 transition-all"
+                    >
+                      <Download className="w-5 h-5 text-gray-600" />
+                      <span className="text-sm font-medium text-gray-700">Export Data</span>
+                    </button>
+                    <button
+                      onClick={() => setActiveTab('settings')}
+                      className="w-full flex items-center gap-3 px-4 py-3 bg-white rounded-lg border border-gray-200 hover:bg-gray-50 transition-all"
+                    >
+                      <Settings className="w-5 h-5 text-gray-600" />
+                      <span className="text-sm font-medium text-gray-700">Settings</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
               {/* Summary Stats */}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div className="bg-white rounded-xl border border-gray-200 p-6">

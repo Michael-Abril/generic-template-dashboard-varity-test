@@ -342,8 +342,16 @@ export function GmailInbox({ walletAddress, data }: GmailInboxProps) {
         if (response.status === 401) {
           setApiError('Google token expired. Please reconnect your Google account from the Marketplace.');
           throw new Error('Token expired');
+        } else if (response.status === 404) {
+          setApiError('Google account not connected. Please connect your Google account from the Marketplace.');
+          throw new Error('Not connected');
+        } else if (response.status === 403) {
+          setApiError('Gmail access denied. Please reconnect with Gmail permissions enabled.');
+          throw new Error('Permission denied');
+        } else {
+          setApiError(`Unable to load emails (Error ${response.status}). Please try again or reconnect from Marketplace.`);
+          throw new Error(`Failed to fetch emails: ${response.status}`);
         }
-        throw new Error(`Failed to fetch emails: ${response.status}`);
       }
 
       const result = await response.json();
@@ -375,10 +383,8 @@ export function GmailInbox({ walletAddress, data }: GmailInboxProps) {
       setEmails(parsedEmails);
     } catch (error) {
       console.error('Failed to fetch emails from API:', error);
-      // Set error if not already set (e.g., for network errors)
-      if (!apiError) {
-        setApiError('Failed to load emails. Please try again.');
-      }
+      // Always set error message
+      setApiError('Failed to load emails. Please try again.');
       // Fall back to data prop if API fails
       if (data?.messages) {
         const parsedEmails: Email[] = data.messages.map((msg) => {

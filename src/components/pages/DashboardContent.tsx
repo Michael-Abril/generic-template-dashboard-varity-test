@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Layout } from '@/components/Layout';
-import { KPICard } from '@/components/KPICard';
 import { useWalletSync } from '@/hooks/useWalletSync';
 import { logger } from '@/lib/logger';
 import {
@@ -22,14 +21,12 @@ import {
   BarChart3,
   ClipboardList,
   ArrowRight,
-  Sparkles,
   RefreshCw,
   Clock,
-  TrendingUp,
-  TrendingDown,
 } from 'lucide-react';
 import { FeedbackNotification } from '@/components/feedback';
 import { TasksWidget, RoadmapWidget } from '@/components/planning';
+import { AIInsightWidget, IntegrationHealthCards, EnhancedKPICard } from '@/components/dashboard';
 import {
   BarChart,
   Bar,
@@ -64,6 +61,7 @@ export default function DashboardContent() {
   const [isLoadingRevenue, setIsLoadingRevenue] = useState(true);
   const [isLoadingActivity, setIsLoadingActivity] = useState(true);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   // Error states
   const [kpisError, setKpisError] = useState<string | null>(null);
@@ -156,42 +154,23 @@ export default function DashboardContent() {
     }
   };
 
-  const handleRefresh = () => {
-    fetchDashboardData();
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    await fetchDashboardData();
+    setIsRefreshing(false);
   };
 
-  // Calculate AI insight based on KPI data
-  const getAIInsight = () => {
-    // SAFETY: Check kpisData.kpis exists before accessing .length
-    if (!kpisData || !kpisData.has_data || !kpisData.kpis || kpisData.kpis.length === 0) return null;
+  // Format relative time from last updated
+  const formatLastUpdated = () => {
+    if (!lastUpdated) return null;
+    const now = new Date();
+    const diffMs = now.getTime() - lastUpdated.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
 
-    // Check for revenue KPI first (QuickBooks)
-    const revenueKPI = kpisData.kpis.find(k => k.title.toLowerCase().includes('revenue') && k.title.toLowerCase().includes('total'));
-    if (revenueKPI && revenueKPI.change) {
-      const change = revenueKPI.change.value;
-      if (change > 0) {
-        return {
-          text: `Your revenue is up ${change.toFixed(1)}% compared to last month.`,
-          trend: 'up' as const,
-        };
-      } else if (change < 0) {
-        return {
-          text: `Your revenue is down ${Math.abs(change).toFixed(1)}% compared to last month.`,
-          trend: 'down' as const,
-        };
-      }
-    }
-
-    // If no revenue, show summary of connected integrations
-    const sources = connectedSources.join(', ');
-    const kpiCount = kpisData.kpis.length;
-    return {
-      text: `${kpiCount} metrics synced from ${sources}. Ask AI Assistant for detailed analysis.`,
-      trend: 'neutral' as const,
-    };
+    if (diffMins < 1) return 'Just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+    return lastUpdated.toLocaleTimeString();
   };
-
-  const aiInsight = getAIInsight();
 
   // Loading state while checking authentication
   if (!ready || !authenticated) {
@@ -241,25 +220,33 @@ export default function DashboardContent() {
     <Layout>
       <div className="min-h-screen bg-gray-50">
         <div className="px-4 sm:px-6 py-6 max-w-7xl mx-auto">
-          {/* Header */}
-          <div className="flex items-center justify-between mb-8">
+          {/* Header with Global Sync Status */}
+          <div className="flex items-center justify-between mb-6">
             <div>
               <h1 className="text-2xl font-bold text-gray-900">
                 Business Overview
               </h1>
-              {lastUpdated && (
-                <p className="text-sm text-gray-500 flex items-center gap-1 mt-1">
-                  <Clock className="w-3.5 h-3.5" />
-                  Last updated: {lastUpdated.toLocaleTimeString()}
-                </p>
-              )}
+              <div className="flex items-center gap-4 mt-1">
+                {lastUpdated && (
+                  <p className="text-sm text-gray-500 flex items-center gap-1">
+                    <Clock className="w-3.5 h-3.5" />
+                    Last synced: {formatLastUpdated()}
+                  </p>
+                )}
+                {connectedSources.length > 0 && (
+                  <p className="text-sm text-gray-400">
+                    {connectedSources.length} source{connectedSources.length > 1 ? 's' : ''} connected
+                  </p>
+                )}
+              </div>
             </div>
             <button
               onClick={handleRefresh}
-              disabled={isLoadingKPIs}
+              disabled={isRefreshing}
               className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
+              aria-label="Refresh dashboard data"
             >
-              <RefreshCw className={`w-4 h-4 ${isLoadingKPIs ? 'animate-spin' : ''}`} />
+              <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
               Refresh
             </button>
           </div>
@@ -274,22 +261,29 @@ export default function DashboardContent() {
             />
           )}
 
-          {/* KPI Cards - Clickable to Analytics */}
+          {/* KPI Cards Row with Enhanced Cards */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
             {isLoadingKPIs ? (
               <>
                 {[1, 2, 3, 4].map((i) => (
                   <div key={i} className="bg-white border border-gray-200 rounded-xl p-5 animate-pulse">
-                    <div className="h-4 bg-gray-200 rounded w-2/3 mb-3"></div>
-                    <div className="h-8 bg-gray-200 rounded w-1/2 mb-2"></div>
-                    <div className="h-3 bg-gray-200 rounded w-1/3"></div>
+                    <div className="flex items-center gap-2 mb-3">
+                      <div className="w-10 h-10 bg-gray-200 rounded-lg" />
+                      <div>
+                        <div className="h-4 bg-gray-200 rounded w-20 mb-1" />
+                        <div className="h-2 bg-gray-200 rounded w-12" />
+                      </div>
+                    </div>
+                    <div className="h-8 bg-gray-200 rounded w-24 mb-3" />
+                    <div className="h-4 bg-gray-200 rounded w-16 mb-3" />
+                    <div className="h-9 bg-gray-200 rounded w-full" />
                   </div>
                 ))}
               </>
             ) : kpisData && kpisData.kpis && kpisData.kpis.length > 0 ? (
               kpisData.kpis.map((kpi, index) => (
-                <Link key={index} href="/analytics" className="block group">
-                  <KPICard
+                <Link key={index} href="/analytics" className="block">
+                  <EnhancedKPICard
                     title={kpi.title}
                     value={kpi.value}
                     change={kpi.change}
@@ -297,6 +291,8 @@ export default function DashboardContent() {
                     source={kpi.source}
                     trend={kpi.trend as 'up' | 'down' | 'neutral'}
                     color={kpi.color as 'blue' | 'green' | 'orange' | 'purple' | 'red'}
+                    lastSynced={kpisData.last_updated}
+                    helpText={`Data from ${kpi.source || 'connected integrations'}`}
                   />
                 </Link>
               ))
@@ -321,29 +317,16 @@ export default function DashboardContent() {
 
           {/* AI Insight Widget + Revenue Chart Row */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-            {/* AI Insight Widget */}
-            <div className="lg:col-span-1 bg-gradient-to-br from-indigo-600 to-purple-600 rounded-xl p-5 text-white">
-              <div className="flex items-center gap-2 mb-3">
-                <Sparkles className="w-5 h-5" />
-                <h3 className="font-semibold">AI Insight</h3>
-              </div>
-              {aiInsight ? (
-                <>
-                  <div className="flex items-start gap-2 mb-4">
-                    {aiInsight.trend === 'up' && <TrendingUp className="w-5 h-5 text-green-300 flex-shrink-0 mt-0.5" />}
-                    {aiInsight.trend === 'down' && <TrendingDown className="w-5 h-5 text-red-300 flex-shrink-0 mt-0.5" />}
-                    <p className="text-sm text-white/90">{aiInsight.text}</p>
-                  </div>
-                  <Link
-                    href="/ai-assistant"
-                    className="inline-flex items-center gap-1 text-sm font-medium text-white/80 hover:text-white transition-colors"
-                  >
-                    Ask AI for more insights
-                    <ArrowRight className="w-3.5 h-3.5" />
-                  </Link>
-                </>
-              ) : (
-                <p className="text-sm text-white/80">Connect integrations to get AI-powered insights.</p>
+            {/* AI Insight Widget - Enhanced */}
+            <div className="lg:col-span-1">
+              {address && (
+                <AIInsightWidget
+                  walletAddress={address}
+                  kpiData={kpisData}
+                  recentActivity={recentActivityData?.activities}
+                  onRefresh={handleRefresh}
+                  isLoading={isRefreshing}
+                />
               )}
             </div>
 
@@ -417,68 +400,86 @@ export default function DashboardContent() {
             </div>
           )}
 
-          {/* Recent Activity */}
-          <div className="bg-white border border-gray-200 rounded-xl p-5">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="font-semibold text-gray-900">Recent Activity</h3>
-              <Link
-                href="/analytics"
-                className="text-sm font-medium text-blue-600 hover:text-blue-700 flex items-center gap-1"
-              >
-                View all
-                <ArrowRight className="w-3.5 h-3.5" />
-              </Link>
+          {/* Recent Activity + Integration Health Row */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Recent Activity - 2/3 width */}
+            <div className="lg:col-span-2 bg-white border border-gray-200 rounded-xl p-5">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-semibold text-gray-900">Recent Activity</h3>
+                <Link
+                  href="/analytics"
+                  className="text-sm font-medium text-blue-600 hover:text-blue-700 flex items-center gap-1"
+                >
+                  View all
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </Link>
+              </div>
+
+              {isLoadingActivity ? (
+                <div className="space-y-3">
+                  {[1, 2, 3, 4, 5].map((i) => (
+                    <div key={i} className="flex items-center gap-3 animate-pulse">
+                      <div className="w-9 h-9 bg-gray-200 rounded-lg"></div>
+                      <div className="flex-1">
+                        <div className="h-4 bg-gray-200 rounded w-1/3 mb-1"></div>
+                        <div className="h-3 bg-gray-200 rounded w-1/2"></div>
+                      </div>
+                      <div className="h-4 bg-gray-200 rounded w-16"></div>
+                    </div>
+                  ))}
+                </div>
+              ) : recentActivityData && recentActivityData.activities && recentActivityData.activities.length > 0 ? (
+                <div className="space-y-2">
+                  {recentActivityData.activities.slice(0, 7).map((activity, i) => (
+                    <div key={i} className="flex items-center gap-3 p-2 -mx-2 rounded-lg hover:bg-gray-50 transition-colors cursor-pointer">
+                      <div className="w-9 h-9 bg-gray-100 rounded-lg flex items-center justify-center text-lg flex-shrink-0">
+                        {activity.icon}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-900 truncate">{activity.title}</p>
+                        <p className="text-xs text-gray-500 truncate">
+                          {activity.description}
+                          {activity.source && (
+                            <span className="ml-1 text-gray-400">
+                              - {activity.source}
+                            </span>
+                          )}
+                        </p>
+                      </div>
+                      {activity.amount && (
+                        <span className={`text-sm font-semibold ${activity.color} flex-shrink-0`}>
+                          {activity.amount}
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="py-8 text-center text-gray-500">
+                  <ClipboardList className="w-8 h-8 mx-auto mb-2" />
+                  <p className="text-sm">No recent activity</p>
+                </div>
+              )}
+
+              {activityError && (
+                <div className="mt-4 bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                  <div className="flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4 text-yellow-600" />
+                    <p className="text-xs text-yellow-800">{activityError}</p>
+                    <button onClick={fetchRecentActivity} className="ml-auto text-xs text-yellow-700 font-medium">
+                      Retry
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
 
-            {isLoadingActivity ? (
-              <div className="space-y-3">
-                {[1, 2, 3, 4, 5].map((i) => (
-                  <div key={i} className="flex items-center gap-3 animate-pulse">
-                    <div className="w-9 h-9 bg-gray-200 rounded-lg"></div>
-                    <div className="flex-1">
-                      <div className="h-4 bg-gray-200 rounded w-1/3 mb-1"></div>
-                      <div className="h-3 bg-gray-200 rounded w-1/2"></div>
-                    </div>
-                    <div className="h-4 bg-gray-200 rounded w-16"></div>
-                  </div>
-                ))}
-              </div>
-            ) : recentActivityData && recentActivityData.activities && recentActivityData.activities.length > 0 ? (
-              <div className="space-y-2">
-                {recentActivityData.activities.slice(0, 7).map((activity, i) => (
-                  <div key={i} className="flex items-center gap-3 p-2 -mx-2 rounded-lg hover:bg-gray-50 transition-colors cursor-pointer">
-                    <div className="w-9 h-9 bg-gray-100 rounded-lg flex items-center justify-center text-lg flex-shrink-0">
-                      {activity.icon}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-gray-900 truncate">{activity.title}</p>
-                      <p className="text-xs text-gray-500 truncate">{activity.description}</p>
-                    </div>
-                    {activity.amount && (
-                      <span className={`text-sm font-semibold ${activity.color} flex-shrink-0`}>
-                        {activity.amount}
-                      </span>
-                    )}
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="py-8 text-center text-gray-500">
-                <ClipboardList className="w-8 h-8 mx-auto mb-2" />
-                <p className="text-sm">No recent activity</p>
-              </div>
-            )}
-
-            {activityError && (
-              <div className="mt-4 bg-yellow-50 border border-yellow-200 rounded-lg p-3">
-                <div className="flex items-center gap-2">
-                  <AlertTriangle className="w-4 h-4 text-yellow-600" />
-                  <p className="text-xs text-yellow-800">{activityError}</p>
-                  <button onClick={fetchRecentActivity} className="ml-auto text-xs text-yellow-700 font-medium">
-                    Retry
-                  </button>
-                </div>
-              </div>
+            {/* Integration Health Cards - 1/3 width */}
+            {address && (
+              <IntegrationHealthCards
+                walletAddress={address}
+                className="lg:col-span-1"
+              />
             )}
           </div>
         </div>

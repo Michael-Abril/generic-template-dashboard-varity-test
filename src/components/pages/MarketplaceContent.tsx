@@ -7,9 +7,10 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Layout } from '@/components/Layout';
 import { IntegrationLogo } from '@/components/IntegrationLogo';
-import { AlertTriangle, XCircle, Search, CheckCircle } from 'lucide-react';
+import { AlertTriangle, XCircle, Search, CheckCircle, Clock, Database, Bell, RefreshCw, Settings, ArrowRight } from 'lucide-react';
 import { useToast } from '@/components/ui/Toast';
 import { MarketplaceSkeleton } from '@/components/ui/Skeleton';
+import { StatusBadge, IntegrationStatus } from '@/components/ui/StatusBadge';
 // TODO: Re-enable for USDC marketplace purchases (post-GTM)
 // import { CONTRACTS, USDC_ABI, TOOL_MARKETPLACE_ABI, parseUSDC } from '@/lib/contracts';
 // import { ethers } from 'ethers';
@@ -122,6 +123,13 @@ export default function MarketplaceContent() {
   // Connection modal state
   const [selectedProduct, setSelectedProduct] = useState<ProductDetail | null>(null);
   const [showConnectionModal, setShowConnectionModal] = useState(false);
+  const [connectingProduct, setConnectingProduct] = useState<string | null>(null);
+
+  // Integration sync data (last sync time, records count)
+  const [integrationSyncData, setIntegrationSyncData] = useState<Record<string, {
+    lastSync: string | null;
+    recordsCount: number;
+  }>>({});
 
   // Load products and categories on mount
   useEffect(() => {
@@ -203,6 +211,110 @@ export default function MarketplaceContent() {
 
     loadConnectedIntegrations();
   }, [address]);
+
+  // Load sync data for connected integrations
+  useEffect(() => {
+    const loadSyncData = async () => {
+      if (!address || connectedOAuthIntegrations.length === 0) return;
+
+      const apiBase = process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
+      const syncDataMap: Record<string, { lastSync: string | null; recordsCount: number }> = {};
+
+      // Fetch data for each connected integration
+      const providers = ['google', 'microsoft', 'slack', 'quickbooks', 'salesforce', 'hubspot'];
+
+      await Promise.all(
+        providers.map(async (provider) => {
+          if (!connectedOAuthIntegrations.some(p => p.includes(provider))) return;
+
+          try {
+            const res = await fetch(
+              `${apiBase}/api/v1/integrations/${provider}/data?wallet_address=${address}&latest_only=true`
+            );
+            if (res.ok) {
+              const data = await res.json();
+              let totalRecords = 0;
+              let lastSync: string | null = null;
+
+              if (data.data && Array.isArray(data.data)) {
+                data.data.forEach((item: { data?: { records?: unknown[]; synced_at?: string }; uploaded_at?: string }) => {
+                  totalRecords += item.data?.records?.length || 0;
+                  const itemSync = item.data?.synced_at || item.uploaded_at;
+                  if (itemSync && (!lastSync || new Date(itemSync) > new Date(lastSync))) {
+                    lastSync = itemSync;
+                  }
+                });
+              }
+
+              syncDataMap[provider] = { lastSync, recordsCount: totalRecords };
+            }
+          } catch {
+            // Silently fail for sync data
+          }
+        })
+      );
+
+      setIntegrationSyncData(syncDataMap);
+    };
+
+    loadSyncData();
+  }, [address, connectedOAuthIntegrations]);
+
+  // Helper to get integration status
+  const getIntegrationStatus = (logo: string): IntegrationStatus => {
+    const isConnected = isProductConnected(logo, connectedOAuthIntegrations);
+    const isComingSoon = !isOAuthSupported(logo);
+
+    if (isComingSoon) return 'coming_soon';
+    if (isConnected) return 'connected';
+    return 'available';
+  };
+
+  // Helper to get sync data for a product
+  const getSyncDataForProduct = (logo: string): { lastSync: string | null; recordsCount: number } | undefined => {
+    const provider = getOAuthProvider(logo);
+    // Check various key variations
+    const keys = [provider, logo, provider.replace(/_/g, ''), logo.replace(/-/g, '')];
+    for (const key of keys) {
+      if (integrationSyncData[key]) return integrationSyncData[key];
+    }
+    return undefined;
+  };
+
+  // Format relative time helper
+  const formatRelativeTime = (dateString: string | null): string => {
+    if (!dateString) return 'Never';
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMins / 60);
+    const diffDays = Math.floor(diffHours / 24);
+
+    if (diffMins < 1) return 'Just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays < 7) return `${diffDays}d ago`;
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  };
+
+  // Format number helper
+  const formatNumber = (num: number): string => {
+    if (num >= 1000000) return `${(num / 1000000).toFixed(1)}M`;
+    if (num >= 1000) return `${(num / 1000).toFixed(1)}K`;
+    return num.toLocaleString();
+  };
+
+  // Handle Notify Me for coming soon products
+  const handleNotifyMe = (productName: string) => {
+    toast.success('Notification Set', `We'll notify you when ${productName} is available.`);
+  };
+
+  // Handle configure for connected integrations
+  const handleConfigure = (logo: string) => {
+    const provider = getOAuthProvider(logo);
+    router.push(`/dashboard/tools/${provider}`);
+  };
 
   const loadMarketplaceData = async () => {
     try {
@@ -489,64 +601,128 @@ export default function MarketplaceContent() {
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 mb-8">
                   {filteredProducts.map(product => {
                     // In "coming-soon" tab, all products are grayed out and not clickable
-                    const isComingSoon = marketplaceTab === 'coming-soon' || product.coming_soon;
+                    const isComingSoon = marketplaceTab === 'coming-soon' || product.coming_soon || !isOAuthSupported(product.logo);
                     // Check if this product is connected via OAuth
                     const isConnected = isProductConnected(product.logo, connectedOAuthIntegrations);
+                    // Get sync data for connected integrations
+                    const syncData = isConnected ? getSyncDataForProduct(product.logo) : undefined;
+                    const status = getIntegrationStatus(product.logo);
 
                     return (
                     <div
                       key={product.id}
-                      className={`bg-white rounded-xl p-6 relative ${
+                      className={`bg-white rounded-xl relative overflow-hidden flex flex-col ${
                         isConnected
-                          ? 'border-2 border-green-500 ring-2 ring-green-100 hover:shadow-xl hover:-translate-y-1 transition-all duration-300 cursor-pointer'
+                          ? 'border-2 border-green-500 ring-2 ring-green-100 hover:shadow-xl hover:-translate-y-1 transition-all duration-300'
                           : isComingSoon
-                            ? 'border border-gray-200 opacity-60 cursor-not-allowed transition-all duration-200'
-                            : 'border border-gray-200 hover:shadow-xl hover:border-blue-300 hover:-translate-y-1 transition-all duration-300 cursor-pointer'
+                            ? 'border border-gray-200 opacity-70 transition-all duration-200'
+                            : 'border border-gray-200 hover:shadow-xl hover:border-blue-300 hover:-translate-y-1 transition-all duration-300'
                       }`}
-                      onClick={() => !isComingSoon && handleSelectProduct(product)}
                     >
-                      {/* Connected Badge - green checkmark in top right */}
-                      {isConnected && (
-                        <div className="absolute top-3 right-3 bg-green-500 text-white rounded-full p-1 shadow-md">
-                          <CheckCircle className="w-4 h-4" />
+                      {/* Card Header */}
+                      <div className="p-6 pb-4 flex-grow">
+                        {/* Status Badge in top right */}
+                        <div className="absolute top-3 right-3">
+                          {isConnected ? (
+                            <StatusBadge status="connected" size="sm" />
+                          ) : isComingSoon ? (
+                            <StatusBadge status="coming_soon" size="sm" />
+                          ) : null}
                         </div>
-                      )}
 
-                      {/* Coming Soon Badge - only show if not connected */}
-                      {isComingSoon && !isConnected && (
-                        <div className="absolute top-3 right-3 bg-amber-100 text-amber-800 text-xs font-semibold px-2 py-1 rounded-full">
-                          Coming Soon
-                        </div>
-                      )}
-
-                      {/* Product Card Content */}
-                      <div className="flex items-start justify-between mb-4">
-                        <div className="flex items-center gap-3">
+                        {/* Product Info */}
+                        <div className="flex items-start gap-3 mb-4 pr-20">
                           <IntegrationLogo integration={product.logo} size="md" />
                           <div>
-                            <h3 className={`font-bold ${isComingSoon ? 'text-gray-500' : 'text-gray-900'}`}>{product.name}</h3>
+                            <h3 className={`font-bold ${isComingSoon ? 'text-gray-500' : 'text-gray-900'}`}>
+                              {product.name}
+                            </h3>
                             <p className="text-xs text-gray-500">{product.developer}</p>
                           </div>
                         </div>
+
+                        <p className={`text-sm mb-4 line-clamp-2 ${isComingSoon ? 'text-gray-400' : 'text-gray-600'}`}>
+                          {product.short_description}
+                        </p>
+
+                        {/* Sync Stats for Connected Integrations */}
+                        {isConnected && syncData && (
+                          <div className="flex items-center gap-4 text-xs text-gray-500 mb-4 border-t border-gray-100 pt-4">
+                            <div className="flex items-center gap-1">
+                              <Clock className="w-3 h-3" />
+                              <span>{formatRelativeTime(syncData.lastSync)}</span>
+                            </div>
+                            {syncData.recordsCount > 0 && (
+                              <div className="flex items-center gap-1">
+                                <Database className="w-3 h-3" />
+                                <span>{formatNumber(syncData.recordsCount)} items</span>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Pricing (only for non-connected, non-coming-soon) */}
+                        {!isConnected && !isComingSoon && (
+                          <div className="border-t border-gray-200 pt-4 mt-auto">
+                            {product.starting_price ? (
+                              <div>
+                                <p className="text-xs text-gray-500 mb-1">Starting at</p>
+                                <p className="text-2xl font-bold text-gray-900">
+                                  ${product.starting_price}
+                                  <span className="text-sm font-normal text-gray-500">/mo</span>
+                                </p>
+                              </div>
+                            ) : (
+                              <p className="text-sm text-gray-600">Free to connect</p>
+                            )}
+                          </div>
+                        )}
                       </div>
 
-                      <p className={`text-sm mb-4 line-clamp-2 ${isComingSoon ? 'text-gray-400' : 'text-gray-600'}`}>
-                        {product.short_description}
-                      </p>
-
-                      <div className="border-t border-gray-200 pt-4 mt-4">
+                      {/* Action Footer */}
+                      <div className="px-6 py-4 bg-gray-50 border-t border-gray-100">
                         {isComingSoon ? (
-                          <p className="text-sm text-gray-400 italic">Available soon</p>
-                        ) : product.starting_price ? (
-                          <div>
-                            <p className="text-xs text-gray-500 mb-1">Starting at</p>
-                            <p className="text-2xl font-bold text-gray-900">
-                              ${product.starting_price}
-                              <span className="text-sm font-normal text-gray-500">/mo</span>
-                            </p>
+                          <button
+                            onClick={() => handleNotifyMe(product.name)}
+                            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-white border border-gray-200 rounded-lg text-gray-700 font-medium hover:bg-gray-50 transition-all"
+                          >
+                            <Bell className="w-4 h-4" />
+                            Notify Me
+                          </button>
+                        ) : isConnected ? (
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => handleConfigure(product.logo)}
+                              className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-white border border-gray-200 rounded-lg text-gray-700 font-medium hover:bg-gray-50 transition-all"
+                            >
+                              <Settings className="w-4 h-4" />
+                              Configure
+                            </button>
+                            <button
+                              onClick={() => handleSelectProduct(product)}
+                              className="flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-all"
+                            >
+                              <RefreshCw className="w-4 h-4" />
+                            </button>
                           </div>
                         ) : (
-                          <p className="text-sm text-gray-600">Free to connect</p>
+                          <button
+                            onClick={() => handleSelectProduct(product)}
+                            disabled={connectingProduct === product.logo}
+                            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 hover:shadow-md transition-all disabled:opacity-50"
+                          >
+                            {connectingProduct === product.logo ? (
+                              <>
+                                <RefreshCw className="w-4 h-4 animate-spin" />
+                                Connecting...
+                              </>
+                            ) : (
+                              <>
+                                Connect
+                                <ArrowRight className="w-4 h-4" />
+                              </>
+                            )}
+                          </button>
                         )}
                       </div>
                     </div>

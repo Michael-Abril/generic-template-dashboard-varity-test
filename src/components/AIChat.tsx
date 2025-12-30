@@ -14,6 +14,8 @@ import {
 import ReactMarkdown from 'react-markdown';
 import { ContextPicker } from './ai/ContextPicker';
 import { SuggestedPrompts } from './ai/SuggestedPrompts';
+import { StarterPrompts } from './ai/StarterPrompts';
+import { ProcessingState, ProcessingStatus } from './ai/ProcessingState';
 import { CodeBlock } from './ai/CodeBlock';
 import { ProjectSidebar } from './ai/ProjectSidebar';
 import { ProjectEditor } from './ai/ProjectEditor';
@@ -278,6 +280,10 @@ export function AIChat() {
   const [editedContent, setEditedContent] = useState('');
   const [hoveredMessageIdx, setHoveredMessageIdx] = useState<number | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Enhanced processing state (December 30, 2025)
+  const [processingStatus, setProcessingStatus] = useState<ProcessingStatus>('idle');
+  const [processingError, setProcessingError] = useState<string | null>(null);
 
   // Context picker state (like Cursor AI - select specific files/emails for context)
   const [showContextPicker, setShowContextPicker] = useState(false);
@@ -1001,6 +1007,8 @@ export function AIChat() {
 
     setMessages(prev => [...prev, userMessage]);
     setLoading(true);
+    setProcessingStatus('thinking');
+    setProcessingError(null);
 
     // Create new abort controller for this request
     abortControllerRef.current = new AbortController();
@@ -1058,6 +1066,9 @@ export function AIChat() {
       }
 
       // Route to different endpoints based on effective AI mode (may be auto-detected)
+      // Update processing status based on mode
+      setProcessingStatus('searching_rag');
+
       if (effectiveMode === 'standard') {
         // Standard mode: Use general chat endpoint (no web search)
         // This provides direct, authoritative Varity Dashboard responses
@@ -1081,6 +1092,9 @@ export function AIChat() {
       } else if (effectiveMode === 'deep_research') {
         // Deep Research mode: Use combined query with optional web search
         // User can toggle web search on/off for RAG-only or RAG+Web analysis
+        if (enableWebSearch) {
+          setProcessingStatus('searching_web');
+        }
         const response = await fetch(`${API_BASE_URL}/api/v1/ai/query/combined`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -1156,9 +1170,13 @@ export function AIChat() {
       };
 
       setMessages(prev => [...prev, assistantMessage]);
+      setProcessingStatus('ready');
 
       // Save assistant message
       await addMessageToConversation(convId, assistantMessage);
+
+      // Reset processing status after brief delay
+      setTimeout(() => setProcessingStatus('idle'), 1500);
     } catch (error) {
       // Handle abort/cancellation gracefully
       if (error instanceof Error && error.name === 'AbortError') {
@@ -1168,11 +1186,14 @@ export function AIChat() {
           timestamp: new Date()
         };
         setMessages(prev => [...prev, abortMsg]);
+        setProcessingStatus('idle');
         return;
       }
 
       logger.error('Chat error:', error);
       const errorMessage = error instanceof Error ? error.message : 'Please try again.';
+      setProcessingError(errorMessage);
+      setProcessingStatus('error');
       const errorMsg: Message = {
         role: 'assistant',
         content: `Sorry, I encountered an error: ${errorMessage}`,
@@ -1887,60 +1908,74 @@ export function AIChat() {
         {/* Messages */}
         <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50">
           {messages.length === 0 && (
-            <div className="text-center py-8">
-              <div className={`w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4 ${
-                installedTools.some(t => t.toLowerCase().includes('quickbooks'))
-                  ? 'bg-green-50'
-                  : 'bg-blue-50'
-              }`}>
-                <MessageSquare className={`w-10 h-10 ${
+            <div className="flex flex-col items-center justify-center min-h-[400px] py-8">
+              {/* Welcome Header */}
+              <div className="text-center mb-8">
+                <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4 bg-gradient-to-br ${
                   installedTools.some(t => t.toLowerCase().includes('quickbooks'))
-                    ? 'text-green-500'
-                    : 'text-blue-500'
-                }`} />
+                    ? 'from-green-500 to-emerald-600'
+                    : 'from-blue-500 to-purple-600'
+                } shadow-lg`}>
+                  <Bot className="w-8 h-8 text-white" />
+                </div>
+                <h3 className="text-xl font-semibold text-gray-900 mb-2">
+                  {installedTools.length > 0
+                    ? "How can I help you today?"
+                    : "Connect your tools to get started"}
+                </h3>
+                <p className="text-sm text-gray-500 max-w-md mx-auto">
+                  {installedTools.length > 0
+                    ? "Ask me anything about your business data. I can analyze your finances, emails, calendar, and more."
+                    : "Connect tools like QuickBooks, Gmail, and Salesforce from the marketplace to unlock AI-powered insights."}
+                </p>
               </div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                {installedTools.length > 0
-                  ? installedTools.some(t => t.toLowerCase().includes('quickbooks'))
-                    ? "Your QuickBooks AI Assistant is ready!"
-                    : "I'm ready to help!"
-                  : "Install integrations to get started"}
-              </h3>
-              <p className="text-sm text-gray-600 mb-6 max-w-md mx-auto">
-                {installedTools.length > 0
-                  ? installedTools.some(t => t.toLowerCase().includes('quickbooks'))
-                    ? "I have full access to your QuickBooks data. Ask me about invoices, expenses, customers, vendors, and financial reports."
-                    : "Ask me anything about your business data. I can analyze information across all your connected tools."
-                  : "Connect tools like QuickBooks and Salesforce from the marketplace to unlock AI insights."}
-              </p>
+
+              {/* Starter Prompts - Enhanced Visual Cards */}
               {installedTools.length > 0 && (
-                <div className="max-w-lg mx-auto">
-                  {/* For standard mode, use backend-driven suggested prompts */}
-                  {aiMode === 'standard' && address ? (
-                    <SuggestedPrompts
-                      walletAddress={address}
-                      onPromptClick={(prompt) => setInput(prompt)}
+                <div className="w-full max-w-2xl px-4">
+                  <div className="text-center mb-4">
+                    <span className="text-xs font-medium text-gray-400 uppercase tracking-wider">
+                      Try asking
+                    </span>
+                  </div>
+
+                  {/* Use StarterPrompts for standard mode, or show mode-specific prompts */}
+                  {aiMode === 'standard' ? (
+                    <StarterPrompts
+                      onPromptClick={(prompt) => {
+                        setInput(prompt);
+                        // Auto-focus the input after selecting a prompt
+                        setTimeout(() => textareaRef.current?.focus(), 100);
+                      }}
+                      maxPrompts={6}
                     />
                   ) : (
                     <>
-                      <p className="text-xs font-medium text-gray-700 mb-3">
+                      <p className="text-xs font-medium text-gray-600 mb-4 text-center">
                         {aiMode === 'deep_research' ? 'Research prompts:' :
                          aiMode === 'analyze' ? 'Analysis prompts:' :
                          aiMode === 'document' ? 'Document prompts:' :
                          'Try asking:'}
                       </p>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         {suggestedQuestions.map((item, i) => (
                           <button
                             key={i}
-                            onClick={() => setInput(item.question)}
-                            className="text-left text-xs p-3 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 hover:border-blue-300 transition-colors group flex items-start gap-2"
+                            onClick={() => {
+                              setInput(item.question);
+                              setTimeout(() => textareaRef.current?.focus(), 100);
+                            }}
+                            className="text-left p-4 bg-white border border-gray-200 rounded-xl hover:border-gray-300 hover:shadow-md transition-all group flex items-start gap-3"
                           >
-                            {item.icon && <span className="text-base flex-shrink-0">{item.icon}</span>}
+                            {item.icon && (
+                              <span className="text-xl flex-shrink-0">{item.icon}</span>
+                            )}
                             <div className="flex-1">
-                              <span className="block leading-snug">{item.question}</span>
+                              <span className="block text-sm font-medium text-gray-800 group-hover:text-gray-900">
+                                {item.question}
+                              </span>
                               {item.integration && (
-                                <span className={`text-[10px] mt-1 inline-block px-1.5 py-0.5 rounded ${
+                                <span className={`text-[10px] mt-2 inline-block px-2 py-0.5 rounded-full ${
                                   item.integration === 'quickbooks' ? 'bg-green-100 text-green-700' :
                                   item.integration === 'google' ? 'bg-red-100 text-red-700' :
                                   item.integration === 'microsoft' ? 'bg-blue-100 text-blue-700' :
@@ -1953,7 +1988,7 @@ export function AIChat() {
                                 </span>
                               )}
                               {item.category && !item.integration && (
-                                <span className={`text-[10px] mt-1 inline-block px-1.5 py-0.5 rounded ${
+                                <span className={`text-[10px] mt-2 inline-block px-2 py-0.5 rounded-full ${
                                   item.category === 'research' ? 'bg-purple-100 text-purple-700' :
                                   item.category === 'analysis' ? 'bg-blue-100 text-blue-700' :
                                   'bg-gray-100 text-gray-700'
@@ -1966,6 +2001,22 @@ export function AIChat() {
                         ))}
                       </div>
                     </>
+                  )}
+
+                  {/* Backend-driven suggested prompts as secondary option */}
+                  {aiMode === 'standard' && address && (
+                    <div className="mt-6 pt-4 border-t border-gray-100">
+                      <p className="text-xs text-gray-400 text-center mb-3">
+                        Based on your connected integrations
+                      </p>
+                      <SuggestedPrompts
+                        walletAddress={address}
+                        onPromptClick={(prompt) => {
+                          setInput(prompt);
+                          setTimeout(() => textareaRef.current?.focus(), 100);
+                        }}
+                      />
+                    </div>
                   )}
                 </div>
               )}
@@ -2221,32 +2272,32 @@ export function AIChat() {
             </div>
           ))}
 
+          {/* Enhanced Processing State Indicator */}
           {loading && (
-            <div className="flex justify-start">
-              <div className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm">
-                <div className="flex items-center gap-3">
-                  <div className="w-7 h-7 bg-gradient-to-r from-blue-600 to-purple-600 rounded-full flex items-center justify-center shadow-sm">
-                    <Bot className="w-4 h-4 text-white" />
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <div className="flex space-x-1.5">
-                      <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" />
-                      <div className="w-2 h-2 bg-purple-500 rounded-full animate-bounce" style={{ animationDelay: '0.15s' }} />
-                      <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '0.3s' }} />
-                    </div>
-                    <span className="text-sm text-gray-500">Thinking...</span>
-                  </div>
-                </div>
-                {/* Stop button */}
-                <button
-                  onClick={stopGenerating}
-                  className="mt-3 flex items-center gap-2 px-3 py-1.5 text-sm text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors w-full justify-center"
-                >
-                  <Square className="w-3.5 h-3.5" fill="currentColor" />
-                  Stop generating
-                </button>
-              </div>
-            </div>
+            <ProcessingState
+              status={processingStatus}
+              integrationName={selectedIntegration !== 'all' ? selectedIntegration : undefined}
+              errorMessage={processingError || undefined}
+              onStop={stopGenerating}
+              onRetry={() => {
+                setProcessingStatus('idle');
+                setProcessingError(null);
+                regenerateResponse();
+              }}
+            />
+          )}
+
+          {/* Error state when not loading but error exists */}
+          {!loading && processingStatus === 'error' && (
+            <ProcessingState
+              status="error"
+              errorMessage={processingError || undefined}
+              onRetry={() => {
+                setProcessingStatus('idle');
+                setProcessingError(null);
+                regenerateResponse();
+              }}
+            />
           )}
           <div ref={messagesEndRef} />
         </div>

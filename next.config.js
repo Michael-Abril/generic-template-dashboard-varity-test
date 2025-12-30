@@ -54,15 +54,16 @@ const nextConfig = {
   },
 
   // Experimental optimizations
-  experimental: {
-    optimizePackageImports: [
-      '@privy-io/react-auth',
-      'thirdweb',
-      'wagmi',
-      'viem',
-      'lucide-react'
-    ],
-  },
+  // NOTE: Barrel optimization disabled for all packages due to recharts/d3 module resolution issues
+  // experimental: {
+  //   optimizePackageImports: [
+  //     '@privy-io/react-auth',
+  //     'thirdweb',
+  //     'wagmi',
+  //     'viem',
+  //     'lucide-react'
+  //   ],
+  // },
 
   // Image optimization
   images: {
