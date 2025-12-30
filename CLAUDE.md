@@ -1,25 +1,347 @@
 # CLAUDE.md - Varity Generic Dashboard Template
 
-**Last Updated:** December 29, 2025
+**Last Updated:** December 30, 2025
 **Status:** LIVE at https://app.varity.so
 **Build Status:** Passing (Frontend: Vercel | Backend: Railway)
 **CI/CD:** GitHub Actions + Husky Pre-commit Hooks + Playwright E2E
 
+> **VERIFIED:** This documentation was validated via live API testing on December 30, 2025 at https://app.varity.so with test wallet `0x738C812FB221ba32E8726fe38961570a700e87b9`
+
 ---
 
-## CRITICAL STATUS ASSESSMENT
+## BRUTAL REALITY CHECK (December 30, 2025)
 
-### Infrastructure Status
+### Overall Assessment: 45% Working, 55% Broken/Misleading
+
+**The Good News:**
+- AI Assistant actually works (90%)
+- Infrastructure is rock solid
+- Planning feature works (95%)
+- Conversations persist (100%)
+
+**The Bad News:**
+- Most OAuth tokens EXPIRED within 24-48 hours
+- Integration pages are broken or misleading
+- Dashboard KPIs show fake/wrong data
+- Analytics page is 100% mock data
+- Frontend doesn't use available live API endpoints
+
+---
+
+## WHAT ACTUALLY WORKS (Verified with Real Data)
+
+| Feature | Status | Evidence |
+|---------|:------:|----------|
+| **AI Assistant** | 90% WORKING | RAG queries work, conversations persist, web search works |
+| **Slack Live API** | 100% WORKING | Channels endpoint returns 3 channels |
+| **Planning** | 95% WORKING | 1 task indexed in RAG, CRUD works |
+| **Conversations** | 100% WORKING | 6 conversations stored |
+| **Infrastructure** | 100% WORKING | Backend, Pinata, Qdrant all healthy |
+
+## WHAT'S BROKEN (Verified)
+
+| Feature | Status | Evidence |
+|---------|:------:|----------|
+| **Google OAuth** | EXPIRED | `needs_reauth: true`, `sync_status: "expired"` |
+| **Microsoft OAuth** | EXPIRED | `needs_reauth: true`, `sync_status: "expired"` |
+| **QuickBooks OAuth** | EXPIRED | `needs_reauth: true`, `data_count: 0` |
+| **Integration Pages** | 80% BROKEN | No live API implementation for most tabs |
+| **Analytics Page** | 100% MOCK DATA | Confirmed using fake data |
+| **Dashboard KPIs** | MISLEADING | Shows "$5.00" revenue but QuickBooks has `data_count: 0` |
+
+---
+
+## INFRASTRUCTURE STATUS
 
 | Component | Status | Notes |
 |-----------|--------|-------|
-| **Frontend (Vercel)** | ✅ WORKING | Live at https://app.varity.so |
-| **Backend (Railway)** | ✅ WORKING | Live at https://generic-template-dashboard-production.up.railway.app |
-| **Pinata Gateway** | ✅ FIXED | Using dedicated gateway `varity.mypinata.cloud` (no rate limits) |
-| **Qdrant (RAG)** | ✅ WORKING | Planning data fully indexed, integrations partial |
-| **CI/CD Pipeline** | ✅ WORKING | GitHub Actions + Husky pre-commit + Playwright E2E |
+| **Frontend (Vercel)** | WORKING | Live at https://app.varity.so |
+| **Backend (Railway)** | WORKING | Live at https://generic-template-dashboard-production.up.railway.app |
+| **Pinata Gateway** | WORKING | Dedicated gateway `varity.mypinata.cloud` |
+| **Qdrant (RAG)** | WORKING | Planning data indexed, integration data partial |
+| **PostgreSQL** | WORKING | Railway managed |
+| **Redis** | WORKING | Railway managed |
 
-### CI/CD Guardrails (NEW - December 29, 2025)
+---
+
+## 6 INTEGRATIONS: ACTUAL STATUS
+
+### Critical Finding: OAuth Tokens Expire Within 24-48 Hours
+
+| Integration | OAuth Status | Data Synced | Live API | Frontend Uses Live API | Overall |
+|-------------|:------------:|:-----------:|:--------:|:----------------------:|:-------:|
+| **Google** | EXPIRED | 83 files (stale) | Can't test | NO | 20% |
+| **Slack** | ACTIVE | 2 users only | YES (3 channels) | NO | 50% |
+| **Microsoft** | EXPIRED | 0 | Can't test | NO | 10% |
+| **QuickBooks** | EXPIRED | 0 | Can't test | NO | 5% |
+| **Salesforce** | UNKNOWN | Unknown | Unknown | NO | ? |
+| **HubSpot** | UNKNOWN | Unknown | Unknown | NO | ? |
+
+### Token Expiration Timeline (Actual)
+
+| Integration | Last Sync | Status After |
+|-------------|-----------|--------------|
+| Google | Dec 29, 8:41 PM | EXPIRED (<24 hours) |
+| Microsoft | Dec 29, 2:43 AM | EXPIRED (<48 hours) |
+| QuickBooks | Dec 29, 6:15 PM | EXPIRED (<24 hours) |
+| Slack | Dec 26 | ACTIVE (4+ days) |
+
+### Per-Integration Details
+
+#### Google Workspace - 20% Working
+
+**OAuth:** EXPIRED
+**Synced Data:** 83 Drive files (from Dec 29 - now stale)
+
+| Tab | Status | Notes |
+|-----|--------|-------|
+| Home | BROKEN | Can't fetch stats (OAuth expired) |
+| Gmail | BROKEN | "Unable to load emails" error |
+| Calendar | BROKEN | OAuth expired |
+| Drive | PARTIAL | Shows 83 files from old sync, links won't work |
+| Contacts | UNKNOWN | Not tested |
+| Tasks | Coming Soon | Placeholder UI |
+
+#### Slack - 50% Working (Best Integration)
+
+**OAuth:** ACTIVE
+**Synced Data:** 2 users only (channels/messages NOT synced)
+
+| Tab | Status | Notes |
+|-----|--------|-------|
+| Channels | SHOULD WORK | Live API returns 3 channels, BUT frontend doesn't call it |
+| Messages | BROKEN | No sync, no live API in frontend |
+| Users | WORKS | 2 users synced |
+| Files | BROKEN | 0 files synced |
+
+**Critical Issue:** Live API endpoint exists and works (`GET /api/v1/integrations/slack/channels`), but frontend only fetches sync data from `/api/v1/integrations/slack/data`.
+
+#### Microsoft 365 - 10% Working
+
+**OAuth:** EXPIRED (worked on Dec 29)
+**Synced Data:** 0
+
+All tabs BROKEN. Previous documentation said "OAuth broken, needs investigation" - reality is OAuth worked but tokens expired and no data persisted.
+
+#### QuickBooks - 5% Working
+
+**OAuth:** EXPIRED
+**Synced Data:** 0
+
+All tabs BROKEN. Dashboard shows "$5.00 revenue" which is either cached or fake data (actual `data_count: 0`).
+
+---
+
+## CRITICAL ARCHITECTURAL ISSUES
+
+### Issue #1: Frontend Doesn't Use Live API Endpoints
+
+**Location:** `src/app/dashboard/tools/[integration]/page.tsx` lines 2417-2420
+
+```typescript
+// Current code (BROKEN)
+const res = await fetch(`${apiBase}/api/v1/integrations/${integration}/data`);
+// This ONLY fetches sync data from Pinata, ignores live API endpoints
+```
+
+**Impact:** Slack channels endpoint returns 3 channels, but frontend shows empty because it's waiting for sync data.
+
+**Fix Required:** Frontend needs to detect data types that use live API and call those endpoints instead.
+
+### Issue #2: OAuth Tokens Expire Aggressively
+
+**Evidence:**
+- Google: Expired in <24 hours
+- Microsoft: Expired in <48 hours
+- QuickBooks: Expired in <24 hours
+- Only Slack stayed active (4+ days)
+
+**Location:** `backend/app/api/v1/integrations.py` lines 66-129 (refresh_oauth_token)
+
+**Impact:** Users see "reconnect" prompts constantly. No automatic token refresh.
+
+### Issue #3: Dashboard KPIs Show Wrong/Fake Data
+
+**From `/api/v1/dashboard/kpis`:**
+
+| KPI | Displayed | Actual |
+|-----|-----------|--------|
+| QuickBooks Revenue | "$5.00" | `data_count: 0` (no data) |
+| Google Drive Files | "1" | 83 files synced |
+
+**Location:** `backend/app/api/v1/dashboard.py`
+
+### Issue #4: Analytics Page Uses Mock Data
+
+**Status:** 100% MOCK DATA
+
+The Analytics page displays charts but all data is hardcoded mock data, not real integration data.
+
+---
+
+## WHAT ACTUALLY WORKS WELL
+
+### AI Assistant - 90% Working
+
+**Test Query:** "What files are in my Google Drive?"
+
+**Result:** SUCCESS with:
+- RAG sources (5 CIDs from actual synced data)
+- Web search results (3 sources)
+- Executive summary format
+- Citations from both RAG and web
+
+**What Works:**
+- RAG queries actually search indexed data
+- Web search integration
+- Conversation history persists (6 conversations)
+- Multiple AI modes
+
+**What Doesn't Work:**
+- Context picker likely empty (most integrations have `data_count: 0`)
+- Email send actions (OAuth tokens expired)
+- Document creation (OAuth tokens expired)
+
+### Planning Feature - 95% Working
+
+**From `/api/v1/planning/tasks`:**
+```json
+{
+  "tasks": [{
+    "id": 1,
+    "title": "finish3PL Shipment",
+    "priority": "medium",
+    "category": "operations",
+    "is_completed": true,
+    "rag_indexed": true
+  }],
+  "total_count": 1,
+  "completed_count": 1
+}
+```
+
+- Task CRUD works
+- RAG indexed (AI can query it)
+- Dashboard widget displays it
+- WCAG accessible
+
+### Conversations - 100% Working
+
+6 conversations stored with:
+- Timestamps preserved
+- Message counts tracked
+- Titles extracted
+
+---
+
+## HYBRID DATA MODEL: Documented vs Implemented
+
+### What Documentation Claims
+
+| Integration | RAG Storage | Live API |
+|-------------|-------------|----------|
+| Google | Drive, Contacts | Gmail, Calendar |
+| Microsoft | OneDrive, Contacts | Mail, Calendar |
+| Slack | Files | Channels, Messages, Users |
+
+### What's Actually Implemented
+
+| Integration | RAG Storage | Live API Backend | Frontend Calls Live API |
+|-------------|-------------|------------------|------------------------|
+| Google | Drive (83 files) | EXISTS but untested | NO |
+| Microsoft | Nothing (0) | EXISTS but untested | NO |
+| Slack | Users only (2) | YES, works | NO |
+| QuickBooks | Nothing (0) | Unknown | NO |
+
+**The Problem:** Live API endpoints exist in backend but frontend NEVER calls them. Frontend only fetches from `/api/v1/integrations/{integration}/data` which is sync data only.
+
+---
+
+## PAGE STATUS (Verified)
+
+### Fully Working Pages
+
+| Page | URL | Status |
+|------|-----|--------|
+| **Homepage** | `/` | 100% WORKING |
+| **Onboarding** | `/onboarding` | 100% WORKING |
+| **AI Assistant** | `/ai-assistant` | 90% WORKING |
+| **Dashboard** | `/dashboard` | 70% WORKING (KPIs misleading) |
+| **Tasks** | `/dashboard/tasks` | 95% WORKING |
+| **Roadmap** | `/dashboard/roadmap` | 95% WORKING |
+| **Marketplace** | `/marketplace` | 100% WORKING (OAuth-only) |
+| **Settings** | `/settings` | 90% WORKING |
+
+### Broken/Misleading Pages
+
+| Page | URL | Status | Issue |
+|------|-----|--------|-------|
+| **Analytics** | `/analytics` | 0% REAL DATA | 100% mock data |
+| **Google Workspace** | `/dashboard/tools/google` | 20% WORKING | OAuth expired |
+| **QuickBooks** | `/dashboard/tools/quickbooks` | 5% WORKING | OAuth expired, no data |
+| **Microsoft 365** | `/dashboard/tools/microsoft` | 10% WORKING | OAuth expired, no data |
+| **Slack** | `/dashboard/tools/slack` | 50% WORKING | Frontend doesn't use live API |
+| **Integrations** | `/integrations` | MISLEADING | Shows connections but most expired |
+
+---
+
+## PRIORITY FIXES NEEDED
+
+### Priority 1: Fix OAuth Token Refresh (CRITICAL)
+
+**Impact:** Blocks ALL integrations
+**Files:** `backend/app/api/v1/integrations.py` lines 66-129
+
+**Problem:** Tokens expire within 24-48 hours. No automatic refresh.
+
+**Success Criteria:**
+- Tokens last > 7 days
+- Automatic refresh before expiry
+- User never sees "reconnect" unless manually disconnected
+
+### Priority 2: Fix Frontend Live API Integration (CRITICAL)
+
+**Impact:** Slack works in backend but shows empty in frontend
+**Files:** `src/app/dashboard/tools/[integration]/page.tsx`
+
+**Required Change:**
+```typescript
+// Detect live API data types and call live endpoints
+const liveDataTypes = {
+  google: ['gmail', 'calendar'],
+  microsoft: ['mail', 'calendar'],
+  slack: ['channels', 'messages', 'users']
+};
+
+if (liveDataTypes[integration]?.includes(dataType)) {
+  const res = await fetch(`/api/v1/integrations/${integration}/${dataType}`);
+} else {
+  const res = await fetch(`/api/v1/integrations/${integration}/data`);
+}
+```
+
+### Priority 3: Fix Dashboard KPIs
+
+**Impact:** Users see wrong numbers
+**Files:** `backend/app/api/v1/dashboard.py`
+
+**Issues:**
+- QuickBooks "$5.00" when `data_count=0`
+- Google Drive "1 file" when 83 synced
+
+### Priority 4: Remove/Label Mock Data
+
+**Impact:** Honesty with users
+**Files:** Analytics page components
+
+**Options:**
+1. Remove analytics page entirely
+2. Add "DEMO DATA" banner
+3. Replace with "Coming Soon"
+
+---
+
+## CI/CD GUARDRAILS (December 29, 2025)
 
 | Guardrail | Tool | What It Catches |
 |-----------|------|-----------------|
@@ -29,101 +351,10 @@
 | **API Health Checks** | CI Pipeline | Backend/AI service failures |
 
 **Files:**
-- `.husky/pre-commit` - Runs TypeScript check + build on every commit
-- `.github/workflows/ci.yml` - Full CI pipeline with E2E tests
+- `.husky/pre-commit` - TypeScript + Build check
+- `.github/workflows/ci.yml` - Full CI pipeline
 - `playwright.config.ts` - Playwright configuration
 - `tests/e2e/*.spec.ts` - E2E test suites
-
-### Data Pipeline Status
-
-| Component | Status | Notes |
-|-----------|--------|-------|
-| **Pinata Storage** | ✅ WORKING | Dedicated gateway deployed Dec 26, 2025 |
-| **RAG Indexing (Planning)** | ✅ WORKING | Tasks + Milestones fully indexed with delete support |
-| **RAG Indexing (Integrations)** | ⚠️ PARTIAL | Not all integrations indexed consistently |
-| **Live API Calls** | ⚠️ PARTIAL | Not all integrations have live endpoints |
-| **Hybrid Data Model** | ⚠️ DOCUMENTED | Architecture defined but not fully implemented |
-
-**See:** `src/components/integrations/README.md` for full Hybrid Data Model documentation
-
-### What Actually Works vs. What's Documented
-
-| Feature | Documented | Actual Status | Notes |
-|---------|:----------:|:-------------:|-------|
-| **Frontend Deployment** | ✅ | ✅ WORKING | Live on Vercel |
-| **Backend Deployment** | ✅ | ✅ WORKING | Live on Railway |
-| **OAuth Flow (QuickBooks)** | ✅ | ⚠️ ~70% PARTIAL | Production keys active, some data visible |
-| **OAuth Flow (Google)** | ✅ | ✅ WORKING | Tested and functional |
-| **OAuth Flow (Microsoft)** | ✅ | ❌ NOT WORKING | Needs investigation |
-| **OAuth Flow (Slack)** | ✅ | ✅ WORKING | Fixed Dec 26 - requires groups:read,groups:history scopes |
-| **OAuth Flow (Salesforce)** | ✅ | ❓ TESTING | User testing with dev account |
-| **OAuth Flow (HubSpot)** | ✅ | ❓ TESTING | User testing with free account |
-| **Data Sync (Google)** | ✅ | ⚠️ PARTIAL | Syncs but RAG indexing incomplete |
-| **Data Sync (Slack)** | ✅ | ⚠️ PARTIAL | Channels/messages via live API, files to RAG |
-| **AI Assistant** | ✅ | ✅ WORKING | Chat works, RAG queries planning data |
-| **Onboarding Flow** | ✅ | ✅ WORKING | 6-step wizard complete |
-| **Dashboard KPIs** | ✅ | ✅ WORKING | Clean redesigned UI with AI insights |
-| **Planning (Tasks)** | ✅ | ✅ WORKING | Full CRUD, RAG indexed, WCAG accessible |
-| **Planning (Roadmap)** | ✅ | ✅ WORKING | Milestones with progress, RAG indexed |
-| **Marketplace** | ✅ | ✅ WORKING | OAuth-only (USDC purchases post-MVP) |
-| **Team Management** | ✅ | ✅ WORKING | Frontend makes API calls to backend |
-| **Data Import** | ✅ | ⏳ COMING SOON | UI shows "Coming Soon" badge |
-| **Data Export** | ✅ | ✅ WORKING | JSON, CSV, Excel formats |
-
----
-
-## KNOWN ISSUES & TECHNICAL DEBT
-
-### HIGH PRIORITY (Blocking or User-Facing)
-
-| Issue | Location | Impact | Status |
-|-------|----------|--------|--------|
-| **Microsoft 365 OAuth** | OAuth flow | Cannot connect | BLOCKED - needs investigation |
-
-### MEDIUM PRIORITY (Functional but Incomplete)
-
-| Issue | Location | Impact |
-|-------|----------|--------|
-| TypeScript `any` types | Various API responses | Type safety |
-
-### ✅ RESOLVED (December 29, 2025)
-
-| Issue | Resolution |
-|-------|------------|
-| Regression cycle | FIXED - Comprehensive CI/CD guardrail system implemented |
-| No pre-commit checks | ADDED - Husky pre-commit hooks (TypeScript + Build) |
-| No CI pipeline | ADDED - GitHub Actions with E2E tests |
-| No E2E tests | ADDED - Playwright test suite (4 test files) |
-| Build errors reaching prod | BLOCKED - Pre-commit + CI now catch before merge |
-
-### ✅ RESOLVED (December 28, 2025)
-
-| Issue | Resolution |
-|-------|------------|
-| QuickBooks | Production credentials configured, 95% working |
-| Console.log statements | Cleaned up 33 instances across codebase |
-| Document upload incomplete | FIXED - Full upload and analysis working |
-| AI Chat Qdrant bypass | FIXED - Now uses vector search properly |
-| Error boundaries missing | ADDED - IntegrationErrorBoundary.tsx |
-| Planning feature missing | ADDED - Tasks + Roadmap with full RAG integration |
-| ARIA accessibility gaps | FIXED - WCAG 2.1 AA compliance on planning widgets |
-| Reindex rate limiting | ADDED - 60s cooldown per wallet on /reindex endpoint |
-
-### LOW PRIORITY (Polish)
-
-| Issue | Location |
-|-------|----------|
-| Inconsistent loading states | Mixed spinners/skeletons |
-
-### ✅ RESOLVED (December 23, 2025)
-
-| Issue | Resolution |
-|-------|------------|
-| Duplicate component files | Deleted 9 duplicate files |
-| USDC purchase code | Removed from marketplace (OAuth-only now) |
-| Data import broken | Changed to "Coming Soon" UI |
-| Storage usage hardcoded | Replaced with decentralized storage info card |
-| Team invites simulated | Frontend makes proper API calls |
 
 ---
 
@@ -131,456 +362,32 @@
 
 | Service | URL | Status |
 |---------|-----|--------|
-| **Frontend** | https://app.varity.so | ✅ Live |
-| **Backend API** | https://generic-template-dashboard-production.up.railway.app | ✅ Live |
-| **Health Check** | https://generic-template-dashboard-production.up.railway.app/health | ✅ Healthy |
-| **API Docs** | https://generic-template-dashboard-production.up.railway.app/docs | ✅ Available |
-
----
-
-## 6 PRIORITY INTEGRATIONS STATUS
-
-**IMPORTANT:** No integration is fully working yet. All require completion of:
-1. RAG Storage (data syncing to Pinata and indexing in Qdrant)
-2. Live API endpoints for appropriate data types
-3. Frontend UI displaying all data correctly
-
-| # | Integration | OAuth | Page Loads | RAG Sync | Live API | Status |
-|---|-------------|:-----:|:----------:|:--------:|:--------:|--------|
-| 1 | **QuickBooks** | ✅ | ✅ 95% | ❌ | ⚠️ ~70% | Production keys active, some data visible |
-| 2 | **Google Workspace** | ✅ | ⚠️ Partial | ⚠️ Partial | ⚠️ Partial | Needs completion |
-| 3 | **Microsoft 365** | ❌ | ❌ | ❌ | ⚠️ Partial | OAuth broken |
-| 4 | **Slack** | ✅ | ⚠️ Partial | ⚠️ Files only | ✅ Ch/Msg/Users | Needs RAG for files |
-| 5 | **Salesforce** | ❓ | ❓ | ❌ | ❌ | Testing |
-| 6 | **HubSpot** | ❓ | ❓ | ❌ | ❌ | Testing |
-
-### Hybrid Data Model (See `src/components/integrations/README.md`)
-
-| Integration | RAG Storage (Pinata → Qdrant) | Live API Calls |
-|-------------|------------------------------|----------------|
-| **Google Workspace** | Drive files, Contacts | Gmail, Calendar |
-| **Microsoft 365** | OneDrive files, Contacts | Mail, Calendar |
-| **Slack** | Files | Channels, Messages, Users |
-| **QuickBooks** | Invoices, Expenses, Customers, Vendors, Payments | TBD |
-| **Salesforce** | Contacts, Opportunities, Accounts, Leads, Tasks | TBD |
-| **HubSpot** | Contacts, Deals, Companies, Emails, Tickets | TBD |
-
-### Production Redirect URIs (Must be registered)
-
-```
-https://app.varity.so/oauth/callback/quickbooks   ← developer.intuit.com
-https://app.varity.so/oauth/callback/google       ← console.cloud.google.com
-https://app.varity.so/oauth/callback/microsoft    ← portal.azure.com
-https://app.varity.so/oauth/callback/slack        ← api.slack.com
-https://app.varity.so/oauth/callback/salesforce   ← developer.salesforce.com
-https://app.varity.so/oauth/callback/hubspot      ← developers.hubspot.com
-```
-
----
-
-## PAGE-BY-PAGE FUNCTIONALITY
-
-### Fully Working Pages
-
-| Page | URL | Status | Notes |
-|------|-----|--------|-------|
-| **Homepage** | `/` | ✅ 100% | Hero, FAQ, marketing complete |
-| **Onboarding** | `/onboarding` | ✅ 100% | 6-step wizard, email collection |
-| **AI Assistant** | `/ai-assistant` | ✅ 100% | Chat, RAG, document upload all working |
-| **Dashboard** | `/dashboard` | ✅ 100% | Tasks + Roadmap widgets, AI insights |
-| **Tasks** | `/dashboard/tasks` | ✅ 100% | Full task management, WCAG accessible |
-| **Roadmap** | `/dashboard/roadmap` | ✅ 100% | Milestone tracking, progress bars |
-| **Marketplace** | `/marketplace` | ✅ 100% | OAuth-only connections (USDC post-MVP) |
-| **Settings** | `/settings` | ✅ 95% | All tabs work, data import "Coming Soon" |
-
-### Working But Data-Dependent Pages
-
-| Page | URL | Status | Notes |
-|------|-----|--------|-------|
-| **Analytics** | `/analytics` | ⚠️ Needs Data | Charts render, need backend data |
-| **Integrations** | `/integrations` | ⚠️ Backend Dependent | List works, sync depends on backend |
-| **Integration Tools** | `/dashboard/tools/[integration]` | ⚠️ Needs Data | UI complete, needs synced data |
-
----
-
-## ONBOARDING FLOW (Complete - December 2025)
-
-Professional 6-step wizard optimized for 30-60 year old business owners.
-
-### Components
-
-```
-src/components/onboarding/
-├── OnboardingWizard.tsx       # Main controller (state, navigation)
-├── OnboardingProgress.tsx     # Progress indicator (mobile + desktop)
-├── TrialBadge.tsx            # Trial tier badge (30-day bonus or 14-day)
-└── steps/
-    ├── WelcomeStep.tsx        # Step 1: Welcome + trust signals
-    ├── CompanyProfileStep.tsx # Step 2: Company info + email (GTM)
-    ├── IntegrationSelectStep.tsx # Step 3: Industry-based recommendations
-    ├── OAuthConnectStep.tsx   # Step 4: OAuth with permissions preview
-    ├── SyncingStep.tsx        # Step 5: Visual 5-stage sync + skip option
-    └── CompleteStep.tsx       # Step 6: Celebration + AI preview
-```
-
-### UX Features (Based on 2025 Best Practices)
-
-| Feature | Location | Purpose |
-|---------|----------|---------|
-| **Trust Signals** | WelcomeStep | SOC 2 Compliant, 256-bit Encryption badges |
-| **Time Estimates** | WelcomeStep, CompanyProfileStep | "~2 min", "Only 3 fields required" |
-| **Auto-Save Indicator** | CompanyProfileStep | "Your progress is auto-saved" |
-| **Industry Recommendations** | IntegrationSelectStep | Shows relevant integrations for industry |
-| **Skip Options** | IntegrationSelectStep, OAuthConnectStep, SyncingStep | Reduces abandonment |
-| **Celebration Animation** | CompleteStep | Animated checkmark + PartyPopper icon |
-| **AI Preview** | CompleteStep | Interactive sample queries before dashboard |
-| **Trial Badge** | TrialBadge | "Bonus" label with explanation for 30-day users |
-
-### GTM Data Collection
-
-| Field | Required | Purpose |
-|-------|----------|---------|
-| `contact_email` | ✅ Yes | Trial communications, conversion follow-up |
-| `contact_name` | No | Personalization |
-| `company_name` | ✅ Yes | Dashboard customization |
-| `industry` | ✅ Yes | Integration recommendations |
-| `company_size` | No | Analytics |
-| `referral_source` | No | Marketing attribution |
-
-### Backend Endpoints
-
-| Endpoint | Method | Purpose |
-|----------|--------|---------|
-| `/api/v1/onboarding/status` | GET | Get onboarding progress |
-| `/api/v1/onboarding/step` | PUT | Save current step |
-| `/api/v1/onboarding/complete` | POST | Mark onboarding complete |
-| `/api/v1/onboarding/trial-tier` | GET | Get trial tier (30 or 14 days) |
-| `/api/v1/settings` | PUT | Save company profile + contact info |
-
----
-
-## ARCHITECTURE OVERVIEW
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                      FRONTEND (Next.js 14)                       │
-│                    https://app.varity.so                         │
-│          Privy Auth + thirdweb Web3 + Tailwind CSS               │
-└─────────────────────────┬───────────────────────────────────────┘
-                          │
-┌─────────────────────────▼───────────────────────────────────────┐
-│                      BACKEND (FastAPI)                           │
-│     https://generic-template-dashboard-production.up.railway.app │
-│         OAuth + Encryption + Filecoin + Together.ai              │
-└─────────────────────────┬───────────────────────────────────────┘
-                          │
-┌─────────────────────────▼───────────────────────────────────────┐
-│                    INFRASTRUCTURE                                │
-├──────────────┬──────────────┬──────────────┬───────────────────┤
-│  PostgreSQL  │    Redis     │   Qdrant     │    Pinata         │
-│  (Railway)   │  (Railway)   │  (Railway)   │  (Filecoin/IPFS)  │
-└──────────────┴──────────────┴──────────────┴───────────────────┘
-```
+| **Frontend** | https://app.varity.so | WORKING |
+| **Backend API** | https://generic-template-dashboard-production.up.railway.app | WORKING |
+| **Health Check** | /health | HEALTHY |
+| **API Docs** | /docs | AVAILABLE |
 
 ---
 
 ## DEVELOPMENT WORKFLOW
 
-### Quick Start (No Docker Needed)
+### Quick Start
 
 ```bash
-# Clone repo
 git clone https://github.com/varity-labs/generic-template-dashboard.git
 cd generic-template-dashboard
-
-# Install dependencies (includes Husky pre-commit hooks)
 npm install --legacy-peer-deps
-
-# Build to check for errors
 npm run build
-
-# Push to deploy (auto-deploys to Vercel)
 git add . && git commit -m "fix: description" && git push origin main
-```
-
-### Code Quality Rules (ENFORCED BY GUARDRAILS)
-
-```bash
-# Pre-commit hooks AUTOMATICALLY run:
-# 1. npm run type-check  (TypeScript validation)
-# 2. npm run build       (Full build verification)
-
-# If either fails, the commit is BLOCKED
-
-# Run E2E tests locally:
-npm run test:e2e        # Headless
-npm run test:e2e:ui     # With Playwright UI
-
-# CI Pipeline runs on every push/PR:
-# 1. Build & Type Check
-# 2. API Health Checks
-# 3. Playwright E2E Tests
 ```
 
 ### Guardrails Enforcement
 
 | When | What Runs | Blocks On Failure |
 |------|-----------|:-----------------:|
-| `git commit` | TypeScript + Build | ✅ Yes |
-| Push to main | Full CI Pipeline | ✅ Yes |
-| Pull Request | Full CI + E2E Tests | ✅ Yes |
-
----
-
-## AI ASSISTANT FEATURES
-
-| Feature | Status | Backend Endpoint |
-|---------|--------|------------------|
-| **General Chat** | ✅ Working | `POST /api/v1/ai/chat/general` |
-| **RAG Query** | ✅ Working | `POST /api/v1/ai/query/combined` |
-| **Deep Research** | ✅ Working | `POST /api/v1/ai/research` |
-| **Document Analysis** | ✅ Working | `POST /api/v1/ai/analyze/document` |
-| **Conversation History** | ✅ Working | `GET/POST /api/v1/conversations/` |
-| **Send Email (Google)** | ✅ Working | `POST /api/v1/integrations/google/send-email` |
-| **Send Email (Microsoft)** | ❓ Untested | `POST /api/v1/integrations/microsoft/mail/send` |
-| **Create Document** | ⚠️ Partial | Upload endpoints implemented |
-
-### AI Modes
-
-| Mode | Description | Web Search |
-|------|-------------|:----------:|
-| **Standard** | Quick answers from business data | ❌ |
-| **Deep Research** | Comprehensive analysis | Optional |
-| **Deep Analysis** | Executive-level reports | ❌ |
-| **Document** | Upload and analyze files | ❌ |
-
-### AI Enhancements (December 28, 2025)
-
-| Feature | Component | Description |
-|---------|-----------|-------------|
-| **Smart Mode Selection** | `IntentDetector.ts` | Auto-detects query intent for optimal mode |
-| **Context Preview** | `ContextPreview.tsx` | Shows data sources before querying |
-| **Inline Citations** | `CitationLink.tsx` | Clickable source references in responses |
-| **Citation Details** | `CitationPanel.tsx` | Expandable citation panel |
-| **Action Detection** | `ActionDetector.ts` | Identifies actionable items in responses |
-| **Quick Actions** | `QuickActions.tsx` | One-click action buttons |
-| **Memory Indicator** | `MemoryIndicator.tsx` | Shows conversation context tracking |
-| **Staleness Indicator** | `StalenessIndicator.tsx` | Warns about outdated data |
-
----
-
-## PLANNING FEATURE (December 28, 2025)
-
-Full task management and company roadmap with RAG integration.
-
-### API Endpoints
-
-| Endpoint | Method | Purpose |
-|----------|--------|---------|
-| `/api/v1/planning/tasks` | GET | List tasks with filters |
-| `/api/v1/planning/tasks` | POST | Create task (auto-indexes to Qdrant) |
-| `/api/v1/planning/tasks/{id}` | PATCH | Update task (re-indexes) |
-| `/api/v1/planning/tasks/{id}` | DELETE | Delete task (removes from Qdrant) |
-| `/api/v1/planning/tasks/{id}/complete` | POST | Mark complete |
-| `/api/v1/planning/roadmap` | GET | Get roadmap with milestones |
-| `/api/v1/planning/roadmap/milestones` | POST | Create milestone |
-| `/api/v1/planning/roadmap/milestones/{id}` | PATCH | Update milestone |
-| `/api/v1/planning/roadmap/milestones/{id}` | DELETE | Delete milestone |
-| `/api/v1/planning/rag-health` | GET | Check Qdrant indexing status |
-| `/api/v1/planning/reindex` | POST | Re-index all planning data (60s rate limit) |
-
-### RAG Integration
-
-- **Data Type:** `planning`
-- **Integration:** `varity`
-- **CID Format:** `planning-task-{id}`, `planning-milestone-{id}`
-- **Indexed Fields:** title, description, priority, category, status, due_date, timeframe
-
-**AI can answer:**
-- "What are my overdue tasks?"
-- "What are my Q1 goals?"
-- "Show me high priority sales tasks"
-- "What milestones need attention?"
-
-### Accessibility (WCAG 2.1 AA)
-
-| Feature | Implementation |
-|---------|---------------|
-| Screen readers | `role="list"`, `role="listitem"`, `aria-label` |
-| Progress bars | `role="progressbar"` with `aria-valuenow/min/max` |
-| Checkboxes | `role="checkbox"` with `aria-checked` |
-| Alerts | `role="alert"` with `aria-live="assertive"` |
-| Loading | `aria-busy="true"` |
-
----
-
-## GOOGLE WORKSPACE INTEGRATION (Reference Implementation)
-
-This is the most complete integration and serves as the reference for others:
-
-| Component | Status | File |
-|-----------|--------|------|
-| **Gmail Tab** | ✅ Working | `GmailInbox.tsx` |
-| **Calendar Tab** | ✅ Working | `CalendarView.tsx` |
-| **Drive Tab** | ✅ Working | `DriveExplorer.tsx` |
-| **Contacts Tab** | ⚠️ Partial | `ContactsList.tsx` (form incomplete) |
-| **Tasks Tab** | Coming Soon | Placeholder UI |
-
-### Recent Fixes (Dec 18, 2025)
-
-- Fixed data sync loading (was taking 6+ minutes, now ~26 seconds)
-- Added `latest_only` parameter to reduce Filecoin queries
-- Fixed text visibility issues (gray-500 → gray-700)
-- Implemented search filtering with useMemo
-- Fixed Archive, Reply All, Forward handlers
-- Added working modal buttons (Preview, Share, Star, Rename)
-
-### Recent Fixes (Dec 23, 2025)
-
-- **Dashboard Redesign**: Clean Business Overview with AI Insight widget
-- **Marketplace Cleanup**: Removed USDC purchase code, OAuth-only connections
-- **Settings Improvements**: Data Import → "Coming Soon", decentralized storage info card
-- **Duplicate Files Deleted**: Removed 9 duplicate component files
-- **Text Visibility Fixes**: Added text-gray-900 to dropdowns across Analytics, Marketplace, Integration Tools
-
-### Recent Fixes (Dec 26, 2025)
-
-- **Pinata Gateway Fix (CRITICAL)**: Switched from public gateway to dedicated gateway `varity.mypinata.cloud`
-  - Public gateway had rate limits causing 429 errors
-  - Dedicated gateway has NO rate limits for retrieval
-  - Added `PINATA_GATEWAY_URL` env var support in `config.py`
-  - Added retry logic with exponential backoff in `filecoin_service.py`
-
-- **Slack OAuth Fix**: Fixed `'OAuthToken' object has no attribute 'encrypted_token'` error
-  - Changed all Slack endpoints to use `oauth_token.access_token` property
-  - Required Slack App scopes: `channels:read`, `channels:history`, `groups:read`, `groups:history`, `users:read`, `files:read`, `chat:write`
-
-- **Slack Live API**: Implemented live API endpoints for channels, messages, users
-  - Channels and messages NOT stored in RAG (fetched live)
-  - Only files go to RAG storage
-
-### Recent Fixes (Dec 28, 2025) - 5-Terminal Parallel Sprint
-
-**Terminal 1: Security + Bug Fixes**
-- NEW: `backend/app/core/validators.py` - Security validation module (150+ lines)
-  - `validate_wallet_address()` - Fixes wallet injection vulnerabilities
-  - `sanitize_error_message()` - Prevents sensitive data leaks
-  - `validate_salesforce_id()` - Fixes Salesforce ID injection
-  - `validate_email_list()` - Email validation with sanitization
-  - `validate_file_size()` / `validate_mime_type()` - File upload security
-- Security hardening in `google.py`, `oauth.py`, `salesforce_crud.py`
-
-**Terminal 2: Accessibility + UX**
-- WCAG 2.1 AA compliance across all components
-- Focus trapping in dialogs (`dialog.tsx`)
-- Screen reader improvements (A+ rating)
-- Skip links and keyboard navigation
-- ARIA labels and roles throughout
-
-**Terminal 3: Frontend Polish**
-- Cleaned up 33 console.log statements
-- Added `IntegrationErrorBoundary.tsx` for graceful error handling
-- Fixed console warnings and TypeScript issues
-
-**Terminal 4: AI Enhancements**
-- Smart mode selection via `IntentDetector.ts`
-- Context preview with `ContextPreview.tsx`
-- Inline citations with `CitationLink.tsx` and `CitationPanel.tsx`
-- Action detection via `ActionDetector.ts`
-- Quick actions UI with `QuickActions.tsx`
-- Memory indicator via `MemoryIndicator.tsx`
-- Data staleness indicator via `StalenessIndicator.tsx`
-- New AI types in `src/types/ai.ts`
-
-**Terminal 5: QuickBooks Integration**
-- Full frontend UI: tabs, forms, reports (`QuickBooksPage.tsx` +1,123 lines)
-- Backend CRUD endpoints (`quickbooks_crud.py` +1,793 lines)
-- Database OAuthToken pattern (not Filecoin retrieval)
-- Invoice, Expense, Customer, Vendor management forms
-
----
-
-## MULTI-TENANT SECURITY (4-Layer Architecture)
-
-| Layer | Technology | Purpose |
-|-------|------------|---------|
-| **1. Authentication** | Privy | Email → Embedded Wallet binding |
-| **2. Encryption** | AES-256-GCM + PBKDF2 | Wallet-derived encryption keys |
-| **3. Storage** | Pinata (Filecoin/IPFS) | Wallet-namespaced file storage |
-| **4. RAG** | Qdrant | Isolated vector collections per wallet |
-
-**Security Guarantee:** Cross-business data access is mathematically impossible.
-
----
-
-## ENVIRONMENT VARIABLES
-
-### Vercel (Frontend)
-
-```bash
-NEXT_PUBLIC_API_URL=https://generic-template-dashboard-production.up.railway.app
-NEXT_PUBLIC_PRIVY_APP_ID=cmhwbozxu004fjr0cicfz0tf8
-NEXT_PUBLIC_THIRDWEB_CLIENT_ID=acb17e07e34ab2b8317aa40cbb1b5e1d
-```
-
-### Railway (Backend)
-
-```bash
-# All OAuth credentials are set ✅
-QUICKBOOKS_CLIENT_ID=✅
-GOOGLE_CLIENT_ID=✅
-MICROSOFT_CLIENT_ID=✅
-SLACK_CLIENT_ID=✅
-SALESFORCE_CLIENT_ID=✅
-HUBSPOT_CLIENT_ID=✅
-
-# Infrastructure
-DATABASE_URL=✅
-TOGETHER_API_KEY=✅
-PINATA_API_KEY=✅
-FRONTEND_URL=https://app.varity.so
-```
-
----
-
-## TESTING CHECKLIST
-
-### CI/CD Guardrails (December 29, 2025)
-
-- [x] Pre-commit hooks working (Husky)
-- [x] GitHub Actions CI pipeline created
-- [x] Playwright E2E tests added
-- [x] API health check tests added
-- [x] CI blocks merge on failure
-
-### Before Launch
-
-- [x] Test QuickBooks OAuth flow (~70% working, production keys active)
-- [ ] Test Microsoft 365 OAuth flow (BLOCKED)
-- [x] Test Slack OAuth flow (Dec 26, 2025)
-- [ ] Test Salesforce OAuth flow
-- [ ] Test HubSpot OAuth flow
-- [ ] Verify data appears on Dashboard after sync
-- [ ] Test AI Assistant with synced data
-- [x] Test all buttons on Settings page (Dec 23, 2025)
-- [x] Remove duplicate component files (Dec 23, 2025)
-- [x] Clean up console.log statements (Dec 28, 2025)
-- [x] Add error boundaries (Dec 28, 2025)
-- [x] AI enhancements integration (Dec 28, 2025)
-- [ ] Verify Analytics page renders with data
-
-### Manual Testing URLs
-
-```
-https://app.varity.so/                    # Homepage
-https://app.varity.so/onboarding          # Onboarding wizard
-https://app.varity.so/marketplace         # Connect integrations
-https://app.varity.so/dashboard           # Main dashboard
-https://app.varity.so/ai-assistant        # AI chat
-https://app.varity.so/settings            # User settings
-https://app.varity.so/analytics           # Analytics charts
-https://app.varity.so/dashboard/tools/google  # Google Workspace tools
-```
+| `git commit` | TypeScript + Build | YES |
+| Push to main | Full CI Pipeline | YES |
+| Pull Request | Full CI + E2E Tests | YES |
 
 ---
 
@@ -588,102 +395,88 @@ https://app.varity.so/dashboard/tools/google  # Google Workspace tools
 
 ```
 generic-template-dashboard/
-├── .husky/                       # Pre-commit hooks (NEW Dec 29)
-│   └── pre-commit                # TypeScript + Build check
+├── .husky/pre-commit              # Pre-commit hooks
+├── .github/workflows/ci.yml       # CI pipeline
+├── tests/e2e/                     # Playwright tests
+├── playwright.config.ts           # Playwright config
 │
-├── .github/workflows/            # CI/CD Pipeline (NEW Dec 29)
-│   └── ci.yml                    # Build, E2E tests, API health
-│
-├── tests/                        # E2E Tests (NEW Dec 29)
-│   └── e2e/
-│       ├── api-health.spec.ts    # API endpoint tests
-│       ├── homepage.spec.ts      # Homepage/public page tests
-│       ├── google-workspace.spec.ts  # Integration tests
-│       └── data-sync.spec.ts     # Data pipeline tests
-│
-├── playwright.config.ts          # Playwright configuration (NEW Dec 29)
-│
-├── src/                          # Next.js 14 frontend
+├── src/                           # Next.js 14 frontend
 │   ├── app/
-│   │   ├── dashboard/
-│   │   │   ├── tasks/page.tsx    # Full task management (NEW Dec 28)
-│   │   │   └── roadmap/page.tsx  # Full roadmap management (NEW Dec 28)
-│   │   └── ...                   # App Router pages
-│   ├── components/
-│   │   ├── planning/             # Planning components (NEW Dec 28)
-│   │   │   ├── TasksWidget.tsx   # Dashboard widget, WCAG accessible
-│   │   │   ├── RoadmapWidget.tsx # Dashboard widget, WCAG accessible
-│   │   │   └── index.ts
-│   │   ├── ai/                   # AI enhancement components
-│   │   │   ├── IntentDetector.ts
-│   │   │   ├── ActionDetector.ts
-│   │   │   ├── ContextPreview.tsx
-│   │   │   ├── CitationLink.tsx
-│   │   │   ├── CitationPanel.tsx
-│   │   │   ├── QuickActions.tsx
-│   │   │   ├── MemoryIndicator.tsx
-│   │   │   └── StalenessIndicator.tsx
-│   │   ├── integrations/
-│   │   │   ├── IntegrationErrorBoundary.tsx
-│   │   │   ├── google/
-│   │   │   ├── quickbooks/
-│   │   │   ├── microsoft/
-│   │   │   ├── slack/
-│   │   │   ├── salesforce/
-│   │   │   └── hubspot/
+│   │   ├── dashboard/tools/[integration]/page.tsx  # NEEDS FIX: Live API
+│   │   ├── analytics/             # MOCK DATA - needs fix
 │   │   └── ...
-│   ├── services/
-│   │   └── planningService.ts    # Planning API client (NEW Dec 28)
-│   └── types/
-│       ├── planning.ts           # Planning types (NEW Dec 28)
-│       └── ai.ts
+│   ├── components/
+│   │   ├── ai/                    # AI components (working)
+│   │   ├── planning/              # Planning components (working)
+│   │   └── integrations/          # Integration components (broken)
+│   └── ...
 │
-├── backend/                      # FastAPI backend
+├── backend/                       # FastAPI backend
 │   ├── app/
 │   │   ├── api/v1/
-│   │   │   ├── planning.py       # Tasks + Milestones CRUD (NEW Dec 28)
-│   │   │   ├── quickbooks_crud.py
+│   │   │   ├── integrations.py    # NEEDS FIX: Token refresh (lines 66-129)
+│   │   │   ├── dashboard.py       # NEEDS FIX: KPI calculations
+│   │   │   ├── ai.py              # Working
+│   │   │   ├── planning.py        # Working
 │   │   │   └── ...
-│   │   ├── models/
-│   │   │   └── planning.py       # Task + Milestone models (NEW Dec 28)
-│   │   ├── core/
-│   │   │   ├── config.py
-│   │   │   ├── database.py
-│   │   │   └── validators.py     # Security validation module
-│   │   └── services/
-│   │       └── rag_service.py    # + delete_point_by_cid() method
-│   └── alembic/versions/
-│       └── add_planning_tables.py  # Migration (NEW Dec 28)
+│   │   ├── services/
+│   │   │   ├── rag_service.py     # Working
+│   │   │   └── ...
+│   │   └── ...
+│   └── ...
 │
-├── CLAUDE.md                     # This file
-├── README.md                     # Project overview
-├── src/CLAUDE.md                 # Frontend-specific guide
-└── backend/CLAUDE.md             # Backend-specific guide
+├── CLAUDE.md                      # This file (accurate as of Dec 30)
+├── LIVE-UI-AUDIT-REPORT-DEC-30.md # Full audit findings
+└── ...
 ```
 
 ---
 
-## WHEN WORKING ON THIS PROJECT
+## RECOMMENDATIONS FOR LAUNCH
 
-### Before Making Changes
+### Option A: Honest MVP (Recommended)
 
-1. Read this CLAUDE.md file
-2. Check `src/CLAUDE.md` for frontend rules
-3. Check `backend/CLAUDE.md` for backend rules
-4. Run `npm run build` to verify current state
+**Remove all broken integrations. Ship only what works:**
+- AI Chat (90% working)
+- Planning (95% working)
+- Slack (after frontend fix)
+- "More integrations coming soon" banner
 
-### After Making Changes
+### Option B: Fix Top 3 Integrations
 
-1. Run `npm run build` for frontend changes
-2. Fix ALL TypeScript errors
-3. Test the specific feature in browser
-4. Commit with descriptive message
-5. Push to trigger auto-deploy
+1. Fix OAuth refresh for all
+2. Fix Slack completely (frontend + all tabs)
+3. Fix Google Gmail + Calendar (live API)
+4. Remove broken integrations
+
+### Option C: Full Fix (Not Recommended Now)
+
+Fix everything. But that's 6-8 weeks of work.
+
+---
+
+## CONCLUSION
+
+**Stop:**
+- Building new features
+- Claiming things work
+- Over-engineering
+
+**Start:**
+- Testing with real data
+- Fixing OAuth first
+- Implementing hybrid model in frontend
+- Being honest in docs
+
+**Focus on:**
+- Make AI Chat the centerpiece (it's already great!)
+- Get 1-2 integrations working PERFECTLY
+- Remove broken features
+- Ship something honest
 
 ---
 
 ## SUPPORT
 
 - **Issues:** https://github.com/varity-labs/generic-template-dashboard/issues
-- **Documentation:** `/docs` folder
-- **Enterprise:** Contact Varity team
+- **Full Audit Report:** `LIVE-UI-AUDIT-REPORT-DEC-30.md`

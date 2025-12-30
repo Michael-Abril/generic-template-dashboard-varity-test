@@ -1,5 +1,46 @@
 # COMPLETED WORK - DO NOT REDO
-**Last Updated:** December 29, 2025 (Token Expiration Timezone Fixes)
+**Last Updated:** December 30, 2025 (Live API Audit Corrections)
+
+---
+
+## CRITICAL CORRECTIONS (December 30, 2025 Live Audit)
+
+> **WARNING:** Many items marked "COMPLETE" below do not actually work in production.
+> This section documents what the live API audit revealed.
+
+### What The Audit Found
+
+| Claimed Status | Actual Status | Reality |
+|----------------|---------------|---------|
+| "Google 90% working" | **20% working** | OAuth expires in <24 hours, Gmail broken |
+| "QuickBooks 95% working" | **5% working** | OAuth expired, `data_count: 0` |
+| "Microsoft 65% working" | **10% working** | OAuth expired in <48 hours |
+| "Slack 85% working" | **50% working** | Backend works, frontend doesn't use live API |
+| "Data pipeline ~75% working" | **~30% working** | Only Slack OAuth active |
+| "Dashboard KPIs working" | **Misleading** | Shows "$5.00" when `data_count: 0` |
+
+### Root Causes Identified
+
+1. **OAuth Token Refresh Not Working:** Tokens expire within 24-48 hours for Google, Microsoft, QuickBooks
+2. **Frontend Hybrid Model Not Implemented:** Frontend only fetches sync data, ignores live API endpoints
+3. **Dashboard KPI Calculations Wrong:** Shows fake or cached data that doesn't match actual data counts
+
+### What Actually Works
+
+| Feature | Status | Verified |
+|---------|:------:|:--------:|
+| AI Assistant | 90% | YES - RAG queries, web search, conversations |
+| Slack Live API (backend) | 100% | YES - Returns 3 channels |
+| Planning Feature | 95% | YES - 1 task indexed in RAG |
+| Conversations | 100% | YES - 6 conversations stored |
+| Infrastructure | 100% | YES - Backend, Pinata, Qdrant healthy |
+
+### Code Fixes Still Valid
+
+The code changes documented below are still valid - the issues are:
+1. OAuth tokens expiring too fast (refresh not working)
+2. Frontend not calling the live API endpoints that exist
+3. Data sync not persisting after OAuth expires
 
 ---
 
