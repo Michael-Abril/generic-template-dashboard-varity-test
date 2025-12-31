@@ -253,7 +253,7 @@ export default function DynamicChart({ chart, height = 300 }: DynamicChartProps)
               ))}
             </Pie>
             <Tooltip
-              formatter={(value: number | undefined) => [formatValue(value ?? 0), '']}
+              formatter={(value) => [formatValue(Number(value) || 0), '']}
             />
           </PieChart>
         </ResponsiveContainer>
