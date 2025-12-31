@@ -20,13 +20,8 @@ import {
   ArrowRight,
   RefreshCw,
   Clock,
-  Mail,
-  Calendar,
-  FileText,
-  MessageSquare,
-  Users,
-  DollarSign,
 } from 'lucide-react';
+import { getIntegrationIcon } from '@/components/ui/IntegrationIcons';
 import { FeedbackNotification } from '@/components/feedback';
 import { TasksWidget } from '@/components/planning';
 import { AIInsightWidget, IntegrationHealthCards, EnhancedKPICard, DashboardQuickActions } from '@/components/dashboard';
@@ -202,55 +197,22 @@ export default function DashboardContent() {
     return 'Good evening';
   };
 
-  // Get integration-specific icon for activity
-  const getActivityIcon = (type: string, source: string) => {
+  // Get integration-specific brand icon for activity
+  const getActivityBrandIcon = (type: string, source: string) => {
+    const Icon = getIntegrationIcon(type, source);
+
+    // Background colors based on source
     const sourceLC = source?.toLowerCase() || '';
-    const typeLC = type?.toLowerCase() || '';
+    let bg = 'bg-gray-50';
 
-    // Email activities
-    if (typeLC === 'email' || typeLC.includes('mail')) {
-      if (sourceLC.includes('google') || sourceLC.includes('gmail')) {
-        return { icon: Mail, color: 'text-red-500', bg: 'bg-red-50' }; // Gmail red
-      }
-      if (sourceLC.includes('microsoft') || sourceLC.includes('outlook')) {
-        return { icon: Mail, color: 'text-blue-600', bg: 'bg-blue-50' }; // Outlook blue
-      }
-      return { icon: Mail, color: 'text-gray-600', bg: 'bg-gray-100' };
-    }
+    if (sourceLC.includes('google') || sourceLC.includes('gmail')) bg = 'bg-red-50';
+    else if (sourceLC.includes('microsoft') || sourceLC.includes('outlook') || sourceLC.includes('teams')) bg = 'bg-blue-50';
+    else if (sourceLC.includes('slack')) bg = 'bg-purple-50';
+    else if (sourceLC.includes('quickbooks')) bg = 'bg-green-50';
+    else if (sourceLC.includes('salesforce')) bg = 'bg-sky-50';
+    else if (sourceLC.includes('hubspot')) bg = 'bg-orange-50';
 
-    // Calendar/Event activities
-    if (typeLC === 'event' || typeLC.includes('calendar') || typeLC.includes('meeting')) {
-      if (sourceLC.includes('google')) {
-        return { icon: Calendar, color: 'text-blue-500', bg: 'bg-blue-50' }; // Google Calendar
-      }
-      if (sourceLC.includes('microsoft') || sourceLC.includes('teams')) {
-        return { icon: Calendar, color: 'text-purple-600', bg: 'bg-purple-50' }; // Teams purple
-      }
-      return { icon: Calendar, color: 'text-purple-600', bg: 'bg-purple-50' };
-    }
-
-    // Message activities (Slack)
-    if (typeLC === 'message' || typeLC.includes('slack')) {
-      return { icon: MessageSquare, color: 'text-pink-600', bg: 'bg-pink-50' };
-    }
-
-    // Invoice/Financial activities
-    if (typeLC === 'invoice' || typeLC.includes('payment') || typeLC.includes('quickbooks')) {
-      return { icon: DollarSign, color: 'text-green-600', bg: 'bg-green-50' };
-    }
-
-    // Contact/CRM activities
-    if (typeLC === 'contact' || typeLC.includes('lead') || typeLC.includes('salesforce') || typeLC.includes('hubspot')) {
-      return { icon: Users, color: 'text-blue-600', bg: 'bg-blue-50' };
-    }
-
-    // Document activities
-    if (typeLC.includes('document') || typeLC.includes('file') || typeLC.includes('drive')) {
-      return { icon: FileText, color: 'text-yellow-600', bg: 'bg-yellow-50' };
-    }
-
-    // Default
-    return { icon: ClipboardList, color: 'text-gray-600', bg: 'bg-gray-100' };
+    return { Icon, bg };
   };
 
   // Get user's display name from Privy
@@ -498,12 +460,11 @@ export default function DashboardContent() {
               ) : recentActivityData && recentActivityData.activities && recentActivityData.activities.length > 0 ? (
                 <div className="space-y-2">
                   {recentActivityData.activities.slice(0, 7).map((activity, i) => {
-                    const iconConfig = getActivityIcon(activity.type, activity.source);
-                    const ActivityIcon = iconConfig.icon;
+                    const { Icon: BrandIcon, bg } = getActivityBrandIcon(activity.type, activity.source);
                     return (
                       <div key={i} className="flex items-center gap-3 p-2 -mx-2 rounded-lg hover:bg-gray-50 transition-colors cursor-pointer">
-                        <div className={`w-9 h-9 ${iconConfig.bg} rounded-lg flex items-center justify-center flex-shrink-0`}>
-                          <ActivityIcon className={`w-4.5 h-4.5 ${iconConfig.color}`} />
+                        <div className={`w-9 h-9 ${bg} rounded-lg flex items-center justify-center flex-shrink-0`}>
+                          <BrandIcon size={18} />
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-medium text-gray-900 truncate">{activity.title}</p>

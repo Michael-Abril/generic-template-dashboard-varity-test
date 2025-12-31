@@ -184,6 +184,7 @@ class MCPIngestionService:
         integration: str,
         data_type: str,
         oauth_token: str,
+        extra_params: Optional[Dict[str, str]] = None,
     ) -> Any:
         """
         Fetch data using MCP protocol
@@ -193,15 +194,31 @@ class MCPIngestionService:
         - API pagination
         - Rate limiting
         - Error recovery
-
-        NOTE: This is a placeholder for actual MCP client implementation
         """
-        # TODO: Implement actual MCP client calls
-        # For now, return empty to prevent errors
-        logger.warning(
-            f"MCP fetch not yet implemented for {integration}/{data_type}"
-        )
-        return None
+        try:
+            # Import MCP client here to avoid circular imports
+            from mcp_servers import fetch_integration_data
+
+            result = await fetch_integration_data(
+                integration=integration,
+                data_type=data_type,
+                oauth_token=oauth_token,
+                **(extra_params or {})
+            )
+
+            if "error" in result:
+                logger.error(f"MCP fetch error for {integration}/{data_type}: {result['error']}")
+                return None
+
+            logger.info(f"MCP fetched {integration}/{data_type} successfully")
+            return result
+
+        except ImportError as e:
+            logger.error(f"MCP client not available: {e}")
+            return None
+        except Exception as e:
+            logger.error(f"MCP fetch failed for {integration}/{data_type}: {e}")
+            return None
 
     async def _store_to_rag(
         self,

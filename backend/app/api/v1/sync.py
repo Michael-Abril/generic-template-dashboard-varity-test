@@ -1,6 +1,15 @@
 """
 Data Sync API Endpoints
-Orchestrates data synchronization from external integrations to Filecoin
+Orchestrates data synchronization from external integrations to encrypted storage.
+
+NEW ARCHITECTURE (MCP Pipeline):
+- MCP servers fetch data from integrations
+- All data encrypted BEFORE leaving the service
+- Routed to Pinata (RAG) or Live API based on data type
+- L3 Arbitrum batch commits for verification
+
+LEGACY (Deprecated - kept for backwards compatibility):
+- Direct adapter sync to Filecoin
 """
 from fastapi import APIRouter, HTTPException, Query, BackgroundTasks
 from pydantic import BaseModel
@@ -11,6 +20,9 @@ from datetime import datetime
 
 from app.services.filecoin_service import FilecoinService
 from app.services.encryption_service import EncryptionService
+from app.services.mcp_ingestion_service import get_mcp_ingestion_service, DATA_ROUTING_RULES
+
+# Legacy adapters (deprecated - kept for backwards compatibility)
 from app.adapters.quickbooks.sync import QuickBooksSync
 from app.adapters.salesforce.sync import SalesforceSync
 from app.adapters.shopify.sync import ShopifySync
@@ -30,7 +42,10 @@ router = APIRouter()
 filecoin_service = FilecoinService()
 encryption_service = EncryptionService()
 
-# Sync adapters
+# MCP-enabled integrations (new pipeline)
+MCP_INTEGRATIONS = {"google", "slack", "quickbooks", "microsoft", "salesforce", "hubspot"}
+
+# Legacy sync adapters (deprecated)
 SYNC_ADAPTERS = {
     "quickbooks": QuickBooksSync,
     "salesforce": SalesforceSync,
@@ -427,3 +442,164 @@ async def get_synced_data(
     except Exception as e:
         logger.error(f"Failed to get synced data: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============ NEW MCP PIPELINE ENDPOINTS ============
+
+
+class MCPSyncRequest(BaseModel):
+    """MCP sync request"""
+    wallet_address: str
+    data_types: Optional[List[str]] = None
+    extra_params: Optional[Dict[str, str]] = None  # realm_id, instance_url, etc.
+
+
+class MCPSyncResponse(BaseModel):
+    """MCP sync response"""
+    success: bool
+    integration: str
+    wallet_address: str
+    sync_time: str
+    results: Dict[str, Any]
+    l3_commits: Optional[Dict[str, Any]] = None
+
+
+@router.post("/{integration}/mcp")
+async def sync_via_mcp(
+    integration: str,
+    request: MCPSyncRequest,
+    background_tasks: BackgroundTasks
+):
+    """
+    Sync data using the new MCP encrypted pipeline.
+
+    This is the NEW preferred sync method that:
+    1. Fetches data via MCP servers (not direct API calls)
+    2. Encrypts ALL data before storage
+    3. Routes to RAG (Pinata) or Live API based on data type
+    4. Commits to L3 Arbitrum for verification
+
+    Args:
+        integration: Integration name (google, slack, quickbooks, microsoft, salesforce, hubspot)
+        request: MCP sync request with wallet and optional data types
+
+    Returns:
+        Sync results with L3 commit status
+    """
+    if integration not in MCP_INTEGRATIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Integration '{integration}' is not MCP-enabled. "
+                   f"Supported: {', '.join(MCP_INTEGRATIONS)}"
+        )
+
+    try:
+        # Retrieve OAuth token
+        credentials = await retrieve_oauth_credentials(
+            request.wallet_address,
+            integration
+        )
+
+        oauth_token = credentials.get("access_token")
+        if not oauth_token:
+            raise HTTPException(
+                status_code=401,
+                detail=f"No valid OAuth token for {integration}. Please reconnect."
+            )
+
+        # Get MCP ingestion service
+        mcp_service = get_mcp_ingestion_service()
+
+        # Perform sync
+        result = await mcp_service.sync_integration_data(
+            integration=integration,
+            wallet_address=request.wallet_address,
+            oauth_token=oauth_token,
+            data_types=request.data_types,
+        )
+
+        logger.info(
+            f"MCP sync completed for {integration}, "
+            f"wallet: {request.wallet_address[:10]}..."
+        )
+
+        return {
+            "success": True,
+            **result
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"MCP sync failed for {integration}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/{integration}/routing")
+async def get_data_routing(integration: str):
+    """
+    Get data routing configuration for an integration.
+
+    Shows which data types go to RAG storage vs Live API.
+
+    Args:
+        integration: Integration name
+
+    Returns:
+        Data routing rules for the integration
+    """
+    if integration not in MCP_INTEGRATIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Integration '{integration}' is not MCP-enabled."
+        )
+
+    routing = DATA_ROUTING_RULES.get(integration, {})
+
+    return {
+        "success": True,
+        "integration": integration,
+        "is_mcp_enabled": True,
+        "routing": {
+            data_type: dest.value
+            for data_type, dest in routing.items()
+        }
+    }
+
+
+@router.get("/mcp/status")
+async def get_mcp_status():
+    """
+    Get overall MCP pipeline status.
+
+    Returns:
+        MCP service status and L3 connection info
+    """
+    try:
+        from app.services.l3_commitment_service import get_l3_service
+
+        l3_service = get_l3_service()
+        l3_connected = l3_service.is_connected()
+        l3_info = l3_service.get_network_info()
+
+        return {
+            "success": True,
+            "mcp_enabled_integrations": list(MCP_INTEGRATIONS),
+            "l3_connected": l3_connected,
+            "l3_network": {
+                "name": l3_info.get("name"),
+                "chain_id": l3_info.get("chain_id"),
+                "rpc_url": l3_info.get("rpc_url_active"),
+                "explorer_url": l3_info.get("explorer_url"),
+                "contract_address": l3_info.get("contract_address"),
+            }
+        }
+
+    except Exception as e:
+        logger.error(f"MCP status check failed: {e}")
+        return {
+            "success": False,
+            "error": str(e),
+            "mcp_enabled_integrations": list(MCP_INTEGRATIONS),
+            "l3_connected": False
+        }

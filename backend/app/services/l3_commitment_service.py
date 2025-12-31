@@ -4,7 +4,11 @@ L3 Data Commitment Service
 Commits data references to Varity L3 Arbitrum for verifiable data integrity.
 Uses Merkle trees for batch efficiency (200x cost reduction).
 
-LIVE L3 Testnet: https://rpc.varity.dev
+Varity L3 Testnet (Conduit - Arbitrum Stack AnyTrust):
+- RPC: https://rpc-varity-testnet-rroe52pwjp.t.conduit.xyz
+- Chain ID: 33529
+- Native Token: USDC
+- Explorer: https://explorer-varity-testnet-rroe52pwjp.t.conduit.xyz/
 """
 
 from typing import Dict, Any, List, Optional
@@ -16,11 +20,36 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+# Varity L3 Network Configuration (Conduit)
+VARITY_L3_CONFIG = {
+    "name": "Varity Testnet",
+    "slug": "varity-testnet-rroe52pwjp",
+    "chain_id": 33529,
+    "rpc_url": "https://rpc-varity-testnet-rroe52pwjp.t.conduit.xyz",
+    "ws_url": "wss://rpc-varity-testnet-rroe52pwjp.t.conduit.xyz",
+    "anytrust_das_url": "https://das-varity-testnet-rroe52pwjp.t.conduit.xyz",
+    "explorer_url": "https://explorer-varity-testnet-rroe52pwjp.t.conduit.xyz",
+    "hub_url": "https://hub.conduit.xyz/varity-testnet-rroe52pwjp",
+    "framework": "Arbitrum Stack",
+    "settlement_layer": "Arbitrum One",
+    "data_availability": "AnyTrust DA",
+    "environment": "Testnet",
+    "native_token": {
+        "symbol": "USDC",
+        "address": "0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d",
+    },
+}
+
+
 class L3DataCommitmentService:
     """
     Handles on-chain data commitments to Varity L3 Arbitrum.
 
-    L3 Testnet: https://rpc.varity.dev (LIVE)
+    Varity L3 Testnet (Conduit - Arbitrum Stack AnyTrust):
+    - RPC: https://rpc-varity-testnet-rroe52pwjp.t.conduit.xyz
+    - Chain ID: 33529
+    - Native Token: USDC
+    - Explorer: https://explorer-varity-testnet-rroe52pwjp.t.conduit.xyz/
 
     This service enables:
     - Verifiable data integrity via on-chain commitments
@@ -29,7 +58,10 @@ class L3DataCommitmentService:
     - Wallet-based data attribution
     """
 
-    L3_RPC_URL = os.getenv("VARITY_L3_RPC", "https://rpc.varity.dev")
+    # Default to Conduit RPC, allow override via env var
+    L3_RPC_URL = os.getenv("VARITY_L3_RPC", VARITY_L3_CONFIG["rpc_url"])
+    L3_CHAIN_ID = int(os.getenv("VARITY_L3_CHAIN_ID", str(VARITY_L3_CONFIG["chain_id"])))
+    L3_EXPLORER_URL = VARITY_L3_CONFIG["explorer_url"]
     CONTRACT_ADDRESS = os.getenv("VARITY_DATA_COMMITMENTS_ADDRESS")
 
     def __init__(self, private_key: Optional[str] = None):
@@ -112,6 +144,23 @@ class L3DataCommitmentService:
         except Exception as e:
             logger.error(f"L3 connection check failed: {e}")
             return False
+
+    def get_explorer_tx_url(self, tx_hash: str) -> str:
+        """Get block explorer URL for a transaction"""
+        return f"{self.L3_EXPLORER_URL}/tx/{tx_hash}"
+
+    def get_explorer_address_url(self, address: str) -> str:
+        """Get block explorer URL for an address"""
+        return f"{self.L3_EXPLORER_URL}/address/{address}"
+
+    @classmethod
+    def get_network_info(cls) -> Dict[str, Any]:
+        """Get Varity L3 network configuration"""
+        return {
+            **VARITY_L3_CONFIG,
+            "contract_address": cls.CONTRACT_ADDRESS,
+            "rpc_url_active": cls.L3_RPC_URL,
+        }
 
     def _build_merkle_tree(self, leaves: List[bytes]) -> bytes:
         """
