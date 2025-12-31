@@ -42,10 +42,10 @@ jobs:
       - name: Build application
         run: npm run build
         env:
-          # Required env vars for build
+          # Required env vars for build (same as Vercel production)
           NEXT_PUBLIC_API_URL: https://generic-template-dashboard-production.up.railway.app
-          NEXT_PUBLIC_PRIVY_APP_ID: test-app-id
-          NEXT_PUBLIC_THIRDWEB_CLIENT_ID: test-client-id
+          NEXT_PUBLIC_PRIVY_APP_ID: cmhwbozxu004fjr0cicfz0tf8
+          NEXT_PUBLIC_THIRDWEB_CLIENT_ID: acb17e07e34ab2b8317aa40cbb1b5e1d
 
   # Job 2: API Health Check (runs in parallel)
   api-health:

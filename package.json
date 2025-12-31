@@ -52,6 +52,7 @@
     "react-markdown": "^10.1.0",
     "recharts": "^3.5.1",
     "thirdweb": "^5.112.1",
+    "victory-vendor": "^37.2.0",
     "zod": "^4.2.1"
   },
   "devDependencies": {
