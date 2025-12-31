@@ -48,13 +48,16 @@ export function DashboardQuickActions({ walletAddress, className = '' }: Dashboa
     router.push('/dashboard/tasks');
   };
 
+  // Consistent professional color scheme for all actions
+  const actionColor = 'bg-gray-50 text-gray-700 hover:bg-gray-100 hover:text-gray-900 border-gray-200';
+
   const quickActions: QuickAction[] = [
     {
       id: 'compose-email',
       label: 'Compose Email',
       icon: Mail,
       href: '/dashboard/tools/google',
-      color: 'bg-blue-50 text-blue-700 hover:bg-blue-100 border-blue-200',
+      color: actionColor,
       description: 'Send a new email via Gmail',
     },
     {
@@ -62,7 +65,7 @@ export function DashboardQuickActions({ walletAddress, className = '' }: Dashboa
       label: 'Create Invoice',
       icon: FileText,
       href: '/dashboard/tools/quickbooks',
-      color: 'bg-green-50 text-green-700 hover:bg-green-100 border-green-200',
+      color: actionColor,
       description: 'Create a new QuickBooks invoice',
     },
     {
@@ -70,7 +73,7 @@ export function DashboardQuickActions({ walletAddress, className = '' }: Dashboa
       label: 'Schedule Event',
       icon: Calendar,
       href: '/dashboard/tools/google',
-      color: 'bg-purple-50 text-purple-700 hover:bg-purple-100 border-purple-200',
+      color: actionColor,
       description: 'Add a calendar event',
     },
     {
@@ -78,7 +81,7 @@ export function DashboardQuickActions({ walletAddress, className = '' }: Dashboa
       label: 'Ask AI',
       icon: MessageSquare,
       onClick: handleAskAI,
-      color: 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border-indigo-200',
+      color: 'bg-blue-600 text-white hover:bg-blue-700 border-blue-600',
       description: 'Get insights from your AI assistant',
     },
     {
@@ -86,7 +89,7 @@ export function DashboardQuickActions({ walletAddress, className = '' }: Dashboa
       label: 'Add Task',
       icon: CheckSquare,
       onClick: handleCreateTask,
-      color: 'bg-amber-50 text-amber-700 hover:bg-amber-100 border-amber-200',
+      color: actionColor,
       description: 'Create a new task',
     },
     {
@@ -94,7 +97,7 @@ export function DashboardQuickActions({ walletAddress, className = '' }: Dashboa
       label: 'Analyze Data',
       icon: FileSearch,
       href: '/analytics',
-      color: 'bg-pink-50 text-pink-700 hover:bg-pink-100 border-pink-200',
+      color: actionColor,
       description: 'View business analytics',
     },
   ];

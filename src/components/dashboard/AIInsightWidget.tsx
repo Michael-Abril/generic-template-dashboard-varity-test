@@ -234,39 +234,43 @@ export function AIInsightWidget({
     switch (status) {
       case 'healthy':
         return {
-          bgGradient: 'from-emerald-600 to-teal-600',
+          borderColor: 'border-l-emerald-500',
           icon: CheckCircle,
-          iconColor: 'text-emerald-200',
+          iconColor: 'text-emerald-600',
           badge: 'Healthy',
-          badgeBg: 'bg-emerald-500/20',
-          badgeText: 'text-emerald-100',
+          badgeBg: 'bg-emerald-50',
+          badgeText: 'text-emerald-700',
+          accentColor: 'text-emerald-600',
         };
       case 'attention':
         return {
-          bgGradient: 'from-amber-500 to-orange-500',
+          borderColor: 'border-l-amber-500',
           icon: AlertTriangle,
-          iconColor: 'text-amber-200',
+          iconColor: 'text-amber-600',
           badge: 'Needs Attention',
-          badgeBg: 'bg-amber-500/20',
-          badgeText: 'text-amber-100',
+          badgeBg: 'bg-amber-50',
+          badgeText: 'text-amber-700',
+          accentColor: 'text-amber-600',
         };
       case 'critical':
         return {
-          bgGradient: 'from-red-600 to-rose-600',
+          borderColor: 'border-l-red-500',
           icon: AlertCircle,
-          iconColor: 'text-red-200',
+          iconColor: 'text-red-600',
           badge: 'Action Required',
-          badgeBg: 'bg-red-500/20',
-          badgeText: 'text-red-100',
+          badgeBg: 'bg-red-50',
+          badgeText: 'text-red-700',
+          accentColor: 'text-red-600',
         };
       default:
         return {
-          bgGradient: 'from-indigo-600 to-purple-600',
+          borderColor: 'border-l-blue-500',
           icon: Sparkles,
-          iconColor: 'text-indigo-200',
+          iconColor: 'text-blue-600',
           badge: 'AI Insight',
-          badgeBg: 'bg-indigo-500/20',
-          badgeText: 'text-indigo-100',
+          badgeBg: 'bg-blue-50',
+          badgeText: 'text-blue-700',
+          accentColor: 'text-blue-600',
         };
     }
   };
@@ -274,19 +278,19 @@ export function AIInsightWidget({
   // Empty state - no data
   if (!kpiData?.has_data) {
     return (
-      <div className="bg-gradient-to-br from-indigo-600 to-purple-600 rounded-xl p-6 text-white h-full">
+      <div className="bg-white border border-gray-200 border-l-4 border-l-blue-500 rounded-xl p-6 h-full">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
-            <Sparkles className="w-5 h-5" />
-            <h3 className="font-semibold">AI Business Insight</h3>
+            <Sparkles className="w-5 h-5 text-blue-600" />
+            <h3 className="font-semibold text-gray-900">AI Business Insight</h3>
           </div>
         </div>
-        <p className="text-white/80 text-sm mb-4">
+        <p className="text-gray-600 text-sm mb-4">
           Connect your business tools to get AI-powered insights about your performance.
         </p>
         <Link
           href="/marketplace"
-          className="inline-flex items-center gap-2 bg-white/20 hover:bg-white/30 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+          className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
         >
           Connect Integration
           <ArrowRight className="w-4 h-4" />
@@ -299,12 +303,12 @@ export function AIInsightWidget({
   const StatusIcon = config.icon;
 
   return (
-    <div className={`bg-gradient-to-br ${config.bgGradient} rounded-xl p-6 text-white h-full flex flex-col`}>
+    <div className={`bg-white border border-gray-200 border-l-4 ${config.borderColor} rounded-xl p-6 h-full flex flex-col`}>
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
-          <Sparkles className="w-5 h-5" />
-          <h3 className="font-semibold">AI Business Insight</h3>
+          <Sparkles className={`w-5 h-5 ${config.iconColor}`} />
+          <h3 className="font-semibold text-gray-900">AI Business Insight</h3>
         </div>
         <div className="flex items-center gap-2">
           {insight && (
@@ -316,7 +320,7 @@ export function AIInsightWidget({
             <button
               onClick={onRefresh}
               disabled={isLoading || isGeneratingInsight}
-              className="p-1.5 rounded-lg hover:bg-white/10 transition-colors disabled:opacity-50"
+              className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors disabled:opacity-50 text-gray-500"
               aria-label="Refresh insights"
             >
               <RefreshCw className={`w-4 h-4 ${isLoading || isGeneratingInsight ? 'animate-spin' : ''}`} />
@@ -329,8 +333,8 @@ export function AIInsightWidget({
       {isGeneratingInsight ? (
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center">
-            <Loader2 className="w-8 h-8 animate-spin mx-auto mb-2" />
-            <p className="text-sm text-white/80">Analyzing your business data...</p>
+            <Loader2 className={`w-8 h-8 animate-spin mx-auto mb-2 ${config.iconColor}`} />
+            <p className="text-sm text-gray-600">Analyzing your business data...</p>
           </div>
         </div>
       ) : insight ? (
@@ -338,7 +342,7 @@ export function AIInsightWidget({
           {/* Summary */}
           <div className="flex items-start gap-3 mb-4">
             <StatusIcon className={`w-5 h-5 ${config.iconColor} flex-shrink-0 mt-0.5`} />
-            <p className="text-sm text-white/90 leading-relaxed">{insight.summary}</p>
+            <p className="text-sm text-gray-700 leading-relaxed">{insight.summary}</p>
           </div>
 
           {/* Highlights */}
@@ -346,10 +350,10 @@ export function AIInsightWidget({
             <div className="space-y-2 mb-4">
               {insight.highlights.slice(0, 3).map((highlight, index) => (
                 <div key={index} className="flex items-center gap-2 text-sm">
-                  {highlight.type === 'positive' && <TrendingUp className="w-4 h-4 text-emerald-300 flex-shrink-0" />}
-                  {highlight.type === 'warning' && <AlertTriangle className="w-4 h-4 text-amber-300 flex-shrink-0" />}
-                  {highlight.type === 'negative' && <TrendingDown className="w-4 h-4 text-red-300 flex-shrink-0" />}
-                  <span className="text-white/80">{highlight.text}</span>
+                  {highlight.type === 'positive' && <TrendingUp className="w-4 h-4 text-emerald-600 flex-shrink-0" />}
+                  {highlight.type === 'warning' && <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0" />}
+                  {highlight.type === 'negative' && <TrendingDown className="w-4 h-4 text-red-600 flex-shrink-0" />}
+                  <span className="text-gray-600">{highlight.text}</span>
                 </div>
               ))}
             </div>
@@ -357,8 +361,8 @@ export function AIInsightWidget({
 
           {/* Quick Answer */}
           {quickAnswer && (
-            <div className="bg-white/10 rounded-lg p-3 mb-4">
-              <p className="text-sm text-white/90">{quickAnswer}</p>
+            <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 mb-4">
+              <p className="text-sm text-gray-700">{quickAnswer}</p>
             </div>
           )}
 
@@ -370,12 +374,12 @@ export function AIInsightWidget({
                 value={quickQuestion}
                 onChange={(e) => setQuickQuestion(e.target.value)}
                 placeholder="Ask a quick question..."
-                className="w-full bg-white/10 border border-white/20 rounded-lg pl-4 pr-10 py-2.5 text-sm text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-white/30"
+                className="w-full bg-gray-50 border border-gray-200 rounded-lg pl-4 pr-10 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
               <button
                 type="submit"
                 disabled={isAskingQuestion || !quickQuestion.trim()}
-                className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-md hover:bg-white/10 transition-colors disabled:opacity-50"
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-md hover:bg-gray-200 transition-colors disabled:opacity-50 text-gray-500"
               >
                 {isAskingQuestion ? (
                   <Loader2 className="w-4 h-4 animate-spin" />
@@ -389,14 +393,14 @@ export function AIInsightWidget({
           {/* Link to full AI Assistant */}
           <Link
             href="/ai-assistant"
-            className="inline-flex items-center gap-1 text-sm font-medium text-white/80 hover:text-white transition-colors mt-3"
+            className="inline-flex items-center gap-1 text-sm font-medium text-blue-600 hover:text-blue-700 transition-colors mt-3"
           >
             Open AI Assistant for detailed analysis
             <ArrowRight className="w-3.5 h-3.5" />
           </Link>
         </>
       ) : (
-        <p className="text-sm text-white/80">Loading insights...</p>
+        <p className="text-sm text-gray-600">Loading insights...</p>
       )}
     </div>
   );

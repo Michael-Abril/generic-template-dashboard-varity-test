@@ -20,6 +20,12 @@ import {
   ArrowRight,
   RefreshCw,
   Clock,
+  Mail,
+  Calendar,
+  FileText,
+  MessageSquare,
+  Users,
+  DollarSign,
 } from 'lucide-react';
 import { FeedbackNotification } from '@/components/feedback';
 import { TasksWidget } from '@/components/planning';
@@ -74,7 +80,7 @@ const getDefaultKPIs = () => [
 ];
 
 export default function DashboardContent() {
-  const { authenticated, ready } = usePrivy();
+  const { authenticated, ready, user } = usePrivy();
   const walletSync = useWalletSync();
   const address = walletSync?.address ?? null;
   const router = useRouter();
@@ -196,6 +202,87 @@ export default function DashboardContent() {
     return 'Good evening';
   };
 
+  // Get integration-specific icon for activity
+  const getActivityIcon = (type: string, source: string) => {
+    const sourceLC = source?.toLowerCase() || '';
+    const typeLC = type?.toLowerCase() || '';
+
+    // Email activities
+    if (typeLC === 'email' || typeLC.includes('mail')) {
+      if (sourceLC.includes('google') || sourceLC.includes('gmail')) {
+        return { icon: Mail, color: 'text-red-500', bg: 'bg-red-50' }; // Gmail red
+      }
+      if (sourceLC.includes('microsoft') || sourceLC.includes('outlook')) {
+        return { icon: Mail, color: 'text-blue-600', bg: 'bg-blue-50' }; // Outlook blue
+      }
+      return { icon: Mail, color: 'text-gray-600', bg: 'bg-gray-100' };
+    }
+
+    // Calendar/Event activities
+    if (typeLC === 'event' || typeLC.includes('calendar') || typeLC.includes('meeting')) {
+      if (sourceLC.includes('google')) {
+        return { icon: Calendar, color: 'text-blue-500', bg: 'bg-blue-50' }; // Google Calendar
+      }
+      if (sourceLC.includes('microsoft') || sourceLC.includes('teams')) {
+        return { icon: Calendar, color: 'text-purple-600', bg: 'bg-purple-50' }; // Teams purple
+      }
+      return { icon: Calendar, color: 'text-purple-600', bg: 'bg-purple-50' };
+    }
+
+    // Message activities (Slack)
+    if (typeLC === 'message' || typeLC.includes('slack')) {
+      return { icon: MessageSquare, color: 'text-pink-600', bg: 'bg-pink-50' };
+    }
+
+    // Invoice/Financial activities
+    if (typeLC === 'invoice' || typeLC.includes('payment') || typeLC.includes('quickbooks')) {
+      return { icon: DollarSign, color: 'text-green-600', bg: 'bg-green-50' };
+    }
+
+    // Contact/CRM activities
+    if (typeLC === 'contact' || typeLC.includes('lead') || typeLC.includes('salesforce') || typeLC.includes('hubspot')) {
+      return { icon: Users, color: 'text-blue-600', bg: 'bg-blue-50' };
+    }
+
+    // Document activities
+    if (typeLC.includes('document') || typeLC.includes('file') || typeLC.includes('drive')) {
+      return { icon: FileText, color: 'text-yellow-600', bg: 'bg-yellow-50' };
+    }
+
+    // Default
+    return { icon: ClipboardList, color: 'text-gray-600', bg: 'bg-gray-100' };
+  };
+
+  // Get user's display name from Privy
+  const getUserDisplayName = (): string => {
+    if (!user) return 'there';
+
+    // Check Google account for name
+    if (user.google?.name) {
+      return user.google.name.split(' ')[0]; // First name only
+    }
+
+    // Check email and extract name part
+    if (user.email?.address) {
+      const emailName = user.email.address.split('@')[0];
+      // Capitalize first letter and clean up
+      return emailName.charAt(0).toUpperCase() + emailName.slice(1).toLowerCase();
+    }
+
+    // Check Google email as fallback
+    if (user.google?.email) {
+      const emailName = user.google.email.split('@')[0];
+      return emailName.charAt(0).toUpperCase() + emailName.slice(1).toLowerCase();
+    }
+
+    // Check company name from settings as last resort
+    if (userSettings?.companyName) {
+      return userSettings.companyName.split(' ')[0];
+    }
+
+    return 'there';
+  };
+
   // Loading state while checking authentication
   if (!ready || !authenticated) {
     return (
@@ -248,7 +335,7 @@ export default function DashboardContent() {
           <div className="flex items-center justify-between mb-6">
             <div>
               <h1 className="text-2xl font-bold text-gray-900">
-                {getGreeting()}, {userSettings?.companyName ? userSettings.companyName.split(' ')[0] : 'there'}
+                {getGreeting()}, {getUserDisplayName()}
               </h1>
               <p className="text-sm text-gray-600 mt-0.5">
                 Here&apos;s your business at a glance
@@ -410,29 +497,33 @@ export default function DashboardContent() {
                 </div>
               ) : recentActivityData && recentActivityData.activities && recentActivityData.activities.length > 0 ? (
                 <div className="space-y-2">
-                  {recentActivityData.activities.slice(0, 7).map((activity, i) => (
-                    <div key={i} className="flex items-center gap-3 p-2 -mx-2 rounded-lg hover:bg-gray-50 transition-colors cursor-pointer">
-                      <div className="w-9 h-9 bg-gray-100 rounded-lg flex items-center justify-center text-lg flex-shrink-0">
-                        {activity.icon}
+                  {recentActivityData.activities.slice(0, 7).map((activity, i) => {
+                    const iconConfig = getActivityIcon(activity.type, activity.source);
+                    const ActivityIcon = iconConfig.icon;
+                    return (
+                      <div key={i} className="flex items-center gap-3 p-2 -mx-2 rounded-lg hover:bg-gray-50 transition-colors cursor-pointer">
+                        <div className={`w-9 h-9 ${iconConfig.bg} rounded-lg flex items-center justify-center flex-shrink-0`}>
+                          <ActivityIcon className={`w-4.5 h-4.5 ${iconConfig.color}`} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-gray-900 truncate">{activity.title}</p>
+                          <p className="text-xs text-gray-500 truncate">
+                            {activity.description}
+                            {activity.source && (
+                              <span className="ml-1 text-gray-400">
+                                · {activity.source}
+                              </span>
+                            )}
+                          </p>
+                        </div>
+                        {activity.amount && (
+                          <span className="text-sm font-semibold text-green-600 flex-shrink-0">
+                            {activity.amount}
+                          </span>
+                        )}
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-gray-900 truncate">{activity.title}</p>
-                        <p className="text-xs text-gray-500 truncate">
-                          {activity.description}
-                          {activity.source && (
-                            <span className="ml-1 text-gray-400">
-                              - {activity.source}
-                            </span>
-                          )}
-                        </p>
-                      </div>
-                      {activity.amount && (
-                        <span className={`text-sm font-semibold ${activity.color} flex-shrink-0`}>
-                          {activity.amount}
-                        </span>
-                      )}
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               ) : (
                 <div className="py-8 text-center text-gray-500">
