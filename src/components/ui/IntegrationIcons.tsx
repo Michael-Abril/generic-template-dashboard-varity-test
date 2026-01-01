@@ -131,7 +131,7 @@ export function GenericIntegrationIcon({ className = '', size = 20 }: IconProps)
 }
 
 // Helper function to get the right icon based on source and type
-export function getIntegrationIcon(type: string, source: string): React.ComponentType<IconProps> {
+export function getIntegrationIcon(type: string, source: string): React.FC<IconProps> {
   const sourceLC = source?.toLowerCase() || '';
   const typeLC = type?.toLowerCase() || '';
 
