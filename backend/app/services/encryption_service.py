@@ -16,8 +16,26 @@ from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.backends import default_backend
-from eth_account import Account
-from eth_account.messages import encode_defunct
+
+# Lazy import for eth_account (optional dependency for signature verification)
+# This prevents module-level import failures if eth_account isn't installed
+Account = None
+encode_defunct = None
+
+def _ensure_eth_account():
+    """Lazy load eth_account module when needed for signature verification."""
+    global Account, encode_defunct
+    if Account is None:
+        try:
+            from eth_account import Account as _Account
+            from eth_account.messages import encode_defunct as _encode_defunct
+            Account = _Account
+            encode_defunct = _encode_defunct
+        except ImportError:
+            raise ImportError(
+                "eth_account package is required for wallet signature verification. "
+                "Install with: pip install eth-account>=0.11.0"
+            )
 
 from ..core.config import settings
 
@@ -97,6 +115,9 @@ class EncryptionService:
             ValueError: If signature is expired, invalid, or wallet mismatch
         """
         try:
+            # Lazy load eth_account module when signature verification is needed
+            _ensure_eth_account()
+
             # Check signature hasn't expired (15 minute window)
             current_time = int(time.time())
             signature_age = current_time - timestamp
