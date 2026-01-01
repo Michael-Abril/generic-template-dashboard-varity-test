@@ -26,7 +26,8 @@ alembic==1.13.1  # Database migrations
 
 # Web3 & Blockchain - Compatible versions for Arbitrum
 web3==6.11.3
-# Note: eth-* dependencies auto-resolved by web3 for compatibility
+eth-utils>=4.0.0  # Required for L3 commitment service (keccak hashing)
+eth-account>=0.11.0  # Required for wallet operations
 
 # Logging & Monitoring
 python-json-logger==2.0.7
