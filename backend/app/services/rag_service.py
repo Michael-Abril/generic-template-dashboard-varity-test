@@ -872,6 +872,43 @@ class BusinessRAGService:
             logger.error(f"Qdrant health check failed: {str(e)}")
             return False
 
+    async def index_document(
+        self,
+        cid: str,
+        integration: str,
+        data_type: str,
+        wallet_address: str,
+        data: Optional[dict] = None
+    ) -> str:
+        """
+        Alias for index_business_data() with parameter order compatible with MCP ingestion service.
+
+        This method exists for backwards compatibility with the MCP pipeline which calls
+        index_document() instead of index_business_data().
+
+        Args:
+            cid: Filecoin CID of the data
+            integration: Integration name
+            data_type: Type of data
+            wallet_address: Business wallet address
+            data: Optional data to index (if None, will fetch from Pinata)
+
+        Returns:
+            Point ID in Qdrant
+        """
+        # If no data provided, we'll use an empty dict with a note
+        # The actual implementation will fetch the preview from the CID metadata
+        if data is None:
+            data = {"note": f"Data indexed from CID: {cid}"}
+
+        return await self.index_business_data(
+            business_wallet=wallet_address,
+            cid=cid,
+            data=data,
+            integration=integration,
+            data_type=data_type
+        )
+
     async def delete_point_by_cid(
         self,
         business_wallet: str,

@@ -1,13 +1,39 @@
 # CLAUDE.md - Backend (FastAPI)
 
-**Last Updated:** December 26, 2025
-**Framework:** FastAPI + SQLAlchemy + Pydantic
+**Last Updated:** December 31, 2025
+**Framework:** FastAPI + SQLAlchemy + Pydantic + MCP
 **Python Version:** 3.8+
 **Production:** https://generic-template-dashboard-production.up.railway.app (Railway)
+**MCP Architecture:** 6 Integration MCP Servers + Encrypted Data Pipeline
+**L3 Blockchain:** Varity Testnet (Conduit Arbitrum Orbit) - Chain ID 33529
 
 ---
 
 ## CRITICAL STATUS
+
+### MCP Data Pipeline Architecture (December 31, 2025)
+
+**NEW:** Model Context Protocol (MCP) integration for production-ready data fetching.
+
+| Component | Status | Purpose |
+|-----------|--------|---------|
+| **MCP Server Registry** | ✅ CONFIGURED | `mcp_servers/config.py` - 6 vetted MCP servers |
+| **MCP Client** | ✅ READY | `mcp_servers/client.py` - Async stdio transport |
+| **MCP Ingestion Pipeline** | ✅ READY | `app/services/mcp_ingestion_service.py` - Encrypt + Route |
+| **L3 Commitment Service** | ✅ READY | `app/services/l3_commitment_service.py` - On-chain verification |
+
+**Data Flow:**
+```
+MCP Fetch → Encryption (AES-256-GCM) → Route (RAG/Live/Hybrid) → L3 Batch Commit
+```
+
+**Active MCP Servers:**
+1. Google Workspace (@anthropic/google-workspace-mcp)
+2. Slack (korotovsky/slack-mcp-server)
+3. QuickBooks (@anthropic/quickbooks-online-mcp-server)
+4. Microsoft 365 (Softeria/ms-365-mcp-server)
+5. Salesforce (Community/MCP-Salesforce)
+6. HubSpot (@hubspot/mcp-server)
 
 ### Recent Fixes (December 26, 2025)
 
@@ -169,21 +195,31 @@ backend/
 │   │   └── startup.py             # Service initialization
 │   │
 │   ├── services/
-│   │   ├── together_service.py    # Together.ai LLM
-│   │   ├── ollama_service.py      # Ollama fallback
-│   │   ├── rag_service.py         # Qdrant + Filecoin
-│   │   ├── filecoin_service.py    # Pinata IPFS
-│   │   ├── encryption_service.py  # AES-256-GCM
-│   │   └── web_search_service.py  # Tavily/Serper
+│   │   ├── together_service.py      # Together.ai LLM
+│   │   ├── ollama_service.py        # Ollama fallback
+│   │   ├── rag_service.py           # Qdrant + Filecoin
+│   │   ├── filecoin_service.py      # Pinata IPFS
+│   │   ├── encryption_service.py    # AES-256-GCM
+│   │   ├── web_search_service.py    # Tavily/Serper
+│   │   ├── mcp_ingestion_service.py # MCP → Encrypt → Route → L3
+│   │   └── l3_commitment_service.py # Varity L3 on-chain verification
 │   │
-│   └── models/
-│       ├── conversation.py        # Chat models
-│       ├── integration.py         # OAuth tokens
-│       └── user.py                # User model
+│   ├── models/
+│   │   ├── conversation.py          # Chat models
+│   │   ├── integration.py           # OAuth tokens
+│   │   └── user.py                  # User model
+│   │
+│   └── (adapters deprecated)        # Replaced by MCP servers
+│
+├── mcp_servers/
+│   ├── config.py                  # MCP server registry (6 servers)
+│   └── client.py                  # MCP client wrapper + data fetchers
 │
 ├── alembic/                       # Migrations
 ├── requirements.txt               # Dependencies
-└── .env                           # Environment vars
+├── .env                           # Environment vars (development)
+├── .env.example                   # Template with all variables
+└── CLAUDE.md                      # This file
 ```
 
 ---
@@ -275,36 +311,302 @@ async def sync_data(wallet_address: str, tokens: dict, data_types: list = None):
 
 ## ENVIRONMENT VARIABLES
 
-```bash
-# Database
-DATABASE_URL=postgresql+asyncpg://...
+### Complete Configuration (All Sections)
 
-# AI
+See `.env.example` for the full template. Below are the critical production variables:
+
+### Database
+
+```bash
+DATABASE_URL=postgresql+asyncpg://user:password@host/dbname
+REDIS_URL=redis://localhost:6379
+```
+
+### AI & LLM
+
+```bash
+# Together.ai (Cloud - Recommended)
 TOGETHER_API_KEY=your-together-api-key
 TOGETHER_MODEL=meta-llama/Llama-3.3-70B-Instruct-Turbo
+LLM_PROVIDER=together
 
-# Storage
-PINATA_API_KEY=your-pinata-key
-PINATA_SECRET_KEY=your-pinata-secret
-
-# OAuth
-FRONTEND_URL=https://app.varity.so
-OAUTH_REDIRECT_BASE_URL=https://app.varity.so
-
-# Provider Credentials (All 6 Priority)
-QUICKBOOKS_CLIENT_ID=✅
-QUICKBOOKS_CLIENT_SECRET=✅
-GOOGLE_CLIENT_ID=✅
-GOOGLE_CLIENT_SECRET=✅
-MICROSOFT_CLIENT_ID=✅
-MICROSOFT_CLIENT_SECRET=✅
-SLACK_CLIENT_ID=✅
-SLACK_CLIENT_SECRET=✅
-SALESFORCE_CLIENT_ID=✅
-SALESFORCE_CLIENT_SECRET=✅
-HUBSPOT_CLIENT_ID=✅
-HUBSPOT_CLIENT_SECRET=✅
+# Or Ollama (Local)
+# OLLAMA_URL=http://localhost:11434
+# OLLAMA_MODEL=mistral
+# LLM_PROVIDER=ollama
 ```
+
+### Storage & IPFS
+
+```bash
+# Pinata (Decentralized Storage)
+PINATA_API_KEY=your-pinata-api-key
+PINATA_SECRET_KEY=your-pinata-secret
+PINATA_JWT=your-pinata-jwt
+PINATA_GATEWAY_URL=https://varity.mypinata.cloud  # Use dedicated gateway
+
+# Vector DB
+QDRANT_URL=http://localhost:6333
+QDRANT_API_KEY=optional-api-key
+```
+
+### Varity L3 Blockchain (NEW - December 31, 2025)
+
+```bash
+# L3 RPC Configuration
+VARITY_L3_RPC=https://rpc-varity-testnet-rroe52pwjp.t.conduit.xyz
+VARITY_L3_CHAIN_ID=33529
+
+# L3 Smart Contract for Data Commitments
+VARITY_DATA_COMMITMENTS_ADDRESS=0x...  # Deploy and set
+VARITY_L3_PRIVATE_KEY=0x...            # Keep SECRET - use Railway secrets
+
+# Network Configuration
+VARITY_CHAIN_NAME=Varity L3 Testnet
+```
+
+**Deployment Instructions:**
+
+1. Deploy VarityDataCommitments contract to L3
+2. Get contract address from deployment receipt
+3. Generate private key: `openssl rand -hex 32` → prepend `0x`
+4. Set in Railway environment variables (NEVER in .env)
+5. Verify connection: `curl https://rpc-varity-testnet-rroe52pwjp.t.conduit.xyz` should return `{"jsonrpc":"2.0"}`
+
+### Model Context Protocol (MCP) - NEW
+
+```bash
+# MCP Configuration
+MCP_SERVERS_ENABLED=true  # Enable MCP data pipeline
+
+# MCP automatically handles OAuth token management for:
+# - Google Workspace (@anthropic/google-workspace-mcp)
+# - Slack (korotovsky/slack-mcp-server)
+# - QuickBooks (@anthropic/quickbooks-online-mcp-server)
+# - Microsoft 365 (Softeria/ms-365-mcp-server)
+# - Salesforce (Community/MCP-Salesforce)
+# - HubSpot (@hubspot/mcp-server)
+```
+
+### OAuth Integration Credentials (10 Providers)
+
+```bash
+# Google Workspace
+GOOGLE_CLIENT_ID=your-client-id
+GOOGLE_CLIENT_SECRET=your-client-secret
+
+# QuickBooks
+QUICKBOOKS_CLIENT_ID=your-client-id
+QUICKBOOKS_CLIENT_SECRET=your-client-secret
+
+# Microsoft 365
+MICROSOFT_CLIENT_ID=your-client-id
+MICROSOFT_CLIENT_SECRET=your-client-secret
+
+# Slack
+SLACK_CLIENT_ID=your-client-id
+SLACK_CLIENT_SECRET=your-client-secret
+
+# Salesforce
+SALESFORCE_CLIENT_ID=your-client-id
+SALESFORCE_CLIENT_SECRET=your-client-secret
+
+# HubSpot
+HUBSPOT_CLIENT_ID=your-client-id
+HUBSPOT_CLIENT_SECRET=your-client-secret
+
+# Plus: Shopify, Stripe, Zendesk, Monday.com, Xero
+```
+
+### Web Search & External APIs
+
+```bash
+# Web Search (One of these)
+TAVILY_API_KEY=your-tavily-api-key      # Recommended for LLMs
+SERPER_API_KEY=your-serper-api-key      # Alternative
+
+# Embedding/LLM
+OPENAI_API_KEY=optional-for-embeddings
+```
+
+### Security Settings
+
+```bash
+# OAuth State Secret (prevent CSRF)
+OAUTH_STATE_SECRET=generate-with-openssl-rand-hex-32
+
+# Encryption Secret (prevent public wallet attacks)
+ENCRYPTION_SECRET=generate-with-openssl-rand-hex-32
+
+# Session Security
+SESSION_COOKIE_SECURE=true
+SESSION_COOKIE_HTTPONLY=true
+SESSION_COOKIE_SAMESITE=strict
+```
+
+### Application Configuration
+
+```bash
+APP_NAME=Varity Generic Template Dashboard
+ENVIRONMENT=production  # or development
+DEBUG=false
+LOG_LEVEL=INFO
+FRONTEND_URL=https://app.varity.so
+CORS_ORIGINS=https://app.varity.so
+```
+
+### Production Railway Variables
+
+Set these in Railway dashboard (never in .env):
+
+```
+DATABASE_URL=postgresql://...
+REDIS_URL=redis://...
+TOGETHER_API_KEY=...
+PINATA_API_KEY=...
+PINATA_SECRET_KEY=...
+PINATA_JWT=...
+PINATA_GATEWAY_URL=https://varity.mypinata.cloud
+VARITY_L3_RPC=https://rpc-varity-testnet-rroe52pwjp.t.conduit.xyz
+VARITY_L3_CHAIN_ID=33529
+VARITY_DATA_COMMITMENTS_ADDRESS=0x...
+VARITY_L3_PRIVATE_KEY=0x...
+OAUTH_STATE_SECRET=...
+ENCRYPTION_SECRET=...
+ENVIRONMENT=production
+```
+
+---
+
+## NEW SERVICES (MCP & L3 BLOCKCHAIN)
+
+### MCP Ingestion Service (`app/services/mcp_ingestion_service.py`)
+
+**Purpose:** Unified pipeline for secure data ingestion from 6 integrations.
+
+**Architecture:**
+```
+1. MCP Client → Fetch data from integration via MCP
+2. Encryption → AES-256-GCM with customer wallet key
+3. Routing → Determine destination (RAG/Live/Hybrid)
+4. Storage → Upload encrypted to Pinata
+5. Indexing → Add to Qdrant (if RAG)
+6. L3 Batch → Accumulate for on-chain verification
+```
+
+**Data Routing Rules per Integration:**
+
+| Integration | gmail | calendar | drive | contacts | channels | messages |
+|-------------|-------|----------|-------|----------|----------|----------|
+| Google | LIVE | LIVE | RAG | RAG | - | - |
+| Slack | - | - | - | - | LIVE | HYBRID |
+| QB | LIVE | LIVE | RAG | RAG | - | - |
+| Microsoft | LIVE | LIVE | RAG | RAG | - | - |
+| Salesforce | LIVE | - | - | RAG | - | - |
+| HubSpot | LIVE | LIVE | - | RAG | - | - |
+
+**LIVE:** Real-time queries (no storage)
+**RAG:** Store encrypted in Pinata + index in Qdrant + batch for L3
+**HYBRID:** Store initial data + offer live updates
+
+### L3 Data Commitment Service (`app/services/l3_commitment_service.py`)
+
+**Purpose:** On-chain verification of data integrity via Varity L3.
+
+**Features:**
+- Merkle tree batch commits (200x cheaper than individual commits)
+- CID + content hash verification
+- Wallet-attributed data commits
+- Block explorer integration
+
+**Configuration:**
+
+```python
+L3_CONFIG = {
+    "name": "Varity Testnet",
+    "chain_id": 33529,
+    "rpc_url": "https://rpc-varity-testnet-rroe52pwjp.t.conduit.xyz",
+    "explorer_url": "https://explorer-varity-testnet-rroe52pwjp.t.conduit.xyz",
+    "native_token": "USDC",
+}
+```
+
+**Usage:**
+
+```python
+# Single commit (inefficient)
+result = await l3_service.commit_single(
+    cid="QmXxx...",
+    encrypted_content=bytes(...),
+    integration="google",
+    data_type="drive_files",
+    wallet_address="0x..."
+)
+
+# Batch commit (recommended - 200x cheaper)
+result = await l3_service.commit_batch(
+    items=[
+        {"cid": "QmXxx", "content": bytes(...)},
+        {"cid": "QmYyy", "content": bytes(...)},
+    ],
+    integration="google",
+    wallet_address="0x..."
+)
+```
+
+**Response:**
+
+```json
+{
+    "tx_hash": "0x...",
+    "merkle_root": "0x...",
+    "item_count": 50,
+    "l3_committed": true,
+    "gas_used": 25000,
+    "explorer_url": "https://explorer-varity-testnet.../tx/0x..."
+}
+```
+
+### MCP Client Wrapper (`mcp_servers/client.py`)
+
+**Purpose:** Async interface to MCP servers for each integration.
+
+**Transport:** JSON-RPC 2.0 over stdio (secure, no network exposure)
+
+**Integration-Specific Data Fetchers:**
+
+```python
+# Google Workspace
+await fetch_google_data(oauth_token, "drive_files")
+await fetch_google_data(oauth_token, "gmail")
+await fetch_google_data(oauth_token, "calendar")
+await fetch_google_data(oauth_token, "contacts")
+
+# Slack
+await fetch_slack_data(oauth_token, "channels")
+await fetch_slack_data(oauth_token, "messages")
+await fetch_slack_data(oauth_token, "users")
+
+# QuickBooks
+await fetch_quickbooks_data(oauth_token, "invoices", realm_id)
+await fetch_quickbooks_data(oauth_token, "customers", realm_id)
+await fetch_quickbooks_data(oauth_token, "payments", realm_id)
+
+# And more for Microsoft, Salesforce, HubSpot
+```
+
+### MCP Server Registry (`mcp_servers/config.py`)
+
+**6 Vetted MCP Servers:**
+
+| Server | Source | Tools | Reliability |
+|--------|--------|-------|-------------|
+| Google Workspace | @anthropic/google-workspace-mcp | 7 tools | ✅ Official |
+| Slack | korotovsky/slack-mcp-server | 5 tools | ✅ Community |
+| QuickBooks | @anthropic/quickbooks-online-mcp-server | 5 tools | ✅ Official |
+| Microsoft 365 | Softeria/ms-365-mcp-server | 6 tools | ✅ Community |
+| Salesforce | Community/MCP-Salesforce | 4 tools | ✅ Community |
+| HubSpot | @hubspot/mcp-server | 5 tools | ✅ Official Beta |
 
 ---
 

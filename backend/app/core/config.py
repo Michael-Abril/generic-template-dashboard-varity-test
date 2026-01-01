@@ -41,13 +41,26 @@ class Settings(BaseSettings):
     lit_network: str = Field("cayenne", env="LIT_NETWORK")  # cayenne = testnet
     lit_debug: bool = False
 
-    # Varity L3 Chain Configuration
-    varity_chain_id: int = Field(33529, env="VARITY_CHAIN_ID")
-    varity_rpc_url: str = Field(
+    # Varity L3 Chain Configuration (Arbitrum Orbit - Conduit)
+    varity_l3_chain_id: int = Field(33529, env="VARITY_L3_CHAIN_ID")
+    varity_l3_rpc: str = Field(
         "https://rpc-varity-testnet-rroe52pwjp.t.conduit.xyz",
-        env="VARITY_RPC_URL"
+        env="VARITY_L3_RPC"
     )
     varity_chain_name: str = "Varity L3 Testnet"
+
+    # L3 Data Commitment Contract
+    varity_data_commitments_address: Optional[str] = Field(
+        None,
+        env="VARITY_DATA_COMMITMENTS_ADDRESS"
+    )
+
+    # L3 Signing Key for data commitments
+    # MUST be set in production for on-chain verification
+    varity_l3_private_key: Optional[str] = Field(
+        None,
+        env="VARITY_L3_PRIVATE_KEY"
+    )
 
     # Namespace Templates
     namespace_template: str = "customer-{wallet_address}/{integration}/{data_type}/{timestamp}"
@@ -126,6 +139,10 @@ class Settings(BaseSettings):
 
     # LLM Provider Selection: "together" (cloud) or "ollama" (local)
     llm_provider: str = Field("together", env="LLM_PROVIDER")
+
+    # Model Context Protocol (MCP) Configuration
+    # MCP enables native integration with 6 business applications
+    mcp_servers_enabled: bool = Field(True, env="MCP_SERVERS_ENABLED")
 
     # Web Search Configuration (for AI Assistant internet access)
     # Tavily is recommended for LLM-optimized search results
@@ -240,7 +257,14 @@ class Settings(BaseSettings):
                 "style-src 'self' 'unsafe-inline'; "
                 "img-src 'self' data: https:; "
                 "font-src 'self' data:; "
-                "connect-src 'self' https://rpc-varity-testnet-rroe52pwjp.t.conduit.xyz; "
+                "connect-src 'self' "
+                "https://rpc-varity-testnet-rroe52pwjp.t.conduit.xyz "
+                "https://api.pinata.cloud "
+                "https://varity.mypinata.cloud "
+                "https://gateway.pinata.cloud "
+                "https://api.together.xyz "
+                "https://api.tavily.com "
+                "https://api.serper.dev; "
                 "frame-ancestors 'none'; "
                 "base-uri 'self'; "
                 "form-action 'self'"

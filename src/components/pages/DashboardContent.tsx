@@ -463,8 +463,8 @@ export default function DashboardContent() {
                     const { Icon: BrandIcon, bg } = getActivityBrandIcon(activity.type, activity.source);
                     return (
                       <div key={i} className="flex items-center gap-3 p-2 -mx-2 rounded-lg hover:bg-gray-50 transition-colors cursor-pointer">
-                        <div className={`w-9 h-9 ${bg} rounded-lg flex items-center justify-center flex-shrink-0`}>
-                          <BrandIcon size={18} />
+                        <div className={`w-10 h-10 ${bg} rounded-lg flex items-center justify-center flex-shrink-0 border border-gray-100`}>
+                          <BrandIcon size={22} />
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-medium text-gray-900 truncate">{activity.title}</p>
