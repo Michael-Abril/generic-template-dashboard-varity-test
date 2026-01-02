@@ -7,6 +7,12 @@ pragma solidity ^0.8.20;
  * @notice Stores data commitments for verifiable data integrity on Varity L3 Arbitrum
  * @dev Uses Merkle tree batch commits for 200x cost reduction
  *
+ * GASLESS ARCHITECTURE:
+ * - Varity Labs backend is the ONLY signer (pays all gas in USDC)
+ * - Business wallet addresses are passed as parameters for DATA ATTRIBUTION
+ * - Businesses NEVER need to sign transactions or hold USDC
+ * - This enables a completely seamless Web2-like experience for businesses
+ *
  * Varity L3 Testnet (Conduit - Arbitrum Stack AnyTrust):
  * - Chain ID: 33529
  * - RPC: https://rpc-varity-testnet-rroe52pwjp.t.conduit.xyz
@@ -59,11 +65,19 @@ contract VarityDataCommitments {
     // user => integration => batch count
     mapping(address => mapping(string => uint256)) public batchCount;
 
+    // Authorized relayers (Varity backend addresses that can commit on behalf of users)
+    mapping(address => bool) public authorizedRelayers;
+
+    // Contract owner (can add/remove relayers)
+    address public owner;
+
     // ============ Events ============
 
     /**
      * @notice Emitted when a single data item is committed
      * @dev Full CID stored in event (cheaper than storage) for indexers
+     * @param user The business wallet address (data attribution)
+     * @param relayer The Varity backend address that submitted the transaction
      */
     event DataCommitted(
         address indexed user,
@@ -71,18 +85,22 @@ contract VarityDataCommitments {
         bytes32 cidHash,
         bytes32 contentHash,
         uint32 dataType,
-        string cid  // Full CID for indexers
+        string cid,  // Full CID for indexers
+        address relayer  // Varity backend address that paid for gas
     );
 
     /**
      * @notice Emitted when a batch is committed via Merkle root
+     * @param user The business wallet address (data attribution)
+     * @param relayer The Varity backend address that submitted the transaction
      */
     event BatchCommitted(
         address indexed user,
         string indexed integration,
         uint256 indexed batchId,
         bytes32 merkleRoot,
-        uint32 itemCount
+        uint32 itemCount,
+        address relayer  // Varity backend address that paid for gas
     );
 
     /**
@@ -95,10 +113,151 @@ contract VarityDataCommitments {
         bool isValid
     );
 
-    // ============ Write Functions ============
+    /**
+     * @notice Emitted when a relayer is authorized or deauthorized
+     */
+    event RelayerUpdated(address indexed relayer, bool authorized);
+
+    // ============ Modifiers ============
 
     /**
-     * @notice Commit a single data item
+     * @notice Only authorized relayers can call gasless functions
+     * @dev In production, only Varity backend wallets are authorized
+     */
+    modifier onlyRelayer() {
+        require(
+            authorizedRelayers[msg.sender] || msg.sender == owner,
+            "Not authorized relayer"
+        );
+        _;
+    }
+
+    /**
+     * @notice Only owner can manage relayers
+     */
+    modifier onlyOwner() {
+        require(msg.sender == owner, "Not owner");
+        _;
+    }
+
+    // ============ Constructor ============
+
+    /**
+     * @notice Initialize contract with deployer as owner and first relayer
+     */
+    constructor() {
+        owner = msg.sender;
+        authorizedRelayers[msg.sender] = true;
+        emit RelayerUpdated(msg.sender, true);
+    }
+
+    // ============ Admin Functions ============
+
+    /**
+     * @notice Add or remove an authorized relayer
+     * @param relayer Address of the relayer
+     * @param authorized True to authorize, false to revoke
+     */
+    function setRelayer(address relayer, bool authorized) external onlyOwner {
+        require(relayer != address(0), "Invalid relayer address");
+        authorizedRelayers[relayer] = authorized;
+        emit RelayerUpdated(relayer, authorized);
+    }
+
+    /**
+     * @notice Transfer ownership to a new address
+     * @param newOwner New owner address
+     */
+    function transferOwnership(address newOwner) external onlyOwner {
+        require(newOwner != address(0), "Invalid owner address");
+        owner = newOwner;
+    }
+
+    // ============ Write Functions (Gasless Pattern) ============
+
+    /**
+     * @notice Commit a single data item on behalf of a user (GASLESS)
+     * @dev Only authorized relayers (Varity backend) can call this
+     * @param user Business wallet address for data attribution (NOT the signer)
+     * @param integration Integration name (e.g., "google", "slack")
+     * @param cidHash keccak256(CID)
+     * @param contentHash keccak256(encrypted_content)
+     * @param dataType Data type identifier
+     * @param cid Full IPFS CID string for event logging
+     */
+    function commitDataFor(
+        address user,
+        string calldata integration,
+        bytes32 cidHash,
+        bytes32 contentHash,
+        uint32 dataType,
+        string calldata cid
+    ) external onlyRelayer {
+        require(user != address(0), "Invalid user address");
+        require(cidHash != bytes32(0), "Invalid CID hash");
+        require(contentHash != bytes32(0), "Invalid content hash");
+
+        commitments[user][integration][cidHash] = DataCommitment({
+            cidHash: cidHash,
+            contentHash: contentHash,
+            timestamp: uint64(block.timestamp),
+            dataType: dataType
+        });
+
+        emit DataCommitted(
+            user,
+            integration,
+            cidHash,
+            contentHash,
+            dataType,
+            cid,
+            msg.sender  // Relayer address for audit trail
+        );
+    }
+
+    /**
+     * @notice Commit multiple items via Merkle root on behalf of a user (GASLESS)
+     * @dev Only authorized relayers (Varity backend) can call this
+     * @dev Leaf = keccak256(abi.encodePacked(cidHash, contentHash))
+     * @param user Business wallet address for data attribution (NOT the signer)
+     * @param integration Integration name
+     * @param merkleRoot Root of Merkle tree
+     * @param itemCount Number of items in batch
+     */
+    function commitBatchFor(
+        address user,
+        string calldata integration,
+        bytes32 merkleRoot,
+        uint32 itemCount
+    ) external onlyRelayer {
+        require(user != address(0), "Invalid user address");
+        require(merkleRoot != bytes32(0), "Invalid Merkle root");
+        require(itemCount > 0, "Empty batch");
+
+        uint256 batchId = batchCount[user][integration];
+        batchCount[user][integration] = batchId + 1;
+
+        batches[user][integration][batchId] = BatchCommitment({
+            merkleRoot: merkleRoot,
+            itemCount: itemCount,
+            timestamp: uint64(block.timestamp)
+        });
+
+        emit BatchCommitted(
+            user,
+            integration,
+            batchId,
+            merkleRoot,
+            itemCount,
+            msg.sender  // Relayer address for audit trail
+        );
+    }
+
+    // ============ Legacy Functions (Direct Commit - Kept for Compatibility) ============
+
+    /**
+     * @notice Commit a single data item directly (caller pays gas)
+     * @dev DEPRECATED: Use commitDataFor for gasless pattern
      * @param integration Integration name (e.g., "google", "slack")
      * @param cidHash keccak256(CID)
      * @param contentHash keccak256(encrypted_content)
@@ -128,12 +287,14 @@ contract VarityDataCommitments {
             cidHash,
             contentHash,
             dataType,
-            cid
+            cid,
+            msg.sender  // Caller is their own relayer
         );
     }
 
     /**
-     * @notice Commit multiple items via Merkle root (200x more efficient)
+     * @notice Commit multiple items via Merkle root directly (caller pays gas)
+     * @dev DEPRECATED: Use commitBatchFor for gasless pattern
      * @dev Leaf = keccak256(abi.encodePacked(cidHash, contentHash))
      * @param integration Integration name
      * @param merkleRoot Root of Merkle tree
@@ -161,7 +322,8 @@ contract VarityDataCommitments {
             integration,
             batchId,
             merkleRoot,
-            itemCount
+            itemCount,
+            msg.sender  // Caller is their own relayer
         );
     }
 
@@ -208,6 +370,15 @@ contract VarityDataCommitments {
         string calldata integration
     ) external view returns (uint256) {
         return batchCount[user][integration];
+    }
+
+    /**
+     * @notice Check if an address is an authorized relayer
+     * @param relayer Address to check
+     * @return True if authorized
+     */
+    function isAuthorizedRelayer(address relayer) external view returns (bool) {
+        return authorizedRelayers[relayer] || relayer == owner;
     }
 
     /**

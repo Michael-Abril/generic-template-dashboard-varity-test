@@ -1,8 +1,37 @@
 """
-L3 Data Commitment Service
+L3 Data Commitment Service - Gasless Pattern Implementation
 
 Commits data references to Varity L3 Arbitrum for verifiable data integrity.
 Uses Merkle trees for batch efficiency (200x cost reduction).
+
+=============================================================================
+GASLESS ARCHITECTURE (CRITICAL FOR UNDERSTANDING)
+=============================================================================
+
+This service implements a GASLESS pattern where:
+
+1. VARITY LABS PAYS ALL GAS
+   - The backend hot wallet (VARITY_L3_PRIVATE_KEY) signs all transactions
+   - This wallet must be funded with USDC on Varity L3
+
+2. BUSINESS WALLET = DATA ATTRIBUTION ONLY
+   - Business wallet addresses are passed as parameters to the contract
+   - Data is stored and indexed under the business wallet address
+   - Businesses NEVER sign transactions or need USDC
+
+3. WHY THIS PATTERN?
+   - Businesses get a seamless Web2-like experience
+   - No blockchain knowledge required from business users
+   - No wallet setup, gas management, or transaction signing
+   - Data remains cryptographically attributed to business wallets
+
+SECURITY CONSIDERATIONS:
+- Only authorized relayers (Varity backend addresses) can call commitDataFor
+- Relayer addresses are managed by contract owner
+- Each transaction records the relayer address for audit trail
+- Business wallet addresses are validated (non-zero)
+
+=============================================================================
 
 Varity L3 Testnet (Conduit - Arbitrum Stack AnyTrust):
 - RPC: https://rpc-varity-testnet-rroe52pwjp.t.conduit.xyz
@@ -41,9 +70,54 @@ VARITY_L3_CONFIG = {
 }
 
 
+# Data type identifiers for on-chain commits
+DATA_TYPE_IDS = {
+    # Google Workspace
+    "drive_files": 1,
+    "gmail": 2,
+    "calendar": 3,
+    "contacts": 4,
+    # Slack
+    "slack_channels": 10,
+    "slack_messages": 11,
+    "slack_users": 12,
+    "slack_files": 13,
+    # Microsoft 365
+    "onedrive": 20,
+    "outlook": 21,
+    "outlook_calendar": 22,
+    "outlook_contacts": 23,
+    # QuickBooks
+    "invoices": 30,
+    "customers": 31,
+    "payments": 32,
+    "accounts": 33,
+    # Salesforce
+    "leads": 40,
+    "opportunities": 41,
+    "accounts_sf": 42,
+    "contacts_sf": 43,
+    # HubSpot
+    "hubspot_contacts": 50,
+    "hubspot_deals": 51,
+    "hubspot_companies": 52,
+    # Planning (internal)
+    "tasks": 100,
+    "roadmap": 101,
+    # Default
+    "unknown": 0,
+}
+
+
 class L3DataCommitmentService:
     """
     Handles on-chain data commitments to Varity L3 Arbitrum.
+
+    GASLESS PATTERN:
+    ----------------
+    - Varity Labs backend is the ONLY transaction signer
+    - Business wallet addresses are passed for DATA ATTRIBUTION
+    - Businesses never need USDC or sign transactions
 
     Varity L3 Testnet (Conduit - Arbitrum Stack AnyTrust):
     - RPC: https://rpc-varity-testnet-rroe52pwjp.t.conduit.xyz
@@ -55,7 +129,7 @@ class L3DataCommitmentService:
     - Verifiable data integrity via on-chain commitments
     - Batch commits using Merkle trees (200x more efficient)
     - CID + content hash storage for IPFS data
-    - Wallet-based data attribution
+    - Wallet-based data attribution (business wallet, not signer)
     """
 
     # Default to Conduit RPC, allow override via env var
@@ -69,7 +143,9 @@ class L3DataCommitmentService:
         Initialize L3 commitment service.
 
         Args:
-            private_key: Optional private key for signing transactions.
+            private_key: Private key for Varity Labs hot wallet.
+                        This wallet pays gas for ALL transactions.
+                        Must be funded with USDC on Varity L3.
                         If not provided, contract interaction is disabled.
         """
         self.w3 = Web3(Web3.HTTPProvider(self.L3_RPC_URL))
@@ -78,16 +154,44 @@ class L3DataCommitmentService:
         if private_key:
             try:
                 self.account = self.w3.eth.account.from_key(private_key)
-                logger.info(f"L3 service initialized with account: {self.account.address}")
+                logger.info(
+                    f"L3 service initialized with relayer account: {self.account.address}"
+                )
             except Exception as e:
-                logger.error(f"Failed to initialize account from private key: {e}")
+                logger.error(f"Failed to initialize relayer account from private key: {e}")
 
         self.contract = self._load_contract()
 
     def _load_contract(self):
-        """Load VarityDataCommitments contract"""
-        # ABI for the VarityDataCommitments contract
+        """Load VarityDataCommitments contract with gasless ABI"""
+        # ABI for the VarityDataCommitments contract (gasless pattern)
         abi = [
+            # ============ Gasless Functions (Primary) ============
+            {
+                "name": "commitDataFor",
+                "type": "function",
+                "inputs": [
+                    {"name": "user", "type": "address"},
+                    {"name": "integration", "type": "string"},
+                    {"name": "cidHash", "type": "bytes32"},
+                    {"name": "contentHash", "type": "bytes32"},
+                    {"name": "dataType", "type": "uint32"},
+                    {"name": "cid", "type": "string"},
+                ],
+                "outputs": [],
+            },
+            {
+                "name": "commitBatchFor",
+                "type": "function",
+                "inputs": [
+                    {"name": "user", "type": "address"},
+                    {"name": "integration", "type": "string"},
+                    {"name": "merkleRoot", "type": "bytes32"},
+                    {"name": "itemCount", "type": "uint32"},
+                ],
+                "outputs": [],
+            },
+            # ============ Legacy Functions (Deprecated) ============
             {
                 "name": "commitData",
                 "type": "function",
@@ -96,8 +200,9 @@ class L3DataCommitmentService:
                     {"name": "cidHash", "type": "bytes32"},
                     {"name": "contentHash", "type": "bytes32"},
                     {"name": "dataType", "type": "uint32"},
-                    {"name": "size", "type": "uint32"},
+                    {"name": "cid", "type": "string"},
                 ],
+                "outputs": [],
             },
             {
                 "name": "commitBatch",
@@ -107,7 +212,9 @@ class L3DataCommitmentService:
                     {"name": "merkleRoot", "type": "bytes32"},
                     {"name": "itemCount", "type": "uint32"},
                 ],
+                "outputs": [],
             },
+            # ============ View Functions ============
             {
                 "name": "getCommitment",
                 "type": "function",
@@ -123,6 +230,55 @@ class L3DataCommitmentService:
                     {"name": "timestamp", "type": "uint64"},
                     {"name": "dataType", "type": "uint32"},
                 ],
+            },
+            {
+                "name": "getBatch",
+                "type": "function",
+                "stateMutability": "view",
+                "inputs": [
+                    {"name": "user", "type": "address"},
+                    {"name": "integration", "type": "string"},
+                    {"name": "batchId", "type": "uint256"},
+                ],
+                "outputs": [
+                    {"name": "merkleRoot", "type": "bytes32"},
+                    {"name": "itemCount", "type": "uint32"},
+                    {"name": "timestamp", "type": "uint64"},
+                ],
+            },
+            {
+                "name": "getBatchCount",
+                "type": "function",
+                "stateMutability": "view",
+                "inputs": [
+                    {"name": "user", "type": "address"},
+                    {"name": "integration", "type": "string"},
+                ],
+                "outputs": [{"name": "", "type": "uint256"}],
+            },
+            {
+                "name": "isAuthorizedRelayer",
+                "type": "function",
+                "stateMutability": "view",
+                "inputs": [{"name": "relayer", "type": "address"}],
+                "outputs": [{"name": "", "type": "bool"}],
+            },
+            {
+                "name": "owner",
+                "type": "function",
+                "stateMutability": "view",
+                "inputs": [],
+                "outputs": [{"name": "", "type": "address"}],
+            },
+            # ============ Admin Functions ============
+            {
+                "name": "setRelayer",
+                "type": "function",
+                "inputs": [
+                    {"name": "relayer", "type": "address"},
+                    {"name": "authorized", "type": "bool"},
+                ],
+                "outputs": [],
             },
         ]
 
@@ -145,6 +301,34 @@ class L3DataCommitmentService:
             logger.error(f"L3 connection check failed: {e}")
             return False
 
+    def get_relayer_address(self) -> Optional[str]:
+        """Get the address of the Varity relayer (gas payer)"""
+        if self.account:
+            return self.account.address
+        return None
+
+    def get_relayer_balance(self) -> Optional[int]:
+        """Get USDC balance of the relayer wallet"""
+        if not self.account:
+            return None
+        try:
+            return self.w3.eth.get_balance(self.account.address)
+        except Exception as e:
+            logger.error(f"Failed to get relayer balance: {e}")
+            return None
+
+    async def check_relayer_authorization(self) -> bool:
+        """Check if our relayer is authorized on the contract"""
+        if not self.contract or not self.account:
+            return False
+        try:
+            return self.contract.functions.isAuthorizedRelayer(
+                self.account.address
+            ).call()
+        except Exception as e:
+            logger.error(f"Failed to check relayer authorization: {e}")
+            return False
+
     def get_explorer_tx_url(self, tx_hash: str) -> str:
         """Get block explorer URL for a transaction"""
         return f"{self.L3_EXPLORER_URL}/tx/{tx_hash}"
@@ -161,6 +345,10 @@ class L3DataCommitmentService:
             "contract_address": cls.CONTRACT_ADDRESS,
             "rpc_url_active": cls.L3_RPC_URL,
         }
+
+    def _get_data_type_id(self, data_type: str) -> int:
+        """Convert data type string to numeric ID"""
+        return DATA_TYPE_IDS.get(data_type, DATA_TYPE_IDS["unknown"])
 
     def _build_merkle_tree(self, leaves: List[bytes]) -> bytes:
         """
@@ -194,8 +382,11 @@ class L3DataCommitmentService:
                 # If odd number of nodes, duplicate last one
                 right = current_level[i + 1] if i + 1 < len(current_level) else left
 
-                # Hash the pair
-                parent = keccak(left + right)
+                # Hash the pair (sorted for determinism)
+                if left <= right:
+                    parent = keccak(left + right)
+                else:
+                    parent = keccak(right + left)
                 next_level.append(parent)
 
             current_level = next_level
@@ -206,57 +397,76 @@ class L3DataCommitmentService:
         self,
         items: List[Dict[str, Any]],
         integration: str,
-        wallet_address: str,
+        business_wallet_address: str,
     ) -> Dict[str, Any]:
         """
-        Commit batch using Merkle tree root.
+        Commit batch using Merkle tree root (GASLESS).
 
         200x more efficient than individual commits.
         Gas: ~25,000 for entire batch vs 50,000 per item.
 
+        GASLESS PATTERN:
+        - Varity Labs backend signs and pays for the transaction
+        - business_wallet_address is used for DATA ATTRIBUTION only
+        - Business never needs to sign or hold USDC
+
         Args:
             items: List of items to commit, each with 'cid' and 'content' keys
             integration: Integration name (e.g., 'google', 'slack')
-            wallet_address: User's wallet address
+            business_wallet_address: Business wallet for data attribution (NOT the signer)
 
         Returns:
             Dict with commitment details or pending status
         """
         try:
+            # Validate business wallet address
+            if not business_wallet_address or business_wallet_address == "0x0":
+                raise ValueError("Invalid business wallet address")
+
+            business_wallet = Web3.to_checksum_address(business_wallet_address)
+
             # Build leaves: [cid_hash, content_hash] for each item
             leaves = []
             for item in items:
                 cid_hash = keccak(text=item['cid'])
                 content_hash = keccak(item['content'])
-                # Combine hashes for leaf
-                leaf = keccak(cid_hash + content_hash)
+                # Combine hashes for leaf (sorted for determinism)
+                if cid_hash <= content_hash:
+                    leaf = keccak(cid_hash + content_hash)
+                else:
+                    leaf = keccak(content_hash + cid_hash)
                 leaves.append(leaf)
 
             # Build Merkle tree
             merkle_root = self._build_merkle_tree(leaves)
 
-            # If contract is configured and we have an account, commit to L3
+            # If contract is configured and we have a relayer account, commit to L3
             if self.contract and self.account:
                 try:
-                    tx = self.contract.functions.commitBatch(
+                    # Use commitBatchFor (gasless pattern) - passes business wallet as parameter
+                    tx = self.contract.functions.commitBatchFor(
+                        business_wallet,  # Business wallet for data attribution
                         integration,
                         merkle_root,
                         len(items),
                     ).build_transaction({
-                        'from': self.account.address,
+                        'from': self.account.address,  # Varity relayer pays gas
                         'nonce': self.w3.eth.get_transaction_count(self.account.address),
-                        'gas': 50000,
+                        'gas': 80000,  # Slightly higher for the additional address parameter
                         'gasPrice': self.w3.eth.gas_price,
+                        'chainId': self.L3_CHAIN_ID,
                     })
 
                     signed = self.w3.eth.account.sign_transaction(tx, self.account.key)
-                    tx_hash = self.w3.eth.send_raw_transaction(signed.rawTransaction)
+                    tx_hash = self.w3.eth.send_raw_transaction(signed.raw_transaction)
                     receipt = self.w3.eth.wait_for_transaction_receipt(tx_hash)
 
                     logger.info(
-                        f"L3 batch committed: {len(items)} items, "
+                        f"L3 batch committed (gasless): {len(items)} items, "
+                        f"business={business_wallet[:10]}..., "
                         f"merkle_root={merkle_root.hex()[:16]}..., "
-                        f"tx={tx_hash.hex()}"
+                        f"tx={tx_hash.hex()}, "
+                        f"relayer={self.account.address[:10]}..."
                     )
 
                     return {
@@ -265,6 +475,10 @@ class L3DataCommitmentService:
                         "item_count": len(items),
                         "l3_committed": receipt.status == 1,
                         "gas_used": receipt.gasUsed,
+                        "explorer_url": self.get_explorer_tx_url(tx_hash.hex()),
+                        "business_wallet": business_wallet,
+                        "relayer_wallet": self.account.address,
+                        "gasless": True,
                     }
                 except Exception as e:
                     logger.error(f"L3 transaction failed: {e}")
@@ -273,6 +487,7 @@ class L3DataCommitmentService:
             # If no contract or transaction failed, return pending status
             logger.info(
                 f"L3 batch pending: {len(items)} items, "
+                f"business={business_wallet[:10]}..., "
                 f"merkle_root={merkle_root.hex()[:16]}... "
                 f"(contract not configured or tx failed)"
             )
@@ -281,6 +496,7 @@ class L3DataCommitmentService:
                 "merkle_root": merkle_root.hex(),
                 "item_count": len(items),
                 "l3_committed": False,
+                "business_wallet": business_wallet,
                 "reason": "Contract not configured or transaction failed",
             }
 
@@ -297,7 +513,7 @@ class L3DataCommitmentService:
         cid: str,
         encrypted_content: bytes,
         integration: str,
-        wallet_address: str,
+        business_wallet_address: str,
     ) -> bool:
         """
         Verify data integrity against L3 commitment.
@@ -306,7 +522,7 @@ class L3DataCommitmentService:
             cid: IPFS CID of the data
             encrypted_content: Encrypted content bytes
             integration: Integration name
-            wallet_address: User's wallet address
+            business_wallet_address: Business wallet address (data is attributed to this)
 
         Returns:
             True if data matches on-chain commitment, False otherwise
@@ -316,11 +532,12 @@ class L3DataCommitmentService:
             return True  # Skip verification if not configured
 
         try:
+            business_wallet = Web3.to_checksum_address(business_wallet_address)
             cid_hash = keccak(text=cid)
             content_hash = keccak(encrypted_content)
 
             commitment = self.contract.functions.getCommitment(
-                Web3.to_checksum_address(wallet_address),
+                business_wallet,  # Data is attributed to business wallet
                 integration,
                 cid_hash,
             ).call()
@@ -345,37 +562,176 @@ class L3DataCommitmentService:
         encrypted_content: bytes,
         integration: str,
         data_type: str,
-        wallet_address: str,
+        business_wallet_address: str,
     ) -> Dict[str, Any]:
         """
-        Commit a single item to L3 (less efficient than batch).
+        Commit a single item to L3 (GASLESS).
 
-        Use batch commits when possible for 200x cost reduction.
+        Note: Batch commits are 200x more efficient. Use commit_batch when possible.
+
+        GASLESS PATTERN:
+        - Varity Labs backend signs and pays for the transaction
+        - business_wallet_address is used for DATA ATTRIBUTION only
+        - Business never needs to sign or hold USDC
 
         Args:
             cid: IPFS CID
             encrypted_content: Encrypted content bytes
             integration: Integration name
-            data_type: Data type identifier
-            wallet_address: User's wallet address
+            data_type: Data type identifier (e.g., 'drive_files', 'gmail')
+            business_wallet_address: Business wallet for data attribution (NOT the signer)
 
         Returns:
             Dict with commitment details or pending status
         """
-        # Convert to batch format and use batch commit
-        items = [{
-            'cid': cid,
-            'content': encrypted_content,
-            'integration': integration,
-            'data_type': data_type,
-            'wallet': wallet_address,
-        }]
+        try:
+            # Validate business wallet address
+            if not business_wallet_address or business_wallet_address == "0x0":
+                raise ValueError("Invalid business wallet address")
 
-        return await self.commit_batch(
-            items=items,
-            integration=integration,
-            wallet_address=wallet_address,
-        )
+            business_wallet = Web3.to_checksum_address(business_wallet_address)
+
+            cid_hash = keccak(text=cid)
+            content_hash = keccak(encrypted_content)
+            data_type_id = self._get_data_type_id(data_type)
+
+            # If contract is configured and we have a relayer account, commit to L3
+            if self.contract and self.account:
+                try:
+                    # Use commitDataFor (gasless pattern) - passes business wallet as parameter
+                    tx = self.contract.functions.commitDataFor(
+                        business_wallet,  # Business wallet for data attribution
+                        integration,
+                        cid_hash,
+                        content_hash,
+                        data_type_id,
+                        cid,  # Full CID for event logging
+                    ).build_transaction({
+                        'from': self.account.address,  # Varity relayer pays gas
+                        'nonce': self.w3.eth.get_transaction_count(self.account.address),
+                        'gas': 80000,
+                        'gasPrice': self.w3.eth.gas_price,
+                        'chainId': self.L3_CHAIN_ID,
+                    })
+
+                    signed = self.w3.eth.account.sign_transaction(tx, self.account.key)
+                    tx_hash = self.w3.eth.send_raw_transaction(signed.raw_transaction)
+                    receipt = self.w3.eth.wait_for_transaction_receipt(tx_hash)
+
+                    logger.info(
+                        f"L3 single commit (gasless): cid={cid[:16]}..., "
+                        f"business={business_wallet[:10]}..., "
+                        f"tx={tx_hash.hex()}, "
+                        f"relayer={self.account.address[:10]}..."
+                    )
+
+                    return {
+                        "tx_hash": tx_hash.hex(),
+                        "cid": cid,
+                        "cid_hash": cid_hash.hex(),
+                        "content_hash": content_hash.hex(),
+                        "data_type": data_type,
+                        "data_type_id": data_type_id,
+                        "l3_committed": receipt.status == 1,
+                        "gas_used": receipt.gasUsed,
+                        "explorer_url": self.get_explorer_tx_url(tx_hash.hex()),
+                        "business_wallet": business_wallet,
+                        "relayer_wallet": self.account.address,
+                        "gasless": True,
+                    }
+                except Exception as e:
+                    logger.error(f"L3 single commit transaction failed: {e}")
+                    # Fall through to pending status
+
+            # If no contract or transaction failed, return pending status
+            logger.info(
+                f"L3 single commit pending: cid={cid[:16]}..., "
+                f"business={business_wallet[:10]}... "
+                f"(contract not configured or tx failed)"
+            )
+
+            return {
+                "cid": cid,
+                "cid_hash": cid_hash.hex(),
+                "content_hash": content_hash.hex(),
+                "data_type": data_type,
+                "l3_committed": False,
+                "business_wallet": business_wallet,
+                "reason": "Contract not configured or transaction failed",
+            }
+
+        except Exception as e:
+            logger.error(f"Single commit failed: {e}", exc_info=True)
+            return {
+                "error": str(e),
+                "cid": cid,
+                "l3_committed": False,
+            }
+
+    async def get_batch_count(
+        self,
+        business_wallet_address: str,
+        integration: str,
+    ) -> int:
+        """
+        Get the number of batches committed for a business/integration.
+
+        Args:
+            business_wallet_address: Business wallet address
+            integration: Integration name
+
+        Returns:
+            Number of batches committed
+        """
+        if not self.contract:
+            return 0
+
+        try:
+            business_wallet = Web3.to_checksum_address(business_wallet_address)
+            return self.contract.functions.getBatchCount(
+                business_wallet,
+                integration,
+            ).call()
+        except Exception as e:
+            logger.error(f"Failed to get batch count: {e}")
+            return 0
+
+    async def get_batch(
+        self,
+        business_wallet_address: str,
+        integration: str,
+        batch_id: int,
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Get batch commitment details.
+
+        Args:
+            business_wallet_address: Business wallet address
+            integration: Integration name
+            batch_id: Batch ID
+
+        Returns:
+            Batch commitment details or None
+        """
+        if not self.contract:
+            return None
+
+        try:
+            business_wallet = Web3.to_checksum_address(business_wallet_address)
+            batch = self.contract.functions.getBatch(
+                business_wallet,
+                integration,
+                batch_id,
+            ).call()
+
+            return {
+                "merkle_root": batch[0].hex(),
+                "item_count": batch[1],
+                "timestamp": batch[2],
+            }
+        except Exception as e:
+            logger.error(f"Failed to get batch: {e}")
+            return None
 
 
 # Singleton instance for use throughout the application
@@ -385,6 +741,10 @@ _l3_service: Optional[L3DataCommitmentService] = None
 def get_l3_service() -> L3DataCommitmentService:
     """
     Get singleton L3 commitment service instance.
+
+    The service is initialized with VARITY_L3_PRIVATE_KEY which is the
+    hot wallet that pays for all gas. This implements the gasless pattern
+    where businesses never need to interact with the blockchain directly.
 
     Returns:
         L3DataCommitmentService instance
@@ -396,7 +756,14 @@ def get_l3_service() -> L3DataCommitmentService:
         _l3_service = L3DataCommitmentService(private_key=private_key)
 
         if _l3_service.is_connected():
-            logger.info("L3 service initialized and connected")
+            relayer = _l3_service.get_relayer_address()
+            if relayer:
+                logger.info(
+                    f"L3 service initialized (gasless mode) - "
+                    f"relayer: {relayer[:10]}..."
+                )
+            else:
+                logger.warning("L3 service connected but no relayer configured")
         else:
             logger.warning("L3 service initialized but not connected to RPC")
 

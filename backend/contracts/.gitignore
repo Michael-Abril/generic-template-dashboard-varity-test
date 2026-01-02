@@ -1,0 +1,23 @@
+# Foundry artifacts
+/out/
+/cache/
+/broadcast/
+
+# Environment
+.env
+
+# Dependencies (installed via forge install)
+/lib/
+
+# Coverage
+lcov.info
+
+# Gas snapshots
+.gas-snapshot
+
+# IDE
+.idea/
+*.iml
+
+# OS
+.DS_Store
