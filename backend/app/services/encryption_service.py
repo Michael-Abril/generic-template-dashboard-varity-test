@@ -83,7 +83,7 @@ class EncryptionService:
 
     def __init__(self):
         self.network = settings.lit_network
-        self.chain_id = settings.varity_chain_id
+        self.chain_id = settings.varity_l3_chain_id
         self.chain_name = settings.varity_chain_name
         self.backend = default_backend()
         # Signature expiration time (15 minutes)
