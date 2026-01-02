@@ -19,7 +19,7 @@ import logging
 
 from app.services.encryption_service import EncryptionService
 from app.services.filecoin_service import FilecoinService
-from app.services.rag_service import RAGService
+from app.services.rag_service import BusinessRAGService
 
 logger = logging.getLogger(__name__)
 
@@ -90,11 +90,11 @@ class MCPIngestionService:
         self,
         encryption_service: Optional[EncryptionService] = None,
         filecoin_service: Optional[FilecoinService] = None,
-        rag_service: Optional[RAGService] = None,
+        rag_service: Optional[BusinessRAGService] = None,
     ):
         self.encryption = encryption_service or EncryptionService()
         self.filecoin = filecoin_service or FilecoinService()
-        self.rag = rag_service or RAGService()
+        self.rag = rag_service or BusinessRAGService()
         self._mcp_clients: Dict[str, Any] = {}
         self._pending_commits: List[Dict] = []
 

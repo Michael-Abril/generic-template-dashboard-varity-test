@@ -240,6 +240,52 @@ async def sync_job_worker(
         sync_jobs[job_id]["completed_at"] = datetime.utcnow().isoformat()
 
 
+# ============================================================================
+# MCP STATUS ENDPOINT - Must be defined BEFORE wildcard {integration} routes
+# ============================================================================
+
+@router.get("/mcp/status")
+async def get_mcp_status():
+    """
+    Get overall MCP pipeline status.
+
+    Returns:
+        MCP service status and L3 connection info
+    """
+    try:
+        from app.services.l3_commitment_service import get_l3_service
+
+        l3_service = get_l3_service()
+        l3_connected = l3_service.is_connected()
+        l3_info = l3_service.get_network_info()
+
+        return {
+            "success": True,
+            "mcp_enabled_integrations": list(MCP_INTEGRATIONS),
+            "l3_connected": l3_connected,
+            "l3_network": {
+                "name": l3_info.get("name"),
+                "chain_id": l3_info.get("chain_id"),
+                "rpc_url": l3_info.get("rpc_url_active"),
+                "explorer_url": l3_info.get("explorer_url"),
+                "contract_address": l3_info.get("contract_address"),
+            }
+        }
+
+    except Exception as e:
+        logger.error(f"MCP status check failed: {e}")
+        return {
+            "success": False,
+            "error": str(e),
+            "mcp_enabled_integrations": list(MCP_INTEGRATIONS),
+            "l3_connected": False
+        }
+
+
+# ============================================================================
+# WILDCARD ROUTES - Must come after specific routes like /mcp/status
+# ============================================================================
+
 @router.post("/{integration}/trigger")
 async def trigger_sync(
     integration: str,
@@ -567,39 +613,5 @@ async def get_data_routing(integration: str):
     }
 
 
-@router.get("/mcp/status")
-async def get_mcp_status():
-    """
-    Get overall MCP pipeline status.
-
-    Returns:
-        MCP service status and L3 connection info
-    """
-    try:
-        from app.services.l3_commitment_service import get_l3_service
-
-        l3_service = get_l3_service()
-        l3_connected = l3_service.is_connected()
-        l3_info = l3_service.get_network_info()
-
-        return {
-            "success": True,
-            "mcp_enabled_integrations": list(MCP_INTEGRATIONS),
-            "l3_connected": l3_connected,
-            "l3_network": {
-                "name": l3_info.get("name"),
-                "chain_id": l3_info.get("chain_id"),
-                "rpc_url": l3_info.get("rpc_url_active"),
-                "explorer_url": l3_info.get("explorer_url"),
-                "contract_address": l3_info.get("contract_address"),
-            }
-        }
-
-    except Exception as e:
-        logger.error(f"MCP status check failed: {e}")
-        return {
-            "success": False,
-            "error": str(e),
-            "mcp_enabled_integrations": list(MCP_INTEGRATIONS),
-            "l3_connected": False
-        }
+# NOTE: /mcp/status endpoint is defined BEFORE wildcard routes (see line ~247)
+# to ensure proper FastAPI route matching
