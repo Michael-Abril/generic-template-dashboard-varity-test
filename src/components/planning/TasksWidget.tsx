@@ -197,14 +197,17 @@ export function TasksWidget({ walletAddress }: TasksWidgetProps) {
     setSelectedTask(null);
   };
 
-  // Filter uncompleted tasks for display
+  // Filter tasks for display
   const uncompletedTasks = tasks.filter((t) => !t.is_completed);
+  const completedTasks = tasks.filter((t) => t.is_completed);
   const todayTasks = uncompletedTasks.filter(isTaskDueToday);
   const upcomingTasks = uncompletedTasks.filter((t) => !isTaskDueToday(t) && !isTaskOverdue(t));
   const overdueTasks = uncompletedTasks.filter(isTaskOverdue);
 
-  // Combine for display (max 5 items)
-  const displayTasks = [...overdueTasks, ...todayTasks, ...upcomingTasks].slice(0, 5);
+  // Combine for display (max 4 items total: 3 uncompleted + 1 completed)
+  const displayUncompletedTasks = [...overdueTasks, ...todayTasks, ...upcomingTasks].slice(0, 3);
+  const displayCompletedTasks = completedTasks.slice(0, 1);
+  const displayTasks = [...displayUncompletedTasks, ...displayCompletedTasks];
 
   const getPriorityDot = (priority: TaskPriority) => {
     const config = TASK_PRIORITIES[priority];
@@ -224,6 +227,35 @@ export function TasksWidget({ walletAddress }: TasksWidgetProps) {
         {config.label}
       </span>
     );
+  };
+
+  const getDueDateText = (dueDate: string | null | undefined) => {
+    if (!dueDate) return null;
+    const date = new Date(dueDate);
+    const today = new Date();
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    // Check if today
+    if (date.toDateString() === today.toDateString()) {
+      return 'Today';
+    }
+    // Check if tomorrow
+    if (date.toDateString() === tomorrow.toDateString()) {
+      return 'Tomorrow';
+    }
+    // Check if this week
+    const nextWeek = new Date(today);
+    nextWeek.setDate(nextWeek.getDate() + 7);
+    if (date <= nextWeek) {
+      return 'This week';
+    }
+    // Otherwise return relative date
+    return getRelativeDueDate(dueDate);
+  };
+
+  const getPriorityLabel = (priority: TaskPriority) => {
+    return TASK_PRIORITIES[priority].label.toUpperCase();
   };
 
   if (isLoading) {
@@ -279,23 +311,8 @@ export function TasksWidget({ walletAddress }: TasksWidgetProps) {
       aria-labelledby="tasks-widget-title"
     >
       {/* Header */}
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-3">
-          <h3 id="tasks-widget-title" className="font-semibold text-gray-900">My Tasks</h3>
-          {stats.overdue > 0 && (
-            <span className="flex items-center gap-1 text-xs font-medium text-red-600 bg-red-50 px-2 py-0.5 rounded-full">
-              <AlertCircle className="w-3 h-3" />
-              {stats.overdue} overdue
-            </span>
-          )}
-        </div>
-        <button
-          onClick={() => setShowViewAllModal(true)}
-          className="text-sm font-medium text-blue-600 hover:text-blue-700 flex items-center gap-1"
-        >
-          View all
-          <ArrowRight className="w-3.5 h-3.5" />
-        </button>
+      <div className="mb-4">
+        <h3 id="tasks-widget-title" className="font-semibold text-gray-900">My Tasks</h3>
       </div>
 
       {/* Quick Add */}
@@ -352,115 +369,78 @@ export function TasksWidget({ walletAddress }: TasksWidgetProps) {
           <p className="text-xs text-gray-500 mt-1">No pending tasks right now</p>
         </div>
       ) : (
-        <div className="space-y-1" role="list" aria-label="Task list">
-          {/* Today Section */}
-          {todayTasks.length > 0 && (
-            <div className="mb-2">
-              <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">
-                Today ({todayTasks.length})
-              </p>
-            </div>
-          )}
+        <>
+          <div className="space-y-2" role="list" aria-label="Task list">
+            {displayTasks.map((task) => {
+              const isCompleting = completingTaskId === task.id;
+              const dueDateText = getDueDateText(task.due_date);
+              const priorityLabel = getPriorityLabel(task.priority);
 
-          {displayTasks.map((task) => {
-            const isCompleting = completingTaskId === task.id;
-            const isOverdue = isTaskOverdue(task);
-            const isDueToday = isTaskDueToday(task);
-
-            return (
-              <div
-                key={task.id}
-                role="listitem"
-                className={`group flex items-center gap-3 p-2 -mx-2 rounded-lg hover:bg-gray-50 transition-all ${
-                  isCompleting ? 'opacity-50 scale-95' : ''
-                }`}
-              >
-                {/* Checkbox */}
-                <button
-                  onClick={() => handleComplete(task.id)}
-                  disabled={isCompleting}
-                  role="checkbox"
-                  aria-checked={task.is_completed}
-                  aria-label={`Mark "${task.title}" as complete`}
-                  className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all hover:scale-110 ${
-                    isOverdue
-                      ? 'border-red-300 hover:border-red-500 hover:bg-red-50'
-                      : 'border-gray-300 hover:border-blue-500 hover:bg-blue-50'
-                  }`}
-                >
-                  {isCompleting ? (
-                    <Check className="w-3 h-3 text-green-500" aria-hidden="true" />
-                  ) : (
-                    <Check className="w-3 h-3 text-transparent group-hover:text-gray-400" aria-hidden="true" />
-                  )}
-                </button>
-
-                {/* Task Content - Clickable */}
+              return (
                 <div
-                  className="flex-1 min-w-0 cursor-pointer"
-                  onClick={(e) => handleOpenTaskDialog(task, e)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault();
-                      handleOpenTaskDialog(task, e as any);
-                    }
-                  }}
-                  role="button"
-                  tabIndex={0}
-                  aria-label={`View details for task: ${task.title}`}
+                  key={task.id}
+                  role="listitem"
+                  className={`group flex items-center gap-2 py-1 ${
+                    isCompleting ? 'opacity-50 scale-95' : ''
+                  } ${task.is_completed ? 'opacity-60' : ''}`}
                 >
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm text-gray-900 truncate">{task.title}</span>
-                    {getPriorityDot(task.priority)}
-                  </div>
-                  <div className="flex items-center gap-2 mt-0.5">
-                    {getCategoryBadge(task.category)}
-                    {task.due_date && (
-                      <span
-                        className={`flex items-center gap-1 text-xs ${
-                          isOverdue ? 'text-red-600 font-medium' : isDueToday ? 'text-blue-600' : 'text-gray-500'
-                        }`}
-                      >
-                        <Calendar className="w-3 h-3" />
-                        {getRelativeDueDate(task.due_date)}
+                  {/* Checkbox - Square brackets visual style */}
+                  <button
+                    onClick={() => task.is_completed ? null : handleComplete(task.id)}
+                    disabled={isCompleting || task.is_completed}
+                    role="checkbox"
+                    aria-checked={task.is_completed}
+                    aria-label={`Mark "${task.title}" as complete`}
+                    className="flex-shrink-0 w-4 h-4 border-2 border-gray-400 rounded flex items-center justify-center transition-all hover:border-blue-500"
+                  >
+                    {task.is_completed && (
+                      <Check className="w-3 h-3 text-gray-600" aria-hidden="true" />
+                    )}
+                  </button>
+
+                  {/* Task Content - Single line format */}
+                  <div
+                    className="flex-1 min-w-0 cursor-pointer text-sm text-gray-900"
+                    onClick={(e) => handleOpenTaskDialog(task, e)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        handleOpenTaskDialog(task, e as any);
+                      }
+                    }}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`View details for task: ${task.title}`}
+                  >
+                    <span className={task.is_completed ? 'line-through' : ''}>
+                      {task.title}
+                    </span>
+                    {dueDateText && (
+                      <span className="ml-2 text-gray-500">
+                        {dueDateText}
+                      </span>
+                    )}
+                    {task.priority === 'high' && !task.is_completed && (
+                      <span className="ml-2 text-xs font-semibold text-red-600">
+                        {priorityLabel}
                       </span>
                     )}
                   </div>
                 </div>
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
 
-          {/* Show more link if there are more tasks */}
-          {uncompletedTasks.length > 5 && (
+          {/* View All Link */}
+          <div className="mt-3 text-right">
             <button
               onClick={() => setShowViewAllModal(true)}
-              className="w-full pt-2 text-center text-sm text-gray-500 hover:text-blue-600 transition-colors"
+              className="text-sm text-blue-600 hover:text-blue-700 hover:underline"
             >
-              +{uncompletedTasks.length - 5} more tasks
+              View All
             </button>
-          )}
-        </div>
-      )}
-
-      {/* Stats Footer */}
-      {stats.total > 0 && (
-        <div className="mt-4 pt-3 border-t border-gray-100 flex items-center justify-between text-xs text-gray-500">
-          <span>{stats.completed} of {stats.total} complete</span>
-          <div
-            className="w-24 h-1.5 bg-gray-200 rounded-full overflow-hidden"
-            role="progressbar"
-            aria-valuenow={stats.total > 0 ? Math.round((stats.completed / stats.total) * 100) : 0}
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-label="Task completion progress"
-          >
-            <div
-              className="h-full bg-green-500 rounded-full transition-all duration-300"
-              style={{ width: `${stats.total > 0 ? (stats.completed / stats.total) * 100 : 0}%` }}
-            />
           </div>
-        </div>
+        </>
       )}
 
       {/* Task Detail Dialog */}

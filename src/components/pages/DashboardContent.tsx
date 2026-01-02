@@ -367,37 +367,47 @@ export default function DashboardContent() {
                 </>
               ) : kpisData && kpisData.kpis && kpisData.kpis.length > 0 ? (
                 // Show exactly 4 KPIs - use first 4 from backend or pad with placeholders
-                [...kpisData.kpis.slice(0, 4), ...getDefaultKPIs()].slice(0, 4).map((kpi, index) => (
-                  <Link key={index} href="/analytics" className="block">
-                    <EnhancedKPICard
-                      title={kpi.title}
-                      value={kpi.value}
-                      change={kpi.change}
-                      icon={kpi.icon}
-                      source={kpi.source}
-                      trend={kpi.trend as 'up' | 'down' | 'neutral'}
-                      color={kpi.color as 'blue' | 'green' | 'orange' | 'purple' | 'red'}
-                      lastSynced={kpisData.last_updated}
-                      helpText={`Data from ${kpi.source || 'connected integrations'}`}
-                    />
-                  </Link>
-                ))
+                [...kpisData.kpis.slice(0, 4), ...getDefaultKPIs()].slice(0, 4).map((kpi, index) => {
+                  // Only show sparklines for Revenue MTD (index 0) and Cash Flow (index 1)
+                  const shouldShowSparkline = kpi.id === 'revenue-mtd' || kpi.id === 'cash-flow' || index < 2;
+                  return (
+                    <Link key={index} href="/analytics" className="block">
+                      <EnhancedKPICard
+                        title={kpi.title}
+                        value={kpi.value}
+                        change={kpi.change}
+                        icon={kpi.icon}
+                        source={kpi.source}
+                        trend={kpi.trend as 'up' | 'down' | 'neutral'}
+                        color={kpi.color as 'blue' | 'green' | 'orange' | 'purple' | 'red'}
+                        lastSynced={kpisData.last_updated}
+                        helpText={`Data from ${kpi.source || 'connected integrations'}`}
+                        showSparkline={shouldShowSparkline}
+                      />
+                    </Link>
+                  );
+                })
               ) : (
                 // Show default KPIs when no data
-                getDefaultKPIs().map((kpi, index) => (
-                  <Link key={index} href="/analytics" className="block">
-                    <EnhancedKPICard
-                      title={kpi.title}
-                      value={kpi.value}
-                      change={kpi.change}
-                      icon={kpi.icon}
-                      source={kpi.source}
-                      trend={kpi.trend}
-                      color={kpi.color}
-                      helpText={kpi.helpText}
-                    />
-                  </Link>
-                ))
+                getDefaultKPIs().map((kpi, index) => {
+                  // Only show sparklines for Revenue MTD (index 0) and Cash Flow (index 1)
+                  const shouldShowSparkline = index < 2;
+                  return (
+                    <Link key={index} href="/analytics" className="block">
+                      <EnhancedKPICard
+                        title={kpi.title}
+                        value={kpi.value}
+                        change={kpi.change}
+                        icon={kpi.icon}
+                        source={kpi.source}
+                        trend={kpi.trend}
+                        color={kpi.color}
+                        helpText={kpi.helpText}
+                        showSparkline={shouldShowSparkline}
+                      />
+                    </Link>
+                  );
+                })
               )}
             </div>
           </div>
@@ -458,29 +468,34 @@ export default function DashboardContent() {
                   ))}
                 </div>
               ) : recentActivityData && recentActivityData.activities && recentActivityData.activities.length > 0 ? (
-                <div className="space-y-2">
+                <div className="space-y-3">
                   {recentActivityData.activities.slice(0, 7).map((activity, i) => {
                     const { Icon: BrandIcon, bg } = getActivityBrandIcon(activity.type, activity.source);
                     return (
-                      <div key={i} className="flex items-center gap-3 p-2 -mx-2 rounded-lg hover:bg-gray-50 transition-colors cursor-pointer">
-                        <div className={`w-10 h-10 ${bg} rounded-lg flex items-center justify-center flex-shrink-0 border border-gray-100`}>
-                          <BrandIcon size={22} />
+                      <div key={i}>
+                        <div className="flex items-start gap-3">
+                          <div className={`w-10 h-10 ${bg} rounded-lg flex items-center justify-center flex-shrink-0 border border-gray-100`}>
+                            <BrandIcon size={22} />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-gray-900">
+                              {activity.title}
+                              {activity.amount && (
+                                <span className="text-sm font-semibold text-green-600 ml-1">
+                                  - {activity.amount}
+                                </span>
+                              )}
+                            </p>
+                            <p className="text-xs text-gray-500 mt-0.5">
+                              {activity.source}
+                              {activity.time && (
+                                <span className="text-gray-400"> • {activity.time}</span>
+                              )}
+                            </p>
+                          </div>
                         </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-gray-900 truncate">{activity.title}</p>
-                          <p className="text-xs text-gray-500 truncate">
-                            {activity.description}
-                            {activity.source && (
-                              <span className="ml-1 text-gray-400">
-                                · {activity.source}
-                              </span>
-                            )}
-                          </p>
-                        </div>
-                        {activity.amount && (
-                          <span className="text-sm font-semibold text-green-600 flex-shrink-0">
-                            {activity.amount}
-                          </span>
+                        {i < recentActivityData.activities.slice(0, 7).length - 1 && (
+                          <div className="border-t border-gray-100 mt-3" />
                         )}
                       </div>
                     );

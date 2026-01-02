@@ -16,6 +16,7 @@ interface EnhancedKPICardProps {
   trend?: 'up' | 'down' | 'neutral';
   color?: 'blue' | 'green' | 'orange' | 'purple' | 'red';
   sparklineData?: number[];
+  showSparkline?: boolean; // Explicitly control whether to show sparkline
   lastSynced?: string; // ISO timestamp or relative string
   helpText?: string;
   onClick?: () => void;
@@ -30,6 +31,7 @@ export function EnhancedKPICard({
   trend = 'neutral',
   color = 'blue',
   sparklineData,
+  showSparkline = false, // Default to not showing sparkline
   lastSynced,
   helpText,
   onClick,
@@ -189,19 +191,21 @@ export function EnhancedKPICard({
         </div>
       )}
 
-      {/* Sparkline */}
-      <div className="mb-3">
-        <Sparkline
-          data={displaySparklineData}
-          width={180}
-          height={36}
-          strokeColor={sparklineColors.stroke}
-          fillColor={sparklineColors.fill}
-          strokeWidth={2}
-          showGradient={true}
-          className="w-full"
-        />
-      </div>
+      {/* Sparkline - Only show if showSparkline is true */}
+      {showSparkline && (
+        <div className="mb-3">
+          <Sparkline
+            data={displaySparklineData}
+            width={180}
+            height={36}
+            strokeColor={sparklineColors.stroke}
+            fillColor={sparklineColors.fill}
+            strokeWidth={2}
+            showGradient={true}
+            className="w-full"
+          />
+        </div>
+      )}
 
       {/* Footer - Last Synced */}
       {formattedLastSynced && (
