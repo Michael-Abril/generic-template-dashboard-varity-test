@@ -126,34 +126,34 @@ export function StarterPrompts({
 
   return (
     <div className={`space-y-4 ${className}`}>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {displayPrompts.map((prompt) => {
           const Icon = prompt.icon;
           return (
             <button
               key={prompt.id}
               onClick={() => onPromptClick(prompt.text)}
-              className="group relative flex items-start gap-3 p-4 bg-white border border-gray-200 rounded-xl hover:border-gray-300 hover:shadow-md transition-all text-left overflow-hidden"
+              className="group relative flex items-start gap-4 p-5 bg-white border-2 border-gray-100 rounded-2xl hover:border-gray-200 hover:shadow-xl hover:shadow-gray-200/50 transition-all duration-200 text-left overflow-hidden"
             >
               {/* Gradient background on hover */}
-              <div className={`absolute inset-0 bg-gradient-to-br ${prompt.colorClass} opacity-0 group-hover:opacity-5 transition-opacity`} />
+              <div className={`absolute inset-0 bg-gradient-to-br ${prompt.colorClass} opacity-0 group-hover:opacity-[0.02] transition-opacity duration-200`} />
 
-              {/* Icon with gradient background */}
-              <div className={`relative flex-shrink-0 w-10 h-10 rounded-lg bg-gradient-to-br ${prompt.colorClass} flex items-center justify-center shadow-sm group-hover:shadow-md transition-shadow`}>
-                <Icon className="w-5 h-5 text-white" />
+              {/* Icon with gradient background - Enhanced */}
+              <div className={`relative flex-shrink-0 w-12 h-12 rounded-xl bg-gradient-to-br ${prompt.colorClass} flex items-center justify-center shadow-md group-hover:shadow-lg group-hover:scale-105 transition-all duration-200`}>
+                <Icon className="w-6 h-6 text-white" />
               </div>
 
               {/* Text content */}
-              <div className="relative flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="text-lg">{prompt.emoji}</span>
-                  <span className="text-sm font-medium text-gray-900 group-hover:text-gray-900">
+              <div className="relative flex-1 min-w-0 pt-0.5">
+                <div className="flex items-start gap-2 mb-1.5">
+                  <span className="text-xl leading-none">{prompt.emoji}</span>
+                  <span className="text-sm font-semibold text-gray-900 group-hover:text-gray-900 leading-snug flex-1">
                     {prompt.text}
                   </span>
                 </div>
-                <div className="flex items-center gap-1 mt-1 text-xs text-gray-400 group-hover:text-gray-600 transition-colors">
-                  <span>Click to ask</span>
-                  <ArrowRight className="w-3 h-3 opacity-0 -translate-x-1 group-hover:opacity-100 group-hover:translate-x-0 transition-all" />
+                <div className="flex items-center gap-1.5 text-xs text-gray-500 group-hover:text-gray-700 transition-colors">
+                  <span className="font-medium">Ask now</span>
+                  <ArrowRight className="w-3.5 h-3.5 opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-200" />
                 </div>
               </div>
             </button>

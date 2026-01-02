@@ -1906,37 +1906,69 @@ export function AIChat() {
         )}
 
         {/* Messages */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50">
+        <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gradient-to-b from-gray-50 via-white to-gray-50">
           {messages.length === 0 && (
-            <div className="flex flex-col items-center justify-center min-h-[400px] py-8">
-              {/* Welcome Header */}
-              <div className="text-center mb-8">
-                <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4 bg-gradient-to-br ${
-                  installedTools.some(t => t.toLowerCase().includes('quickbooks'))
-                    ? 'from-green-500 to-emerald-600'
-                    : 'from-blue-500 to-purple-600'
-                } shadow-lg`}>
-                  <Bot className="w-8 h-8 text-white" />
+            <div className="flex flex-col items-center justify-center min-h-[500px] py-12">
+              {/* Welcome Header - Enhanced */}
+              <div className="text-center mb-12 max-w-2xl mx-auto px-4">
+                {/* Bot Icon with Enhanced Styling */}
+                <div className="relative inline-block mb-6">
+                  <div className={`w-20 h-20 rounded-3xl flex items-center justify-center bg-gradient-to-br ${
+                    installedTools.some(t => t.toLowerCase().includes('quickbooks'))
+                      ? 'from-green-500 to-emerald-600'
+                      : 'from-blue-600 to-purple-700'
+                  } shadow-2xl shadow-blue-500/20`}>
+                    <Bot className="w-10 h-10 text-white" />
+                  </div>
+                  {/* Floating Badge */}
+                  <div className="absolute -top-1 -right-1 w-6 h-6 bg-gradient-to-br from-yellow-400 to-orange-500 rounded-full flex items-center justify-center shadow-lg">
+                    <Sparkles className="w-3 h-3 text-white" />
+                  </div>
                 </div>
-                <h3 className="text-xl font-semibold text-gray-900 mb-2">
+
+                {/* Title with Gradient */}
+                <h1 className="text-3xl font-bold mb-3 bg-gradient-to-r from-gray-900 via-gray-800 to-gray-900 bg-clip-text text-transparent">
                   {installedTools.length > 0
                     ? "How can I help you today?"
                     : "Connect your tools to get started"}
-                </h3>
-                <p className="text-sm text-gray-500 max-w-md mx-auto">
+                </h1>
+
+                {/* Subtitle */}
+                <p className="text-base text-gray-600 leading-relaxed max-w-lg mx-auto">
                   {installedTools.length > 0
                     ? "Ask me anything about your business data. I can analyze your finances, emails, calendar, and more."
                     : "Connect tools like QuickBooks, Gmail, and Salesforce from the marketplace to unlock AI-powered insights."}
                 </p>
+
+                {/* Feature Pills */}
+                {installedTools.length > 0 && (
+                  <div className="flex flex-wrap items-center justify-center gap-2 mt-6">
+                    <div className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 border border-blue-100 rounded-full text-xs font-medium text-blue-700">
+                      <Shield className="w-3 h-3" />
+                      <span>Secure & Private</span>
+                    </div>
+                    <div className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-green-50 border border-green-100 rounded-full text-xs font-medium text-green-700">
+                      <Zap className="w-3 h-3" />
+                      <span>Real-time Data</span>
+                    </div>
+                    <div className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-purple-50 border border-purple-100 rounded-full text-xs font-medium text-purple-700">
+                      <Database className="w-3 h-3" />
+                      <span>Your Business Context</span>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Starter Prompts - Enhanced Visual Cards */}
               {installedTools.length > 0 && (
-                <div className="w-full max-w-2xl px-4">
-                  <div className="text-center mb-4">
-                    <span className="text-xs font-medium text-gray-400 uppercase tracking-wider">
-                      Try asking
-                    </span>
+                <div className="w-full max-w-3xl px-4">
+                  <div className="text-center mb-6">
+                    <div className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-100 rounded-full">
+                      <Sparkles className="w-4 h-4 text-blue-600" />
+                      <span className="text-sm font-semibold text-gray-700">
+                        Popular questions
+                      </span>
+                    </div>
                   </div>
 
                   {/* Use StarterPrompts for standard mode, or show mode-specific prompts */}
