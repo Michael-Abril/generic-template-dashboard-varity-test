@@ -1225,9 +1225,48 @@ async def disconnect_integration(
         total_deleted = 0
         token_deactivated = False
         rag_deleted = 0
+        debug_counts = {"all": 0, "provider": 0, "active": 0}  # For debugging
 
         # 1. Deactivate OAuth token in database
         try:
+            # DEBUG: First count ALL tokens for this wallet (ignoring filters)
+            from sqlalchemy import func
+            debug_result = await db.execute(
+                select(func.count()).select_from(OAuthToken).where(
+                    OAuthToken.user_address == user_address
+                )
+            )
+            all_tokens_count = debug_result.scalar()
+            debug_counts["all"] = all_tokens_count
+            logger.info(f"DEBUG: Found {all_tokens_count} total tokens for wallet {user_address}")
+
+            # DEBUG: Count tokens for this provider specifically
+            provider_result = await db.execute(
+                select(func.count()).select_from(OAuthToken).where(
+                    and_(
+                        OAuthToken.user_address == user_address,
+                        OAuthToken.provider == normalized_provider
+                    )
+                )
+            )
+            provider_tokens_count = provider_result.scalar()
+            debug_counts["provider"] = provider_tokens_count
+            logger.info(f"DEBUG: Found {provider_tokens_count} tokens for provider {normalized_provider}")
+
+            # DEBUG: Count active tokens for this provider
+            active_result = await db.execute(
+                select(func.count()).select_from(OAuthToken).where(
+                    and_(
+                        OAuthToken.user_address == user_address,
+                        OAuthToken.provider == normalized_provider,
+                        OAuthToken.is_active == True  # noqa: E712
+                    )
+                )
+            )
+            active_tokens_count = active_result.scalar()
+            debug_counts["active"] = active_tokens_count
+            logger.info(f"DEBUG: Found {active_tokens_count} ACTIVE tokens for provider {normalized_provider}")
+
             # Try to find the token with normalized wallet address
             token_result = await db.execute(
                 select(OAuthToken).where(
@@ -1262,9 +1301,9 @@ async def disconnect_integration(
                 token_deactivated = True
                 logger.info(f"Deactivated OAuth token for {provider} (token_id={oauth_token.id})")
             else:
-                logger.warning(f"No active OAuth token found for {provider} with wallet {user_address}")
+                logger.warning(f"No active OAuth token found for {provider} with wallet {user_address} (debug counts: all={all_tokens_count}, provider={provider_tokens_count}, active={active_tokens_count})")
         except Exception as e:
-            logger.error(f"Failed to deactivate OAuth token for {provider}: {e}")
+            logger.error(f"Failed to deactivate OAuth token for {provider}: {e}", exc_info=True)
             await db.rollback()  # Rollback on error to prevent partial state
 
         # 2. Delete OAuth credentials from Filecoin
@@ -1332,7 +1371,8 @@ async def disconnect_integration(
 
         logger.info(f"Disconnected {provider} for wallet {wallet_address}, token_deactivated={token_deactivated}, deleted {total_deleted} files, {rag_deleted} RAG points")
 
-        return {
+        # Include debug counts in response for troubleshooting
+        response = {
             "success": True,
             "provider": provider,
             "wallet_address": wallet_address,
@@ -1341,6 +1381,17 @@ async def disconnect_integration(
             "rag_points_deleted": rag_deleted,
             "message": f"Successfully disconnected {provider}"
         }
+
+        # Add debug info if token was not found (helps diagnose issues)
+        if not token_deactivated:
+            response["debug_info"] = {
+                "normalized_provider": normalized_provider,
+                "normalized_wallet": normalized_wallet,
+                "token_counts": debug_counts,
+                "note": "Token not found - counts show how many tokens exist in DB"
+            }
+
+        return response
 
     except Exception as e:
         logger.error(f"Failed to disconnect {provider}: {e}")
