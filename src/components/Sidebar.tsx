@@ -126,7 +126,7 @@ export function Sidebar({ installedTools = [] }: SidebarProps) {
           </div>
         )}
 
-        {/* Main Navigation - Scrollable */}
+        {/* Navigation */}
         <nav className="flex-1 overflow-y-auto py-4 px-3" aria-label="Dashboard navigation">
           {/* Primary Navigation - Core Features */}
           <div className="space-y-1">
@@ -167,7 +167,7 @@ export function Sidebar({ installedTools = [] }: SidebarProps) {
           </div>
 
           {/* Divider */}
-          <div className="my-4 border-t border-gray-200"></div>
+          <div className="my-3 border-t border-gray-200"></div>
 
           {/* Integrations Section */}
           <div className="space-y-1">
@@ -231,13 +231,10 @@ export function Sidebar({ installedTools = [] }: SidebarProps) {
           </div>
 
           {/* Divider */}
-          <div className="my-4 border-t border-gray-200"></div>
+          <div className="my-3 border-t border-gray-200"></div>
 
-          {/* Insights Section */}
+          {/* Analytics & Marketplace */}
           <div className="space-y-1">
-            <p className="px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-              Insights
-            </p>
             <Link
               href="/analytics"
               onClick={() => setIsMobileOpen(false)}
@@ -253,12 +250,7 @@ export function Sidebar({ installedTools = [] }: SidebarProps) {
               <BarChart3 className="w-5 h-5" />
               <span className="text-sm">Analytics</span>
             </Link>
-          </div>
-        </nav>
 
-        {/* Bottom Navigation - Utility (Always at bottom) */}
-        <div className="border-t border-gray-200 p-3 flex-shrink-0">
-          <div className="space-y-1">
             <Link
               href="/marketplace"
               onClick={() => setIsMobileOpen(false)}
@@ -291,13 +283,13 @@ export function Sidebar({ installedTools = [] }: SidebarProps) {
               <span className="text-sm">Settings</span>
             </Link>
           </div>
+        </nav>
 
-          {/* Footer */}
-          <div className="mt-4 pt-3 border-t border-gray-100">
-            <div className="text-xs text-gray-500 text-center">
-              <p className="font-medium">Powered by Varity</p>
-              <p className="mt-0.5">Enterprise Security</p>
-            </div>
+        {/* Footer */}
+        <div className="border-t border-gray-200 p-4 flex-shrink-0">
+          <div className="text-xs text-gray-500 text-center">
+            <p className="font-medium">Powered by Varity</p>
+            <p className="mt-0.5">Enterprise Security</p>
           </div>
         </div>
       </aside>
