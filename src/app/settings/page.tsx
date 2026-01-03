@@ -1386,7 +1386,10 @@ export default function SettingsPage() {
                                 <div>
                                   <p className="text-2xl font-bold text-gray-900">{storageData.total_size_formatted}</p>
                                   <p className="text-sm text-gray-600">
-                                    {storageData.total_files} file{storageData.total_files !== 1 ? 's' : ''} across {Object.keys(storageData.integrations).length} integration{Object.keys(storageData.integrations).length !== 1 ? 's' : ''}
+                                    {storageData.total_files > 0
+                                      ? `${storageData.total_files} file${storageData.total_files !== 1 ? 's' : ''} across ${Object.keys(storageData.integrations).length} integration${Object.keys(storageData.integrations).length !== 1 ? 's' : ''}`
+                                      : 'No integration data synced yet'
+                                    }
                                   </p>
                                 </div>
                               </div>

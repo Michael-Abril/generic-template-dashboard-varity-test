@@ -535,10 +535,15 @@ async def get_storage_usage(
         # Format uploaded content size
         uploaded_content["total_size_formatted"] = format_size(uploaded_content["total_bytes"])
 
+        # Calculate integration-only file count (excludes orphaned uploads)
+        integration_file_count = sum(
+            data["file_count"] for data in by_integration.values()
+        )
+
         return {
             "success": True,
             "wallet_address": wallet_address,
-            "total_files": len(files),
+            "total_files": integration_file_count,
             "total_bytes": total_size,
             "total_size_formatted": format_size(total_size),
             "integrations": by_integration,
@@ -550,4 +555,69 @@ async def get_storage_usage(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to get storage usage: {str(e)}"
+        )
+
+
+@router.delete("/storage-usage/orphaned")
+async def clear_orphaned_uploads(
+    wallet_address: str = Query(..., description="User's wallet address")
+):
+    """
+    Clear orphaned uploaded files from Pinata storage.
+
+    These are files with integration in ("uploads", "documents", "uploaded", "manual")
+    that were uploaded via AI Assistant but are not associated with any integration.
+    This ensures that when no integrations are connected, RAG storage shows 0 files.
+
+    Args:
+        wallet_address: User's wallet address
+
+    Returns:
+        Count of files deleted and their CIDs
+    """
+    try:
+        logger.info(f"Clearing orphaned uploads for wallet {wallet_address[:10]}...")
+
+        # List all files for this wallet
+        files = await filecoin_service.list_customer_files(
+            customer_wallet=wallet_address,
+            limit=1000
+        )
+
+        orphan_integrations = {"uploads", "documents", "uploaded", "manual", "unknown", "", None}
+        deleted_cids = []
+        failed_cids = []
+
+        for f in files:
+            metadata = f.get("metadata", {})
+            raw_integration = metadata.get("integration", "unknown")
+
+            # Check if this is an orphaned file (not from a real integration)
+            if raw_integration in orphan_integrations or raw_integration is None:
+                cid = f.get("cid")
+                if cid:
+                    try:
+                        await filecoin_service.unpin_file(cid)
+                        deleted_cids.append(cid)
+                        logger.info(f"Unpinned orphaned file: {cid}")
+                    except Exception as e:
+                        logger.warning(f"Failed to unpin orphaned file {cid}: {e}")
+                        failed_cids.append({"cid": cid, "error": str(e)})
+
+        logger.info(f"Cleared {len(deleted_cids)} orphaned files for {wallet_address[:10]}...")
+
+        return {
+            "success": True,
+            "wallet_address": wallet_address,
+            "deleted_count": len(deleted_cids),
+            "deleted_cids": deleted_cids,
+            "failed_count": len(failed_cids),
+            "failed": failed_cids if failed_cids else None
+        }
+
+    except Exception as e:
+        logger.error(f"Error clearing orphaned uploads: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to clear orphaned uploads: {str(e)}"
         )
