@@ -97,6 +97,17 @@ export function TasksWidget({ walletAddress }: TasksWidgetProps) {
     }
   }, [walletAddress, fetchTasks]);
 
+  // Listen for quick add trigger from DashboardQuickActions
+  useEffect(() => {
+    const handleOpenQuickAdd = () => {
+      setShowQuickAdd(true);
+    };
+    window.addEventListener('openQuickAddTask', handleOpenQuickAdd);
+    return () => {
+      window.removeEventListener('openQuickAddTask', handleOpenQuickAdd);
+    };
+  }, []);
+
   const handleQuickAdd = async () => {
     if (!newTaskTitle.trim()) return;
 

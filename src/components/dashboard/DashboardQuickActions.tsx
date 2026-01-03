@@ -45,7 +45,13 @@ export function DashboardQuickActions({ walletAddress, className = '' }: Dashboa
   };
 
   const handleCreateTask = () => {
-    router.push('/dashboard/tasks');
+    // Scroll to TasksWidget on the dashboard and focus on quick add
+    const tasksWidget = document.getElementById('tasks-widget-title');
+    if (tasksWidget) {
+      tasksWidget.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      // Trigger a custom event that TasksWidget can listen for
+      window.dispatchEvent(new CustomEvent('openQuickAddTask'));
+    }
   };
 
   // Consistent professional color scheme for all actions
