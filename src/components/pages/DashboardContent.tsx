@@ -294,23 +294,23 @@ export default function DashboardContent() {
       <div className="min-h-screen bg-gray-50">
         <div className="px-4 sm:px-6 py-6 max-w-7xl mx-auto">
           {/* Header with Personalized Greeting */}
-          <div className="flex items-center justify-between mb-6">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">
+              <h1 className="text-xl sm:text-2xl font-bold text-gray-900">
                 {getGreeting()}, {getUserDisplayName()}
               </h1>
               <p className="text-sm text-gray-600 mt-0.5">
                 Here&apos;s your business at a glance
               </p>
-              <div className="flex items-center gap-4 mt-1">
+              <div className="flex flex-wrap items-center gap-2 sm:gap-4 mt-1">
                 {lastUpdated && (
-                  <p className="text-sm text-gray-500 flex items-center gap-1">
-                    <Clock className="w-3.5 h-3.5" />
+                  <p className="text-xs sm:text-sm text-gray-500 flex items-center gap-1">
+                    <Clock className="w-3 sm:w-3.5 h-3 sm:h-3.5" />
                     Last synced: {formatLastUpdated()}
                   </p>
                 )}
                 {connectedSources.length > 0 && (
-                  <p className="text-sm text-gray-400">
+                  <p className="text-xs sm:text-sm text-gray-400">
                     {connectedSources.length} source{connectedSources.length > 1 ? 's' : ''} connected
                   </p>
                 )}
@@ -319,7 +319,7 @@ export default function DashboardContent() {
             <button
               onClick={handleRefresh}
               disabled={isRefreshing}
-              className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
+              className="flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50 w-full sm:w-auto"
               aria-label="Refresh dashboard data"
             >
               <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
@@ -345,9 +345,9 @@ export default function DashboardContent() {
             />
           )}
 
-          {/* KPI Cards Row - Single row of 4 cards matching requirements */}
-          <div className="mb-6 overflow-x-auto pb-2 -mx-4 px-4 sm:mx-0 sm:px-0">
-            <div className="grid grid-cols-4 gap-4 min-w-[800px] sm:min-w-0">
+          {/* KPI Cards Row - Responsive grid: 2 cols on mobile, 4 on desktop */}
+          <div className="mb-6">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
               {isLoadingKPIs ? (
                 <>
                   {[1, 2, 3, 4].map((i) => (
