@@ -14,11 +14,13 @@ import logging
 from app.core.database import get_db
 from app.services.settings_service import settings_service
 from app.services.filecoin_service import FilecoinService
+from app.services.rag_service import BusinessRAGService
 
 logger = logging.getLogger(__name__)
 
-# Initialize Filecoin service for storage queries
+# Initialize services for storage queries and RAG cleanup
 filecoin_service = FilecoinService()
+rag_service = BusinessRAGService()
 
 router = APIRouter()
 
@@ -584,8 +586,13 @@ async def clear_orphaned_uploads(
             limit=1000
         )
 
-        orphan_integrations = {"uploads", "documents", "uploaded", "manual", "unknown", "", None}
+        # All integration values that are considered orphaned (not real integrations)
+        orphan_integrations = {
+            "uploads", "documents", "uploaded", "manual",
+            "unknown", "project_files", "", None
+        }
         deleted_cids = []
+        qdrant_deleted = 0
         failed_cids = []
 
         for f in files:
@@ -597,19 +604,33 @@ async def clear_orphaned_uploads(
                 cid = f.get("cid")
                 if cid:
                     try:
+                        # Delete from Pinata (decentralized storage)
                         await filecoin_service.unpin_file(cid)
                         deleted_cids.append(cid)
                         logger.info(f"Unpinned orphaned file: {cid}")
+
+                        # Also delete from Qdrant (RAG index) if indexed
+                        try:
+                            await rag_service.delete_point_by_cid(wallet_address, cid)
+                            qdrant_deleted += 1
+                        except Exception as qdrant_err:
+                            # Not all files are indexed in Qdrant, this is OK
+                            logger.debug(f"CID not in Qdrant (expected): {cid}")
+
                     except Exception as e:
                         logger.warning(f"Failed to unpin orphaned file {cid}: {e}")
                         failed_cids.append({"cid": cid, "error": str(e)})
 
-        logger.info(f"Cleared {len(deleted_cids)} orphaned files for {wallet_address[:10]}...")
+        logger.info(
+            f"Cleared {len(deleted_cids)} orphaned files from Pinata "
+            f"and {qdrant_deleted} from Qdrant for {wallet_address[:10]}..."
+        )
 
         return {
             "success": True,
             "wallet_address": wallet_address,
-            "deleted_count": len(deleted_cids),
+            "pinata_deleted": len(deleted_cids),
+            "qdrant_deleted": qdrant_deleted,
             "deleted_cids": deleted_cids,
             "failed_count": len(failed_cids),
             "failed": failed_cids if failed_cids else None
