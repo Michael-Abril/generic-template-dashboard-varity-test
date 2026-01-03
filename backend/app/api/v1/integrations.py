@@ -1268,7 +1268,7 @@ async def disconnect_integration(
             logger.info(f"DEBUG: Found {active_tokens_count} ACTIVE tokens for provider {normalized_provider}")
 
             # Try to find the token with normalized wallet address
-            logger.info(f"DEBUG: Executing SELECT query for user_address={user_address!r}, provider={normalized_provider!r}")
+            logger.info(f"Disconnect: Searching for token with user_address={user_address!r}, provider={normalized_provider!r}")
             token_result = await db.execute(
                 select(OAuthToken).where(
                     and_(
@@ -1278,12 +1278,8 @@ async def disconnect_integration(
                     )
                 )
             )
-            # DEBUG: Fetch all results instead of scalar_one_or_none to see what we get
-            all_results = token_result.scalars().all()
-            debug_counts["select_results"] = [(t.id, t.user_address[:10] + "...", t.provider, t.is_active) for t in all_results]
-            logger.info(f"DEBUG: SELECT returned {len(all_results)} tokens: {debug_counts['select_results']}")
-            oauth_token = all_results[0] if all_results else None
-            logger.info(f"DEBUG: Using oauth_token: id={oauth_token.id if oauth_token else 'None'}")
+            oauth_token = token_result.scalars().one_or_none()
+            logger.info(f"Disconnect: Found token: {oauth_token.id if oauth_token else 'None'}")
 
             # If not found, try with just lowercase (legacy format)
             if not oauth_token:
@@ -1299,19 +1295,17 @@ async def disconnect_integration(
                             )
                         )
                     )
-                    oauth_token = token_result.scalar_one_or_none()
+                    oauth_token = token_result.scalars().one_or_none()
 
             if oauth_token:
-                logger.info(f"DEBUG: Setting is_active=False on token_id={oauth_token.id}")
+                logger.info(f"Disconnect: Deactivating token_id={oauth_token.id}")
                 oauth_token.is_active = False
-                logger.info(f"DEBUG: Calling db.commit()...")
                 await db.commit()
-                logger.info(f"DEBUG: db.commit() succeeded!")
                 token_deactivated = True
                 debug_counts["deactivated_token_id"] = oauth_token.id
-                logger.info(f"Deactivated OAuth token for {provider} (token_id={oauth_token.id})")
+                logger.info(f"Disconnect: Successfully deactivated token_id={oauth_token.id} for {provider}")
             else:
-                logger.warning(f"No active OAuth token found for {provider} with wallet {user_address} (debug counts: all={all_tokens_count}, provider={provider_tokens_count}, active={active_tokens_count})")
+                logger.warning(f"Disconnect: No active OAuth token found for {provider} with wallet {user_address}")
         except Exception as e:
             debug_counts["exception"] = str(e)
             logger.error(f"Failed to deactivate OAuth token for {provider}: {e}", exc_info=True)
