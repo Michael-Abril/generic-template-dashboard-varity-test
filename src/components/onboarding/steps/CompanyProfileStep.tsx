@@ -115,27 +115,27 @@ export function CompanyProfileStep({
   };
 
   return (
-    <div className="px-6 py-6 sm:px-8 sm:py-8">
+    <div className="px-6 py-10 sm:px-12 sm:py-12">
       {/* Header */}
-      <div className="text-center mb-6">
-        <div className="flex justify-center mb-3">
-          <div className="w-12 h-12 bg-blue-600 rounded-xl flex items-center justify-center">
-            <Building2 className="w-6 h-6 text-white" />
+      <div className="text-center mb-8">
+        <div className="flex justify-center mb-4">
+          <div className="w-14 h-14 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-2xl flex items-center justify-center shadow-lg shadow-blue-200">
+            <Building2 className="w-7 h-7 text-white" />
           </div>
         </div>
-        <h2 className="text-xl font-semibold text-gray-900 mb-1">
+        <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">
           Tell us about your company
         </h2>
-        <p className="text-gray-500 text-sm">
+        <p className="text-gray-600 text-base">
           Just 3 quick fields to personalize your experience
         </p>
       </div>
 
       {/* Form - Compact layout */}
-      <div className="space-y-4 max-w-sm mx-auto">
+      <div className="space-y-5 max-w-lg mx-auto">
         {/* Company Name */}
         <div>
-          <label htmlFor="company-name" className="block text-sm font-medium text-gray-700 mb-1">
+          <label htmlFor="company-name" className="block text-sm font-semibold text-gray-700 mb-2">
             Company Name <span className="text-red-500" aria-hidden="true">*</span>
           </label>
           <input
@@ -145,13 +145,13 @@ export function CompanyProfileStep({
             onChange={(e) => onUpdate({ companyName: e.target.value })}
             placeholder="Acme Inc."
             aria-required="true"
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm text-gray-900 bg-white"
+            className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-base text-gray-900 bg-white shadow-sm transition-shadow hover:shadow-md"
           />
         </div>
 
         {/* Industry */}
         <div>
-          <label htmlFor="industry" className="block text-sm font-medium text-gray-700 mb-1">
+          <label htmlFor="industry" className="block text-sm font-semibold text-gray-700 mb-2">
             Industry <span className="text-red-500" aria-hidden="true">*</span>
           </label>
           <select
@@ -159,7 +159,7 @@ export function CompanyProfileStep({
             value={industry}
             onChange={(e) => onUpdate({ industry: e.target.value })}
             aria-required="true"
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm text-gray-900 bg-white"
+            className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-base text-gray-900 bg-white shadow-sm transition-shadow hover:shadow-md"
           >
             <option value="">Select your industry</option>
             {INDUSTRIES.map((ind) => (
@@ -172,7 +172,7 @@ export function CompanyProfileStep({
 
         {/* Your Name */}
         <div>
-          <label htmlFor="contact-name" className="block text-sm font-medium text-gray-700 mb-1">
+          <label htmlFor="contact-name" className="block text-sm font-semibold text-gray-700 mb-2">
             Your Name
           </label>
           <input
@@ -181,13 +181,13 @@ export function CompanyProfileStep({
             value={contactName}
             onChange={(e) => onUpdate({ contactName: e.target.value })}
             placeholder="John Smith"
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm text-gray-900 bg-white"
+            className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-base text-gray-900 bg-white shadow-sm transition-shadow hover:shadow-md"
           />
         </div>
 
         {/* Email */}
         <div>
-          <label htmlFor="contact-email" className="block text-sm font-medium text-gray-700 mb-1">
+          <label htmlFor="contact-email" className="block text-sm font-semibold text-gray-700 mb-2">
             Your Email <span className="text-red-500" aria-hidden="true">*</span>
           </label>
           <input
@@ -200,27 +200,27 @@ export function CompanyProfileStep({
             aria-required="true"
             aria-invalid={emailTouched && contactEmail.length > 0 && !isValidEmail(contactEmail)}
             aria-describedby={emailTouched && contactEmail && !isValidEmail(contactEmail) ? 'email-error' : undefined}
-            className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm text-gray-900 ${
+            className={`w-full px-4 py-3 border rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-base text-gray-900 shadow-sm transition-shadow hover:shadow-md ${
               emailTouched && contactEmail && !isValidEmail(contactEmail)
                 ? 'border-red-300 bg-red-50'
                 : 'border-gray-300 bg-white'
             }`}
           />
           {emailTouched && contactEmail && !isValidEmail(contactEmail) && (
-            <p id="email-error" role="alert" className="mt-1 text-xs text-red-600">Please enter a valid email</p>
+            <p id="email-error" role="alert" className="mt-2 text-sm text-red-600">Please enter a valid email</p>
           )}
         </div>
 
         {/* Company Size - Optional */}
         <div>
-          <label htmlFor="company-size" className="block text-sm font-medium text-gray-700 mb-1">
+          <label htmlFor="company-size" className="block text-sm font-semibold text-gray-700 mb-2">
             Company Size
           </label>
           <select
             id="company-size"
             value={companySize}
             onChange={(e) => onUpdate({ companySize: e.target.value })}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm text-gray-900 bg-white"
+            className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-base text-gray-900 bg-white shadow-sm transition-shadow hover:shadow-md"
           >
             <option value="">Select size (optional)</option>
             <option value="1">Just me</option>
@@ -234,14 +234,14 @@ export function CompanyProfileStep({
 
         {/* How did you hear about us - Optional */}
         <div>
-          <label htmlFor="referral-source" className="block text-sm font-medium text-gray-700 mb-1">
+          <label htmlFor="referral-source" className="block text-sm font-semibold text-gray-700 mb-2">
             How did you hear about us?
           </label>
           <select
             id="referral-source"
             value={referralSource}
             onChange={(e) => onUpdate({ referralSource: e.target.value })}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm text-gray-900 bg-white"
+            className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-base text-gray-900 bg-white shadow-sm transition-shadow hover:shadow-md"
           >
             <option value="">Select (optional)</option>
             {REFERRAL_SOURCES.map((source) => (
@@ -261,10 +261,10 @@ export function CompanyProfileStep({
       </div>
 
       {/* Navigation Buttons */}
-      <div className="flex gap-3 mt-6 max-w-sm mx-auto">
+      <div className="flex flex-col-reverse sm:flex-row gap-3 mt-6 max-w-sm mx-auto">
         <button
           onClick={onBack}
-          className="px-4 py-2 border border-gray-300 rounded-lg font-medium text-gray-700 hover:bg-gray-50 transition-colors flex items-center gap-2 text-sm"
+          className="w-full sm:w-auto px-4 py-2.5 border border-gray-300 rounded-lg font-medium text-gray-700 hover:bg-gray-50 transition-colors flex items-center justify-center gap-2 text-sm"
         >
           <ArrowLeft className="w-4 h-4" />
           Back
@@ -273,7 +273,7 @@ export function CompanyProfileStep({
         <button
           onClick={handleSaveAndContinue}
           disabled={!isValid || saving}
-          className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-sm"
+          className="w-full sm:flex-1 bg-blue-600 text-white px-4 py-2.5 rounded-lg font-semibold hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-sm shadow-sm"
         >
           {saving ? (
             <>

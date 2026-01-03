@@ -1497,13 +1497,7 @@ export function AIChat() {
                 </div>
               </div>
 
-              {/* Data Status - ContextPreviewBadge - Terminal 4 Enhancement */}
-              {!ragStatus.loading && (
-                <ContextPreviewBadge
-                  ragStatus={enhancedRagStatus}
-                  onClick={() => setShowContextPreview(!showContextPreview)}
-                />
-              )}
+              {/* Data Status button removed - user should use Select Context button instead */}
 
               {/* Memory Indicator - Terminal 4 Enhancement */}
               {messages.length > 5 && (
@@ -1583,20 +1577,7 @@ export function AIChat() {
           </div>
         </div>
 
-        {/* Context Preview Panel - Terminal 4 Enhancement */}
-        {showContextPreview && (
-          <div className="border-b border-gray-200 bg-gray-50 p-3">
-            <ContextPreview
-              ragStatus={enhancedRagStatus}
-              expanded={true}
-              onToggleExpanded={() => setShowContextPreview(false)}
-              onSync={(integration) => {
-                logger.info('Sync requested for:', integration);
-                // Future: trigger integration sync via backend
-              }}
-            />
-          </div>
-        )}
+        {/* Context Preview Panel removed - user should use Select Context button instead */}
 
         {/* Privacy Banner - Subtle */}
         {showPrivacyBanner && (

@@ -28,34 +28,47 @@ export function Layout({ children }: LayoutProps) {
   const { lastSyncTime, isRefreshing, refresh } = useDataFreshness(address);
 
   // Load installed tools from OAuth connections
-  useEffect(() => {
-    const loadInstalledTools = async () => {
-      if (!authenticated || !address) {
+  const loadInstalledTools = useCallback(async () => {
+    if (!authenticated || !address) {
+      setInstalledTools([]);
+      return;
+    }
+    try {
+      const apiBase = process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
+      const res = await fetch(
+        `${apiBase}/api/v1/integrations/installed?wallet_address=${address}`
+      );
+      if (!res.ok) {
         setInstalledTools([]);
         return;
       }
-      try {
-        const apiBase = process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
-        const res = await fetch(
-          `${apiBase}/api/v1/integrations/installed?wallet_address=${address}`
-        );
-        if (!res.ok) {
-          setInstalledTools([]);
-          return;
-        }
-        const data = await res.json();
-        // Extract tool names from connected OAuth integrations
-        const tools = (data.integrations || [])
-          .filter((integration: { connected: boolean }) => integration.connected)
-          .map((integration: { name: string }) => integration.name);
-        setInstalledTools(tools);
-      } catch {
-        setInstalledTools([]);
-      }
+      const data = await res.json();
+      // Extract tool names from connected OAuth integrations
+      const tools = (data.integrations || [])
+        .filter((integration: { connected: boolean }) => integration.connected)
+        .map((integration: { name: string }) => integration.name);
+      setInstalledTools(tools);
+    } catch {
+      setInstalledTools([]);
+    }
+  }, [authenticated, address]);
+
+  // Load on mount and when auth/address changes
+  useEffect(() => {
+    loadInstalledTools();
+  }, [loadInstalledTools]);
+
+  // Listen for integration changes (triggered by integrations page on delete)
+  useEffect(() => {
+    const handleIntegrationsChanged = () => {
+      loadInstalledTools();
     };
 
-    loadInstalledTools();
-  }, [authenticated, address]);
+    window.addEventListener('integrationsChanged', handleIntegrationsChanged);
+    return () => {
+      window.removeEventListener('integrationsChanged', handleIntegrationsChanged);
+    };
+  }, [loadInstalledTools]);
 
   // Handle refresh with notification
   const handleRefresh = useCallback(async () => {

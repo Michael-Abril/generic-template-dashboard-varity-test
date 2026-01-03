@@ -373,8 +373,8 @@ export function OnboardingWizard({
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50 py-8 px-4">
-      <div className="max-w-4xl mx-auto">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 py-8 sm:py-12 px-4">
+      <div className="w-full max-w-3xl mx-auto">
         {/* Trial Badge */}
         {state.trialTier && (
           <div className="flex justify-center mb-6">
@@ -393,7 +393,7 @@ export function OnboardingWizard({
         />
 
         {/* Step Content */}
-        <div className="mt-8 bg-white rounded-2xl shadow-xl overflow-hidden">
+        <div className="mt-8 bg-white rounded-2xl shadow-xl shadow-gray-200/60 border border-gray-200/80 overflow-hidden">
           {state.step === 'welcome' && (
             <WelcomeStep
               trialDays={state.trialDays}

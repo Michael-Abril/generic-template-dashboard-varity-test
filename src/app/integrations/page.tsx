@@ -194,6 +194,9 @@ function IntegrationsContent() {
         setIntegrations(prev => prev.filter(i => i.provider !== provider));
         setSuccessMessage(`${providerName} disconnected successfully.`);
         setTimeout(() => setSuccessMessage(null), 5000);
+
+        // Notify Layout to refresh sidebar
+        window.dispatchEvent(new Event('integrationsChanged'));
       } else {
         throw new Error('Disconnect failed');
       }

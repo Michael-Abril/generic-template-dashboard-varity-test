@@ -142,30 +142,32 @@ export function IntegrationSelectStep({
       </div>
 
       {/* Navigation Buttons */}
-      <div className="flex gap-3 max-w-xl mx-auto">
-        <button
-          onClick={onBack}
-          className="px-5 py-2.5 border border-gray-300 rounded-lg font-medium text-gray-700 hover:bg-gray-50 transition-colors flex items-center gap-2 text-sm"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          Back
-        </button>
-
+      <div className="flex flex-col sm:flex-row gap-3 max-w-xl mx-auto">
         <button
           onClick={handleContinue}
           disabled={!selectedIntegration}
-          className="flex-1 bg-blue-600 text-white px-5 py-2.5 rounded-lg font-semibold hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-sm"
+          className="order-1 sm:order-2 flex-1 bg-blue-600 text-white px-5 py-2.5 rounded-lg font-semibold hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-sm shadow-sm"
         >
-          Connect {selectedIntegration ? INTEGRATIONS[selectedIntegration]?.name : ''}
+          {selectedIntegration ? `Connect ${INTEGRATIONS[selectedIntegration]?.name}` : 'Select a tool'}
           <ArrowRight className="w-4 h-4" />
         </button>
 
-        <button
-          onClick={onSkip}
-          className="px-5 py-2.5 text-gray-500 hover:text-gray-700 font-medium transition-colors text-sm"
-        >
-          Skip
-        </button>
+        <div className="order-2 sm:order-1 flex gap-3">
+          <button
+            onClick={onBack}
+            className="flex-1 sm:flex-none px-5 py-2.5 border border-gray-300 rounded-lg font-medium text-gray-700 hover:bg-gray-50 transition-colors flex items-center justify-center gap-2 text-sm"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            Back
+          </button>
+
+          <button
+            onClick={onSkip}
+            className="flex-1 sm:flex-none px-5 py-2.5 text-gray-500 hover:text-gray-700 hover:bg-gray-50 border border-gray-200 rounded-lg font-medium transition-colors text-sm"
+          >
+            Skip
+          </button>
+        </div>
       </div>
     </div>
   );

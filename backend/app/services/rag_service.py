@@ -1044,6 +1044,55 @@ class BusinessRAGService:
             logger.error(f"Failed to get context items for {business_wallet}: {str(e)}")
             return []
 
+    async def delete_by_integration(
+        self,
+        business_wallet: str,
+        integration: str
+    ) -> int:
+        """
+        Delete all RAG data for a specific integration.
+
+        This method is called when an integration is disconnected to ensure
+        the Context Picker and AI Assistant don't show stale data.
+
+        Args:
+            business_wallet: Business wallet address
+            integration: Integration name (e.g., 'google', 'slack', 'microsoft')
+
+        Returns:
+            Number of points deleted
+        """
+        collection_name = self._get_collection_name(business_wallet)
+
+        try:
+            # Check if collection exists
+            collections = self.qdrant.get_collections().collections
+            collection_names = [c.name for c in collections]
+
+            if collection_name not in collection_names:
+                logger.info(f"Collection {collection_name} does not exist, nothing to delete")
+                return 0
+
+            # Delete all points matching this integration
+            self.qdrant.delete(
+                collection_name=collection_name,
+                points_selector=Filter(
+                    must=[
+                        FieldCondition(
+                            key="integration",
+                            match=MatchValue(value=integration)
+                        )
+                    ]
+                )
+            )
+
+            logger.info(f"Deleted all RAG data for integration {integration} in collection {collection_name}")
+            return 1  # We don't have an exact count from Qdrant delete operation
+
+        except Exception as e:
+            logger.error(f"Error deleting RAG data for integration {integration}: {str(e)}")
+            raise
+
     def _generate_title_from_payload(self, payload: Dict[str, Any]) -> str:
         """
         Generate a human-readable title from payload metadata

@@ -33,64 +33,62 @@ export function WelcomeStep({ trialDays, onNext }: WelcomeStepProps) {
   ];
 
   return (
-    <div className="px-6 py-6 sm:px-8 sm:py-8">
+    <div className="px-6 py-10 sm:px-12 sm:py-12">
       {/* Hero Section */}
-      <div className="text-center mb-6">
-        <div className="flex justify-center mb-4">
-          <div className="w-14 h-14 bg-blue-600 rounded-2xl flex items-center justify-center">
-            <Sparkles className="w-7 h-7 text-white" />
+      <div className="text-center mb-8">
+        <div className="flex justify-center mb-5">
+          <div className="w-16 h-16 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-2xl flex items-center justify-center shadow-lg shadow-blue-200">
+            <Sparkles className="w-8 h-8 text-white" />
           </div>
         </div>
 
-        <h1 className="text-xl sm:text-2xl font-semibold text-gray-900 mb-2">
+        <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-3 leading-tight">
           Welcome to Your Business Dashboard
         </h1>
 
-        <p className="text-gray-600 text-sm max-w-md mx-auto">
+        <p className="text-gray-600 text-base sm:text-lg max-w-xl mx-auto leading-relaxed">
           Connect your tools, get AI insights, and make better decisions—all in one place.
         </p>
       </div>
 
       {/* Features - Compact horizontal layout */}
-      <div className="flex flex-col sm:flex-row gap-3 mb-6 max-w-2xl mx-auto">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-10 max-w-3xl mx-auto">
         {features.map((feature, index) => (
           <div
             key={index}
-            className="flex-1 bg-gray-50 border border-gray-100 rounded-lg p-3 flex items-center gap-3 sm:flex-col sm:text-center sm:p-4"
+            className="bg-gray-50/80 border border-gray-200/80 rounded-xl p-5 text-center hover:bg-gray-100/50 transition-colors"
           >
-            <div className={`w-9 h-9 ${feature.iconBg} rounded-lg flex items-center justify-center flex-shrink-0`}>
-              <feature.icon className={`w-4 h-4 ${feature.iconColor}`} />
+            <div className={`w-11 h-11 ${feature.iconBg} rounded-xl flex items-center justify-center mx-auto mb-3 shadow-sm`}>
+              <feature.icon className={`w-5 h-5 ${feature.iconColor}`} />
             </div>
-            <div className="sm:space-y-0.5">
-              <h3 className="font-medium text-gray-900 text-sm">{feature.title}</h3>
-              <p className="text-xs text-gray-500">{feature.description}</p>
-            </div>
+            <h3 className="font-semibold text-gray-900 text-sm mb-1">{feature.title}</h3>
+            <p className="text-xs text-gray-600 leading-relaxed">{feature.description}</p>
           </div>
         ))}
       </div>
 
       {/* CTA Button */}
-      <div className="max-w-sm mx-auto">
+      <div className="max-w-md mx-auto">
         <button
           onClick={onNext}
-          className="w-full bg-blue-600 text-white py-3 px-6 rounded-xl font-semibold hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
+          className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-4 px-6 rounded-xl font-semibold text-base hover:from-blue-700 hover:to-indigo-700 transition-all shadow-lg shadow-blue-200/50 hover:shadow-xl hover:shadow-blue-200/60 flex items-center justify-center gap-2"
         >
           Get Started
-          <ArrowRight className="w-4 h-4" />
+          <ArrowRight className="w-5 h-5" />
         </button>
 
         {/* Trial + Trust signals combined */}
-        <div className="mt-4 text-center">
-          <p className="text-sm text-gray-600 mb-2">
+        <div className="mt-6 text-center space-y-3">
+          <p className="text-sm text-gray-700 font-medium">
             {trialDays}-day free trial • No credit card required
           </p>
-          <div className="flex items-center justify-center gap-4 text-xs text-gray-400">
-            <span className="flex items-center gap-1">
-              <Shield className="w-3 h-3" />
-              SOC 2
+          <div className="flex items-center justify-center gap-6 text-xs text-gray-500">
+            <span className="flex items-center gap-1.5">
+              <Shield className="w-3.5 h-3.5 text-green-600" />
+              SOC 2 Compliant
             </span>
-            <span className="flex items-center gap-1">
-              <Shield className="w-3 h-3" />
+            <span className="flex items-center gap-1.5">
+              <Shield className="w-3.5 h-3.5 text-green-600" />
               256-bit Encryption
             </span>
           </div>

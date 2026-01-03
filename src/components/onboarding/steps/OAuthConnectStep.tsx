@@ -70,7 +70,7 @@ export function OAuthConnectStep({
   };
 
   return (
-    <div className="px-6 py-10 sm:px-10 sm:py-12">
+    <div className="px-6 py-6 sm:px-8 sm:py-8">
       {/* Header */}
       <div className="text-center mb-8">
         <div className="flex justify-center mb-4">
@@ -154,11 +154,11 @@ export function OAuthConnectStep({
       </div>
 
       {/* Navigation */}
-      <div className="flex justify-center gap-3 max-w-sm mx-auto">
+      <div className="flex gap-3 max-w-sm mx-auto">
         <button
           onClick={onBack}
           disabled={connecting}
-          className="px-5 py-2.5 border border-gray-300 rounded-lg font-medium text-gray-700 hover:bg-gray-50 transition-colors flex items-center gap-2 disabled:opacity-50 text-sm"
+          className="flex-1 px-5 py-2.5 border border-gray-300 rounded-lg font-medium text-gray-700 hover:bg-gray-50 transition-colors flex items-center justify-center gap-2 disabled:opacity-50 text-sm"
         >
           <ArrowLeft className="w-4 h-4" />
           Back
@@ -166,9 +166,9 @@ export function OAuthConnectStep({
         <button
           onClick={onSkip}
           disabled={connecting}
-          className="px-5 py-2.5 text-gray-500 hover:text-gray-700 font-medium transition-colors disabled:opacity-50 text-sm"
+          className="flex-1 px-5 py-2.5 text-gray-500 hover:text-gray-700 hover:bg-gray-50 border border-gray-200 rounded-lg font-medium transition-colors disabled:opacity-50 text-sm"
         >
-          Skip
+          Skip for Now
         </button>
       </div>
 
