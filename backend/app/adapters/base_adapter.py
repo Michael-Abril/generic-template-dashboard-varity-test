@@ -8,6 +8,8 @@ This provides a COMPLETE data pipeline:
 4. Encryption (AES-256-GCM with wallet-derived key)
 5. Pinata upload (IPFS/Filecoin storage)
 6. RAG indexing configuration
+7. MCP data routing (LIVE/RAG/HYBRID) - NEW
+8. L3 blockchain commitment - NEW
 
 All adapters MUST inherit from this class and implement:
 - INTEGRATION_NAME: str - The integration identifier (e.g., "google", "slack")
@@ -15,6 +17,9 @@ All adapters MUST inherit from this class and implement:
 - get_data_types() -> List[str] - Available data types
 - fetch_data(data_type) -> Dict - Fetch from external API
 - transform_data(data_type, raw_data) -> List[Dict] - Transform to common schema
+
+Optional overrides for live API data types:
+- get_live_data(data_type, wallet_address) -> Dict - For LIVE-routed data types
 
 Example:
     class SlackAdapter(BaseDataAdapter):
@@ -86,6 +91,10 @@ class BaseDataAdapter(ABC):
         # Initialize storage services (shared across all adapters)
         self.filecoin = FilecoinService()
         self.encryption = EncryptionService()
+
+        # Lazy-loaded services for MCP pipeline and L3 commitment
+        self._mcp_service = None
+        self._l3_service = None
 
         logger.info(f"Initialized {self.INTEGRATION_NAME} adapter")
 
@@ -189,6 +198,103 @@ class BaseDataAdapter(ABC):
             Human-readable name (e.g., "invoices" -> "Invoices")
         """
         return data_type.replace("_", " ").title()
+
+    # ==================== MCP DATA ROUTING ====================
+
+    @property
+    def mcp_service(self):
+        """Lazy-load MCP ingestion service for unified data pipeline"""
+        if self._mcp_service is None:
+            from app.services.mcp_ingestion_service import get_mcp_ingestion_service
+            self._mcp_service = get_mcp_ingestion_service()
+        return self._mcp_service
+
+    @property
+    def l3_service(self):
+        """Lazy-load L3 commitment service for on-chain verification"""
+        if self._l3_service is None:
+            from app.services.l3_commitment_service import get_l3_service
+            self._l3_service = get_l3_service()
+        return self._l3_service
+
+    def get_data_routing(self, data_type: str) -> str:
+        """
+        Get routing destination for a data type.
+
+        Uses MCP data routing rules to determine whether data should be:
+        - "rag": Stored in Pinata + indexed in Qdrant
+        - "live": Fetched in real-time, not stored
+        - "hybrid": Initial sync to RAG + live updates
+
+        Args:
+            data_type: The data type to check
+
+        Returns:
+            Routing destination: "rag", "live", or "hybrid"
+        """
+        try:
+            from app.services.mcp_ingestion_service import DATA_ROUTING_RULES, DataDestination
+            rules = DATA_ROUTING_RULES.get(self.INTEGRATION_NAME, {})
+            destination = rules.get(data_type, DataDestination.RAG_STORAGE)
+            return destination.value
+        except ImportError:
+            # Fallback if MCP service not available
+            return "rag"
+
+    def is_live_api_type(self, data_type: str) -> bool:
+        """
+        Check if data type uses live API (not stored).
+
+        Args:
+            data_type: The data type to check
+
+        Returns:
+            True if data should be fetched live, False if stored
+        """
+        return self.get_data_routing(data_type) == "live"
+
+    def is_hybrid_type(self, data_type: str) -> bool:
+        """
+        Check if data type uses hybrid routing (stored + live updates).
+
+        Args:
+            data_type: The data type to check
+
+        Returns:
+            True if data uses hybrid routing
+        """
+        return self.get_data_routing(data_type) == "hybrid"
+
+    async def get_live_data(
+        self,
+        data_type: str,
+        wallet_address: str,
+        **kwargs
+    ) -> Dict[str, Any]:
+        """
+        Fetch live data from API (not stored).
+
+        Override in subclass to implement live data fetching for
+        data types routed to LIVE_API.
+
+        Args:
+            data_type: Type of data to fetch
+            wallet_address: User's wallet address (for auth lookup)
+            **kwargs: Additional fetch options
+
+        Returns:
+            Live data from the API
+
+        Raises:
+            NotImplementedError: If subclass doesn't implement for live types
+        """
+        if not self.is_live_api_type(data_type):
+            raise ValueError(f"{data_type} is not a live API type for {self.INTEGRATION_NAME}")
+
+        raise NotImplementedError(
+            f"get_live_data() not implemented for {self.INTEGRATION_NAME}/{data_type}. "
+            f"Override in subclass to fetch live data."
+        )
 
     # ==================== SYNC (Main Entry Point) ====================
 
@@ -331,20 +437,23 @@ class BaseDataAdapter(ABC):
         self,
         wallet_address: str,
         data_type: str,
-        chunks: Dict[str, List[Dict[str, Any]]]
+        chunks: Dict[str, List[Dict[str, Any]]],
+        commit_to_l3: bool = True
     ) -> Dict[str, Any]:
         """
-        Store chunked data to Pinata.
+        Store chunked data to Pinata with optional L3 commitment.
 
         Args:
             wallet_address: Normalized wallet address
             data_type: Data type being stored
             chunks: Dict mapping chunk_id to list of records
+            commit_to_l3: Whether to commit to L3 blockchain (default True)
 
         Returns:
-            Storage result with CIDs
+            Storage result with CIDs and optional L3 commit result
         """
         chunk_cids = {}
+        encrypted_chunks = {}  # Track encrypted content for L3 commit
         total_records = 0
         latest_cid = None
 
@@ -394,6 +503,10 @@ class BaseDataAdapter(ABC):
                 }
             )
 
+            # Track encrypted content for L3 commit
+            if commit_to_l3 and isinstance(encrypted_data, bytes):
+                encrypted_chunks[chunk_id] = encrypted_data
+
             # Upload to Pinata
             is_latest = (i == 0)  # First chunk (most recent) is marked as latest
             cid = await self.filecoin.upload_encrypted_data(
@@ -416,13 +529,27 @@ class BaseDataAdapter(ABC):
                 f"{len(processed_records)} records, CID={cid}"
             )
 
-        return {
+        # Optionally commit to L3 blockchain
+        l3_result = None
+        if commit_to_l3 and chunk_cids and encrypted_chunks:
+            l3_result = await self.commit_to_l3(
+                wallet_address=wallet_address,
+                chunk_cids=chunk_cids,
+                encrypted_chunks=encrypted_chunks
+            )
+
+        result = {
             "status": "success",
             "cid": latest_cid,
             "chunks": chunk_cids,
             "record_count": total_records,
             "chunk_count": len(chunk_cids)
         }
+
+        if l3_result:
+            result["l3_commit"] = l3_result
+
+        return result
 
     def _apply_chunking(
         self,
@@ -651,6 +778,66 @@ class BaseDataAdapter(ABC):
     def get_enabled_types(self) -> List[str]:
         """Get list of data types that will be synced and indexed"""
         return self.RAG_ENABLED_TYPES.copy()
+
+    # ==================== L3 BLOCKCHAIN COMMITMENT ====================
+
+    async def commit_to_l3(
+        self,
+        wallet_address: str,
+        chunk_cids: Dict[str, str],
+        encrypted_chunks: Dict[str, bytes]
+    ) -> Dict[str, Any]:
+        """
+        Commit stored data to Varity L3 for on-chain verification.
+
+        Uses the L3 commitment service to create Merkle tree batch commits.
+        This is 200x more efficient than individual commits.
+
+        GASLESS PATTERN:
+        - Varity Labs backend signs and pays for the transaction
+        - wallet_address is used for DATA ATTRIBUTION only
+        - Business never needs to sign or hold USDC
+
+        Args:
+            wallet_address: Business wallet for data attribution
+            chunk_cids: Dict mapping chunk_id to IPFS CID
+            encrypted_chunks: Dict mapping chunk_id to encrypted content bytes
+
+        Returns:
+            L3 commit result with tx_hash, merkle_root, etc.
+        """
+        if not chunk_cids:
+            return {"l3_committed": False, "reason": "No data to commit"}
+
+        try:
+            items = [
+                {"cid": cid, "content": encrypted_chunks.get(chunk_id, b"")}
+                for chunk_id, cid in chunk_cids.items()
+                if encrypted_chunks.get(chunk_id)  # Only include chunks with content
+            ]
+
+            if not items:
+                return {"l3_committed": False, "reason": "No encrypted content available"}
+
+            result = await self.l3_service.commit_batch(
+                items=items,
+                integration=self.INTEGRATION_NAME,
+                business_wallet_address=wallet_address
+            )
+
+            logger.info(
+                f"L3 commit for {self.INTEGRATION_NAME}: "
+                f"{len(items)} items, committed={result.get('l3_committed', False)}"
+            )
+
+            return result
+
+        except Exception as e:
+            logger.error(f"L3 commit failed for {self.INTEGRATION_NAME}: {e}")
+            return {
+                "l3_committed": False,
+                "error": str(e)
+            }
 
     # ==================== CONNECTION TEST ====================
 

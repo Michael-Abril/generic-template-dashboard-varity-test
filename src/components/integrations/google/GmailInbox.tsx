@@ -853,13 +853,28 @@ export function GmailInbox({ walletAddress, data }: GmailInboxProps) {
           <p className="text-gray-600 text-center max-w-sm mb-4">
             {apiError}
           </p>
-          <button
-            onClick={loadEmails}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2"
-          >
-            <RefreshCw className="h-4 w-4" />
-            Try Again
-          </button>
+          <div className="flex gap-3">
+            {/* Show reconnect button for token-related errors */}
+            {(apiError.toLowerCase().includes('expired') ||
+              apiError.toLowerCase().includes('reconnect') ||
+              apiError.toLowerCase().includes('not connected') ||
+              apiError.toLowerCase().includes('permission denied')) && (
+              <a
+                href="/marketplace"
+                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2 font-medium"
+              >
+                <RefreshCw className="h-4 w-4" />
+                Reconnect Google
+              </a>
+            )}
+            <button
+              onClick={loadEmails}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2"
+            >
+              <RefreshCw className="h-4 w-4" />
+              Try Again
+            </button>
+          </div>
         </div>
       ) : paginatedThreads.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16">

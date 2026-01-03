@@ -1,27 +1,40 @@
 """
 Salesforce Sync Adapter
 Fetches data from Salesforce API with multi-tenant Filecoin storage
+
+Refactored January 3, 2026:
+- Now inherits from BaseDataAdapter for unified pipeline
+- Encryption, Pinata storage, L3 commitment handled by base class
+- MCP data routing integrated
 """
 import httpx
 from typing import List, Dict, Any, Optional
 import logging
 from datetime import datetime
 
-from app.services.filecoin_service import FilecoinService
-from app.services.encryption_service import EncryptionService
+from app.adapters.base_adapter import BaseDataAdapter
 
 logger = logging.getLogger(__name__)
 
 
-class SalesforceSync:
-    """Sync adapter for Salesforce integration with multi-tenant encrypted storage"""
+class SalesforceSync(BaseDataAdapter):
+    """
+    Sync adapter for Salesforce integration.
+
+    Inherits from BaseDataAdapter which handles:
+    - Wallet normalization
+    - Encryption (AES-256-GCM)
+    - Pinata storage (IPFS/Filecoin)
+    - Chunking strategies
+    - L3 blockchain commitment
+    - MCP data routing
+    """
+
+    # REQUIRED: Integration identifier
+    INTEGRATION_NAME = "salesforce"
 
     # All Salesforce data types go to RAG - CRM data is highly searchable
     RAG_ENABLED_TYPES = ["contacts", "opportunities", "accounts", "leads", "tasks"]
-
-    def should_index_in_rag(self, data_type: str) -> bool:
-        """Check if data type should be indexed in Qdrant"""
-        return data_type.lower() in [t.lower() for t in self.RAG_ENABLED_TYPES]
 
     def __init__(self, credentials: dict):
         """
@@ -30,11 +43,10 @@ class SalesforceSync:
         Args:
             credentials: OAuth credentials with access_token and instance_url
         """
-        self.access_token = credentials.get("access_token")
-        self.instance_url = credentials.get("instance_url")
+        # Initialize base class (handles encryption, storage, MCP, L3)
+        super().__init__(credentials)
 
-        if not self.access_token:
-            raise ValueError("Missing Salesforce access token")
+        self.instance_url = credentials.get("instance_url")
 
         # CRITICAL: instance_url is required for Salesforce API calls
         # Each Salesforce org has a unique instance URL (e.g., na1, eu5, custom domains)
@@ -45,9 +57,25 @@ class SalesforceSync:
                 "Please reconnect your Salesforce account."
             )
 
-        # Initialize storage services
-        self.filecoin = FilecoinService()
-        self.encryption = EncryptionService()
+    def get_chunk_strategy(self, data_type: str) -> str:
+        """Override chunking strategy for Salesforce data types"""
+        return {
+            "opportunities": "quarterly",
+            "tasks": "quarterly",
+            "contacts": "latest",
+            "accounts": "latest",
+            "leads": "latest"
+        }.get(data_type, "latest")
+
+    def get_date_field(self, data_type: str) -> str:
+        """Override date field for Salesforce data types"""
+        return {
+            "opportunities": "CloseDate",
+            "tasks": "ActivityDate",
+            "contacts": "LastModifiedDate",
+            "accounts": "LastModifiedDate",
+            "leads": "LastModifiedDate"
+        }.get(data_type, "LastModifiedDate")
 
     def get_data_types(self) -> List[str]:
         """Get available data types for Salesforce"""

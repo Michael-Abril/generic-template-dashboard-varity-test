@@ -230,7 +230,8 @@ export function DriveExplorer({ walletAddress, data }: DriveExplorerProps) {
         modifiedTime: file.modifiedTime || new Date().toISOString(),
         owners: file.owners || [],
         webViewLink: file.webViewLink || '',
-        starred: file.starred || false
+        starred: file.starred || false,
+        parent_folder_id: file.parent_folder_id || null,
       }));
       setFiles(parsedFiles);
       setLoading(false);

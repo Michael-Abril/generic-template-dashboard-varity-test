@@ -1,7 +1,15 @@
 """
 Google Workspace Sync Adapter
-Syncs data from Gmail, Calendar, Drive, Docs, and Contacts with multi-tenant Filecoin storage
-Supports full pagination for complete data sync and chronological chunking
+
+Inherits from BaseDataAdapter for consistent data pipeline handling.
+Syncs Drive and Contacts to Pinata storage (RAG).
+Gmail and Calendar use live API calls (not stored).
+
+Data Routing (from MCP pipeline):
+- drive_files: RAG_STORAGE (synced to Pinata + indexed in Qdrant)
+- contacts: RAG_STORAGE (synced to Pinata + indexed in Qdrant)
+- gmail: LIVE_API (fetched on-demand, not stored)
+- calendar: LIVE_API (fetched on-demand, not stored)
 """
 import asyncio
 import httpx
@@ -11,42 +19,45 @@ from collections import defaultdict
 from typing import Dict, List, Any, Optional
 from datetime import datetime, timedelta
 
-from app.services.filecoin_service import FilecoinService
-from app.services.encryption_service import EncryptionService
+from app.adapters.base_adapter import BaseDataAdapter
 
 logger = logging.getLogger(__name__)
 
 
-class GoogleWorkspaceSync:
-    """Adapter for syncing data from Google Workspace APIs with multi-tenant encrypted storage"""
+class GoogleWorkspaceSync(BaseDataAdapter):
+    """
+    Sync adapter for Google Workspace integration.
 
-    # Data types that will be synced to Pinata AND indexed in Qdrant
-    # Gmail and Calendar are intentionally excluded to avoid RAG clutter
+    Inherits from BaseDataAdapter which handles:
+    - Wallet normalization
+    - Encryption (AES-256-GCM)
+    - Pinata storage (IPFS/Filecoin)
+    - Chunking strategies
+    - L3 blockchain commitment
+    - MCP data routing
+    """
+
+    # Integration identifier
+    INTEGRATION_NAME = "google"
+
+    # Data types synced to Pinata AND indexed in Qdrant
+    # Gmail and Calendar are LIVE types - fetched on-demand, not stored
     RAG_ENABLED_TYPES = ["drive", "contacts"]
-
-    def should_index_in_rag(self, data_type: str) -> bool:
-        """Check if data type should be indexed in Qdrant"""
-        return data_type.lower() in [t.lower() for t in self.RAG_ENABLED_TYPES]
 
     def __init__(self, credentials: dict):
         """
-        Initialize Google Workspace sync adapter
+        Initialize Google Workspace adapter.
 
         Args:
-            credentials: OAuth credentials dict with access_token
+            credentials: OAuth credentials with access_token
         """
-        self.access_token = credentials.get("access_token")
-        if not self.access_token:
-            raise ValueError("Missing Google Workspace access token")
+        super().__init__(credentials)
 
+        # Google-specific headers
         self.base_headers = {
             "Authorization": f"Bearer {self.access_token}",
             "Content-Type": "application/json"
         }
-
-        # Initialize storage services
-        self.filecoin = FilecoinService()
-        self.encryption = EncryptionService()
 
     # ==================== PAGINATION HELPERS ====================
 
@@ -187,16 +198,6 @@ class GoogleWorkspaceSync:
                 if part.get("filename"):
                     return True
         return False
-
-    def _get_chunk_type(self, data_type: str) -> str:
-        """Return the chunking strategy name for a data type"""
-        strategies = {
-            "gmail": "monthly",
-            "calendar": "yearly",
-            "drive": "quarterly",
-            "contacts": "latest"
-        }
-        return strategies.get(data_type, "latest")
 
     # ==================== SYNC METHODS ====================
 
@@ -601,26 +602,23 @@ class GoogleWorkspaceSync:
         """
         return ["drive", "contacts"]
 
-    async def fetch_data(self, data_type: str) -> Dict[str, Any]:
+    async def fetch_data(self, data_type: str, **kwargs) -> Dict[str, Any]:
         """
-        Fetch data from Google Workspace APIs
+        Fetch data from Google Workspace APIs.
 
         Args:
-            data_type: Type of data to fetch
+            data_type: Type of data to fetch (drive, contacts)
+            **kwargs: Additional fetch options (limit, etc.)
 
         Returns:
-            Dictionary containing fetched data
+            Dictionary containing fetched data with 'records' or 'chunks' key
         """
-        if data_type == "gmail":
-            return await self.sync_gmail()
-        elif data_type == "calendar":
-            return await self.sync_calendar()
-        elif data_type == "drive":
-            return await self.sync_drive()
+        if data_type == "drive":
+            return await self.sync_drive(**kwargs)
         elif data_type == "contacts":
-            return await self.sync_contacts()
+            return await self.sync_contacts(**kwargs)
         else:
-            raise ValueError(f"Unsupported data type: {data_type}")
+            raise ValueError(f"Unsupported data type for sync: {data_type}")
 
     def transform_data(
         self,
@@ -676,6 +674,57 @@ class GoogleWorkspaceSync:
         else:
             return []
 
+    # ==================== OPTIONAL OVERRIDES ====================
+
+    def get_chunk_strategy(self, data_type: str) -> str:
+        """Get chunking strategy for each Google data type."""
+        strategies = {
+            "drive": "quarterly",   # Files chunked by quarter (modifiedTime)
+            "contacts": "latest"    # Contacts as single chunk
+        }
+        return strategies.get(data_type, "latest")
+
+    def get_date_field(self, data_type: str) -> str:
+        """Get date field for chunking."""
+        fields = {
+            "drive": "modifiedTime",
+            "contacts": "resourceName"  # No date field for contacts
+        }
+        return fields.get(data_type, "created_at")
+
+    # ==================== LIVE API DATA (Gmail, Calendar) ====================
+
+    async def get_live_data(
+        self,
+        data_type: str,
+        wallet_address: str,
+        **kwargs
+    ) -> Dict[str, Any]:
+        """
+        Fetch live data from Google API (not stored).
+
+        Gmail and Calendar use live API calls instead of synced storage.
+
+        Args:
+            data_type: 'gmail' or 'calendar'
+            wallet_address: User's wallet address (for auth lookup)
+            **kwargs: Additional options (max_results, etc.)
+
+        Returns:
+            Live data from Google API
+        """
+        max_results = kwargs.get("max_results", 50)
+
+        if data_type == "gmail":
+            return await self.sync_gmail(max_messages=max_results)
+        elif data_type == "calendar":
+            return await self.sync_calendar(
+                years_back=kwargs.get("years_back", 1),
+                years_forward=kwargs.get("years_forward", 1)
+            )
+        else:
+            raise ValueError(f"{data_type} is not a live API type for Google")
+
     async def generate_embeddings(self, data: List[Dict[str, Any]]) -> List[List[float]]:
         """
         Generate embeddings for RAG indexing
@@ -690,169 +739,10 @@ class GoogleWorkspaceSync:
         # This is a placeholder for the sync interface
         return []
 
-    async def sync_data(
-        self,
-        business_wallet: str,
-        data_types: Optional[List[str]] = None
-    ) -> Dict[str, Any]:
-        """
-        Sync all Google Workspace data with multi-tenant Filecoin storage
-        Now with chunked storage - each chronological chunk is stored separately
-
-        Args:
-            business_wallet: Business wallet address (for encryption key)
-            data_types: Optional list of specific data types to sync
-
-        Returns:
-            Sync results with CIDs for each data type and chunk
-        """
-        if data_types is None:
-            data_types = self.get_data_types()
-
-        results = {
-            "business_wallet": business_wallet,
-            "integration": "google",
-            "synced_at": datetime.utcnow().isoformat(),
-            "data": {},
-            "chunks": {}
-        }
-
-        for data_type in data_types:
-            try:
-                logger.info(f"Starting sync for {data_type}")
-
-                # 1. Fetch data from Google Workspace (now returns chunks)
-                raw_data = await self.fetch_data(data_type)
-
-                # 2. Get chunks from the raw data
-                chunks = raw_data.get("chunks", {})
-
-                if not chunks:
-                    # Fallback: no chunks, store as single file (legacy behavior)
-                    transformed_data = self.transform_data(data_type, raw_data)
-
-                    data_package = {
-                        "data_type": data_type,
-                        "integration": "google",
-                        "records": transformed_data,
-                        "record_count": len(transformed_data),
-                        "synced_at": datetime.utcnow().isoformat()
-                    }
-
-                    encrypted_data = await self.encryption.encrypt_for_customer(
-                        data=data_package,
-                        customer_wallet=business_wallet,
-                        additional_metadata={"integration": "google", "data_type": data_type}
-                    )
-
-                    cid = await self.filecoin.upload_encrypted_data(
-                        customer_wallet=business_wallet,
-                        integration="google",
-                        data_type=data_type,
-                        encrypted_data=encrypted_data,
-                        chunk_id="latest",
-                        chunk_type=self._get_chunk_type(data_type),
-                        is_latest=True,
-                        record_count=len(transformed_data)
-                    )
-
-                    results["data"][data_type] = {
-                        "status": "success",
-                        "total_records": len(transformed_data),
-                        "chunk_count": 1,
-                        "chunks": {"latest": cid}
-                    }
-                    results["chunks"][data_type] = {"latest": cid}
-                    continue
-
-                # 3. Store each chunk separately
-                chunk_cids = {}
-                total_records = 0
-                sorted_chunk_ids = sorted(chunks.keys(), reverse=True)
-
-                for i, chunk_id in enumerate(sorted_chunk_ids):
-                    chunk_records = chunks[chunk_id]
-                    if not chunk_records:
-                        continue
-
-                    # Transform records for this chunk
-                    transformed_records = self._transform_chunk_records(data_type, chunk_records)
-                    total_records += len(transformed_records)
-
-                    # Prepare chunk package
-                    chunk_package = {
-                        "data_type": data_type,
-                        "integration": "google",
-                        "chunk_id": chunk_id,
-                        "records": transformed_records,
-                        "record_count": len(transformed_records),
-                        "synced_at": datetime.utcnow().isoformat(),
-                        "metadata": {
-                            "source": "google_workspace_api",
-                            "chunk_type": self._get_chunk_type(data_type)
-                        }
-                    }
-
-                    # Encrypt with wallet-derived key
-                    encrypted_data = await self.encryption.encrypt_for_customer(
-                        data=chunk_package,
-                        customer_wallet=business_wallet,
-                        additional_metadata={
-                            "integration": "google",
-                            "data_type": data_type,
-                            "chunk_id": chunk_id
-                        }
-                    )
-
-                    # Upload with chunk metadata - first chunk is latest
-                    cid = await self.filecoin.upload_encrypted_data(
-                        customer_wallet=business_wallet,
-                        integration="google",
-                        data_type=data_type,
-                        encrypted_data=encrypted_data,
-                        chunk_id=chunk_id,
-                        chunk_type=self._get_chunk_type(data_type),
-                        is_latest=(i == 0),  # First chunk (most recent) is latest
-                        record_count=len(transformed_records)
-                    )
-
-                    chunk_cids[chunk_id] = cid
-
-                    logger.info(
-                        f"Stored {data_type}/{chunk_id}: {len(transformed_records)} records, CID: {cid}"
-                    )
-
-                results["data"][data_type] = {
-                    "status": "success",
-                    "total_records": total_records,
-                    "chunk_count": len(chunk_cids),
-                    "chunks": chunk_cids
-                }
-                results["chunks"][data_type] = chunk_cids
-
-                logger.info(
-                    f"Sync complete for {data_type}: {total_records} records across {len(chunk_cids)} chunks"
-                )
-
-            except Exception as e:
-                logger.error(f"Failed to sync {data_type}: {e}")
-                results["data"][data_type] = {
-                    "status": "failed",
-                    "error": str(e)
-                }
-
-        return results
-
-    def _transform_chunk_records(self, data_type: str, records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Transform chunk records to common schema"""
-        type_mapping = {
-            "gmail": "email",
-            "calendar": "calendar_event",
-            "drive": "document",
-            "contacts": "contact"
-        }
-
-        return [
-            {**record, "type": type_mapping.get(data_type, data_type), "integration": "google"}
-            for record in records
-        ]
+    # NOTE: sync_data() is inherited from BaseDataAdapter
+    # The base class handles:
+    # - Wallet normalization
+    # - Encryption (AES-256-GCM)
+    # - Pinata storage
+    # - Chunking
+    # - L3 blockchain commitment

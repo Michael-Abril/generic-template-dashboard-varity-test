@@ -791,12 +791,26 @@ export function CalendarView({ walletAddress, data }: CalendarViewProps) {
             <AlertCircle className="h-5 w-5" />
             <span className="text-sm font-medium">{apiError}</span>
           </div>
-          <button
-            onClick={() => setApiError(null)}
-            className="text-red-500 hover:text-red-700"
-          >
-            <X className="h-4 w-4" />
-          </button>
+          <div className="flex items-center gap-2">
+            {/* Show reconnect button for token-related errors */}
+            {(apiError.toLowerCase().includes('expired') ||
+              apiError.toLowerCase().includes('reconnect') ||
+              apiError.toLowerCase().includes('not connected') ||
+              apiError.toLowerCase().includes('permission denied')) && (
+              <a
+                href="/marketplace"
+                className="px-3 py-1 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 font-medium"
+              >
+                Reconnect
+              </a>
+            )}
+            <button
+              onClick={() => setApiError(null)}
+              className="text-red-500 hover:text-red-700"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
         </div>
       )}
 

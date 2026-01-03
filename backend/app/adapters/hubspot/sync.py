@@ -1,6 +1,11 @@
 """
 HubSpot Sync Adapter
 Fetches CRM data from HubSpot API with multi-tenant Filecoin storage
+
+Refactored January 3, 2026:
+- Now inherits from BaseDataAdapter for unified pipeline
+- Encryption, Pinata storage, L3 commitment handled by base class
+- MCP data routing integrated
 """
 import httpx
 import time
@@ -8,21 +13,29 @@ from typing import List, Dict, Any, Optional
 import logging
 from datetime import datetime
 
-from app.services.filecoin_service import FilecoinService
-from app.services.encryption_service import EncryptionService
+from app.adapters.base_adapter import BaseDataAdapter
 
 logger = logging.getLogger(__name__)
 
 
-class HubSpotSync:
-    """Sync adapter for HubSpot integration with multi-tenant encrypted storage"""
+class HubSpotSync(BaseDataAdapter):
+    """
+    Sync adapter for HubSpot integration.
+
+    Inherits from BaseDataAdapter which handles:
+    - Wallet normalization
+    - Encryption (AES-256-GCM)
+    - Pinata storage (IPFS/Filecoin)
+    - Chunking strategies
+    - L3 blockchain commitment
+    - MCP data routing
+    """
+
+    # REQUIRED: Integration identifier
+    INTEGRATION_NAME = "hubspot"
 
     # All HubSpot CRM data types go to RAG - CRM data is highly searchable
     RAG_ENABLED_TYPES = ["contacts", "deals", "companies", "emails", "tickets"]
-
-    def should_index_in_rag(self, data_type: str) -> bool:
-        """Check if data type should be indexed in Qdrant"""
-        return data_type.lower() in [t.lower() for t in self.RAG_ENABLED_TYPES]
 
     def __init__(self, credentials: dict):
         """
@@ -31,15 +44,30 @@ class HubSpotSync:
         Args:
             credentials: OAuth credentials with access_token
         """
-        self.access_token = credentials.get("access_token")
+        # Initialize base class (handles encryption, storage, MCP, L3)
+        super().__init__(credentials)
+
         self.api_base = "https://api.hubapi.com"
 
-        if not self.access_token:
-            raise ValueError("Missing HubSpot access token")
+    def get_chunk_strategy(self, data_type: str) -> str:
+        """Override chunking strategy for HubSpot data types"""
+        return {
+            "deals": "quarterly",
+            "emails": "quarterly",
+            "tickets": "quarterly",
+            "contacts": "latest",
+            "companies": "latest"
+        }.get(data_type, "latest")
 
-        # Initialize storage services
-        self.filecoin = FilecoinService()
-        self.encryption = EncryptionService()
+    def get_date_field(self, data_type: str) -> str:
+        """Override date field for HubSpot data types"""
+        return {
+            "deals": "closedate",
+            "emails": "hs_timestamp",
+            "tickets": "createdate",
+            "contacts": "lastmodifieddate",
+            "companies": "createdate"
+        }.get(data_type, "createdate")
 
     def get_data_types(self) -> List[str]:
         """Get available data types for HubSpot"""

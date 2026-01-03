@@ -7,6 +7,11 @@ Enhanced December 28, 2025:
 - Added batch fetching with configurable batch sizes
 - Improved error handling and retry logic
 - Added RAG indexing support for all data types
+
+Refactored January 3, 2026:
+- Now inherits from BaseDataAdapter for unified pipeline
+- Encryption, Pinata storage, L3 commitment handled by base class
+- MCP data routing integrated
 """
 import httpx
 from typing import List, Dict, Any, Optional
@@ -14,14 +19,26 @@ import logging
 from datetime import datetime
 import asyncio
 
-from app.services.filecoin_service import FilecoinService
-from app.services.encryption_service import EncryptionService
+from app.adapters.base_adapter import BaseDataAdapter
 
 logger = logging.getLogger(__name__)
 
 
-class QuickBooksSync:
-    """Sync adapter for QuickBooks integration with multi-tenant encrypted storage"""
+class QuickBooksSync(BaseDataAdapter):
+    """
+    Sync adapter for QuickBooks integration.
+
+    Inherits from BaseDataAdapter which handles:
+    - Wallet normalization
+    - Encryption (AES-256-GCM)
+    - Pinata storage (IPFS/Filecoin)
+    - Chunking strategies
+    - L3 blockchain commitment
+    - MCP data routing
+    """
+
+    # REQUIRED: Integration identifier
+    INTEGRATION_NAME = "quickbooks"
 
     # All QuickBooks data types go to RAG - financial data is highly searchable
     RAG_ENABLED_TYPES = ["invoices", "expenses", "customers", "vendors", "payments"]
@@ -30,10 +47,6 @@ class QuickBooksSync:
     MAX_RESULTS_PER_QUERY = 1000
     DEFAULT_BATCH_SIZE = 500
 
-    def should_index_in_rag(self, data_type: str) -> bool:
-        """Check if data type should be indexed in Qdrant"""
-        return data_type.lower() in [t.lower() for t in self.RAG_ENABLED_TYPES]
-
     def __init__(self, credentials: dict):
         """
         Initialize QuickBooks sync adapter
@@ -41,6 +54,9 @@ class QuickBooksSync:
         Args:
             credentials: OAuth credentials with access_token and realm_id
         """
+        # Initialize base class (handles encryption, storage, MCP, L3)
+        super().__init__(credentials)
+
         self.access_token = credentials.get("access_token")
         self.realm_id = credentials.get("realm_id") or credentials.get("realmId")
         self.base_url = "https://quickbooks.api.intuit.com/v3/company"
@@ -48,9 +64,25 @@ class QuickBooksSync:
         if not self.access_token or not self.realm_id:
             raise ValueError("Missing QuickBooks credentials (access_token or realm_id)")
 
-        # Initialize storage services
-        self.filecoin = FilecoinService()
-        self.encryption = EncryptionService()
+    def get_chunk_strategy(self, data_type: str) -> str:
+        """Override chunking strategy for QuickBooks data types"""
+        return {
+            "invoices": "quarterly",
+            "expenses": "quarterly",
+            "payments": "quarterly",
+            "customers": "latest",
+            "vendors": "latest"
+        }.get(data_type, "latest")
+
+    def get_date_field(self, data_type: str) -> str:
+        """Override date field for QuickBooks data types"""
+        return {
+            "invoices": "TxnDate",
+            "expenses": "TxnDate",
+            "payments": "TxnDate",
+            "customers": "MetaData.LastUpdatedTime",
+            "vendors": "MetaData.LastUpdatedTime"
+        }.get(data_type, "created_at")
 
     def get_data_types(self) -> List[str]:
         """Get available data types for QuickBooks"""

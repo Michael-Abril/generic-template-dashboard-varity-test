@@ -63,6 +63,69 @@ export function GoogleWorkspacePage({
   const [showSettingsPanel, setShowSettingsPanel] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
 
+  // Live stats for Home tab (fetched from live API, not synced data)
+  const [liveStats, setLiveStats] = useState<{
+    emailCount: number;
+    eventCount: number;
+    driveCount: number;
+    contactCount: number;
+  } | null>(null);
+  const [statsLoading, setStatsLoading] = useState(true);
+  const [statsError, setStatsError] = useState<string | null>(null);
+
+  // Fetch live stats from API for Home tab
+  useEffect(() => {
+    const fetchLiveStats = async () => {
+      if (!walletAddress) return;
+
+      setStatsLoading(true);
+      setStatsError(null);
+
+      const apiBase = process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
+
+      try {
+        // Fetch email and calendar counts from live API in parallel
+        const [emailsRes, eventsRes] = await Promise.allSettled([
+          fetch(`${apiBase}/api/v1/integrations/google/emails?wallet_address=${walletAddress}&max_results=100`),
+          fetch(`${apiBase}/api/v1/integrations/google/events?wallet_address=${walletAddress}&max_results=100`)
+        ]);
+
+        let emailCount = 0;
+        let eventCount = 0;
+
+        if (emailsRes.status === 'fulfilled' && emailsRes.value.ok) {
+          const emailData = await emailsRes.value.json();
+          emailCount = emailData.emails?.length || 0;
+        }
+
+        if (eventsRes.status === 'fulfilled' && eventsRes.value.ok) {
+          const eventData = await eventsRes.value.json();
+          eventCount = eventData.events?.length || 0;
+        }
+
+        // Drive and Contacts use RAG data (synced)
+        const driveCount = data?.drive?.files?.length || 0;
+        const contactCount = data?.contacts?.contacts?.length || 0;
+
+        setLiveStats({ emailCount, eventCount, driveCount, contactCount });
+      } catch (error) {
+        console.error('Failed to fetch live stats:', error);
+        setStatsError('Unable to load live stats');
+        // Fall back to synced data
+        setLiveStats({
+          emailCount: data?.gmail?.messages?.length || 0,
+          eventCount: data?.calendar?.events?.length || 0,
+          driveCount: data?.drive?.files?.length || 0,
+          contactCount: data?.contacts?.contacts?.length || 0
+        });
+      } finally {
+        setStatsLoading(false);
+      }
+    };
+
+    fetchLiveStats();
+  }, [walletAddress, data]);
+
   // Handle global search - navigate to appropriate tab based on results
   const handleGlobalSearch = () => {
     if (!searchQuery.trim()) return;
@@ -126,60 +189,80 @@ export function GoogleWorkspacePage({
     <div className="space-y-6">
       {/* Quick Stats */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Gmail - Live API */}
         <div
           className="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-lg hover:border-red-200 transition-all cursor-pointer"
           onClick={() => setActiveTab('gmail')}
         >
-          <div className="flex items-center gap-3 mb-3">
-            <div className="p-3 bg-red-100 rounded-xl">
-              <Mail className="h-6 w-6 text-red-600" />
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-3">
+              <div className="p-3 bg-red-100 rounded-xl">
+                <Mail className="h-6 w-6 text-red-600" />
+              </div>
+              <h3 className="font-bold text-gray-900">Gmail</h3>
             </div>
-            <h3 className="font-bold text-gray-900">Gmail</h3>
+            <span className="text-xs px-2 py-1 bg-green-100 text-green-700 rounded-full font-medium">Live</span>
           </div>
-          <p className="text-4xl font-bold text-gray-900">{data?.gmail?.messages?.length || 0}</p>
-          <p className="text-sm text-gray-600 mt-2 font-medium">Emails synced</p>
+          <p className="text-4xl font-bold text-gray-900">
+            {statsLoading ? '...' : (liveStats?.emailCount || 0)}
+          </p>
+          <p className="text-sm text-gray-600 mt-2 font-medium">Emails</p>
         </div>
 
+        {/* Calendar - Live API */}
         <div
           className="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-lg hover:border-blue-200 transition-all cursor-pointer"
           onClick={() => setActiveTab('calendar')}
         >
-          <div className="flex items-center gap-3 mb-3">
-            <div className="p-3 bg-blue-100 rounded-xl">
-              <Calendar className="h-6 w-6 text-blue-600" />
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-3">
+              <div className="p-3 bg-blue-100 rounded-xl">
+                <Calendar className="h-6 w-6 text-blue-600" />
+              </div>
+              <h3 className="font-bold text-gray-900">Calendar</h3>
             </div>
-            <h3 className="font-bold text-gray-900">Calendar</h3>
+            <span className="text-xs px-2 py-1 bg-green-100 text-green-700 rounded-full font-medium">Live</span>
           </div>
-          <p className="text-4xl font-bold text-gray-900">{data?.calendar?.events?.length || 0}</p>
-          <p className="text-sm text-gray-600 mt-2 font-medium">Events synced</p>
+          <p className="text-4xl font-bold text-gray-900">
+            {statsLoading ? '...' : (liveStats?.eventCount || 0)}
+          </p>
+          <p className="text-sm text-gray-600 mt-2 font-medium">Events</p>
         </div>
 
+        {/* Drive - Synced RAG */}
         <div
           className="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-lg hover:border-yellow-200 transition-all cursor-pointer"
           onClick={() => setActiveTab('drive')}
         >
-          <div className="flex items-center gap-3 mb-3">
-            <div className="p-3 bg-yellow-100 rounded-xl">
-              <FolderOpen className="h-6 w-6 text-yellow-600" />
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-3">
+              <div className="p-3 bg-yellow-100 rounded-xl">
+                <FolderOpen className="h-6 w-6 text-yellow-600" />
+              </div>
+              <h3 className="font-bold text-gray-900">Drive</h3>
             </div>
-            <h3 className="font-bold text-gray-900">Drive</h3>
+            <span className="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded-full font-medium">Synced</span>
           </div>
-          <p className="text-4xl font-bold text-gray-900">{data?.drive?.files?.length || 0}</p>
-          <p className="text-sm text-gray-600 mt-2 font-medium">Files synced</p>
+          <p className="text-4xl font-bold text-gray-900">{liveStats?.driveCount || data?.drive?.files?.length || 0}</p>
+          <p className="text-sm text-gray-600 mt-2 font-medium">Files</p>
         </div>
 
+        {/* Contacts - Synced RAG */}
         <div
           className="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-lg hover:border-green-200 transition-all cursor-pointer"
           onClick={() => setActiveTab('contacts')}
         >
-          <div className="flex items-center gap-3 mb-3">
-            <div className="p-3 bg-green-100 rounded-xl">
-              <Users className="h-6 w-6 text-green-600" />
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-3">
+              <div className="p-3 bg-green-100 rounded-xl">
+                <Users className="h-6 w-6 text-green-600" />
+              </div>
+              <h3 className="font-bold text-gray-900">Contacts</h3>
             </div>
-            <h3 className="font-bold text-gray-900">Contacts</h3>
+            <span className="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded-full font-medium">Synced</span>
           </div>
-          <p className="text-4xl font-bold text-gray-900">{data?.contacts?.contacts?.length || 0}</p>
-          <p className="text-sm text-gray-600 mt-2 font-medium">Contacts synced</p>
+          <p className="text-4xl font-bold text-gray-900">{liveStats?.contactCount || data?.contacts?.contacts?.length || 0}</p>
+          <p className="text-sm text-gray-600 mt-2 font-medium">Contacts</p>
         </div>
       </div>
 

@@ -24,7 +24,7 @@ import logging
 import httpx
 import asyncio
 import base64  # HIGH-G1: Moved to module level
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
@@ -348,16 +348,25 @@ async def get_google_access_token(wallet_address: str, db: AsyncSession) -> str:
             detail="Google Workspace not connected. Please connect via OAuth first."
         )
 
-    # Check if token needs refresh (expires_at is already DateTime, not string)
+    # Check if token needs refresh (proactive: 5 minutes before expiry)
     # Handle both naive and timezone-aware datetimes to avoid comparison errors
     now = datetime.now(timezone.utc)
+    refresh_buffer = timedelta(minutes=5)  # Proactive refresh before expiry
+
     if token.expires_at:
         # Make comparison safe: if token.expires_at is naive, assume it's UTC
         expires_at_aware = token.expires_at
         if token.expires_at.tzinfo is None:
             expires_at_aware = token.expires_at.replace(tzinfo=timezone.utc)
-        if expires_at_aware < now:
-            logger.info(f"Google token expired for {normalized_wallet[:10]}..., attempting refresh")
+
+        # Proactive refresh: refresh if within 5 minutes of expiry OR already expired
+        if expires_at_aware < (now + refresh_buffer):
+            time_until_expiry = (expires_at_aware - now).total_seconds()
+            if time_until_expiry > 0:
+                logger.info(f"Google token expiring in {int(time_until_expiry)}s for {normalized_wallet[:10]}..., proactively refreshing")
+            else:
+                logger.info(f"Google token expired {int(-time_until_expiry)}s ago for {normalized_wallet[:10]}..., attempting refresh")
+
             refresh_success = await refresh_oauth_token(token, "google", db)
             if not refresh_success:
                 raise HTTPException(
