@@ -1302,13 +1302,18 @@ async def disconnect_integration(
                     oauth_token = token_result.scalar_one_or_none()
 
             if oauth_token:
+                logger.info(f"DEBUG: Setting is_active=False on token_id={oauth_token.id}")
                 oauth_token.is_active = False
+                logger.info(f"DEBUG: Calling db.commit()...")
                 await db.commit()
+                logger.info(f"DEBUG: db.commit() succeeded!")
                 token_deactivated = True
+                debug_counts["deactivated_token_id"] = oauth_token.id
                 logger.info(f"Deactivated OAuth token for {provider} (token_id={oauth_token.id})")
             else:
                 logger.warning(f"No active OAuth token found for {provider} with wallet {user_address} (debug counts: all={all_tokens_count}, provider={provider_tokens_count}, active={active_tokens_count})")
         except Exception as e:
+            debug_counts["exception"] = str(e)
             logger.error(f"Failed to deactivate OAuth token for {provider}: {e}", exc_info=True)
             await db.rollback()  # Rollback on error to prevent partial state
 
