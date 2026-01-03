@@ -42,7 +42,8 @@ def test_complete_user_journey():
         assert response.status_code == 200
 
     # Step 3: Purchase tool (mock purchase)
-    with patch('app.api.v1.marketplace_purchases.blockchain_service') as mock_bc:
+    with patch('app.services.blockchain_service.get_blockchain_service') as mock_get_bc:
+        mock_bc = mock_get_bc.return_value
         mock_bc.mint_license_nft = AsyncMock(return_value={
             "transaction_hash": "0xabc123",
             "token_id": 1,
@@ -191,7 +192,8 @@ def test_purchase_failure_recovery():
     """
     wallet = "0x1234567890abcdef1234567890abcdef12345678"
 
-    with patch('app.api.v1.marketplace_purchases.blockchain_service') as mock_bc:
+    with patch('app.services.blockchain_service.get_blockchain_service') as mock_get_bc:
+        mock_bc = mock_get_bc.return_value
         # First attempt: insufficient funds
         mock_bc.mint_license_nft = AsyncMock(side_effect=Exception("Insufficient USDC balance"))
 
@@ -337,7 +339,8 @@ def test_usdc_payment_correct_decimals():
     """
     wallet = "0x1234567890abcdef1234567890abcdef12345678"
 
-    with patch('app.api.v1.marketplace_purchases.blockchain_service') as mock_bc:
+    with patch('app.services.blockchain_service.get_blockchain_service') as mock_get_bc:
+        mock_bc = mock_get_bc.return_value
         # Verify correct USDC amount (6 decimals)
         expected_amount = 99 * 10**6  # 99 USDC = 99,000,000 (6 decimals)
 
