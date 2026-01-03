@@ -1225,7 +1225,7 @@ async def disconnect_integration(
         total_deleted = 0
         token_deactivated = False
         rag_deleted = 0
-        debug_counts = {"all": 0, "provider": 0, "active": 0}  # For debugging
+        debug_counts = {"all": 0, "provider": 0, "active": 0, "select_results": []}  # For debugging
 
         # 1. Deactivate OAuth token in database
         try:
@@ -1268,6 +1268,7 @@ async def disconnect_integration(
             logger.info(f"DEBUG: Found {active_tokens_count} ACTIVE tokens for provider {normalized_provider}")
 
             # Try to find the token with normalized wallet address
+            logger.info(f"DEBUG: Executing SELECT query for user_address={user_address!r}, provider={normalized_provider!r}")
             token_result = await db.execute(
                 select(OAuthToken).where(
                     and_(
@@ -1277,7 +1278,12 @@ async def disconnect_integration(
                     )
                 )
             )
-            oauth_token = token_result.scalar_one_or_none()
+            # DEBUG: Fetch all results instead of scalar_one_or_none to see what we get
+            all_results = token_result.scalars().all()
+            debug_counts["select_results"] = [(t.id, t.user_address[:10] + "...", t.provider, t.is_active) for t in all_results]
+            logger.info(f"DEBUG: SELECT returned {len(all_results)} tokens: {debug_counts['select_results']}")
+            oauth_token = all_results[0] if all_results else None
+            logger.info(f"DEBUG: Using oauth_token: id={oauth_token.id if oauth_token else 'None'}")
 
             # If not found, try with just lowercase (legacy format)
             if not oauth_token:
