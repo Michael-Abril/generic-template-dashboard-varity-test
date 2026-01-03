@@ -7,7 +7,6 @@ import { usePrivy } from '@privy-io/react-auth';
 import {
   Home,
   Bot,
-  Plus,
   BarChart3,
   MessageSquare,
   Settings,
@@ -19,8 +18,7 @@ import {
   CreditCard,
   TrendingUp,
   Ticket,
-  CheckSquare,
-  Map,
+  Link2,
   Store
 } from 'lucide-react';
 
@@ -50,20 +48,11 @@ export function Sidebar({ installedTools = [] }: SidebarProps) {
 
   const isActive = (path: string) => pathname === path;
 
-  // Primary navigation - most important items at top
-  const primaryNavItems = [
+  // Simple, logical navigation - all main pages
+  const navigationItems = [
     { name: 'Dashboard', path: '/dashboard', icon: Home },
     { name: 'AI Assistant', path: '/ai-assistant', icon: Bot },
-  ];
-
-  // Planning section
-  const planningItems = [
-    { name: 'Tasks', path: '/dashboard/tasks', icon: CheckSquare },
-    { name: 'Roadmap', path: '/dashboard/roadmap', icon: Map },
-  ];
-
-  // Bottom navigation
-  const bottomNavItems = [
+    { name: 'Integrations', path: '/integrations', icon: Link2 },
     { name: 'Analytics', path: '/analytics', icon: BarChart3 },
     { name: 'Marketplace', path: '/marketplace', icon: Store },
     { name: 'Settings', path: '/settings', icon: Settings },
@@ -150,11 +139,10 @@ export function Sidebar({ installedTools = [] }: SidebarProps) {
 
         {/* Navigation */}
         <nav className="flex-1 overflow-y-auto py-4 px-3" aria-label="Dashboard navigation">
-          {/* Primary Navigation - Dashboard & AI Assistant at top */}
+          {/* Main Navigation - Simple and Clean */}
           <div className="space-y-1">
-            {primaryNavItems.map((item) => {
+            {navigationItems.map((item) => {
               const IconComponent = item.icon;
-              const isAI = item.path === '/ai-assistant';
               return (
                 <Link
                   key={item.path}
@@ -162,39 +150,28 @@ export function Sidebar({ installedTools = [] }: SidebarProps) {
                   onClick={() => setIsMobileOpen(false)}
                   aria-current={isActive(item.path) ? 'page' : undefined}
                   className={`
-                    flex items-center gap-3 px-3 py-2.5 rounded-lg font-medium transition-all duration-200
+                    flex items-center gap-3 px-3 py-2.5 rounded-lg font-medium transition-colors
                     ${isActive(item.path)
-                      ? isAI
-                        ? 'bg-gradient-to-r from-purple-50 to-blue-50 text-purple-700 shadow-sm border border-purple-100'
-                        : 'bg-blue-50 text-blue-700 shadow-sm'
-                      : isAI
-                        ? 'text-purple-600 hover:bg-purple-50 hover:translate-x-1'
-                        : 'text-gray-700 hover:bg-gray-100 hover:translate-x-1'
+                      ? 'bg-blue-50 text-blue-700'
+                      : 'text-gray-700 hover:bg-gray-100'
                     }
                   `}
                 >
-                  <IconComponent className={`w-5 h-5 ${isAI ? 'text-purple-500' : ''}`} />
+                  <IconComponent className="w-5 h-5" />
                   <span className="text-sm">{item.name}</span>
-                  {isAI && (
-                    <span className="ml-auto text-[10px] font-semibold px-1.5 py-0.5 rounded bg-purple-100 text-purple-600">
-                      AI
-                    </span>
-                  )}
                 </Link>
               );
             })}
           </div>
 
-          {/* Divider */}
-          <div className="my-4 border-t border-gray-200"></div>
-
-          {/* Integrations Section */}
-          <div className="space-y-1">
-            <p className="px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-              Integrations
-            </p>
-            {installedTools.length > 0 ? (
-              <>
+          {/* Connected Tools Section - Only show if user has connected integrations */}
+          {installedTools.length > 0 && (
+            <>
+              <div className="my-4 border-t border-gray-200"></div>
+              <div className="space-y-1">
+                <p className="px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                  Your Tools
+                </p>
                 {installedTools.map((tool) => {
                   const ToolIcon = toolIconComponents[tool] || Wrench;
                   return (
@@ -202,92 +179,16 @@ export function Sidebar({ installedTools = [] }: SidebarProps) {
                       key={tool}
                       href={`/dashboard/tools/${tool.toLowerCase().replace(/[\s.]/g, '').replace('_', '')}`}
                       onClick={() => setIsMobileOpen(false)}
-                      className="flex items-center gap-3 px-3 py-2.5 rounded-lg font-medium transition-colors text-gray-700 hover:bg-gray-100"
+                      className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-600 hover:bg-gray-100 transition-colors"
                     >
-                      <ToolIcon className="w-5 h-5" />
-                      <span className="text-sm">{tool}</span>
+                      <ToolIcon className="w-4 h-4" />
+                      <span>{tool}</span>
                     </Link>
                   );
                 })}
-                <Link
-                  href="/marketplace"
-                  onClick={() => setIsMobileOpen(false)}
-                  className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-500 hover:text-gray-700 hover:bg-gray-50 transition-colors"
-                >
-                  <Plus className="w-4 h-4" />
-                  <span>Add more</span>
-                </Link>
-              </>
-            ) : (
-              <Link
-                href="/marketplace"
-                onClick={() => setIsMobileOpen(false)}
-                className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-gray-500 hover:text-gray-700 hover:bg-gray-50 transition-colors border border-dashed border-gray-300"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Connect your first tool</span>
-              </Link>
-            )}
-          </div>
-
-          {/* Divider */}
-          <div className="my-4 border-t border-gray-200"></div>
-
-          {/* Planning Section */}
-          <div className="space-y-1">
-            <p className="px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-              Planning
-            </p>
-            {planningItems.map((item) => {
-              const IconComponent = item.icon;
-              return (
-                <Link
-                  key={item.path}
-                  href={item.path}
-                  onClick={() => setIsMobileOpen(false)}
-                  aria-current={isActive(item.path) ? 'page' : undefined}
-                  className={`
-                    flex items-center gap-3 px-3 py-2.5 rounded-lg font-medium transition-all duration-200
-                    ${isActive(item.path)
-                      ? 'bg-blue-50 text-blue-700 shadow-sm'
-                      : 'text-gray-700 hover:bg-gray-100 hover:translate-x-1'
-                    }
-                  `}
-                >
-                  <IconComponent className="w-5 h-5" />
-                  <span className="text-sm">{item.name}</span>
-                </Link>
-              );
-            })}
-          </div>
-
-          {/* Divider */}
-          <div className="my-4 border-t border-gray-200"></div>
-
-          {/* Bottom Navigation */}
-          <div className="space-y-1">
-            {bottomNavItems.map((item) => {
-              const IconComponent = item.icon;
-              return (
-                <Link
-                  key={item.path}
-                  href={item.path}
-                  onClick={() => setIsMobileOpen(false)}
-                  aria-current={isActive(item.path) ? 'page' : undefined}
-                  className={`
-                    flex items-center gap-3 px-3 py-2.5 rounded-lg font-medium transition-all duration-200
-                    ${isActive(item.path)
-                      ? 'bg-blue-50 text-blue-700 shadow-sm'
-                      : 'text-gray-700 hover:bg-gray-100 hover:translate-x-1'
-                    }
-                  `}
-                >
-                  <IconComponent className="w-5 h-5" />
-                  <span className="text-sm">{item.name}</span>
-                </Link>
-              );
-            })}
-          </div>
+              </div>
+            </>
+          )}
         </nav>
 
         {/* Footer */}

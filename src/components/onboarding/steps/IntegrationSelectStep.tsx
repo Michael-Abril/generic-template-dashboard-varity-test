@@ -65,18 +65,18 @@ export function IntegrationSelectStep({
   };
 
   return (
-    <div className="px-6 py-6 sm:px-8 sm:py-8">
+    <div className="px-6 py-10 sm:px-12 sm:py-12">
       {/* Header */}
-      <div className="text-center mb-5">
-        <div className="flex justify-center mb-3">
-          <div className="w-12 h-12 bg-blue-600 rounded-xl flex items-center justify-center">
-            <Link2 className="w-6 h-6 text-white" />
+      <div className="text-center mb-8">
+        <div className="flex justify-center mb-4">
+          <div className="w-14 h-14 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-2xl flex items-center justify-center shadow-lg shadow-blue-200">
+            <Link2 className="w-7 h-7 text-white" />
           </div>
         </div>
-        <h2 className="text-xl sm:text-2xl font-semibold text-gray-900 mb-2">
+        <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">
           Connect your first tool
         </h2>
-        <p className="text-gray-600 text-sm max-w-md mx-auto">
+        <p className="text-gray-600 text-base max-w-xl mx-auto">
           {industry ? (
             <>Recommended for {industry.toLowerCase()}</>
           ) : (
@@ -86,7 +86,7 @@ export function IntegrationSelectStep({
       </div>
 
       {/* Integration Grid */}
-      <div className="grid sm:grid-cols-2 gap-3 max-w-xl mx-auto mb-6">
+      <div className="grid sm:grid-cols-2 gap-4 max-w-2xl mx-auto mb-8">
         {recommended.map((slug) => {
           const integration = INTEGRATIONS[slug];
           if (!integration) return null;
@@ -97,29 +97,29 @@ export function IntegrationSelectStep({
             <button
               key={slug}
               onClick={() => onSelect(slug)}
-              className={`relative flex items-center gap-3 p-4 border rounded-xl transition-colors text-left ${
+              className={`relative flex items-center gap-4 p-5 border-2 rounded-xl transition-all text-left shadow-sm hover:shadow-md ${
                 isSelected
-                  ? 'border-blue-500 bg-blue-50'
+                  ? 'border-blue-500 bg-blue-50/50 shadow-lg shadow-blue-100'
                   : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
               }`}
             >
               {isSelected && (
-                <div className="absolute top-2.5 right-2.5">
-                  <div className="w-5 h-5 bg-blue-600 rounded-full flex items-center justify-center">
-                    <Check className="w-3 h-3 text-white" />
+                <div className="absolute top-3 right-3">
+                  <div className="w-6 h-6 bg-blue-600 rounded-full flex items-center justify-center shadow-md">
+                    <Check className="w-3.5 h-3.5 text-white" />
                   </div>
                 </div>
               )}
               <div className="flex-shrink-0">
-                <div className="p-1.5 bg-white border border-gray-100 rounded-lg">
+                <div className="p-2 bg-white border border-gray-200 rounded-lg shadow-sm">
                   <IntegrationLogo integration={slug} size="md" />
                 </div>
               </div>
-              <div className="flex-grow min-w-0 pr-6">
-                <span className="font-medium text-gray-900 text-sm block">
+              <div className="flex-grow min-w-0 pr-8">
+                <span className="font-semibold text-gray-900 text-base block mb-0.5">
                   {integration.name}
                 </span>
-                <p className="text-xs text-gray-500 truncate">
+                <p className="text-sm text-gray-600">
                   {integration.description}
                 </p>
               </div>
@@ -129,33 +129,33 @@ export function IntegrationSelectStep({
       </div>
 
       {/* More integrations link */}
-      <div className="text-center mb-8">
+      <div className="text-center mb-10">
         <a
           href="/marketplace"
           target="_blank"
           rel="noopener noreferrer"
-          className="text-blue-600 hover:text-blue-700 font-medium text-sm inline-flex items-center gap-1"
+          className="text-blue-600 hover:text-blue-700 font-semibold text-base inline-flex items-center gap-1.5 transition-colors"
         >
           Browse all integrations
-          <ExternalLink className="w-3.5 h-3.5" />
+          <ExternalLink className="w-4 h-4" />
         </a>
       </div>
 
       {/* Navigation Buttons */}
-      <div className="flex flex-col sm:flex-row gap-3 max-w-xl mx-auto">
+      <div className="flex flex-col sm:flex-row gap-3 max-w-2xl mx-auto">
         <button
           onClick={handleContinue}
           disabled={!selectedIntegration}
-          className="order-1 sm:order-2 flex-1 bg-blue-600 text-white px-5 py-2.5 rounded-lg font-semibold hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-sm shadow-sm"
+          className="order-1 sm:order-2 flex-1 bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-6 py-3.5 rounded-xl font-semibold hover:from-blue-700 hover:to-indigo-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:from-gray-400 disabled:to-gray-400 flex items-center justify-center gap-2 text-base shadow-lg shadow-blue-200/50 hover:shadow-xl hover:shadow-blue-200/60"
         >
           {selectedIntegration ? `Connect ${INTEGRATIONS[selectedIntegration]?.name}` : 'Select a tool'}
-          <ArrowRight className="w-4 h-4" />
+          <ArrowRight className="w-5 h-5" />
         </button>
 
         <div className="order-2 sm:order-1 flex gap-3">
           <button
             onClick={onBack}
-            className="flex-1 sm:flex-none px-5 py-2.5 border border-gray-300 rounded-lg font-medium text-gray-700 hover:bg-gray-50 transition-colors flex items-center justify-center gap-2 text-sm"
+            className="flex-1 sm:flex-none px-6 py-3.5 border border-gray-300 rounded-xl font-medium text-gray-700 hover:bg-gray-50 transition-all flex items-center justify-center gap-2 text-base shadow-sm hover:shadow-md"
           >
             <ArrowLeft className="w-4 h-4" />
             Back
@@ -163,7 +163,7 @@ export function IntegrationSelectStep({
 
           <button
             onClick={onSkip}
-            className="flex-1 sm:flex-none px-5 py-2.5 text-gray-500 hover:text-gray-700 hover:bg-gray-50 border border-gray-200 rounded-lg font-medium transition-colors text-sm"
+            className="flex-1 sm:flex-none px-6 py-3.5 text-gray-700 hover:text-gray-900 hover:bg-gray-50 border border-gray-300 rounded-xl font-medium transition-all text-base shadow-sm hover:shadow-md"
           >
             Skip
           </button>

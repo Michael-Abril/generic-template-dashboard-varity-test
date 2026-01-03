@@ -254,17 +254,17 @@ export function CompanyProfileStep({
 
         {/* Error Message */}
         {error && (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-2 text-red-700 text-sm">
+          <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-red-700 text-sm">
             {error}
           </div>
         )}
       </div>
 
       {/* Navigation Buttons */}
-      <div className="flex flex-col-reverse sm:flex-row gap-3 mt-6 max-w-sm mx-auto">
+      <div className="flex flex-col-reverse sm:flex-row gap-3 mt-8 max-w-lg mx-auto">
         <button
           onClick={onBack}
-          className="w-full sm:w-auto px-4 py-2.5 border border-gray-300 rounded-lg font-medium text-gray-700 hover:bg-gray-50 transition-colors flex items-center justify-center gap-2 text-sm"
+          className="w-full sm:w-auto px-6 py-3 border border-gray-300 rounded-xl font-medium text-gray-700 hover:bg-gray-50 transition-all flex items-center justify-center gap-2 text-base shadow-sm hover:shadow-md"
         >
           <ArrowLeft className="w-4 h-4" />
           Back
@@ -273,7 +273,7 @@ export function CompanyProfileStep({
         <button
           onClick={handleSaveAndContinue}
           disabled={!isValid || saving}
-          className="w-full sm:flex-1 bg-blue-600 text-white px-4 py-2.5 rounded-lg font-semibold hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-sm shadow-sm"
+          className="w-full sm:flex-1 bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-6 py-3 rounded-xl font-semibold hover:from-blue-700 hover:to-indigo-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:from-gray-400 disabled:to-gray-400 flex items-center justify-center gap-2 text-base shadow-lg shadow-blue-200/50 hover:shadow-xl hover:shadow-blue-200/60"
         >
           {saving ? (
             <>
@@ -290,7 +290,7 @@ export function CompanyProfileStep({
       </div>
 
       {/* Privacy note */}
-      <p className="text-center text-xs text-gray-500 mt-4">
+      <p className="text-center text-sm text-gray-500 mt-5">
         Your data is encrypted and secure
       </p>
     </div>

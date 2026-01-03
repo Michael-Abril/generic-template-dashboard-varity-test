@@ -137,30 +137,30 @@ export function SyncingStep({
   const progressPercent = (completedCount / stages.length) * 100;
 
   return (
-    <div className="px-6 py-6 sm:px-8 sm:py-8">
+    <div className="px-6 py-10 sm:px-12 sm:py-12">
       {/* Header */}
-      <div className="text-center mb-5">
-        <div className="flex justify-center mb-3">
+      <div className="text-center mb-8">
+        <div className="flex justify-center mb-4">
           <div className="relative">
-            <div className={`w-14 h-14 rounded-xl flex items-center justify-center ${syncComplete ? 'bg-green-600' : 'bg-blue-600'}`}>
+            <div className={`w-16 h-16 rounded-2xl flex items-center justify-center shadow-lg ${syncComplete ? 'bg-gradient-to-br from-green-600 to-emerald-600 shadow-green-200' : 'bg-gradient-to-br from-blue-600 to-indigo-600 shadow-blue-200'}`}>
               <IntegrationLogo integration={integration} size="md" />
             </div>
             {!syncComplete && (
-              <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-blue-600 rounded-full flex items-center justify-center border-2 border-white">
-                <RefreshCw className="w-3 h-3 text-white animate-spin" />
+              <div className="absolute -bottom-1 -right-1 w-7 h-7 bg-blue-600 rounded-full flex items-center justify-center border-3 border-white shadow-md">
+                <RefreshCw className="w-4 h-4 text-white animate-spin" />
               </div>
             )}
             {syncComplete && (
-              <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-green-600 rounded-full flex items-center justify-center border-2 border-white">
-                <Check className="w-3 h-3 text-white" />
+              <div className="absolute -bottom-1 -right-1 w-7 h-7 bg-green-600 rounded-full flex items-center justify-center border-3 border-white shadow-md">
+                <Check className="w-4 h-4 text-white" />
               </div>
             )}
           </div>
         </div>
-        <h2 className="text-xl sm:text-2xl font-semibold text-gray-900 mb-2">
+        <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">
           {syncComplete ? 'Sync Complete' : `Syncing ${integrationName}`}
         </h2>
-        <p className="text-gray-600 text-sm max-w-md mx-auto">
+        <p className="text-gray-600 text-base max-w-xl mx-auto">
           {syncComplete
             ? 'Your data is ready. Let\'s meet your AI assistant.'
             : 'This may take a moment.'}
@@ -168,9 +168,9 @@ export function SyncingStep({
       </div>
 
       {/* Progress Bar */}
-      <div className="max-w-sm mx-auto mb-5">
+      <div className="max-w-md mx-auto mb-8">
         <div
-          className="h-2 bg-gray-100 rounded-full overflow-hidden"
+          className="h-2.5 bg-gray-100 rounded-full overflow-hidden shadow-inner"
           role="progressbar"
           aria-valuenow={Math.round(progressPercent)}
           aria-valuemin={0}
@@ -178,18 +178,18 @@ export function SyncingStep({
           aria-label={`Sync progress: ${Math.round(progressPercent)}%`}
         >
           <div
-            className={`h-full transition-all duration-500 ease-out ${syncComplete ? 'bg-green-500' : 'bg-blue-600'}`}
+            className={`h-full transition-all duration-500 ease-out ${syncComplete ? 'bg-gradient-to-r from-green-500 to-emerald-500' : 'bg-gradient-to-r from-blue-600 to-indigo-600'}`}
             style={{ width: `${progressPercent}%` }}
           />
         </div>
-        <div className="flex justify-between mt-2 text-xs text-gray-500">
-          <span>{completedCount} of {stages.length}</span>
+        <div className="flex justify-between mt-3 text-sm text-gray-600 font-medium">
+          <span>{completedCount} of {stages.length} complete</span>
           <span>{Math.round(progressPercent)}%</span>
         </div>
       </div>
 
       {/* Sync Stages */}
-      <div className="max-w-sm mx-auto space-y-1.5 mb-4">
+      <div className="max-w-md mx-auto space-y-2.5 mb-6">
         {stages.map((stage) => {
           const Icon = stage.icon;
           const isCompleted = stage.status === 'completed';
@@ -198,33 +198,33 @@ export function SyncingStep({
           return (
             <div
               key={stage.id}
-              className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
+              className={`flex items-center gap-4 px-5 py-4 rounded-xl transition-all shadow-sm ${
                 isCompleted
-                  ? 'bg-green-50 border border-green-100'
+                  ? 'bg-green-50 border-2 border-green-200'
                   : isInProgress
-                  ? 'bg-blue-50 border border-blue-100'
-                  : 'bg-gray-50 border border-gray-100'
+                  ? 'bg-blue-50 border-2 border-blue-200'
+                  : 'bg-gray-50 border border-gray-200'
               }`}
             >
               <div
-                className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+                className={`w-10 h-10 rounded-xl flex items-center justify-center shadow-md ${
                   isCompleted
-                    ? 'bg-green-500'
+                    ? 'bg-gradient-to-br from-green-500 to-emerald-500'
                     : isInProgress
-                    ? 'bg-blue-600'
+                    ? 'bg-gradient-to-br from-blue-600 to-indigo-600'
                     : 'bg-gray-300'
                 }`}
               >
                 {isCompleted ? (
-                  <Check className="w-4 h-4 text-white" />
+                  <Check className="w-5 h-5 text-white" />
                 ) : isInProgress ? (
-                  <RefreshCw className="w-4 h-4 text-white animate-spin" />
+                  <RefreshCw className="w-5 h-5 text-white animate-spin" />
                 ) : (
-                  <Icon className="w-4 h-4 text-white" />
+                  <Icon className="w-5 h-5 text-white" />
                 )}
               </div>
               <span
-                className={`text-sm font-medium ${
+                className={`text-base font-semibold ${
                   isCompleted
                     ? 'text-green-700'
                     : isInProgress
@@ -241,24 +241,24 @@ export function SyncingStep({
 
       {/* Error Message with Retry */}
       {error && (
-        <div className="max-w-sm mx-auto mb-5">
-          <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-            <p className="text-red-700 text-sm font-medium mb-3">{error}</p>
-            <div className="flex gap-2">
+        <div className="max-w-md mx-auto mb-6">
+          <div className="bg-red-50 border border-red-200 rounded-xl p-5 shadow-sm">
+            <p className="text-red-700 text-sm font-medium mb-4">{error}</p>
+            <div className="flex gap-3">
               <button
                 onClick={handleRetry}
-                className="flex-1 px-3 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
+                className="flex-1 px-4 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl text-base font-semibold hover:from-blue-700 hover:to-indigo-700 transition-all shadow-lg shadow-blue-200/50"
               >
                 Try Again
               </button>
               <button
                 onClick={onComplete}
-                className="flex-1 px-3 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors"
+                className="flex-1 px-4 py-3 border border-gray-300 text-gray-700 rounded-xl text-base font-medium hover:bg-gray-50 transition-all shadow-sm"
               >
                 Skip for Now
               </button>
             </div>
-            <p className="text-xs text-gray-500 mt-2 text-center">
+            <p className="text-sm text-gray-500 mt-3 text-center">
               You can sync again from the dashboard
             </p>
           </div>
@@ -267,8 +267,8 @@ export function SyncingStep({
 
       {/* Info Note */}
       {syncComplete && (
-        <div className="max-w-sm mx-auto">
-          <p className="text-center text-sm text-gray-500">
+        <div className="max-w-md mx-auto">
+          <p className="text-center text-base text-gray-600">
             Redirecting to your dashboard...
           </p>
         </div>
@@ -276,15 +276,15 @@ export function SyncingStep({
 
       {/* Skip option - appears after delay (only if no error) */}
       {showSkip && !syncComplete && !error && (
-        <div className="max-w-sm mx-auto mt-6">
+        <div className="max-w-md mx-auto mt-8">
           <button
             onClick={onComplete}
-            className="w-full text-gray-500 hover:text-gray-700 font-medium text-sm py-2 flex items-center justify-center gap-2 transition-colors"
+            className="w-full text-gray-600 hover:text-gray-900 font-medium text-base py-3 flex items-center justify-center gap-2 transition-colors hover:bg-gray-50 rounded-xl"
           >
             Continue anyway
-            <ArrowRight className="w-4 h-4" />
+            <ArrowRight className="w-5 h-5" />
           </button>
-          <p className="text-center text-xs text-gray-500 mt-1">
+          <p className="text-center text-sm text-gray-500 mt-2">
             You can sync again from the dashboard
           </p>
         </div>
