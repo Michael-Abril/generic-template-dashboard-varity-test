@@ -384,7 +384,9 @@ async def sync_tool_data(
             expires_at = oauth_token.expires_at
             if expires_at.tzinfo is None:
                 expires_at = expires_at.replace(tzinfo=timezone.utc)
-            should_refresh = expires_at < now
+            # PROACTIVE REFRESH: Refresh 5 minutes BEFORE expiration to prevent failures
+            refresh_buffer = timedelta(minutes=5)
+            should_refresh = expires_at < (now + refresh_buffer)
         else:
             should_refresh = False
 
@@ -1201,6 +1203,7 @@ async def disconnect_integration(
     1. OAuth token from database (sets is_active = False)
     2. OAuth credentials stored in Filecoin
     3. All synced data for this integration
+    4. All RAG-indexed data for this integration from Qdrant
 
     Args:
         provider: Integration provider name (google, microsoft, quickbooks, etc.)
@@ -1212,15 +1215,20 @@ async def disconnect_integration(
     try:
         # Normalize integration name
         normalized_provider = normalize_integration_name(provider)
-        user_address = wallet_address.lower()
+        # CRITICAL: Use normalize_wallet_address for consistency across all code paths
+        # Some tokens may be stored with normalize_wallet_address, others with .lower()
+        normalized_wallet = normalize_wallet_address(wallet_address)
+        user_address = normalized_wallet  # Use normalized address for database queries
 
-        logger.info(f"Disconnecting {provider} (normalized: {normalized_provider}) for wallet {wallet_address}")
+        logger.info(f"Disconnecting {provider} (normalized: {normalized_provider}) for wallet {normalized_wallet}")
 
         total_deleted = 0
         token_deactivated = False
+        rag_deleted = 0
 
         # 1. Deactivate OAuth token in database
         try:
+            # Try to find the token with normalized wallet address
             token_result = await db.execute(
                 select(OAuthToken).where(
                     and_(
@@ -1232,18 +1240,37 @@ async def disconnect_integration(
             )
             oauth_token = token_result.scalar_one_or_none()
 
+            # If not found, try with just lowercase (legacy format)
+            if not oauth_token:
+                legacy_address = wallet_address.lower()
+                if legacy_address != user_address:
+                    logger.info(f"Token not found with normalized address, trying legacy format")
+                    token_result = await db.execute(
+                        select(OAuthToken).where(
+                            and_(
+                                OAuthToken.user_address == legacy_address,
+                                OAuthToken.provider == normalized_provider,
+                                OAuthToken.is_active == True  # noqa: E712
+                            )
+                        )
+                    )
+                    oauth_token = token_result.scalar_one_or_none()
+
             if oauth_token:
                 oauth_token.is_active = False
                 await db.commit()
                 token_deactivated = True
-                logger.info(f"Deactivated OAuth token for {provider}")
+                logger.info(f"Deactivated OAuth token for {provider} (token_id={oauth_token.id})")
+            else:
+                logger.warning(f"No active OAuth token found for {provider} with wallet {user_address}")
         except Exception as e:
-            logger.warning(f"Error deactivating OAuth token: {e}")
+            logger.error(f"Failed to deactivate OAuth token for {provider}: {e}")
+            await db.rollback()  # Rollback on error to prevent partial state
 
         # 2. Delete OAuth credentials from Filecoin
         try:
             oauth_files = await filecoin_service.list_customer_files(
-                customer_wallet=wallet_address,
+                customer_wallet=normalized_wallet,
                 integration=normalized_provider,
                 data_type="oauth-credentials",
                 limit=100
@@ -1257,15 +1284,17 @@ async def disconnect_integration(
         except Exception as e:
             logger.warning(f"Error listing OAuth credentials: {e}")
 
-        # 3. Delete all synced data from Filecoin
+        # 3. Delete all synced data from Filecoin AND track CIDs for RAG cleanup
+        cids_to_delete_from_rag = []
         try:
             data_files = await filecoin_service.list_customer_files(
-                customer_wallet=wallet_address,
+                customer_wallet=normalized_wallet,
                 integration=normalized_provider,
                 limit=1000
             )
             for file in data_files:
                 try:
+                    cids_to_delete_from_rag.append(file["cid"])
                     await filecoin_service.unpin_file(file["cid"])
                     total_deleted += 1
                 except Exception as e:
@@ -1273,7 +1302,35 @@ async def disconnect_integration(
         except Exception as e:
             logger.warning(f"Error listing data files: {e}")
 
-        logger.info(f"Disconnected {provider} for wallet {wallet_address}, token_deactivated={token_deactivated}, deleted {total_deleted} files")
+        # 4. Delete RAG-indexed data from Qdrant for this integration
+        # This ensures the AI Assistant and Context Picker don't show stale data
+        if rag_service is not None:
+            try:
+                # Delete each CID from RAG
+                for cid in cids_to_delete_from_rag:
+                    try:
+                        await rag_service.delete_point_by_cid(normalized_wallet, cid)
+                        rag_deleted += 1
+                    except Exception as e:
+                        logger.warning(f"Failed to delete RAG point for CID {cid}: {e}")
+
+                # Also delete any RAG data by integration filter in case CIDs were missed
+                try:
+                    await rag_service.delete_by_integration(normalized_wallet, normalized_provider)
+                    logger.info(f"Deleted RAG data for integration {normalized_provider}")
+                except AttributeError:
+                    # delete_by_integration may not exist yet - that's OK
+                    pass
+                except Exception as e:
+                    logger.warning(f"Error deleting RAG data by integration: {e}")
+
+                logger.info(f"Deleted {rag_deleted} RAG points for {provider}")
+            except Exception as e:
+                logger.warning(f"Error cleaning up RAG data: {e}")
+        else:
+            logger.info("RAG service not available, skipping RAG cleanup")
+
+        logger.info(f"Disconnected {provider} for wallet {wallet_address}, token_deactivated={token_deactivated}, deleted {total_deleted} files, {rag_deleted} RAG points")
 
         return {
             "success": True,
@@ -1281,6 +1338,7 @@ async def disconnect_integration(
             "wallet_address": wallet_address,
             "token_deactivated": token_deactivated,
             "files_deleted": total_deleted,
+            "rag_points_deleted": rag_deleted,
             "message": f"Successfully disconnected {provider}"
         }
 

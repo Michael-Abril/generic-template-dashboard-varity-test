@@ -107,7 +107,8 @@ function IntegrationsContent() {
 
         // Transform backend response to our format
         const connected: ConnectedIntegration[] = (data.integrations || data || []).map((item: any) => {
-          const providerKey = item.provider?.toLowerCase() || item.name?.toLowerCase() || '';
+          // Backend returns 'slug' as the provider key (e.g., 'slack', 'google')
+          const providerKey = item.slug?.toLowerCase() || item.provider?.toLowerCase() || item.name?.toLowerCase() || '';
           const info = PROVIDER_INFO[providerKey] || {
             name: item.name || item.provider || 'Unknown',
             category: 'Other',
