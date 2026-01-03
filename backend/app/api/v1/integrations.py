@@ -1227,10 +1227,11 @@ async def disconnect_integration(
         rag_deleted = 0
         debug_counts = {"all": 0, "provider": 0, "active": 0, "select_results": []}  # For debugging
 
-        # 1. Deactivate OAuth token in database
+        # 1. DELETE OAuth tokens from database (not just deactivate)
+        # This avoids unique constraint violations from previous inactive tokens
         try:
             # DEBUG: First count ALL tokens for this wallet (ignoring filters)
-            from sqlalchemy import func
+            from sqlalchemy import func, delete
             debug_result = await db.execute(
                 select(func.count()).select_from(OAuthToken).where(
                     OAuthToken.user_address == user_address
@@ -1267,48 +1268,45 @@ async def disconnect_integration(
             debug_counts["active"] = active_tokens_count
             logger.info(f"DEBUG: Found {active_tokens_count} ACTIVE tokens for provider {normalized_provider}")
 
-            # Try to find the token with normalized wallet address
-            logger.info(f"Disconnect: Searching for token with user_address={user_address!r}, provider={normalized_provider!r}")
-            token_result = await db.execute(
-                select(OAuthToken).where(
+            # CRITICAL FIX: Delete ALL tokens (active + inactive) for this provider
+            # This prevents unique constraint violations from previous disconnects
+            tokens_deleted = 0
+
+            # First try with normalized address
+            delete_result = await db.execute(
+                delete(OAuthToken).where(
                     and_(
                         OAuthToken.user_address == user_address,
-                        OAuthToken.provider == normalized_provider,
-                        OAuthToken.is_active == True  # noqa: E712
+                        OAuthToken.provider == normalized_provider
                     )
                 )
             )
-            oauth_token = token_result.scalars().one_or_none()
-            logger.info(f"Disconnect: Found token: {oauth_token.id if oauth_token else 'None'}")
+            tokens_deleted = delete_result.rowcount
 
-            # If not found, try with just lowercase (legacy format)
-            if not oauth_token:
-                legacy_address = wallet_address.lower()
-                if legacy_address != user_address:
-                    logger.info(f"Token not found with normalized address, trying legacy format")
-                    token_result = await db.execute(
-                        select(OAuthToken).where(
-                            and_(
-                                OAuthToken.user_address == legacy_address,
-                                OAuthToken.provider == normalized_provider,
-                                OAuthToken.is_active == True  # noqa: E712
-                            )
+            # Also try legacy address format if different
+            legacy_address = wallet_address.lower()
+            if legacy_address != user_address:
+                logger.info(f"Also deleting tokens for legacy address format")
+                legacy_delete = await db.execute(
+                    delete(OAuthToken).where(
+                        and_(
+                            OAuthToken.user_address == legacy_address,
+                            OAuthToken.provider == normalized_provider
                         )
                     )
-                    oauth_token = token_result.scalars().one_or_none()
+                )
+                tokens_deleted += legacy_delete.rowcount
 
-            if oauth_token:
-                logger.info(f"Disconnect: Deactivating token_id={oauth_token.id}")
-                oauth_token.is_active = False
+            if tokens_deleted > 0:
                 await db.commit()
                 token_deactivated = True
-                debug_counts["deactivated_token_id"] = oauth_token.id
-                logger.info(f"Disconnect: Successfully deactivated token_id={oauth_token.id} for {provider}")
+                debug_counts["deleted_token_count"] = tokens_deleted
+                logger.info(f"Disconnect: Successfully DELETED {tokens_deleted} token(s) for {provider}")
             else:
-                logger.warning(f"Disconnect: No active OAuth token found for {provider} with wallet {user_address}")
+                logger.warning(f"Disconnect: No OAuth tokens found for {provider} with wallet {user_address}")
         except Exception as e:
             debug_counts["exception"] = str(e)
-            logger.error(f"Failed to deactivate OAuth token for {provider}: {e}", exc_info=True)
+            logger.error(f"Failed to delete OAuth token for {provider}: {e}", exc_info=True)
             await db.rollback()  # Rollback on error to prevent partial state
 
         # 2. Delete OAuth credentials from Filecoin
