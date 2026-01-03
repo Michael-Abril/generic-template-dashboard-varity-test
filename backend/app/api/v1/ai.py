@@ -1495,6 +1495,61 @@ async def get_context_items(
     )
 
 
+@router.delete("/context/clear-all")
+async def clear_all_rag_data(
+    wallet_address: str = Query(..., description="User's wallet address")
+):
+    """
+    Clear ALL RAG data for a wallet address.
+
+    This endpoint deletes the entire Qdrant collection for the wallet,
+    removing all indexed data from integrations. This is useful for:
+    - Testing/development cleanup
+    - User-requested data deletion
+    - Resetting RAG index after token expiration
+
+    WARNING: This is a destructive operation and cannot be undone.
+    Only Qdrant data is deleted - Pinata files remain encrypted in storage.
+
+    Args:
+        wallet_address: User's wallet address
+
+    Returns:
+        Success status and count of items deleted
+    """
+    try:
+        if not rag_service:
+            raise HTTPException(
+                status_code=503,
+                detail="RAG service not available"
+            )
+
+        # Get current count before deletion
+        stats = await rag_service.get_collection_stats(wallet_address)
+        items_count = stats.get("count", 0)
+
+        # Delete the entire collection
+        await rag_service.delete_business_collection(wallet_address)
+
+        logger.warning(
+            f"Deleted entire RAG collection for wallet {wallet_address[:10]}... "
+            f"({items_count} items removed)"
+        )
+
+        return {
+            "success": True,
+            "items_deleted": items_count,
+            "message": f"Successfully deleted {items_count} RAG items for wallet {wallet_address[:10]}..."
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to clear RAG data for {wallet_address}: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to clear RAG data: {str(e)}"
+        )
+
+
 @router.post("/context/fetch")
 async def fetch_context_by_ids(
     wallet_address: str = Query(..., description="User's wallet address"),
