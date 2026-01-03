@@ -23,14 +23,11 @@ from app.services.encryption_service import EncryptionService
 from app.services.mcp_ingestion_service import get_mcp_ingestion_service, DATA_ROUTING_RULES
 
 # Legacy adapters (deprecated - kept for backwards compatibility)
+# Only MVP integrations are active
 from app.adapters.quickbooks.sync import QuickBooksSync
 from app.adapters.salesforce.sync import SalesforceSync
-from app.adapters.shopify.sync import ShopifySync
-from app.adapters.stripe.sync import StripeSync
 from app.adapters.slack.sync import SlackSync
-from app.adapters.monday.sync import MondaySync
 from app.adapters.hubspot.sync import HubSpotSync
-from app.adapters.zendesk.sync import ZendeskSync
 from app.adapters.google.sync import GoogleWorkspaceSync
 from app.adapters.microsoft.sync import MicrosoftSync
 
@@ -45,16 +42,12 @@ encryption_service = EncryptionService()
 # MCP-enabled integrations (new pipeline)
 MCP_INTEGRATIONS = {"google", "slack", "quickbooks", "microsoft", "salesforce", "hubspot"}
 
-# Legacy sync adapters (deprecated)
+# Legacy sync adapters (deprecated) - Only MVP integrations
 SYNC_ADAPTERS = {
     "quickbooks": QuickBooksSync,
     "salesforce": SalesforceSync,
-    "shopify": ShopifySync,
-    "stripe": StripeSync,
     "slack": SlackSync,
-    "monday": MondaySync,
     "hubspot": HubSpotSync,
-    "zendesk": ZendeskSync,
     "google_workspace": GoogleWorkspaceSync,
     "google": GoogleWorkspaceSync,  # Alias for compatibility
     "microsoft": MicrosoftSync,

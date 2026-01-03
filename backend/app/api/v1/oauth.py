@@ -862,7 +862,7 @@ async def oauth_callback_post(request: Request, db: AsyncSession = Depends(get_d
             try:
                 logger.info(f"[BACKGROUND] Starting initial sync for {integration}...")
 
-                # Dynamic import based on integration
+                # Dynamic import based on integration - MVP integrations only
                 sync_adapters = {
                     "quickbooks": ("app.adapters.quickbooks.sync", "QuickBooksSync"),
                     "google": ("app.adapters.google.sync", "GoogleWorkspaceSync"),
@@ -871,10 +871,6 @@ async def oauth_callback_post(request: Request, db: AsyncSession = Depends(get_d
                     "slack": ("app.adapters.slack.sync", "SlackSync"),
                     "hubspot": ("app.adapters.hubspot.sync", "HubSpotSync"),
                     "salesforce": ("app.adapters.salesforce.sync", "SalesforceSync"),
-                    "shopify": ("app.adapters.shopify.sync", "ShopifySync"),
-                    "zendesk": ("app.adapters.zendesk.sync", "ZendeskSync"),
-                    "stripe": ("app.adapters.stripe.sync", "StripeSync"),
-                    "monday": ("app.adapters.monday.sync", "MondaySync"),
                 }
 
                 if integration not in sync_adapters:
@@ -1175,8 +1171,7 @@ async def oauth_callback(
         try:
             logger.info(f"Triggering initial sync for {integration}...")
 
-            # Available sync adapters (only include adapters that exist)
-            # All adapters now accept credentials dict
+            # MVP sync adapters only
             sync_adapters = {
                 "quickbooks": ("app.adapters.quickbooks.sync", "QuickBooksSync"),
                 "google": ("app.adapters.google.sync", "GoogleWorkspaceSync"),
@@ -1185,10 +1180,6 @@ async def oauth_callback(
                 "slack": ("app.adapters.slack.sync", "SlackSync"),
                 "hubspot": ("app.adapters.hubspot.sync", "HubSpotSync"),
                 "salesforce": ("app.adapters.salesforce.sync", "SalesforceSync"),
-                "shopify": ("app.adapters.shopify.sync", "ShopifySync"),
-                "zendesk": ("app.adapters.zendesk.sync", "ZendeskSync"),
-                "stripe": ("app.adapters.stripe.sync", "StripeSync"),
-                "monday": ("app.adapters.monday.sync", "MondaySync"),
             }
 
             if integration in sync_adapters:

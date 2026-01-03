@@ -498,25 +498,7 @@ async def sync_tool_data(
             adapter = SalesforceSync(credentials)
             result = await adapter.sync_data(normalized_wallet)
 
-        elif provider == "shopify":
-            from app.adapters.shopify.sync import ShopifySync
-            adapter = ShopifySync(credentials)
-            result = await adapter.sync_data(normalized_wallet)
-
-        elif provider == "zendesk":
-            from app.adapters.zendesk.sync import ZendeskSync
-            adapter = ZendeskSync(credentials)
-            result = await adapter.sync_data(normalized_wallet)
-
-        elif provider == "stripe":
-            from app.adapters.stripe.sync import StripeSync
-            adapter = StripeSync(credentials)
-            result = await adapter.sync_data(normalized_wallet)
-
-        elif provider == "monday":
-            from app.adapters.monday.sync import MondaySync
-            adapter = MondaySync(credentials)
-            result = await adapter.sync_data(normalized_wallet)
+        # Removed adapters: shopify, zendesk, stripe, monday (not in MVP)
 
         else:
             raise HTTPException(
@@ -1803,4 +1785,62 @@ async def get_slack_users(
         raise
     except Exception as e:
         logger.error(f"Failed to get Slack users: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/{provider}/token-debug")
+async def debug_token_state(
+    provider: str,
+    wallet_address: str = Query(..., description="User's wallet address"),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    DEBUG ENDPOINT: Check token state for diagnosis.
+    Returns non-sensitive token metadata to help debug refresh failures.
+
+    WARNING: This is a debug endpoint. Consider removing in production.
+    """
+    try:
+        # Normalize inputs
+        normalized_provider = normalize_integration_name(provider)
+        user_address = wallet_address.lower()
+
+        # Get OAuth token from database
+        token_result = await db.execute(
+            select(OAuthToken).where(
+                and_(
+                    OAuthToken.user_address == user_address,
+                    OAuthToken.provider == normalized_provider,
+                )
+            )
+        )
+        oauth_token = token_result.scalar_one_or_none()
+
+        if not oauth_token:
+            return {
+                "provider": normalized_provider,
+                "token_exists": False,
+                "message": "No OAuth token found in database for this provider/wallet"
+            }
+
+        # Return non-sensitive metadata
+        with OAuthToken.auth_context(user_address):
+            return {
+                "provider": normalized_provider,
+                "token_exists": True,
+                "is_active": oauth_token.is_active,
+                "has_access_token": bool(oauth_token.access_token),
+                "access_token_length": len(oauth_token.access_token) if oauth_token.access_token else 0,
+                "has_refresh_token": bool(oauth_token.refresh_token),
+                "refresh_token_length": len(oauth_token.refresh_token) if oauth_token.refresh_token else 0,
+                "expires_at": str(oauth_token.expires_at) if oauth_token.expires_at else None,
+                "last_refreshed_at": str(oauth_token.last_refreshed_at) if oauth_token.last_refreshed_at else None,
+                "connected_at": str(oauth_token.connected_at) if oauth_token.connected_at else None,
+                "updated_at": str(oauth_token.updated_at) if oauth_token.updated_at else None,
+                "scope": oauth_token.scope,
+                "token_type": oauth_token.token_type,
+            }
+
+    except Exception as e:
+        logger.error(f"Token debug failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
