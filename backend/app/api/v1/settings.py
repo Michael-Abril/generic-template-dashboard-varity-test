@@ -591,6 +591,13 @@ async def clear_orphaned_uploads(
             "uploads", "documents", "uploaded", "manual",
             "unknown", "project_files", "", None
         }
+
+        # Data types that should NEVER be in RAG storage (sensitive/security)
+        sensitive_data_types = {
+            "oauth-credentials", "oauth_credentials", "tokens",
+            "credentials", "secrets", "auth"
+        }
+
         deleted_cids = []
         qdrant_deleted = 0
         failed_cids = []
@@ -598,16 +605,21 @@ async def clear_orphaned_uploads(
         for f in files:
             metadata = f.get("metadata", {})
             raw_integration = metadata.get("integration", "unknown")
+            raw_data_type = metadata.get("data_type", "unknown")
 
-            # Check if this is an orphaned file (not from a real integration)
-            if raw_integration in orphan_integrations or raw_integration is None:
+            # Check if this is an orphaned file OR has sensitive data type
+            is_orphan = raw_integration in orphan_integrations or raw_integration is None
+            is_sensitive = raw_data_type in sensitive_data_types
+
+            if is_orphan or is_sensitive:
                 cid = f.get("cid")
                 if cid:
                     try:
                         # Delete from Pinata (decentralized storage)
                         await filecoin_service.unpin_file(cid)
                         deleted_cids.append(cid)
-                        logger.info(f"Unpinned orphaned file: {cid}")
+                        reason = "sensitive" if is_sensitive else "orphaned"
+                        logger.info(f"Unpinned {reason} file ({raw_data_type}): {cid}")
 
                         # Also delete from Qdrant (RAG index) if indexed
                         try:
