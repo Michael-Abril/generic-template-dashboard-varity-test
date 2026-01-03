@@ -302,13 +302,22 @@ class MicrosoftSync(BaseDataAdapter):
                 return {"records": [], "error": str(e)}
 
     async def _fetch_onedrive(self) -> Dict[str, Any]:
-        """Fetch OneDrive files metadata (recursively from all folders)"""
+        """
+        Fetch OneDrive files metadata (recursively from all folders).
+
+        IMPORTANT: Limit is 4000 files to prevent:
+        1. Railway OOM crashes (unlimited files exhaust memory)
+        2. RAG hallucinations (Qdrant starts hallucinating above ~10K total documents)
+
+        Combined Drive + OneDrive should stay under ~8K files to leave room for
+        other integration data (Contacts, Slack users, etc.) in RAG storage.
+        """
         async with httpx.AsyncClient(timeout=60.0) as client:
             try:
                 all_files = []
                 folders_to_process = [("root", "/me/drive/root/children")]
                 processed_folders = set()
-                max_files = 100
+                max_files = 4000  # Cap at 4K to prevent OOM/RAG hallucinations
 
                 while folders_to_process and len(all_files) < max_files:
                     folder_id, folder_path = folders_to_process.pop(0)

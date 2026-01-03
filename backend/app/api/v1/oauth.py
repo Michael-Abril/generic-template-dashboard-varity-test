@@ -22,6 +22,7 @@ import base64
 import hashlib
 import hmac
 import os
+import asyncio
 from urllib.parse import urlencode
 from datetime import datetime, timedelta
 
@@ -843,29 +844,32 @@ async def oauth_callback_post(request: Request, db: AsyncSession = Depends(get_d
             # Don't fail the OAuth flow if database storage fails
             # The Filecoin storage already succeeded
 
-        # Trigger initial data sync automatically
-        sync_result = None
-        try:
-            logger.info(f"Triggering initial sync for {integration}...")
+        # === NON-BLOCKING SYNC (Prevents Railway OOM on large Google Drives) ===
+        # Schedule sync + RAG indexing to run in background so OAuth completes immediately
+        async def background_sync_and_index():
+            """Background task for initial data sync and RAG indexing"""
+            try:
+                logger.info(f"[BACKGROUND] Starting initial sync for {integration}...")
 
-            # Dynamic import based on integration
-            # Available sync adapters (only include adapters that exist)
-            # All adapters now accept credentials dict
-            sync_adapters = {
-                "quickbooks": ("app.adapters.quickbooks.sync", "QuickBooksSync"),
-                "google": ("app.adapters.google.sync", "GoogleWorkspaceSync"),
-                "google_workspace": ("app.adapters.google.sync", "GoogleWorkspaceSync"),
-                "microsoft": ("app.adapters.microsoft.sync", "MicrosoftSync"),
-                "slack": ("app.adapters.slack.sync", "SlackSync"),
-                "hubspot": ("app.adapters.hubspot.sync", "HubSpotSync"),
-                "salesforce": ("app.adapters.salesforce.sync", "SalesforceSync"),
-                "shopify": ("app.adapters.shopify.sync", "ShopifySync"),
-                "zendesk": ("app.adapters.zendesk.sync", "ZendeskSync"),
-                "stripe": ("app.adapters.stripe.sync", "StripeSync"),
-                "monday": ("app.adapters.monday.sync", "MondaySync"),
-            }
+                # Dynamic import based on integration
+                sync_adapters = {
+                    "quickbooks": ("app.adapters.quickbooks.sync", "QuickBooksSync"),
+                    "google": ("app.adapters.google.sync", "GoogleWorkspaceSync"),
+                    "google_workspace": ("app.adapters.google.sync", "GoogleWorkspaceSync"),
+                    "microsoft": ("app.adapters.microsoft.sync", "MicrosoftSync"),
+                    "slack": ("app.adapters.slack.sync", "SlackSync"),
+                    "hubspot": ("app.adapters.hubspot.sync", "HubSpotSync"),
+                    "salesforce": ("app.adapters.salesforce.sync", "SalesforceSync"),
+                    "shopify": ("app.adapters.shopify.sync", "ShopifySync"),
+                    "zendesk": ("app.adapters.zendesk.sync", "ZendeskSync"),
+                    "stripe": ("app.adapters.stripe.sync", "StripeSync"),
+                    "monday": ("app.adapters.monday.sync", "MondaySync"),
+                }
 
-            if integration in sync_adapters:
+                if integration not in sync_adapters:
+                    logger.warning(f"[BACKGROUND] No sync adapter found for {integration}")
+                    return
+
                 import importlib
                 module_path, class_name = sync_adapters[integration]
                 module = importlib.import_module(module_path)
@@ -874,102 +878,92 @@ async def oauth_callback_post(request: Request, db: AsyncSession = Depends(get_d
                 # Initialize sync adapter with credentials dict
                 sync = SyncClass(credentials)
 
-                # Trigger sync
+                # Trigger sync (now with 4000 file limit for Drive to prevent OOM)
                 sync_result = await sync.sync_data(wallet_address)
-                logger.info(f"Initial sync completed for {integration}: {sync_result.get('data', {}).keys() if sync_result else 'N/A'}")
+                logger.info(f"[BACKGROUND] Sync completed for {integration}: {sync_result.get('data', {}).keys() if sync_result else 'N/A'}")
 
                 # === CRITICAL: Index synced data in Qdrant for AI queries ===
-                # Without this, the AI Assistant cannot query the synced data
-                rag_indexed_count = 0
-                rag_errors = []
+                if not sync_result or not sync_result.get("data"):
+                    logger.info(f"[BACKGROUND] No data to index for {integration}")
+                    return
 
-                if sync_result and sync_result.get("data"):
-                    try:
-                        # Import RAG and decryption services
-                        from app.services.rag_service import rag_service
-                        from app.services.filecoin_service import FilecoinService
-                        from app.services.encryption_service import EncryptionService
+                try:
+                    from app.services.rag_service import rag_service
+                    from app.services.filecoin_service import FilecoinService
+                    from app.services.encryption_service import EncryptionService
 
-                        filecoin_svc = FilecoinService()
-                        encryption_svc = EncryptionService()
+                    filecoin_svc = FilecoinService()
+                    encryption_svc = EncryptionService()
 
-                        if rag_service is None:
-                            logger.warning(
-                                f"RAG service not available - data synced to Pinata but NOT indexed for AI queries. "
-                                f"Configure QDRANT_URL and QDRANT_API_KEY to enable RAG."
-                            )
-                        else:
-                            # Index each data type that was synced
-                            for data_type, data_info in sync_result.get("data", {}).items():
-                                if data_info.get("status") != "success":
-                                    continue
+                    if rag_service is None:
+                        logger.warning(
+                            f"[BACKGROUND] RAG service not available - data synced to Pinata but NOT indexed for AI queries."
+                        )
+                        return
 
-                                # Handle both old format (single cid) and new chunked format (dict of cids)
-                                cids_to_index = []
-                                if data_info.get("cid"):
-                                    # Old format: single CID
-                                    cids_to_index = [("latest", data_info["cid"])]
-                                elif data_info.get("chunks"):
-                                    # New chunked format: dict of chunk_id: cid pairs
-                                    cids_to_index = list(data_info["chunks"].items())
+                    rag_indexed_count = 0
+                    rag_errors = []
 
-                                for chunk_id, cid in cids_to_index:
-                                    try:
-                                        # Retrieve encrypted data from Pinata
-                                        encrypted = await filecoin_svc.retrieve_data(cid)
+                    # Index each data type that was synced
+                    for data_type, data_info in sync_result.get("data", {}).items():
+                        if data_info.get("status") != "success":
+                            continue
 
-                                        # Decrypt the data
-                                        decrypted = await encryption_svc.decrypt_with_wallet(
-                                            encrypted_data=encrypted,
-                                            customer_wallet=wallet_address
-                                        )
+                        # Handle both old format (single cid) and new chunked format (dict of cids)
+                        cids_to_index = []
+                        if data_info.get("cid"):
+                            cids_to_index = [("latest", data_info["cid"])]
+                        elif data_info.get("chunks"):
+                            cids_to_index = list(data_info["chunks"].items())
 
-                                        # Index in Qdrant for AI queries
-                                        await rag_service.index_business_data(
-                                            business_wallet=wallet_address,
-                                            cid=cid,
-                                            data=decrypted,
-                                            integration=integration,
-                                            data_type=data_type
-                                        )
-                                        rag_indexed_count += 1
-                                        logger.info(
-                                            f"RAG indexed {data_type}/{chunk_id} for {wallet_address[:10]}..., "
-                                            f"CID: {cid}"
-                                        )
+                        for chunk_id, cid_val in cids_to_index:
+                            try:
+                                encrypted = await filecoin_svc.retrieve_data(cid_val)
+                                decrypted = await encryption_svc.decrypt_with_wallet(
+                                    encrypted_data=encrypted,
+                                    customer_wallet=wallet_address
+                                )
+                                await rag_service.index_business_data(
+                                    business_wallet=wallet_address,
+                                    cid=cid_val,
+                                    data=decrypted,
+                                    integration=integration,
+                                    data_type=data_type
+                                )
+                                rag_indexed_count += 1
+                                logger.info(f"[BACKGROUND] RAG indexed {data_type}/{chunk_id} CID: {cid_val}")
 
-                                    except Exception as rag_error:
-                                        error_msg = f"Failed to index {data_type}/{chunk_id}: {str(rag_error)}"
-                                        rag_errors.append(error_msg)
-                                        logger.warning(f"Failed to index {data_type}/{chunk_id} in RAG: {rag_error}")
-                                        # Don't fail OAuth flow if RAG indexing fails
-                                        continue
+                            except Exception as rag_error:
+                                rag_errors.append(f"Failed to index {data_type}/{chunk_id}: {str(rag_error)}")
+                                logger.warning(f"[BACKGROUND] Failed to index {data_type}/{chunk_id}: {rag_error}")
+                                continue
 
-                            if rag_indexed_count > 0:
-                                logger.info(f"RAG indexing complete: {rag_indexed_count} data types indexed for AI queries")
-                            if rag_errors:
-                                logger.warning(f"RAG indexing had {len(rag_errors)} errors: {rag_errors}")
+                    if rag_indexed_count > 0:
+                        logger.info(f"[BACKGROUND] RAG indexing complete: {rag_indexed_count} chunks indexed")
+                    if rag_errors:
+                        logger.warning(f"[BACKGROUND] RAG indexing had {len(rag_errors)} errors")
 
-                    except Exception as rag_setup_error:
-                        logger.error(f"RAG indexing setup failed: {rag_setup_error}")
-                        # Don't fail OAuth flow
+                except Exception as rag_setup_error:
+                    logger.error(f"[BACKGROUND] RAG indexing setup failed: {rag_setup_error}")
 
-            else:
-                logger.warning(f"No sync adapter found for {integration}")
+            except Exception as sync_error:
+                logger.error(f"[BACKGROUND] Auto-sync failed for {integration}: {sync_error}", exc_info=True)
 
-        except Exception as sync_error:
-            logger.error(f"Auto-sync failed for {integration}: {sync_error}", exc_info=True)
-            # Don't fail OAuth flow if sync fails - credentials are stored
+        # Fire and forget - sync runs in background while OAuth returns immediately
+        asyncio.create_task(background_sync_and_index())
+        logger.info(f"Background sync scheduled for {integration} - OAuth callback returning immediately")
 
         # Return JSON success response (no redirect for POST)
+        # User sees connected immediately, data syncs in background
         return {
             "success": True,
             "message": f"Successfully connected {integration}",
             "integration": integration,
             "wallet_address": wallet_address,
             "cid": cid,
-            "sync_triggered": sync_result is not None,
-            "sync_result": sync_result if sync_result else None
+            "sync_triggered": True,
+            "sync_status": "started",
+            "sync_note": "Data is syncing in the background. Check your integration page in a few moments."
         }
 
     except HTTPException:

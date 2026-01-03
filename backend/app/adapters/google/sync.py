@@ -399,12 +399,19 @@ class GoogleWorkspaceSync:
                 logger.error(f"Calendar sync failed: {str(e)}")
                 return {"events": [], "chunks": {}, "error": str(e)}
 
-    async def sync_drive(self, max_files: Optional[int] = None) -> Dict[str, Any]:
+    async def sync_drive(self, max_files: int = 4000) -> Dict[str, Any]:
         """
-        Sync ALL Google Drive files with full pagination and quarterly chunking
+        Sync Google Drive files with pagination and quarterly chunking.
+
+        IMPORTANT: Default limit is 4000 files to prevent:
+        1. Railway OOM crashes (unlimited files exhaust memory)
+        2. RAG hallucinations (Qdrant starts hallucinating above ~10K total documents)
+
+        Combined Drive + OneDrive should stay under ~8K files to leave room for
+        other integration data (Contacts, Slack users, etc.) in RAG storage.
 
         Args:
-            max_files: Optional limit on total files (None = fetch all)
+            max_files: Maximum files to sync (default 4000 to prevent OOM/hallucinations)
 
         Returns:
             Dictionary containing Drive files and quarterly chunks
