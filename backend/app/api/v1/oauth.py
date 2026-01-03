@@ -809,7 +809,18 @@ async def oauth_callback_post(request: Request, db: AsyncSession = Depends(get_d
             if existing_token:
                 # Update existing token
                 existing_token.access_token = credentials["access_token"]
-                existing_token.refresh_token = credentials.get("refresh_token")
+                # CRITICAL: Only update refresh_token if provider returns a new one
+                # Google may not return refresh_token on subsequent authorizations
+                # unless prompt=consent is used - don't wipe out existing refresh_token!
+                new_refresh_token = credentials.get("refresh_token")
+                if new_refresh_token:
+                    existing_token.refresh_token = new_refresh_token
+                    logger.info(f"Updated refresh_token for {normalized_provider}")
+                else:
+                    logger.warning(
+                        f"No refresh_token returned by {normalized_provider} - "
+                        f"keeping existing refresh_token (has existing: {bool(existing_token.refresh_token)})"
+                    )
                 existing_token.expires_at = expires_at
                 existing_token.provider_data = {
                     k: v for k, v in credentials.items()

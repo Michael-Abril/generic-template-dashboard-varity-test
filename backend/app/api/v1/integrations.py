@@ -90,6 +90,16 @@ async def refresh_oauth_token(
     # YELLOW-001 FIX: Use auth context to access tokens securely
     # Wrap all token access operations in auth context
     with OAuthToken.auth_context(oauth_token.user_address):
+        # Diagnostic logging for token refresh debugging
+        logger.info(
+            f"Attempting token refresh for {provider}:\n"
+            f"  User: {oauth_token.user_address[:10]}...\n"
+            f"  Has refresh_token: {bool(oauth_token.refresh_token)}\n"
+            f"  Refresh token length: {len(oauth_token.refresh_token) if oauth_token.refresh_token else 0}\n"
+            f"  Token expires_at: {oauth_token.expires_at}\n"
+            f"  Last refreshed: {oauth_token.last_refreshed_at}"
+        )
+
         if not oauth_token.refresh_token:
             logger.warning(f"No refresh token available for {provider}")
             return False
@@ -112,7 +122,38 @@ async def refresh_oauth_token(
                 )
 
                 if response.status_code != 200:
-                    logger.error(f"Token refresh failed for {provider}: {response.text}")
+                    # Parse detailed error from OAuth provider
+                    try:
+                        error_data = response.json()
+                        error_code = error_data.get("error", "unknown")
+                        error_desc = error_data.get("error_description", "No description")
+
+                        logger.error(
+                            f"Token refresh failed for {provider}:\n"
+                            f"  HTTP Status: {response.status_code}\n"
+                            f"  Error Code: {error_code}\n"
+                            f"  Error Description: {error_desc}\n"
+                            f"  User: {oauth_token.user_address[:10]}..."
+                        )
+
+                        # Common OAuth errors:
+                        # - invalid_grant: Refresh token revoked, expired, or never issued
+                        # - invalid_client: Wrong client_id or client_secret
+                        # - invalid_scope: Requested scope changed
+                        # - unauthorized_client: App not authorized
+                        if error_code == "invalid_grant":
+                            logger.warning(
+                                f"DIAGNOSTIC: {provider} refresh token is invalid. "
+                                f"Possible causes:\n"
+                                f"  1. User revoked access in their account settings\n"
+                                f"  2. App is in 'Testing' mode and token expired (7-day limit)\n"
+                                f"  3. refresh_token was never stored (check if null)\n"
+                                f"  4. Token was rotated but old one sent\n"
+                                f"User must reconnect the integration."
+                            )
+                    except Exception as parse_error:
+                        logger.error(f"Token refresh failed for {provider}: {response.text} (parse error: {parse_error})")
+
                     return False
 
                 token_data = response.json()
