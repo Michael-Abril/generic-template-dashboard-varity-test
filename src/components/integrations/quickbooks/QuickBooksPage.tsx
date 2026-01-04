@@ -220,11 +220,85 @@ export default function QuickBooksPage({ walletAddress, data, onRefresh }: Quick
   // Toast state (simple implementation)
   const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
+  // Live API data state
+  const [liveData, setLiveData] = useState<{
+    invoices: QuickBooksInvoice[];
+    expenses: QuickBooksExpense[];
+    customers: QuickBooksCustomer[];
+    vendors: QuickBooksVendor[];
+  } | null>(null);
+  const [liveLoading, setLiveLoading] = useState(true);
+  const [liveError, setLiveError] = useState<string | null>(null);
+
   // Show toast helper
   const showToast = useCallback((type: 'success' | 'error', message: string) => {
     setToast({ type, message });
     setTimeout(() => setToast(null), 4000);
   }, []);
+
+  // Fetch live data from API
+  const fetchLiveData = useCallback(async () => {
+    if (!walletAddress) return;
+
+    setLiveLoading(true);
+    setLiveError(null);
+
+    try {
+      // Fetch all QuickBooks data in parallel from live API
+      const [invoicesRes, expensesRes, customersRes, vendorsRes] = await Promise.allSettled([
+        fetch(`${API_URL}/api/v1/quickbooks/invoices?wallet_address=${walletAddress}`),
+        fetch(`${API_URL}/api/v1/quickbooks/expenses?wallet_address=${walletAddress}`),
+        fetch(`${API_URL}/api/v1/quickbooks/customers?wallet_address=${walletAddress}`),
+        fetch(`${API_URL}/api/v1/quickbooks/vendors?wallet_address=${walletAddress}`)
+      ]);
+
+      const invoices: QuickBooksInvoice[] = [];
+      const expenses: QuickBooksExpense[] = [];
+      const customers: QuickBooksCustomer[] = [];
+      const vendors: QuickBooksVendor[] = [];
+
+      if (invoicesRes.status === 'fulfilled' && invoicesRes.value.ok) {
+        const invoiceData = await invoicesRes.value.json();
+        invoices.push(...(invoiceData.items || invoiceData.data || []));
+      }
+
+      if (expensesRes.status === 'fulfilled' && expensesRes.value.ok) {
+        const expenseData = await expensesRes.value.json();
+        expenses.push(...(expenseData.items || expenseData.data || []));
+      }
+
+      if (customersRes.status === 'fulfilled' && customersRes.value.ok) {
+        const customerData = await customersRes.value.json();
+        customers.push(...(customerData.items || customerData.data || []));
+      }
+
+      if (vendorsRes.status === 'fulfilled' && vendorsRes.value.ok) {
+        const vendorData = await vendorsRes.value.json();
+        vendors.push(...(vendorData.items || vendorData.data || []));
+      }
+
+      setLiveData({ invoices, expenses, customers, vendors });
+    } catch (error) {
+      console.error('Failed to fetch QuickBooks live data:', error);
+      setLiveError('Unable to load live data');
+      // Fall back to props data
+    } finally {
+      setLiveLoading(false);
+    }
+  }, [walletAddress]);
+
+  // Fetch live data on mount and when wallet changes
+  useEffect(() => {
+    fetchLiveData();
+  }, [fetchLiveData]);
+
+  // Combine live data with props data (prefer live, fallback to props)
+  const effectiveData = useMemo(() => ({
+    invoices: liveData?.invoices?.length ? liveData.invoices : (data?.invoices || []),
+    expenses: liveData?.expenses?.length ? liveData.expenses : (data?.expenses || []),
+    customers: liveData?.customers?.length ? liveData.customers : (data?.customers || []),
+    vendors: liveData?.vendors?.length ? liveData.vendors : (data?.vendors || []),
+  }), [liveData, data]);
 
   // Fetch realm_id for native QuickBooks link
   useEffect(() => {
@@ -245,12 +319,9 @@ export default function QuickBooksPage({ walletAddress, data, onRefresh }: Quick
     fetchRealmId();
   }, [walletAddress]);
 
-  // Calculate stats from real data
+  // Calculate stats from effective data
   const stats = useMemo(() => {
-    const invoices = data?.invoices || [];
-    const expenses = data?.expenses || [];
-    const customers = data?.customers || [];
-    const vendors = data?.vendors || [];
+    const { invoices, expenses, customers, vendors } = effectiveData;
 
     const now = new Date();
     let totalIncome = 0;
@@ -296,19 +367,22 @@ export default function QuickBooksPage({ walletAddress, data, onRefresh }: Quick
       openAmount,
       overdueAmount,
     };
-  }, [data]);
+  }, [effectiveData]);
 
-  const hasData = data && (
-    (data.invoices?.length ?? 0) > 0 ||
-    (data.expenses?.length ?? 0) > 0 ||
-    (data.customers?.length ?? 0) > 0 ||
-    (data.vendors?.length ?? 0) > 0
+  // Check if we have any data (from live API or props)
+  const hasData = (
+    effectiveData.invoices.length > 0 ||
+    effectiveData.expenses.length > 0 ||
+    effectiveData.customers.length > 0 ||
+    effectiveData.vendors.length > 0
   );
 
   const handleSync = async () => {
     setSyncing(true);
     try {
       await onRefresh?.();
+      // Also refresh live data after sync
+      await fetchLiveData();
     } finally {
       setSyncing(false);
     }
@@ -318,7 +392,7 @@ export default function QuickBooksPage({ walletAddress, data, onRefresh }: Quick
     if (!searchQuery.trim()) return;
     const query = searchQuery.toLowerCase();
 
-    if (data?.invoices?.some((inv: any) =>
+    if (effectiveData.invoices.some((inv: any) =>
       (inv.customer_name || inv.CustomerRef?.name || '').toLowerCase().includes(query) ||
       (inv.doc_number || inv.DocNumber || '').toLowerCase().includes(query)
     )) {
@@ -326,14 +400,14 @@ export default function QuickBooksPage({ walletAddress, data, onRefresh }: Quick
       return;
     }
 
-    if (data?.expenses?.some((exp: any) =>
+    if (effectiveData.expenses.some((exp: any) =>
       (exp.vendor_name || exp.EntityRef?.name || '').toLowerCase().includes(query)
     )) {
       setActiveTab('expenses');
       return;
     }
 
-    if (data?.customers?.some((cust: any) =>
+    if (effectiveData.customers.some((cust: any) =>
       (cust.display_name || cust.DisplayName || '').toLowerCase().includes(query)
     )) {
       setActiveTab('customers');
@@ -767,9 +841,9 @@ export default function QuickBooksPage({ walletAddress, data, onRefresh }: Quick
             View All →
           </button>
         </div>
-        {(data?.invoices?.length ?? 0) > 0 ? (
+        {(effectiveData.invoices?.length ?? 0) > 0 ? (
           <div className="divide-y divide-gray-100">
-            {data?.invoices?.slice(0, 5).map((invoice: any, index: number) => {
+            {effectiveData.invoices?.slice(0, 5).map((invoice: any, index: number) => {
               const amount = invoice.total_amount ?? invoice.TotalAmt ?? 0;
               const balance = invoice.balance ?? invoice.Balance ?? 0;
               const isPaid = invoice.status === 'paid' || balance === 0;
@@ -818,9 +892,9 @@ export default function QuickBooksPage({ walletAddress, data, onRefresh }: Quick
             View All →
           </button>
         </div>
-        {(data?.expenses?.length ?? 0) > 0 ? (
+        {(effectiveData.expenses?.length ?? 0) > 0 ? (
           <div className="divide-y divide-gray-100">
-            {data?.expenses?.slice(0, 5).map((expense: any, index: number) => {
+            {effectiveData.expenses?.slice(0, 5).map((expense: any, index: number) => {
               const amount = expense.total_amount ?? expense.TotalAmt ?? 0;
 
               return (
@@ -864,7 +938,7 @@ export default function QuickBooksPage({ walletAddress, data, onRefresh }: Quick
 
   // Render Invoices Tab
   const renderInvoices = () => {
-    const invoices = data?.invoices || [];
+    const invoices = effectiveData.invoices || [];
 
     // Apply both search and status filter
     const filteredInvoices = invoices.filter((inv: any) => {
@@ -1081,7 +1155,7 @@ export default function QuickBooksPage({ walletAddress, data, onRefresh }: Quick
 
   // Render Expenses Tab
   const renderExpenses = () => {
-    const expenses = data?.expenses || [];
+    const expenses = effectiveData.expenses || [];
     const filteredExpenses = searchQuery.trim()
       ? expenses.filter((exp: any) =>
           (exp.vendor_name || exp.EntityRef?.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -1195,7 +1269,7 @@ export default function QuickBooksPage({ walletAddress, data, onRefresh }: Quick
 
   // Render Customers Tab
   const renderCustomers = () => {
-    const customers = data?.customers || [];
+    const customers = effectiveData.customers || [];
     const filteredCustomers = searchQuery.trim()
       ? customers.filter((cust: any) =>
           (cust.display_name || cust.DisplayName || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -1317,7 +1391,7 @@ export default function QuickBooksPage({ walletAddress, data, onRefresh }: Quick
 
   // Render Vendors Tab
   const renderVendors = () => {
-    const vendors = data?.vendors || [];
+    const vendors = effectiveData.vendors || [];
     const filteredVendors = searchQuery.trim()
       ? vendors.filter((v: any) =>
           (v.display_name || v.DisplayName || '').toLowerCase().includes(searchQuery.toLowerCase())
@@ -1438,8 +1512,8 @@ export default function QuickBooksPage({ walletAddress, data, onRefresh }: Quick
 
   // Render Reports Tab
   const renderReports = () => {
-    const invoices = data?.invoices || [];
-    const expenses = data?.expenses || [];
+    const invoices = effectiveData.invoices || [];
+    const expenses = effectiveData.expenses || [];
 
     // Calculate report data from actual synced data
     const totalIncome = invoices.reduce((sum, inv) => {
@@ -2103,7 +2177,7 @@ export default function QuickBooksPage({ walletAddress, data, onRefresh }: Quick
             lineItems: [],
             notes: editingInvoice.private_note || editingInvoice.PrivateNote || '',
           } : undefined}
-          customers={(data?.customers || []).map(c => ({
+          customers={(effectiveData.customers || []).map(c => ({
             id: c.id || c.Id || '',
             name: c.display_name || c.DisplayName || 'Unknown',
           }))}
@@ -2143,7 +2217,7 @@ export default function QuickBooksPage({ walletAddress, data, onRefresh }: Quick
             paymentMethod: editingExpense.payment_type || editingExpense.PaymentType || '',
             memo: editingExpense.private_note || editingExpense.PrivateNote || '',
           } : undefined}
-          vendors={(data?.vendors || []).map(v => ({
+          vendors={(effectiveData.vendors || []).map(v => ({
             id: v.id || v.Id || '',
             name: v.display_name || v.DisplayName || 'Unknown',
           }))}

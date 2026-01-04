@@ -72,8 +72,9 @@ authlib==1.3.0  # OAuth 2.0 client for all integrations
 cryptography==46.0.3  # Required for authlib
 
 # Background Jobs
-celery[redis]==5.3.4  # Task queue for scheduled syncs
+celery[redis]==5.3.4  # Task queue for scheduled syncs (DISABLED - OOM on Railway)
 flower==2.0.1  # Celery monitoring (optional)
+apscheduler==3.10.4  # Lightweight in-process scheduler for OAuth refresh (Jan 4, 2026)
 
 # Real Integration SDKs
 python-quickbooks==0.9.12  # QuickBooks API (latest available version)

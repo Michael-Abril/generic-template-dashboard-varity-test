@@ -820,11 +820,16 @@ async def create_contact(
 @router.get("/emails")
 async def list_emails(
     wallet_address: str,
-    max_results: int = 50,
+    max_results: int = Query(default=20, le=50, description="Max emails to return (capped at 50 for performance)"),
     db: AsyncSession = Depends(get_db)
 ):
     """
-    List emails from Gmail with full message details.
+    List emails from Gmail with message metadata (not full content for performance).
+
+    OPTIMIZED (January 4, 2026): Reduced individual API calls to prevent OOM.
+    - Uses format=metadata to get headers without full body
+    - Limits to 20 emails by default (max 50)
+    - Fetches emails in parallel batches of 5
 
     Handles rate limiting with automatic retry and proper error messages for:
     - 401: Token expired (prompts reconnection)
@@ -834,7 +839,10 @@ async def list_emails(
     try:
         access_token = await get_google_access_token(wallet_address, db)
 
-        async with httpx.AsyncClient() as client:
+        # Cap max_results to prevent OOM (January 4, 2026 fix)
+        max_results = min(max_results, 50)
+
+        async with httpx.AsyncClient(timeout=30.0) as client:
             # Get list of message IDs with error handling
             list_result = await google_api_request_with_retry(
                 client=client,
@@ -848,24 +856,39 @@ async def list_emails(
 
             messages = list_result.get("messages", [])
 
-            # Fetch full details for each message
-            email_details = []
-            for msg in messages[:max_results]:
+            if not messages:
+                return {"success": True, "emails": []}
+
+            # OPTIMIZATION (Jan 4, 2026): Fetch emails in parallel batches to reduce memory and time
+            # Use format=metadata to get headers without full body (much smaller response)
+            async def fetch_email_metadata(msg_id: str) -> Optional[Dict]:
                 try:
-                    msg_result = await google_api_request_with_retry(
+                    return await google_api_request_with_retry(
                         client=client,
                         method="GET",
-                        url=f"https://gmail.googleapis.com/gmail/v1/users/me/messages/{msg['id']}",
+                        url=f"https://gmail.googleapis.com/gmail/v1/users/me/messages/{msg_id}",
                         access_token=access_token,
                         wallet_address=wallet_address,
-                        operation=f"get_email_{msg['id'][:8]}",
-                        max_retries=1  # Fewer retries for individual messages
+                        operation=f"get_email_{msg_id[:8]}",
+                        params={"format": "metadata", "metadataHeaders": ["From", "To", "Subject", "Date"]},
+                        max_retries=1
                     )
-                    email_details.append(msg_result)
-                except HTTPException as e:
-                    # Log but continue if individual message fetch fails
-                    logger.warning(f"Failed to fetch message {msg['id']}: {e.detail}")
-                    continue
+                except Exception as e:
+                    logger.warning(f"Failed to fetch message {msg_id}: {e}")
+                    return None
+
+            # Fetch in batches of 5 to prevent overwhelming the API
+            email_details = []
+            batch_size = 5
+            for i in range(0, len(messages[:max_results]), batch_size):
+                batch = messages[i:i + batch_size]
+                batch_results = await asyncio.gather(
+                    *[fetch_email_metadata(msg["id"]) for msg in batch],
+                    return_exceptions=True
+                )
+                for result in batch_results:
+                    if result and not isinstance(result, Exception):
+                        email_details.append(result)
 
             return {"success": True, "emails": email_details}
 
@@ -987,7 +1010,11 @@ async def list_events(
     try:
         access_token = await get_google_access_token(wallet_address, db)
 
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            # FIX (Jan 4, 2026): Use proper RFC3339 format without double timezone
+            # datetime.utcnow() returns timezone-naive, so we can safely add "Z"
+            time_min = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+
             result = await google_api_request_with_retry(
                 client=client,
                 method="GET",
@@ -999,7 +1026,7 @@ async def list_events(
                     "maxResults": max_results,
                     "singleEvents": True,
                     "orderBy": "startTime",
-                    "timeMin": datetime.now(timezone.utc).isoformat() + "Z"
+                    "timeMin": time_min
                 }
             )
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Home,
   TrendingUp,
@@ -92,6 +92,8 @@ const CREATE_MENU_ITEMS = {
   ]
 };
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8002';
+
 export default function SalesforcePage({ walletAddress, data, onRefresh }: SalesforcePageProps) {
   const [activeSection, setActiveSection] = useState('home');
   const [expandedMenus, setExpandedMenus] = useState<string[]>(['sales']);
@@ -116,17 +118,84 @@ export default function SalesforcePage({ walletAddress, data, onRefresh }: Sales
   const [cases, setCases] = useState<any[]>([]);
   const [tasks, setTasks] = useState<any[]>([]);
 
+  // Live API data state
+  const [liveData, setLiveData] = useState<{
+    leads: any[];
+    opportunities: any[];
+    accounts: any[];
+    contacts: any[];
+  } | null>(null);
+  const [liveLoading, setLiveLoading] = useState(true);
+  const [liveError, setLiveError] = useState<string | null>(null);
+
+  // Fetch live data from API
+  const fetchLiveData = useCallback(async () => {
+    if (!walletAddress) return;
+
+    setLiveLoading(true);
+    setLiveError(null);
+
+    try {
+      const [leadsRes, oppsRes, accountsRes, contactsRes] = await Promise.allSettled([
+        fetch(`${API_URL}/api/v1/salesforce/leads?wallet_address=${walletAddress}`),
+        fetch(`${API_URL}/api/v1/salesforce/opportunities?wallet_address=${walletAddress}`),
+        fetch(`${API_URL}/api/v1/salesforce/accounts?wallet_address=${walletAddress}`),
+        fetch(`${API_URL}/api/v1/salesforce/contacts?wallet_address=${walletAddress}`)
+      ]);
+
+      const processResult = async (result: PromiseSettledResult<Response>) => {
+        if (result.status === 'fulfilled' && result.value.ok) {
+          return await result.value.json();
+        }
+        return null;
+      };
+
+      const [leadsData, oppsData, accountsData, contactsData] = await Promise.all([
+        processResult(leadsRes),
+        processResult(oppsRes),
+        processResult(accountsRes),
+        processResult(contactsRes)
+      ]);
+
+      setLiveData({
+        leads: leadsData?.leads || leadsData || [],
+        opportunities: oppsData?.opportunities || oppsData || [],
+        accounts: accountsData?.accounts || accountsData || [],
+        contacts: contactsData?.contacts || contactsData || []
+      });
+    } catch (error) {
+      console.error('Failed to fetch Salesforce live data:', error);
+      setLiveError('Unable to load live data');
+    } finally {
+      setLiveLoading(false);
+    }
+  }, [walletAddress]);
+
+  // Fetch live data on mount
   useEffect(() => {
-    // Load data from props
+    fetchLiveData();
+  }, [fetchLiveData]);
+
+  // Combine live data with props data (prefer live, fallback to props)
+  const effectiveData = useMemo(() => ({
+    leads: liveData?.leads?.length ? liveData.leads : (data?.leads || []),
+    opportunities: liveData?.opportunities?.length ? liveData.opportunities : (data?.opportunities || []),
+    accounts: liveData?.accounts?.length ? liveData.accounts : (data?.accounts || []),
+    contacts: liveData?.contacts?.length ? liveData.contacts : (data?.contacts || []),
+  }), [liveData, data]);
+
+  useEffect(() => {
+    // Load data from effectiveData (prefer live, fallback to props)
+    setLeads(effectiveData.leads);
+    setOpportunities(effectiveData.opportunities);
+    setAccounts(effectiveData.accounts);
+    setContacts(effectiveData.contacts);
+    // Cases and tasks still from props only
     if (data) {
-      setLeads(data.leads || []);
-      setOpportunities(data.opportunities || []);
-      setAccounts(data.accounts || []);
-      setContacts(data.contacts || []);
       setCases(data.cases || []);
       setTasks(data.tasks || []);
     }
-  }, [data]);
+  }, [effectiveData, data]);
 
   const toggleMenu = (menuId: string) => {
     setExpandedMenus(prev =>

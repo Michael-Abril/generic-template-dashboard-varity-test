@@ -7,6 +7,7 @@ import { useWalletSync } from '@/app/providers';
 import { useToast } from '@/components/ui/Toast';
 import { Layout } from '@/components/Layout';
 import { logger } from '@/lib/logger';
+import { fetchIntegrationData, getDataDestination, getIntegrationDataTypes } from '@/lib/mcp-data-fetcher';
 import Link from 'next/link';
 import { SalesforcePage } from '@/components/integrations/salesforce';
 import { SlackPage } from '@/components/integrations/slack';
@@ -2291,21 +2292,24 @@ const INTEGRATION_CONFIG: Record<string, {
     color: 'text-purple-600',
     bgColor: 'bg-purple-50',
     icon: '/logos/slack.svg',
-    dataTypes: ['messages', 'channels', 'users']
+    // Match mcp-data-fetcher routing rules: channels=live, messages=hybrid, users=rag
+    dataTypes: ['channels', 'messages', 'users', 'files']
   },
   google: {
     name: 'Google Workspace',
     color: 'text-red-600',
     bgColor: 'bg-red-50',
     icon: '/logos/google.svg',
-    dataTypes: ['emails', 'calendar', 'drive']
+    // Match mcp-data-fetcher routing rules: gmail=live, calendar=live, drive_files=rag
+    dataTypes: ['gmail', 'calendar', 'drive_files', 'contacts']
   },
   microsoft: {
     name: 'Microsoft 365',
     color: 'text-blue-700',
     bgColor: 'bg-blue-50',
     icon: '/logos/microsoft.svg',
-    dataTypes: ['emails', 'calendar', 'files']
+    // Match mcp-data-fetcher routing rules: mail=live, calendar=live, onedrive=rag
+    dataTypes: ['mail', 'calendar', 'onedrive', 'contacts']
   }
 };
 
@@ -2395,7 +2399,8 @@ export default function IntegrationToolPage() {
     }
   }, [address, integration, getCacheKey]);
 
-  // Fetch data from Filecoin
+  // Fetch data using MCP data fetcher with intelligent routing
+  // Routes to LIVE API for real-time data, RAG storage for historical data, or HYBRID for both
   const fetchData = useCallback(async (forceRefresh = false) => {
     if (!address || !integration) return;
 
@@ -2414,26 +2419,83 @@ export default function IntegrationToolPage() {
     setError(null);
 
     try {
-      const apiBase = process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
-      // For integrations with chunked data (Google Drive has quarterly chunks),
-      // pass latest_only=false to get ALL chunks
-      const latestOnlyParam = integration === 'google' ? '&latest_only=false' : '';
-      const res = await fetch(
-        `${apiBase}/api/v1/integrations/${integration}/data?wallet_address=${address}${latestOnlyParam}`
-      );
+      // Get data types for this integration from routing rules or config
+      const dataTypes = getIntegrationDataTypes(integration) || config.dataTypes;
 
-      if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(errorData.detail || 'Failed to fetch data');
+      if (!dataTypes || dataTypes.length === 0) {
+        logger.warn(`No data types defined for integration: ${integration}`);
+        setLoading(false);
+        return;
       }
 
-      const result: SyncResult = await res.json();
+      // Fetch each data type using MCP data fetcher (respects LIVE/RAG/HYBRID routing)
+      const results = await Promise.allSettled(
+        dataTypes.map(async (dataType: string) => {
+          const destination = getDataDestination(integration, dataType);
+          logger.debug(`Fetching ${integration}/${dataType} via ${destination}`);
 
-      // AUTO-SYNC: If no data exists, trigger initial sync automatically
-      if (!result.data || result.data.length === 0) {
-        logger.debug('No cached data found, triggering auto-sync');
+          const response = await fetchIntegrationData({
+            integration,
+            dataType,
+            walletAddress: address,
+            forceRefresh,
+          });
+
+          return {
+            dataType,
+            destination,
+            response,
+          };
+        })
+      );
+
+      // Process results and transform to IntegrationData format
+      const combinedData: IntegrationData[] = [];
+      let latestSyncTime: string | null = null;
+
+      for (const result of results) {
+        if (result.status === 'fulfilled' && result.value.response.success) {
+          const { dataType, destination, response } = result.value;
+
+          // Transform to IntegrationData format expected by components
+          combinedData.push({
+            cid: `${destination}_${dataType}`, // Virtual CID for live/hybrid data
+            data_type: dataType,
+            data: {
+              records: response.data as unknown as Array<Record<string, unknown>>,
+              record_count: response.count,
+              synced_at: response.lastSync,
+              source: response.source, // 'live', 'rag', 'hybrid', or 'cache'
+            },
+            uploaded_at: response.lastSync || new Date().toISOString(),
+          });
+
+          // Track latest sync time
+          if (response.lastSync) {
+            if (!latestSyncTime || new Date(response.lastSync) > new Date(latestSyncTime)) {
+              latestSyncTime = response.lastSync;
+            }
+          }
+
+          logger.debug(
+            `${integration}/${dataType}: ${response.count} records via ${response.source}`
+          );
+        } else if (result.status === 'rejected') {
+          logger.error(`Failed to fetch ${integration} data type:`, result.reason);
+        } else if (result.status === 'fulfilled' && !result.value.response.success) {
+          logger.warn(
+            `${integration}/${result.value.dataType} fetch failed:`,
+            result.value.response.error
+          );
+        }
+      }
+
+      // If no data from any source, try auto-sync for RAG data types
+      if (combinedData.length === 0) {
+        logger.debug('No data found, triggering auto-sync for RAG data types');
         setSyncing(true);
         try {
+          const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
           const syncRes = await fetch(
             `${apiBase}/api/v1/integrations/${integration}/sync`,
             {
@@ -2444,51 +2506,32 @@ export default function IntegrationToolPage() {
           );
 
           if (syncRes.ok) {
-            // Fetch newly synced data
-            const newDataRes = await fetch(
-              `${apiBase}/api/v1/integrations/${integration}/data?wallet_address=${address}${latestOnlyParam}`
-            );
-            if (newDataRes.ok) {
-              const newResult: SyncResult = await newDataRes.json();
-              setData(newResult.data || []);
-              if (newResult.data && newResult.data.length > 0) {
-                const syncTime = newResult.data[0].data?.synced_at || newResult.data[0].uploaded_at;
-                setLastSync(syncTime);
-                saveToCache(newResult.data, syncTime);
-              }
-            }
+            // Re-fetch after sync (recursive call with force refresh)
+            setSyncing(false);
+            await fetchData(true);
+            return;
           }
         } catch (syncErr) {
           logger.error('Auto-sync failed', syncErr);
         } finally {
           setSyncing(false);
         }
-        return;
       }
 
-      setData(result.data || []);
-
-      // Get last sync time from the most recent data
-      let syncTime: string | null = null;
-      if (result.data && result.data.length > 0) {
-        const mostRecent = result.data.reduce((latest, item) => {
-          const itemDate = item.data?.synced_at || item.uploaded_at;
-          const latestDate = latest.data?.synced_at || latest.uploaded_at;
-          return new Date(itemDate) > new Date(latestDate) ? item : latest;
-        });
-        syncTime = mostRecent.data?.synced_at || mostRecent.uploaded_at;
-        setLastSync(syncTime);
-      }
+      setData(combinedData);
+      setLastSync(latestSyncTime);
 
       // Save to cache
-      saveToCache(result.data || [], syncTime);
+      if (combinedData.length > 0) {
+        saveToCache(combinedData, latestSyncTime);
+      }
     } catch (err) {
       logger.error('Error fetching integration data', err);
       setError(err instanceof Error ? err.message : 'Failed to load data');
     } finally {
       setLoading(false);
     }
-  }, [address, integration, loadFromCache, saveToCache]);
+  }, [address, integration, config.dataTypes, loadFromCache, saveToCache]);
 
   // Sync data from external service
   const syncData = async () => {
@@ -2830,9 +2873,15 @@ export default function IntegrationToolPage() {
   // Render Slack-native UI for Slack integration
   if (integration === 'slack') {
     // Transform data into format expected by SlackPage
+    // MCP data fetcher returns data with routing: channels=live, messages=hybrid, users=rag
     // SlackWorkspaceData expects: { workspace?, channels?, users?, messages? }
     const slackData = data.reduce((acc, item) => {
-      acc[item.data_type] = item.data;
+      // Extract records from the data structure
+      const records = item.data?.records ?? item.data;
+      acc[item.data_type] = {
+        data: records,
+        source: item.data?.source, // Track if data came from live API
+      };
       return acc;
     }, {} as Record<string, unknown>);
 
@@ -2851,28 +2900,35 @@ export default function IntegrationToolPage() {
   // Render Google Workspace native UI for Google integration
   if (integration === 'google' || integration === 'google_workspace' || integration === 'googleworkspace') {
     // Transform data into format expected by GoogleWorkspacePage
-    // Backend stores: { data_type: "gmail", data: { records: [...] } }
+    // MCP data fetcher returns: { data_type: "gmail", data: { records: [...], source: "live" } }
     // Frontend expects: { gmail: { messages: [...] } }
-    // NOTE: Drive data comes in multiple quarterly chunks, so we AGGREGATE them
+    // NOTE: drive_files data may come in chunks, so we AGGREGATE them
     const dataTypeToPropertyMap: Record<string, string> = {
       'gmail': 'messages',
       'calendar': 'events',
-      'drive': 'files',
+      'drive_files': 'files',  // Updated to match MCP routing rules
+      'drive': 'files',        // Keep backward compatibility
       'contacts': 'contacts'
     };
 
     const googleData = data.reduce((acc, item) => {
+      // Normalize data_type name for property lookup
+      const normalizedType = item.data_type === 'drive_files' ? 'drive' : item.data_type;
       const propertyName = dataTypeToPropertyMap[item.data_type] || 'records';
       const rawRecords = item.data?.records ?? item.data?.[propertyName];
       const newRecords: unknown[] = Array.isArray(rawRecords) ? rawRecords : [];
 
+      // Use 'drive' as the key for backward compatibility with GoogleWorkspacePage
+      const dataKey = item.data_type === 'drive_files' ? 'drive' : item.data_type;
+
       // AGGREGATE records when multiple chunks have the same data_type (e.g., Drive quarterly chunks)
-      const existingRecords = acc[item.data_type]?.[propertyName];
+      const existingRecords = acc[dataKey]?.[propertyName];
       if (Array.isArray(existingRecords)) {
-        acc[item.data_type][propertyName] = [...existingRecords, ...newRecords];
+        acc[dataKey][propertyName] = [...existingRecords, ...newRecords];
       } else {
-        acc[item.data_type] = {
-          [propertyName]: newRecords
+        acc[dataKey] = {
+          [propertyName]: newRecords,
+          source: item.data?.source, // Track if data came from live API
         };
       }
       return acc;
@@ -2896,7 +2952,7 @@ export default function IntegrationToolPage() {
   // Render Microsoft 365 native UI for Microsoft integration
   if (integration === 'microsoft' || integration === 'microsoft365') {
     // Transform data into format expected by Microsoft365Page
-    // Backend stores: { data_type: "mail", data: { records: [...] } }
+    // MCP data fetcher returns: { data_type: "mail", data: { records: [...], source: "live" } }
     // Frontend expects: { mail: { messages: [...] } }
     // NOTE: OneDrive data may come in multiple chunks, so we AGGREGATE them
     const msDataTypeToPropertyMap: Record<string, string> = {
@@ -2917,7 +2973,8 @@ export default function IntegrationToolPage() {
         acc[item.data_type][propertyName] = [...existingRecords, ...newRecords];
       } else {
         acc[item.data_type] = {
-          [propertyName]: newRecords
+          [propertyName]: newRecords,
+          source: item.data?.source, // Track if data came from live API
         };
       }
       return acc;

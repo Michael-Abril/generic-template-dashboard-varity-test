@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useRef, useEffect } from 'react';
+import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import {
   FolderOpen,
   File,
@@ -139,13 +139,66 @@ export default function OneDriveExplorer({
   const [newFileName, setNewFileName] = useState('');
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
+  // Live API states
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
   const newMenuRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Update files when props change
+  // Fetch files from live API
+  const fetchFilesFromAPI = useCallback(async () => {
+    if (!walletAddress) {
+      setFiles(initialFiles);
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/integrations/microsoft/onedrive/files?wallet_address=${walletAddress}`
+      );
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch OneDrive files: ${response.status}`);
+      }
+
+      const result = await response.json();
+
+      // Handle different response formats
+      const filesData = result.files || result.data || result.value || [];
+
+      if (Array.isArray(filesData) && filesData.length > 0) {
+        setFiles(filesData);
+      } else {
+        // Fallback to props if API returns empty
+        console.log('API returned no files, using props data');
+        setFiles(initialFiles);
+      }
+    } catch (err) {
+      console.error('Error fetching OneDrive files from API:', err);
+      setError(err instanceof Error ? err.message : 'Failed to fetch files');
+      // Fallback to props on error
+      setFiles(initialFiles);
+    } finally {
+      setLoading(false);
+    }
+  }, [walletAddress, initialFiles]);
+
+  // Fetch on mount and when wallet changes
   useEffect(() => {
-    setFiles(initialFiles);
-  }, [initialFiles]);
+    fetchFilesFromAPI();
+  }, [fetchFilesFromAPI]);
+
+  // Update files when props change (fallback behavior)
+  useEffect(() => {
+    if (initialFiles.length > 0 && files.length === 0) {
+      setFiles(initialFiles);
+    }
+  }, [initialFiles, files.length]);
 
   // Close new menu when clicking outside
   useEffect(() => {
@@ -936,7 +989,12 @@ export default function OneDriveExplorer({
 
         {/* File Content */}
         <div className="flex-1 overflow-auto">
-          {isUploading ? (
+          {loading ? (
+            <div className="flex flex-col items-center justify-center h-full py-12">
+              <Loader2 className="h-10 w-10 text-blue-600 animate-spin mb-4" />
+              <p className="text-gray-700">Loading OneDrive files...</p>
+            </div>
+          ) : isUploading ? (
             <div className="flex flex-col items-center justify-center h-full py-12">
               <Loader2 className="h-10 w-10 text-blue-600 animate-spin mb-4" />
               <p className="text-gray-700">Uploading files...</p>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import {
   Users,
   Search,
@@ -39,6 +39,8 @@ export function ContactsList({ walletAddress, data }: ContactsListProps) {
   const [actionMenuOpen, setActionMenuOpen] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(0);
   const CONTACTS_PER_PAGE = 50;
+  const [apiError, setApiError] = useState<string | null>(null);
+  const [hasFetchedOnce, setHasFetchedOnce] = useState(false);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -87,6 +89,64 @@ export function ContactsList({ walletAddress, data }: ContactsListProps) {
       company: ''
     });
   };
+
+  // Fetch contacts from live Google Contacts API
+  const fetchContactsFromAPI = useCallback(async () => {
+    if (!walletAddress) {
+      setLoading(true);
+      return;
+    }
+
+    setLoading(true);
+    setApiError(null);
+    setHasFetchedOnce(true);
+    try {
+      const response = await fetch(
+        `${API_URL}/api/v1/integrations/google/contacts?wallet_address=${walletAddress}`
+      );
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          setApiError('Google token expired. Please reconnect your Google account from the Marketplace.');
+          throw new Error('Token expired');
+        } else if (response.status === 404) {
+          setApiError('Google account not connected. Please connect your Google account from the Marketplace.');
+          throw new Error('Not connected');
+        } else {
+          setApiError(`Unable to load contacts (Error ${response.status}). Please try again or reconnect from Marketplace.`);
+          throw new Error(`Failed to fetch contacts: ${response.status}`);
+        }
+      }
+
+      const result = await response.json();
+      const contactsData = result.contacts || result.data || [];
+
+      setContacts(contactsData);
+    } catch (error) {
+      console.error('Failed to fetch contacts from API:', error);
+      setApiError('Failed to load contacts. Please try again.');
+      // Fall back to data prop if API fails
+      if (data?.contacts) {
+        setContacts(data.contacts);
+      } else {
+        setContacts([]);
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [walletAddress, data]);
+
+  // Fetch contacts on mount and when wallet changes
+  useEffect(() => {
+    fetchContactsFromAPI();
+  }, [fetchContactsFromAPI]);
+
+  // Explicit retry when wallet becomes available
+  useEffect(() => {
+    if (walletAddress && !hasFetchedOnce) {
+      fetchContactsFromAPI();
+    }
+  }, [walletAddress, hasFetchedOnce, fetchContactsFromAPI]);
 
   const handleCreateContact = async () => {
     if (!formData.given_name && !formData.family_name) {

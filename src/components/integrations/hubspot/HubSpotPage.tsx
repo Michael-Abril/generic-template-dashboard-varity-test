@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Home,
   Users,
@@ -115,6 +115,8 @@ const CREATE_MENU_ITEMS = {
   ]
 };
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8002';
+
 export function HubSpotPage({
   walletAddress,
   data,
@@ -144,11 +146,87 @@ export function HubSpotPage({
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState<'list' | 'board'>('list');
 
-  // Extract data from response
-  const contacts = data?.find(d => d.type === 'contacts')?.data || [];
-  const companies = data?.find(d => d.type === 'companies')?.data || [];
-  const deals = data?.find(d => d.type === 'deals')?.data || [];
-  const tickets = data?.find(d => d.type === 'tickets')?.data || [];
+  // Live API data state
+  const [liveData, setLiveData] = useState<{
+    contacts: any[];
+    companies: any[];
+    deals: any[];
+    tickets: any[];
+  } | null>(null);
+  const [liveLoading, setLiveLoading] = useState(true);
+  const [liveError, setLiveError] = useState<string | null>(null);
+
+  // Fetch live data from API
+  const fetchLiveData = useCallback(async () => {
+    if (!walletAddress) return;
+
+    setLiveLoading(true);
+    setLiveError(null);
+
+    try {
+      const [contactsRes, companiesRes, dealsRes, ticketsRes] = await Promise.allSettled([
+        fetch(`${API_URL}/api/v1/hubspot/contacts?wallet_address=${walletAddress}`),
+        fetch(`${API_URL}/api/v1/hubspot/companies?wallet_address=${walletAddress}`),
+        fetch(`${API_URL}/api/v1/hubspot/deals?wallet_address=${walletAddress}`),
+        fetch(`${API_URL}/api/v1/hubspot/tickets?wallet_address=${walletAddress}`)
+      ]);
+
+      const processResult = async (result: PromiseSettledResult<Response>) => {
+        if (result.status === 'fulfilled' && result.value.ok) {
+          return await result.value.json();
+        }
+        return null;
+      };
+
+      const [contactsData, companiesData, dealsData, ticketsData] = await Promise.all([
+        processResult(contactsRes),
+        processResult(companiesRes),
+        processResult(dealsRes),
+        processResult(ticketsRes)
+      ]);
+
+      setLiveData({
+        contacts: contactsData?.contacts || contactsData || [],
+        companies: companiesData?.companies || companiesData || [],
+        deals: dealsData?.deals || dealsData || [],
+        tickets: ticketsData?.tickets || ticketsData || []
+      });
+    } catch (error) {
+      console.error('Failed to fetch HubSpot live data:', error);
+      setLiveError('Unable to load live data');
+    } finally {
+      setLiveLoading(false);
+    }
+  }, [walletAddress]);
+
+  // Fetch live data on mount
+  useEffect(() => {
+    fetchLiveData();
+  }, [fetchLiveData]);
+
+  // Extract data from props response
+  const propsContacts = data?.find((d: any) => d.type === 'contacts')?.data || [];
+  const propsCompanies = data?.find((d: any) => d.type === 'companies')?.data || [];
+  const propsDeals = data?.find((d: any) => d.type === 'deals')?.data || [];
+  const propsTickets = data?.find((d: any) => d.type === 'tickets')?.data || [];
+
+  // Combine live data with props data (prefer live, fallback to props)
+  const contacts = useMemo(() =>
+    liveData?.contacts?.length ? liveData.contacts : propsContacts,
+    [liveData, propsContacts]
+  );
+  const companies = useMemo(() =>
+    liveData?.companies?.length ? liveData.companies : propsCompanies,
+    [liveData, propsCompanies]
+  );
+  const deals = useMemo(() =>
+    liveData?.deals?.length ? liveData.deals : propsDeals,
+    [liveData, propsDeals]
+  );
+  const tickets = useMemo(() =>
+    liveData?.tickets?.length ? liveData.tickets : propsTickets,
+    [liveData, propsTickets]
+  );
 
   // Render Home Dashboard
   const renderHomeDashboard = () => (

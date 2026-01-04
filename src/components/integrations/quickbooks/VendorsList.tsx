@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { Plus, Search, Mail, Phone, MoreHorizontal, Edit, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -56,9 +56,49 @@ function normalizeVendor(vendor: Vendor): {
 
 export default function VendorsList({ walletAddress, vendors: rawVendors = [] }: VendorsListProps) {
   const [searchQuery, setSearchQuery] = useState('');
+  const [apiVendors, setApiVendors] = useState<Vendor[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Fetch vendors from live API
+  const fetchVendorsFromAPI = useCallback(async () => {
+    if (!walletAddress) {
+      setLoading(true);
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/quickbooks/vendors?wallet_address=${walletAddress}`
+      );
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch vendors: ${response.status}`);
+      }
+
+      const result = await response.json();
+      setApiVendors(result.vendors || result.data || []);
+    } catch (err) {
+      console.error('API error, falling back to props:', err);
+      setError('Failed to load vendors from API');
+      setApiVendors(rawVendors); // Fallback to props
+    } finally {
+      setLoading(false);
+    }
+  }, [walletAddress, rawVendors]);
+
+  // Fetch on mount and when wallet changes
+  useEffect(() => {
+    fetchVendorsFromAPI();
+  }, [fetchVendorsFromAPI]);
+
+  // Use API data if available, otherwise fall back to props
+  const sourceVendors = apiVendors.length > 0 ? apiVendors : rawVendors;
 
   // Normalize vendors from QuickBooks API format
-  const vendors = rawVendors.map(normalizeVendor);
+  const vendors = sourceVendors.map(normalizeVendor);
 
   const filteredVendors = vendors.filter(vendor =>
     vendor.displayName.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -97,35 +137,52 @@ export default function VendorsList({ walletAddress, vendors: rawVendors = [] }:
 
       <Card>
         <CardHeader>
-          <CardTitle>All Vendors ({filteredVendors.length})</CardTitle>
+          <CardTitle>All Vendors ({loading ? '...' : filteredVendors.length})</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-gray-200 dark:border-gray-700">
-                  <th className="text-left py-3 px-4 text-sm font-medium text-gray-500 dark:text-gray-400">
-                    Name
-                  </th>
-                  <th className="text-left py-3 px-4 text-sm font-medium text-gray-500 dark:text-gray-400">
-                    Company
-                  </th>
-                  <th className="text-left py-3 px-4 text-sm font-medium text-gray-500 dark:text-gray-400">
-                    Contact
-                  </th>
-                  <th className="text-right py-3 px-4 text-sm font-medium text-gray-500 dark:text-gray-400">
-                    Open Balance
-                  </th>
-                  <th className="text-center py-3 px-4 text-sm font-medium text-gray-500 dark:text-gray-400">
-                    Open Bills
-                  </th>
-                  <th className="text-center py-3 px-4 text-sm font-medium text-gray-500 dark:text-gray-400">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredVendors.map((vendor) => (
+          {loading ? (
+            <div className="text-center py-12">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 dark:border-white mx-auto mb-4"></div>
+              <p className="text-gray-500 dark:text-gray-400">Loading vendors...</p>
+            </div>
+          ) : filteredVendors.length === 0 ? (
+            <div className="text-center py-12">
+              <p className="text-gray-500 dark:text-gray-400">
+                {sourceVendors.length === 0
+                  ? 'No vendors synced yet'
+                  : 'No vendors match your search'}
+              </p>
+              {error && (
+                <p className="text-sm text-red-500 mt-2">{error}</p>
+              )}
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-gray-200 dark:border-gray-700">
+                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-500 dark:text-gray-400">
+                      Name
+                    </th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-500 dark:text-gray-400">
+                      Company
+                    </th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-500 dark:text-gray-400">
+                      Contact
+                    </th>
+                    <th className="text-right py-3 px-4 text-sm font-medium text-gray-500 dark:text-gray-400">
+                      Open Balance
+                    </th>
+                    <th className="text-center py-3 px-4 text-sm font-medium text-gray-500 dark:text-gray-400">
+                      Open Bills
+                    </th>
+                    <th className="text-center py-3 px-4 text-sm font-medium text-gray-500 dark:text-gray-400">
+                      Actions
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredVendors.map((vendor) => (
                   <tr
                     key={vendor.id}
                     className="border-b border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800"
@@ -181,7 +238,8 @@ export default function VendorsList({ walletAddress, vendors: rawVendors = [] }:
                 ))}
               </tbody>
             </table>
-          </div>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

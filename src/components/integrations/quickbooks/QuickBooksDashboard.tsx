@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useCallback, useEffect, useState } from 'react';
 import { DollarSign, TrendingUp, TrendingDown, FileText, AlertCircle } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 
@@ -15,10 +15,66 @@ interface QuickBooksDashboardProps {
 }
 
 export default function QuickBooksDashboard({ walletAddress, data }: QuickBooksDashboardProps) {
+  const [apiData, setApiData] = useState<{
+    invoices?: any[];
+    expenses?: any[];
+    customers?: any[];
+    vendors?: any[];
+  } | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Fetch all QuickBooks data from live API
+  const fetchQuickBooksData = useCallback(async () => {
+    if (!walletAddress) {
+      setLoading(true);
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    try {
+      // Fetch all endpoints in parallel
+      const [invoicesRes, expensesRes, customersRes, vendorsRes] = await Promise.all([
+        fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/quickbooks/invoices?wallet_address=${walletAddress}`),
+        fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/quickbooks/expenses?wallet_address=${walletAddress}`),
+        fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/quickbooks/customers?wallet_address=${walletAddress}`),
+        fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/quickbooks/vendors?wallet_address=${walletAddress}`)
+      ]);
+
+      const [invoicesData, expensesData, customersData, vendorsData] = await Promise.all([
+        invoicesRes.ok ? invoicesRes.json() : { invoices: [] },
+        expensesRes.ok ? expensesRes.json() : { expenses: [] },
+        customersRes.ok ? customersRes.json() : { customers: [] },
+        vendorsRes.ok ? vendorsRes.json() : { vendors: [] }
+      ]);
+
+      setApiData({
+        invoices: invoicesData.invoices || invoicesData.data || [],
+        expenses: expensesData.expenses || expensesData.data || [],
+        customers: customersData.customers || customersData.data || [],
+        vendors: vendorsData.vendors || vendorsData.data || []
+      });
+    } catch (err) {
+      console.error('API error, falling back to props:', err);
+      setError('Failed to load QuickBooks data from API');
+      setApiData(data); // Fallback to props
+    } finally {
+      setLoading(false);
+    }
+  }, [walletAddress, data]);
+
+  // Fetch on mount and when wallet changes
+  useEffect(() => {
+    fetchQuickBooksData();
+  }, [fetchQuickBooksData]);
+
+  // Use API data if available, otherwise fall back to props
+  const sourceData = apiData || data;
   // Calculate dashboard stats from real data
   const stats = useMemo(() => {
-    const invoices = data?.invoices || [];
-    const expenses = data?.expenses || [];
+    const invoices = sourceData?.invoices || [];
+    const expenses = sourceData?.expenses || [];
 
     // Calculate invoice stats
     const now = new Date();
@@ -62,12 +118,24 @@ export default function QuickBooksDashboard({ walletAddress, data }: QuickBooksD
       paidInvoices,
       hasData,
     };
-  }, [data]);
+  }, [sourceData]);
 
   return (
     <div className="p-6 space-y-6">
+      {/* Loading State */}
+      {loading && (
+        <Card>
+          <CardContent className="pt-6">
+            <div className="text-center py-12">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 dark:border-white mx-auto mb-4"></div>
+              <p className="text-gray-500 dark:text-gray-400">Loading QuickBooks data...</p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* No Data Notice */}
-      {!stats.hasData && (
+      {!loading && !stats.hasData && (
         <Card className="border-yellow-200 bg-yellow-50 dark:border-yellow-800 dark:bg-yellow-900/20">
           <CardContent className="pt-6">
             <div className="flex items-start space-x-3">
@@ -79,6 +147,9 @@ export default function QuickBooksDashboard({ walletAddress, data }: QuickBooksD
                 <p className="text-sm text-yellow-700 dark:text-yellow-300 mt-1">
                   Click the Sync button above to fetch your QuickBooks data.
                 </p>
+                {error && (
+                  <p className="text-sm text-red-600 mt-1">{error}</p>
+                )}
               </div>
             </div>
           </CardContent>
@@ -86,6 +157,7 @@ export default function QuickBooksDashboard({ walletAddress, data }: QuickBooksD
       )}
 
       {/* KPI Cards */}
+      {!loading && (
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Total Income */}
         <Card>
@@ -180,9 +252,10 @@ export default function QuickBooksDashboard({ walletAddress, data }: QuickBooksD
           </CardContent>
         </Card>
       </div>
+      )}
 
       {/* Overdue Alert */}
-      {stats.overdueInvoices > 0 && (
+      {!loading && stats.overdueInvoices > 0 && (
         <Card className="border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-900/20">
           <CardContent className="pt-6">
             <div className="flex items-center space-x-3">

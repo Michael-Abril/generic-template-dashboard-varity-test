@@ -18,6 +18,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import logging
 import json
 
+import httpx
+import os
+
 from app.core.database import get_db
 from app.services.filecoin_service import FilecoinService
 from app.services.encryption_service import EncryptionService, normalize_wallet_address
@@ -32,6 +35,70 @@ encryption_service = EncryptionService()
 
 # All 6 supported integrations
 SUPPORTED_INTEGRATIONS = ["quickbooks", "google", "microsoft", "slack", "salesforce", "hubspot"]
+
+# =====================================================================
+# DATA ROUTING RULES
+# Determines whether to fetch from LIVE API or RAG (Filecoin) storage
+# Must match frontend mcp-data-fetcher.ts routing rules
+# =====================================================================
+
+# Routing types
+LIVE_API = "live"
+RAG_STORAGE = "rag"
+HYBRID = "hybrid"
+
+DATA_ROUTING_RULES = {
+    "google": {
+        "gmail": LIVE_API,        # Real-time email fetch
+        "calendar": LIVE_API,     # Real-time calendar fetch
+        "drive": RAG_STORAGE,     # Synced file data
+        "drive_files": RAG_STORAGE,
+        "contacts": RAG_STORAGE,
+    },
+    "slack": {
+        "channels": LIVE_API,     # Real-time channel list
+        "messages": HYBRID,       # Recent messages live, history synced
+        "users": RAG_STORAGE,
+        "files": RAG_STORAGE,
+    },
+    "microsoft": {
+        "mail": LIVE_API,         # Real-time email fetch
+        "calendar": LIVE_API,     # Real-time calendar fetch
+        "onedrive": RAG_STORAGE,
+        "files": RAG_STORAGE,
+        "contacts": RAG_STORAGE,
+    },
+    "quickbooks": {
+        "invoices": HYBRID,       # Recent live, history synced
+        "payments": LIVE_API,
+        "customers": RAG_STORAGE,
+        "vendors": RAG_STORAGE,
+    },
+    "salesforce": {
+        "opportunities": HYBRID,
+        "leads": HYBRID,
+        "contacts": RAG_STORAGE,
+        "accounts": RAG_STORAGE,
+        "tasks": RAG_STORAGE,
+    },
+    "hubspot": {
+        "deals": HYBRID,
+        "emails": LIVE_API,
+        "contacts": RAG_STORAGE,
+        "companies": RAG_STORAGE,
+    },
+}
+
+# Live API endpoint mapping (internal backend endpoints)
+LIVE_ENDPOINTS = {
+    ("google", "gmail"): "/api/v1/integrations/google/emails",
+    ("google", "calendar"): "/api/v1/integrations/google/events",
+    ("slack", "channels"): "/api/v1/integrations/slack/channels",
+    ("slack", "messages"): "/api/v1/integrations/slack/messages",
+    ("slack", "users"): "/api/v1/integrations/slack/users",
+    ("microsoft", "mail"): "/api/v1/integrations/microsoft/mail/messages",
+    ("microsoft", "calendar"): "/api/v1/integrations/microsoft/calendar/events",
+}
 
 
 # =====================================================================
@@ -258,6 +325,129 @@ def calculate_percentage_change(current: float, previous: float) -> float:
     return round(((current - previous) / previous) * 100, 1)
 
 
+async def fetch_live_data(
+    wallet_address: str,
+    integration: str,
+    data_type: str
+) -> List[Dict[str, Any]]:
+    """
+    Fetch data from live API endpoints for LIVE data types.
+
+    For gmail, calendar, slack channels etc - these should be fetched
+    in real-time from the integration APIs, not from synced storage.
+
+    Args:
+        wallet_address: User's wallet address
+        integration: Integration name (google, slack, etc.)
+        data_type: Type of data (gmail, calendar, channels, etc.)
+
+    Returns:
+        List of records from live API
+    """
+    endpoint_key = (integration, data_type)
+    endpoint = LIVE_ENDPOINTS.get(endpoint_key)
+
+    if not endpoint:
+        logger.warning(f"No live endpoint configured for {integration}/{data_type}")
+        return []
+
+    # Get the API base URL - use internal request for same-server endpoints
+    api_base = os.getenv("API_BASE_URL", "http://localhost:8000")
+
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.get(
+                f"{api_base}{endpoint}",
+                params={"wallet_address": wallet_address}
+            )
+
+            if response.status_code == 200:
+                data = response.json()
+
+                # Handle different response formats from live endpoints
+                if isinstance(data, list):
+                    return data
+                elif isinstance(data, dict):
+                    # Check for common response keys
+                    for key in ["emails", "events", "channels", "messages", "users", "data", "items"]:
+                        if key in data and isinstance(data[key], list):
+                            return data[key]
+                    # If it's a dict with success status, look for data
+                    if "data" in data:
+                        return data["data"] if isinstance(data["data"], list) else [data["data"]]
+                    return [data]  # Return as single-item list
+                return []
+            else:
+                logger.warning(
+                    f"Live API {endpoint} returned status {response.status_code} "
+                    f"for wallet {wallet_address[:15]}..."
+                )
+                return []
+
+    except httpx.TimeoutException:
+        logger.warning(f"Timeout fetching live data from {endpoint}")
+        return []
+    except Exception as e:
+        logger.error(f"Error fetching live data from {endpoint}: {e}")
+        return []
+
+
+async def get_kpi_data(
+    wallet_address: str,
+    integration: str,
+    data_type: str
+) -> List[Dict[str, Any]]:
+    """
+    Get KPI data respecting routing rules.
+
+    For LIVE data types (gmail, calendar, slack channels):
+        - Calls live API endpoints for real-time data
+    For RAG data types (drive, contacts, etc.):
+        - Uses synced Filecoin storage
+    For HYBRID data types:
+        - Tries live API first, falls back to RAG if empty
+
+    Args:
+        wallet_address: User's wallet address
+        integration: Integration name
+        data_type: Type of data
+
+    Returns:
+        List of data records
+    """
+    routing = DATA_ROUTING_RULES.get(integration, {}).get(data_type, RAG_STORAGE)
+
+    if routing == LIVE_API:
+        # Always use live API for real-time data types
+        live_data = await fetch_live_data(wallet_address, integration, data_type)
+        if live_data:
+            logger.info(f"KPI: Got {len(live_data)} records from live API for {integration}/{data_type}")
+            return live_data
+        # Fall back to synced data if live API fails
+        logger.info(f"KPI: Live API returned empty for {integration}/{data_type}, falling back to RAG")
+        return await get_integration_data(wallet_address, integration, data_type)
+
+    elif routing == HYBRID:
+        # Try live first for recent data, merge with synced data
+        live_data = await fetch_live_data(wallet_address, integration, data_type)
+        rag_data = await get_integration_data(wallet_address, integration, data_type)
+
+        if live_data and rag_data:
+            # Dedupe by id if possible, prefer live data
+            live_ids = {item.get("id") for item in live_data if item.get("id")}
+            merged = list(live_data)
+            for item in rag_data:
+                if item.get("id") not in live_ids:
+                    merged.append(item)
+            logger.info(f"KPI: Merged {len(live_data)} live + {len(rag_data)} RAG for {integration}/{data_type}")
+            return merged
+        return live_data or rag_data
+
+    else:  # RAG_STORAGE
+        # Use synced Filecoin storage
+        return await get_integration_data(wallet_address, integration, data_type)
+
+
 # =====================================================================
 # ENDPOINTS
 # =====================================================================
@@ -290,7 +480,8 @@ async def get_dashboard_kpis(
         # QUICKBOOKS DATA - Financial KPIs
         # ============================================
         try:
-            qb_invoices = await get_integration_data(
+            # QuickBooks invoices - HYBRID (live + synced)
+            qb_invoices = await get_kpi_data(
                 wallet_address=wallet_address,
                 integration="quickbooks",
                 data_type="invoices"
@@ -344,8 +535,8 @@ async def get_dashboard_kpis(
         # GOOGLE WORKSPACE DATA - Productivity KPIs
         # ============================================
         try:
-            # Gmail
-            gmail_data = await get_integration_data(
+            # Gmail - LIVE API (real-time unread count)
+            gmail_data = await get_kpi_data(
                 wallet_address=wallet_address,
                 integration="google",
                 data_type="gmail"
@@ -392,8 +583,8 @@ async def get_dashboard_kpis(
 
                 logger.info(f"Google Gmail: {email_count} emails, {unread_count} unread")
 
-            # Calendar
-            calendar_data = await get_integration_data(
+            # Calendar - LIVE API (real-time event count)
+            calendar_data = await get_kpi_data(
                 wallet_address=wallet_address,
                 integration="google",
                 data_type="calendar"
@@ -501,8 +692,8 @@ async def get_dashboard_kpis(
         # MICROSOFT 365 DATA - Productivity KPIs
         # ============================================
         try:
-            # Outlook Mail
-            outlook_data = await get_integration_data(
+            # Outlook Mail - LIVE API (real-time email count)
+            outlook_data = await get_kpi_data(
                 wallet_address=wallet_address,
                 integration="microsoft",
                 data_type="mail"
@@ -574,7 +765,8 @@ async def get_dashboard_kpis(
         # SLACK DATA - Communication KPIs
         # ============================================
         try:
-            slack_messages = await get_integration_data(
+            # Slack messages - HYBRID (live + synced)
+            slack_messages = await get_kpi_data(
                 wallet_address=wallet_address,
                 integration="slack",
                 data_type="messages"
@@ -606,7 +798,8 @@ async def get_dashboard_kpis(
 
                 logger.info(f"Slack: {msg_count} messages")
 
-            slack_channels = await get_integration_data(
+            # Slack channels - LIVE API (real-time channel count)
+            slack_channels = await get_kpi_data(
                 wallet_address=wallet_address,
                 integration="slack",
                 data_type="channels"
@@ -670,7 +863,8 @@ async def get_dashboard_kpis(
 
                 logger.info(f"Salesforce: {account_count} accounts")
 
-            sf_opportunities = await get_integration_data(
+            # Salesforce opportunities - HYBRID (live + synced)
+            sf_opportunities = await get_kpi_data(
                 wallet_address=wallet_address,
                 integration="salesforce",
                 data_type="opportunities"
@@ -699,7 +893,8 @@ async def get_dashboard_kpis(
 
                 logger.info(f"Salesforce: {opp_count} opportunities, ${opp_value} pipeline")
 
-            sf_leads = await get_integration_data(
+            # Salesforce leads - HYBRID (live + synced)
+            sf_leads = await get_kpi_data(
                 wallet_address=wallet_address,
                 integration="salesforce",
                 data_type="leads"
@@ -756,7 +951,8 @@ async def get_dashboard_kpis(
 
                 logger.info(f"HubSpot: {contact_count} contacts")
 
-            hs_deals = await get_integration_data(
+            # HubSpot deals - HYBRID (live + synced)
+            hs_deals = await get_kpi_data(
                 wallet_address=wallet_address,
                 integration="hubspot",
                 data_type="deals"
@@ -914,7 +1110,8 @@ async def get_recent_activity(
         # QUICKBOOKS ACTIVITIES
         # ============================================
         try:
-            qb_invoices = await get_integration_data(
+            # QuickBooks invoices - HYBRID
+            qb_invoices = await get_kpi_data(
                 wallet_address=wallet_address,
                 integration="quickbooks",
                 data_type="invoices"
@@ -938,8 +1135,8 @@ async def get_recent_activity(
         # GOOGLE WORKSPACE ACTIVITIES
         # ============================================
         try:
-            # Gmail - Recent emails
-            gmail_data = await get_integration_data(
+            # Gmail - LIVE API (recent emails)
+            gmail_data = await get_kpi_data(
                 wallet_address=wallet_address,
                 integration="google",
                 data_type="gmail"
@@ -958,8 +1155,8 @@ async def get_recent_activity(
                         source="Google"
                     ))
 
-            # Calendar - Upcoming events
-            calendar_data = await get_integration_data(
+            # Calendar - LIVE API (upcoming events)
+            calendar_data = await get_kpi_data(
                 wallet_address=wallet_address,
                 integration="google",
                 data_type="calendar"
@@ -985,7 +1182,8 @@ async def get_recent_activity(
         # MICROSOFT 365 ACTIVITIES
         # ============================================
         try:
-            outlook_data = await get_integration_data(
+            # Outlook Mail - LIVE API
+            outlook_data = await get_kpi_data(
                 wallet_address=wallet_address,
                 integration="microsoft",
                 data_type="mail"
@@ -1011,7 +1209,8 @@ async def get_recent_activity(
         # SLACK ACTIVITIES
         # ============================================
         try:
-            slack_messages = await get_integration_data(
+            # Slack messages - HYBRID
+            slack_messages = await get_kpi_data(
                 wallet_address=wallet_address,
                 integration="slack",
                 data_type="messages"
@@ -1037,7 +1236,8 @@ async def get_recent_activity(
         # SALESFORCE ACTIVITIES
         # ============================================
         try:
-            sf_opportunities = await get_integration_data(
+            # Salesforce opportunities - HYBRID
+            sf_opportunities = await get_kpi_data(
                 wallet_address=wallet_address,
                 integration="salesforce",
                 data_type="opportunities"
@@ -1061,7 +1261,8 @@ async def get_recent_activity(
         # HUBSPOT ACTIVITIES
         # ============================================
         try:
-            hs_deals = await get_integration_data(
+            # HubSpot deals - HYBRID
+            hs_deals = await get_kpi_data(
                 wallet_address=wallet_address,
                 integration="hubspot",
                 data_type="deals"

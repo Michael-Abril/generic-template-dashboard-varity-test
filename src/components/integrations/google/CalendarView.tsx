@@ -76,8 +76,9 @@ export function CalendarView({ walletAddress, data }: CalendarViewProps) {
     setLoading(true);
     setApiError(null);
     try {
+      // FIX (Jan 4, 2026): Reduced from 5000 to 50 to prevent excessive API calls
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/integrations/google/events?wallet_address=${walletAddress}&max_results=5000`
+        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/integrations/google/events?wallet_address=${walletAddress}&max_results=50`
       );
 
       if (!response.ok) {

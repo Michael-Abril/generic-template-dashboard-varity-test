@@ -13,7 +13,7 @@ from pydantic import BaseModel
 from typing import List, Optional, Dict, Any, Tuple
 import httpx
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
@@ -151,6 +151,215 @@ async def get_hubspot_access_token(
         # Use the access_token property which auto-decrypts (same pattern as Slack, Google fixes)
         return token.access_token
 
+
+# =====================================================================
+# GET ENDPOINTS - List records from HubSpot
+# These are LIVE API endpoints that query HubSpot in real-time
+# =====================================================================
+
+@router.get("/contacts")
+async def list_contacts(
+    wallet_address: str = Query(..., description="User's wallet address"),
+    limit: int = Query(100, ge=1, le=500, description="Max records to return"),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    List contacts from HubSpot.
+
+    Returns contacts sorted by creation date (newest first).
+    """
+    try:
+        access_token = await get_hubspot_access_token(wallet_address, db)
+
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.get(
+                "https://api.hubapi.com/crm/v3/objects/contacts",
+                params={
+                    "limit": limit,
+                    "properties": "email,firstname,lastname,phone,company,jobtitle,lifecyclestage,createdate"
+                },
+                headers={"Authorization": f"Bearer {access_token}"}
+            )
+
+            if response.status_code != 200:
+                logger.error(f"HubSpot contacts query failed: {response.status_code}")
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail=f"HubSpot API error: {response.status_code}"
+                )
+
+            data = response.json()
+            contacts = data.get("results", [])
+
+            return {
+                "success": True,
+                "contacts": contacts,
+                "total_count": len(contacts)
+            }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error listing HubSpot contacts: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=str(e)
+        )
+
+
+@router.get("/companies")
+async def list_companies(
+    wallet_address: str = Query(..., description="User's wallet address"),
+    limit: int = Query(100, ge=1, le=500, description="Max records to return"),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    List companies from HubSpot.
+
+    Returns companies sorted by creation date (newest first).
+    """
+    try:
+        access_token = await get_hubspot_access_token(wallet_address, db)
+
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.get(
+                "https://api.hubapi.com/crm/v3/objects/companies",
+                params={
+                    "limit": limit,
+                    "properties": "name,domain,industry,phone,city,state,country,numberofemployees,annualrevenue,createdate"
+                },
+                headers={"Authorization": f"Bearer {access_token}"}
+            )
+
+            if response.status_code != 200:
+                logger.error(f"HubSpot companies query failed: {response.status_code}")
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail=f"HubSpot API error: {response.status_code}"
+                )
+
+            data = response.json()
+            companies = data.get("results", [])
+
+            return {
+                "success": True,
+                "companies": companies,
+                "total_count": len(companies)
+            }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error listing HubSpot companies: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=str(e)
+        )
+
+
+@router.get("/deals")
+async def list_deals(
+    wallet_address: str = Query(..., description="User's wallet address"),
+    limit: int = Query(100, ge=1, le=500, description="Max records to return"),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    List deals from HubSpot.
+
+    Returns deals sorted by creation date (newest first).
+    """
+    try:
+        access_token = await get_hubspot_access_token(wallet_address, db)
+
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.get(
+                "https://api.hubapi.com/crm/v3/objects/deals",
+                params={
+                    "limit": limit,
+                    "properties": "dealname,amount,dealstage,pipeline,closedate,hubspot_owner_id,createdate"
+                },
+                headers={"Authorization": f"Bearer {access_token}"}
+            )
+
+            if response.status_code != 200:
+                logger.error(f"HubSpot deals query failed: {response.status_code}")
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail=f"HubSpot API error: {response.status_code}"
+                )
+
+            data = response.json()
+            deals = data.get("results", [])
+
+            return {
+                "success": True,
+                "deals": deals,
+                "total_count": len(deals)
+            }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error listing HubSpot deals: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=str(e)
+        )
+
+
+@router.get("/tickets")
+async def list_tickets(
+    wallet_address: str = Query(..., description="User's wallet address"),
+    limit: int = Query(100, ge=1, le=500, description="Max records to return"),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    List tickets from HubSpot.
+
+    Returns tickets sorted by creation date (newest first).
+    """
+    try:
+        access_token = await get_hubspot_access_token(wallet_address, db)
+
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.get(
+                "https://api.hubapi.com/crm/v3/objects/tickets",
+                params={
+                    "limit": limit,
+                    "properties": "subject,content,hs_ticket_priority,hs_pipeline_stage,hubspot_owner_id,createdate"
+                },
+                headers={"Authorization": f"Bearer {access_token}"}
+            )
+
+            if response.status_code != 200:
+                logger.error(f"HubSpot tickets query failed: {response.status_code}")
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail=f"HubSpot API error: {response.status_code}"
+                )
+
+            data = response.json()
+            tickets = data.get("results", [])
+
+            return {
+                "success": True,
+                "tickets": tickets,
+                "total_count": len(tickets)
+            }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error listing HubSpot tickets: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=str(e)
+        )
+
+
+# =====================================================================
+# POST ENDPOINTS - Create records in HubSpot
+# =====================================================================
 
 # Contact endpoints
 @router.post("/contacts")

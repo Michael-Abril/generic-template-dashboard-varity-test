@@ -334,8 +334,10 @@ export function GmailInbox({ walletAddress, data }: GmailInboxProps) {
     setApiError(null);
     setHasFetchedOnce(true);
     try {
+      // CRITICAL FIX (Jan 4, 2026): Reduced from 5000 to 20 to prevent Railway OOM crash
+      // Each email requires a separate API call, so 5000 was making 5001 requests
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/integrations/google/emails?wallet_address=${walletAddress}&max_results=5000`
+        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/integrations/google/emails?wallet_address=${walletAddress}&max_results=20`
       );
 
       if (!response.ok) {

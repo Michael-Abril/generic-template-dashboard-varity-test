@@ -21,7 +21,7 @@ from typing import List, Optional, Dict, Any, Tuple
 import httpx
 import logging
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
@@ -244,6 +244,219 @@ async def get_salesforce_access_token(
         # Return access token and provider data (includes instance_url)
         return token.access_token, token.provider_data or {}
 
+
+# =====================================================================
+# GET ENDPOINTS - List records from Salesforce
+# These are LIVE API endpoints that query Salesforce in real-time
+# =====================================================================
+
+@router.get("/leads")
+async def list_leads(
+    wallet_address: str = Query(..., description="User's wallet address"),
+    limit: int = Query(100, ge=1, le=500, description="Max records to return"),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    List leads from Salesforce.
+
+    Returns recent leads sorted by creation date (newest first).
+    """
+    try:
+        access_token, provider_data = await get_salesforce_access_token(wallet_address, db)
+        instance_url = validate_instance_url(provider_data.get("instance_url"))
+
+        # SOQL query for leads
+        query = f"SELECT Id, Salutation, FirstName, LastName, Company, Title, Email, Phone, Status, LeadSource, Industry, CreatedDate FROM Lead ORDER BY CreatedDate DESC LIMIT {limit}"
+
+        async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
+            response = await client.get(
+                f"{instance_url}/services/data/v58.0/query",
+                params={"q": query},
+                headers={"Authorization": f"Bearer {access_token}"}
+            )
+
+            if response.status_code != 200:
+                logger.error(f"Salesforce leads query failed: {response.status_code}")
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail=sanitize_salesforce_error(response.text)
+                )
+
+            data = response.json()
+            leads = data.get("records", [])
+
+            return {
+                "success": True,
+                "leads": leads,
+                "total_count": data.get("totalSize", len(leads))
+            }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error listing Salesforce leads: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=sanitize_error_message(str(e))
+        )
+
+
+@router.get("/opportunities")
+async def list_opportunities(
+    wallet_address: str = Query(..., description="User's wallet address"),
+    limit: int = Query(100, ge=1, le=500, description="Max records to return"),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    List opportunities from Salesforce.
+
+    Returns recent opportunities sorted by close date.
+    """
+    try:
+        access_token, provider_data = await get_salesforce_access_token(wallet_address, db)
+        instance_url = validate_instance_url(provider_data.get("instance_url"))
+
+        # SOQL query for opportunities
+        query = f"SELECT Id, Name, StageName, Amount, CloseDate, Probability, AccountId, OwnerId, CreatedDate FROM Opportunity ORDER BY CloseDate DESC NULLS LAST LIMIT {limit}"
+
+        async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
+            response = await client.get(
+                f"{instance_url}/services/data/v58.0/query",
+                params={"q": query},
+                headers={"Authorization": f"Bearer {access_token}"}
+            )
+
+            if response.status_code != 200:
+                logger.error(f"Salesforce opportunities query failed: {response.status_code}")
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail=sanitize_salesforce_error(response.text)
+                )
+
+            data = response.json()
+            opportunities = data.get("records", [])
+
+            return {
+                "success": True,
+                "opportunities": opportunities,
+                "total_count": data.get("totalSize", len(opportunities))
+            }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error listing Salesforce opportunities: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=sanitize_error_message(str(e))
+        )
+
+
+@router.get("/contacts")
+async def list_contacts(
+    wallet_address: str = Query(..., description="User's wallet address"),
+    limit: int = Query(100, ge=1, le=500, description="Max records to return"),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    List contacts from Salesforce.
+
+    Returns contacts sorted by creation date (newest first).
+    """
+    try:
+        access_token, provider_data = await get_salesforce_access_token(wallet_address, db)
+        instance_url = validate_instance_url(provider_data.get("instance_url"))
+
+        # SOQL query for contacts
+        query = f"SELECT Id, Salutation, FirstName, LastName, Email, Phone, MobilePhone, Title, AccountId, Department, CreatedDate FROM Contact ORDER BY CreatedDate DESC LIMIT {limit}"
+
+        async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
+            response = await client.get(
+                f"{instance_url}/services/data/v58.0/query",
+                params={"q": query},
+                headers={"Authorization": f"Bearer {access_token}"}
+            )
+
+            if response.status_code != 200:
+                logger.error(f"Salesforce contacts query failed: {response.status_code}")
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail=sanitize_salesforce_error(response.text)
+                )
+
+            data = response.json()
+            contacts = data.get("records", [])
+
+            return {
+                "success": True,
+                "contacts": contacts,
+                "total_count": data.get("totalSize", len(contacts))
+            }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error listing Salesforce contacts: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=sanitize_error_message(str(e))
+        )
+
+
+@router.get("/accounts")
+async def list_accounts(
+    wallet_address: str = Query(..., description="User's wallet address"),
+    limit: int = Query(100, ge=1, le=500, description="Max records to return"),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    List accounts from Salesforce.
+
+    Returns accounts sorted by creation date (newest first).
+    """
+    try:
+        access_token, provider_data = await get_salesforce_access_token(wallet_address, db)
+        instance_url = validate_instance_url(provider_data.get("instance_url"))
+
+        # SOQL query for accounts
+        query = f"SELECT Id, Name, Type, Industry, Phone, Website, BillingCity, BillingState, BillingCountry, AnnualRevenue, NumberOfEmployees, CreatedDate FROM Account ORDER BY CreatedDate DESC LIMIT {limit}"
+
+        async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
+            response = await client.get(
+                f"{instance_url}/services/data/v58.0/query",
+                params={"q": query},
+                headers={"Authorization": f"Bearer {access_token}"}
+            )
+
+            if response.status_code != 200:
+                logger.error(f"Salesforce accounts query failed: {response.status_code}")
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail=sanitize_salesforce_error(response.text)
+                )
+
+            data = response.json()
+            accounts = data.get("records", [])
+
+            return {
+                "success": True,
+                "accounts": accounts,
+                "total_count": data.get("totalSize", len(accounts))
+            }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error listing Salesforce accounts: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=sanitize_error_message(str(e))
+        )
+
+
+# =====================================================================
+# POST ENDPOINTS - Create records in Salesforce
+# =====================================================================
 
 # Lead endpoints
 @router.post("/leads")

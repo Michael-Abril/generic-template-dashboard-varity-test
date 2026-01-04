@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { Plus, Search, Mail, Phone, MoreHorizontal, Edit, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -59,9 +59,49 @@ export default function CustomersList({ walletAddress, customers: rawCustomers =
   const [searchQuery, setSearchQuery] = useState('');
   const [showCustomerForm, setShowCustomerForm] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState<ReturnType<typeof normalizeCustomer> | null>(null);
+  const [apiCustomers, setApiCustomers] = useState<Customer[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Fetch customers from live API
+  const fetchCustomersFromAPI = useCallback(async () => {
+    if (!walletAddress) {
+      setLoading(true);
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/quickbooks/customers?wallet_address=${walletAddress}`
+      );
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch customers: ${response.status}`);
+      }
+
+      const result = await response.json();
+      setApiCustomers(result.customers || result.data || []);
+    } catch (err) {
+      console.error('API error, falling back to props:', err);
+      setError('Failed to load customers from API');
+      setApiCustomers(rawCustomers); // Fallback to props
+    } finally {
+      setLoading(false);
+    }
+  }, [walletAddress, rawCustomers]);
+
+  // Fetch on mount and when wallet changes
+  useEffect(() => {
+    fetchCustomersFromAPI();
+  }, [fetchCustomersFromAPI]);
+
+  // Use API data if available, otherwise fall back to props
+  const sourceCustomers = apiCustomers.length > 0 ? apiCustomers : rawCustomers;
 
   // Normalize customers from QuickBooks API format
-  const customers = rawCustomers.map(normalizeCustomer);
+  const customers = sourceCustomers.map(normalizeCustomer);
 
   const handleCreateCustomer = () => {
     setSelectedCustomer(null);
@@ -135,35 +175,52 @@ export default function CustomersList({ walletAddress, customers: rawCustomers =
 
       <Card>
         <CardHeader>
-          <CardTitle>All Customers ({filteredCustomers.length})</CardTitle>
+          <CardTitle>All Customers ({loading ? '...' : filteredCustomers.length})</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-gray-200 dark:border-gray-700">
-                  <th className="text-left py-3 px-4 text-sm font-medium text-gray-500 dark:text-gray-400">
-                    Name
-                  </th>
-                  <th className="text-left py-3 px-4 text-sm font-medium text-gray-500 dark:text-gray-400">
-                    Company
-                  </th>
-                  <th className="text-left py-3 px-4 text-sm font-medium text-gray-500 dark:text-gray-400">
-                    Contact
-                  </th>
-                  <th className="text-right py-3 px-4 text-sm font-medium text-gray-500 dark:text-gray-400">
-                    Open Balance
-                  </th>
-                  <th className="text-center py-3 px-4 text-sm font-medium text-gray-500 dark:text-gray-400">
-                    Open Invoices
-                  </th>
-                  <th className="text-center py-3 px-4 text-sm font-medium text-gray-500 dark:text-gray-400">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredCustomers.map((customer) => (
+          {loading ? (
+            <div className="text-center py-12">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 dark:border-white mx-auto mb-4"></div>
+              <p className="text-gray-500 dark:text-gray-400">Loading customers...</p>
+            </div>
+          ) : filteredCustomers.length === 0 ? (
+            <div className="text-center py-12">
+              <p className="text-gray-500 dark:text-gray-400">
+                {sourceCustomers.length === 0
+                  ? 'No customers synced yet'
+                  : 'No customers match your search'}
+              </p>
+              {error && (
+                <p className="text-sm text-red-500 mt-2">{error}</p>
+              )}
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-gray-200 dark:border-gray-700">
+                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-500 dark:text-gray-400">
+                      Name
+                    </th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-500 dark:text-gray-400">
+                      Company
+                    </th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-500 dark:text-gray-400">
+                      Contact
+                    </th>
+                    <th className="text-right py-3 px-4 text-sm font-medium text-gray-500 dark:text-gray-400">
+                      Open Balance
+                    </th>
+                    <th className="text-center py-3 px-4 text-sm font-medium text-gray-500 dark:text-gray-400">
+                      Open Invoices
+                    </th>
+                    <th className="text-center py-3 px-4 text-sm font-medium text-gray-500 dark:text-gray-400">
+                      Actions
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredCustomers.map((customer) => (
                   <tr
                     key={customer.id}
                     className="border-b border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800"
@@ -222,7 +279,8 @@ export default function CustomersList({ walletAddress, customers: rawCustomers =
                 ))}
               </tbody>
             </table>
-          </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 

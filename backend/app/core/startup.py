@@ -382,6 +382,22 @@ async def startup_sequence() -> Dict[str, Any]:
     external_services = await check_external_services()
     services.update(external_services)
 
+    # Step 5: Start OAuth token auto-refresh scheduler (January 4, 2026)
+    try:
+        from app.services.scheduler_service import start_scheduler
+        scheduler_ok = await start_scheduler()
+        services["scheduler"] = scheduler_ok
+        if scheduler_ok:
+            logger.info("✅ OAuth auto-refresh scheduler started")
+        else:
+            logger.warning("⚠️  Scheduler not started - OAuth tokens may expire")
+    except ImportError:
+        services["scheduler"] = False
+        logger.info("ℹ️  Scheduler service not available (apscheduler not installed)")
+    except Exception as e:
+        services["scheduler"] = False
+        logger.warning(f"⚠️  Failed to start scheduler: {e}")
+
     logger.info("=" * 60)
     logger.info("✅ BACKEND STARTUP COMPLETE")
     logger.info("=" * 60)
@@ -400,6 +416,16 @@ async def shutdown_sequence():
     Graceful shutdown - clean up resources.
     """
     logger.info("Shutting down...")
+
+    # Stop OAuth auto-refresh scheduler (January 4, 2026)
+    try:
+        from app.services.scheduler_service import stop_scheduler
+        await stop_scheduler()
+        logger.info("✅ Scheduler stopped")
+    except ImportError:
+        pass  # Scheduler not installed
+    except Exception as e:
+        logger.warning(f"⚠️  Error stopping scheduler: {e}")
 
     try:
         # Close database connections

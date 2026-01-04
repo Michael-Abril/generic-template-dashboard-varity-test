@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { Search, FileText } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -60,10 +60,50 @@ function normalizeInvoice(inv: Invoice) {
 
 export default function InvoicesList({ walletAddress, invoices: rawInvoices = [] }: InvoicesListProps) {
   const [searchQuery, setSearchQuery] = useState('');
+  const [apiInvoices, setApiInvoices] = useState<Invoice[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Fetch invoices from live API
+  const fetchInvoicesFromAPI = useCallback(async () => {
+    if (!walletAddress) {
+      setLoading(true);
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/quickbooks/invoices?wallet_address=${walletAddress}`
+      );
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch invoices: ${response.status}`);
+      }
+
+      const result = await response.json();
+      setApiInvoices(result.invoices || result.data || []);
+    } catch (err) {
+      console.error('API error, falling back to props:', err);
+      setError('Failed to load invoices from API');
+      setApiInvoices(rawInvoices); // Fallback to props
+    } finally {
+      setLoading(false);
+    }
+  }, [walletAddress, rawInvoices]);
+
+  // Fetch on mount and when wallet changes
+  useEffect(() => {
+    fetchInvoicesFromAPI();
+  }, [fetchInvoicesFromAPI]);
+
+  // Use API data if available, otherwise fall back to props
+  const sourceInvoices = apiInvoices.length > 0 ? apiInvoices : rawInvoices;
 
   // Normalize and filter invoices
   const invoices = useMemo(() => {
-    const normalized = rawInvoices.map(normalizeInvoice);
+    const normalized = sourceInvoices.map(normalizeInvoice);
 
     if (!searchQuery.trim()) return normalized;
 
@@ -72,7 +112,7 @@ export default function InvoicesList({ walletAddress, invoices: rawInvoices = []
       inv.customer.toLowerCase().includes(query) ||
       inv.number.toLowerCase().includes(query)
     );
-  }, [rawInvoices, searchQuery]);
+  }, [sourceInvoices, searchQuery]);
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -107,6 +147,7 @@ export default function InvoicesList({ walletAddress, invoices: rawInvoices = []
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="pl-10"
+              disabled={loading}
             />
           </div>
         </CardContent>
@@ -116,18 +157,26 @@ export default function InvoicesList({ walletAddress, invoices: rawInvoices = []
       <Card>
         <CardHeader>
           <CardTitle className="text-lg">
-            Invoices ({invoices.length})
+            Invoices ({loading ? '...' : invoices.length})
           </CardTitle>
         </CardHeader>
         <CardContent>
-          {invoices.length === 0 ? (
+          {loading ? (
+            <div className="text-center py-12">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 dark:border-white mx-auto mb-4"></div>
+              <p className="text-gray-500 dark:text-gray-400">Loading invoices...</p>
+            </div>
+          ) : invoices.length === 0 ? (
             <div className="text-center py-12">
               <FileText className="w-12 h-12 mx-auto text-gray-300 dark:text-gray-600 mb-4" />
               <p className="text-gray-500 dark:text-gray-400">
-                {rawInvoices.length === 0
+                {sourceInvoices.length === 0
                   ? 'No invoices synced yet'
                   : 'No invoices match your search'}
               </p>
+              {error && (
+                <p className="text-sm text-red-500 mt-2">{error}</p>
+              )}
             </div>
           ) : (
             <div className="overflow-x-auto">

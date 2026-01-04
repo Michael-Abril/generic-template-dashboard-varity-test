@@ -150,6 +150,8 @@ export function DriveExplorer({ walletAddress, data }: DriveExplorerProps) {
   const FILES_PER_PAGE = 50;
   const fileInputRef = useRef<HTMLInputElement>(null);
   const newMenuRef = useRef<HTMLDivElement>(null);
+  const [apiError, setApiError] = useState<string | null>(null);
+  const [hasFetchedOnce, setHasFetchedOnce] = useState(false);
 
   // Get storage usage (mock for now)
   const storageUsed = useMemo(() => {
@@ -218,11 +220,39 @@ export function DriveExplorer({ walletAddress, data }: DriveExplorerProps) {
     setCurrentPage(0);
   }, [searchQuery, sidebarSection]);
 
-  // Load files from data prop (already fetched by parent)
-  useEffect(() => {
-    if (data?.files) {
-      // Data is already synced from Google - use the data prop
-      const parsedFiles = data.files.map((file: any) => ({
+  // Fetch files from live Google Drive API
+  const fetchFilesFromAPI = useCallback(async () => {
+    if (!walletAddress) {
+      setLoading(true);
+      return;
+    }
+
+    setLoading(true);
+    setApiError(null);
+    setHasFetchedOnce(true);
+    try {
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/integrations/google/files?wallet_address=${walletAddress}`
+      );
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          setApiError('Google token expired. Please reconnect your Google account from the Marketplace.');
+          throw new Error('Token expired');
+        } else if (response.status === 404) {
+          setApiError('Google account not connected. Please connect your Google account from the Marketplace.');
+          throw new Error('Not connected');
+        } else {
+          setApiError(`Unable to load files (Error ${response.status}). Please try again or reconnect from Marketplace.`);
+          throw new Error(`Failed to fetch files: ${response.status}`);
+        }
+      }
+
+      const result = await response.json();
+      const filesData = result.files || result.data || [];
+
+      // Parse files from API response
+      const parsedFiles: DriveFile[] = filesData.map((file: any) => ({
         id: file.id || `file-${Math.random().toString(36).substr(2, 9)}`,
         name: file.name || 'Untitled',
         mimeType: file.mimeType || 'application/octet-stream',
@@ -233,19 +263,48 @@ export function DriveExplorer({ walletAddress, data }: DriveExplorerProps) {
         starred: file.starred || false,
         parent_folder_id: file.parent_folder_id || null,
       }));
+
       setFiles(parsedFiles);
-      setLoading(false);
-    } else {
-      // No data synced yet
-      setFiles([]);
+    } catch (error) {
+      console.error('Failed to fetch files from API:', error);
+      setApiError('Failed to load files. Please try again.');
+      // Fall back to data prop if API fails
+      if (data?.files) {
+        const parsedFiles = data.files.map((file: any) => ({
+          id: file.id || `file-${Math.random().toString(36).substr(2, 9)}`,
+          name: file.name || 'Untitled',
+          mimeType: file.mimeType || 'application/octet-stream',
+          size: file.size || '0',
+          modifiedTime: file.modifiedTime || new Date().toISOString(),
+          owners: file.owners || [],
+          webViewLink: file.webViewLink || '',
+          starred: file.starred || false,
+          parent_folder_id: file.parent_folder_id || null,
+        }));
+        setFiles(parsedFiles);
+      } else {
+        setFiles([]);
+      }
+    } finally {
       setLoading(false);
     }
-  }, [data]);
+  }, [walletAddress, data]);
+
+  // Fetch files on mount and when wallet changes
+  useEffect(() => {
+    fetchFilesFromAPI();
+  }, [fetchFilesFromAPI]);
+
+  // Explicit retry when wallet becomes available
+  useEffect(() => {
+    if (walletAddress && !hasFetchedOnce) {
+      fetchFilesFromAPI();
+    }
+  }, [walletAddress, hasFetchedOnce, fetchFilesFromAPI]);
 
   const loadFiles = async () => {
-    // Refresh by calling parent's onRefresh if available
     setLoading(true);
-    setTimeout(() => setLoading(false), 500)
+    await fetchFilesFromAPI();
   };
 
   const handleFileClick = (file: DriveFile) => {

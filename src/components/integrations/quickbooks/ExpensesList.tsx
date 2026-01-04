@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { Search, Receipt } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -45,10 +45,50 @@ function normalizeExpense(exp: Expense) {
 
 export default function ExpensesList({ walletAddress, expenses: rawExpenses = [] }: ExpensesListProps) {
   const [searchQuery, setSearchQuery] = useState('');
+  const [apiExpenses, setApiExpenses] = useState<Expense[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Fetch expenses from live API
+  const fetchExpensesFromAPI = useCallback(async () => {
+    if (!walletAddress) {
+      setLoading(true);
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/quickbooks/expenses?wallet_address=${walletAddress}`
+      );
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch expenses: ${response.status}`);
+      }
+
+      const result = await response.json();
+      setApiExpenses(result.expenses || result.data || []);
+    } catch (err) {
+      console.error('API error, falling back to props:', err);
+      setError('Failed to load expenses from API');
+      setApiExpenses(rawExpenses); // Fallback to props
+    } finally {
+      setLoading(false);
+    }
+  }, [walletAddress, rawExpenses]);
+
+  // Fetch on mount and when wallet changes
+  useEffect(() => {
+    fetchExpensesFromAPI();
+  }, [fetchExpensesFromAPI]);
+
+  // Use API data if available, otherwise fall back to props
+  const sourceExpenses = apiExpenses.length > 0 ? apiExpenses : rawExpenses;
 
   // Normalize and filter expenses
   const expenses = useMemo(() => {
-    const normalized = rawExpenses.map(normalizeExpense);
+    const normalized = sourceExpenses.map(normalizeExpense);
 
     if (!searchQuery.trim()) return normalized;
 
@@ -58,7 +98,7 @@ export default function ExpensesList({ walletAddress, expenses: rawExpenses = []
       exp.category.toLowerCase().includes(query) ||
       exp.memo.toLowerCase().includes(query)
     );
-  }, [rawExpenses, searchQuery]);
+  }, [sourceExpenses, searchQuery]);
 
   // Calculate total
   const total = useMemo(() => {
@@ -104,18 +144,26 @@ export default function ExpensesList({ walletAddress, expenses: rawExpenses = []
       <Card>
         <CardHeader>
           <CardTitle className="text-lg">
-            Expenses ({expenses.length})
+            Expenses ({loading ? '...' : expenses.length})
           </CardTitle>
         </CardHeader>
         <CardContent>
-          {expenses.length === 0 ? (
+          {loading ? (
+            <div className="text-center py-12">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 dark:border-white mx-auto mb-4"></div>
+              <p className="text-gray-500 dark:text-gray-400">Loading expenses...</p>
+            </div>
+          ) : expenses.length === 0 ? (
             <div className="text-center py-12">
               <Receipt className="w-12 h-12 mx-auto text-gray-300 dark:text-gray-600 mb-4" />
               <p className="text-gray-500 dark:text-gray-400">
-                {rawExpenses.length === 0
+                {sourceExpenses.length === 0
                   ? 'No expenses synced yet'
                   : 'No expenses match your search'}
               </p>
+              {error && (
+                <p className="text-sm text-red-500 mt-2">{error}</p>
+              )}
             </div>
           ) : (
             <div className="overflow-x-auto">
