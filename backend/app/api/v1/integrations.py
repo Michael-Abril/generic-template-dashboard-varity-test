@@ -166,13 +166,16 @@ async def refresh_oauth_token(
                     oauth_token.refresh_token = token_data.get("refresh_token")
 
                 # Update expiration
+                # CRITICAL FIX (Jan 4, 2026): Use timezone-naive datetimes to match
+                # OAuthToken model's DateTime columns (not DateTime(timezone=True))
+                # This fixes: "can't subtract offset-naive and offset-aware datetimes"
                 if token_data.get("expires_in"):
-                    oauth_token.expires_at = datetime.now(timezone.utc) + timedelta(
+                    oauth_token.expires_at = datetime.utcnow() + timedelta(
                         seconds=int(token_data["expires_in"])
                     )
 
-                oauth_token.last_refreshed_at = datetime.now(timezone.utc)
-                oauth_token.updated_at = datetime.now(timezone.utc)
+                oauth_token.last_refreshed_at = datetime.utcnow()
+                oauth_token.updated_at = datetime.utcnow()
 
                 await db.commit()
 
@@ -507,7 +510,8 @@ async def sync_tool_data(
             )
 
         # Update last_sync_at timestamp
-        oauth_token.last_sync_at = datetime.now(timezone.utc)
+        # Use timezone-naive datetime to match OAuthToken model's DateTime column
+        oauth_token.last_sync_at = datetime.utcnow()
         await db.commit()
 
         # =====================================================================
