@@ -22,14 +22,11 @@ from app.services.filecoin_service import FilecoinService
 from app.services.encryption_service import EncryptionService
 from app.services.mcp_ingestion_service import get_mcp_ingestion_service, DATA_ROUTING_RULES
 
-# Legacy adapters (deprecated - kept for backwards compatibility)
-# Only MVP integrations are active
-from app.adapters.quickbooks.sync import QuickBooksSync
-from app.adapters.salesforce.sync import SalesforceSync
-from app.adapters.slack.sync import SlackSync
-from app.adapters.hubspot.sync import HubSpotSync
-from app.adapters.google.sync import GoogleWorkspaceSync
-from app.adapters.microsoft.sync import MicrosoftSync
+# =============================================================================
+# LEGACY ADAPTERS DELETED: January 5, 2026
+# All adapter imports removed - MCP pipeline is now the ONLY sync method.
+# Legacy sync_job_worker() function kept below for reference but never called.
+# =============================================================================
 
 logger = logging.getLogger(__name__)
 
@@ -39,19 +36,14 @@ router = APIRouter()
 filecoin_service = FilecoinService()
 encryption_service = EncryptionService()
 
-# MCP-enabled integrations (new pipeline)
+# MCP-enabled integrations (the ONLY sync method as of January 5, 2026)
 MCP_INTEGRATIONS = {"google", "slack", "quickbooks", "microsoft", "salesforce", "hubspot"}
 
-# Legacy sync adapters (deprecated) - Only MVP integrations
-SYNC_ADAPTERS = {
-    "quickbooks": QuickBooksSync,
-    "salesforce": SalesforceSync,
-    "slack": SlackSync,
-    "hubspot": HubSpotSync,
-    "google_workspace": GoogleWorkspaceSync,
-    "google": GoogleWorkspaceSync,  # Alias for compatibility
-    "microsoft": MicrosoftSync,
-}
+# =============================================================================
+# LEGACY CODE DELETED: January 5, 2026
+# SYNC_ADAPTERS dictionary removed - all adapters deleted from codebase.
+# sync_job_worker() function below is kept for reference but never called.
+# =============================================================================
 
 # Sync job status storage (in production, use Redis)
 sync_jobs = {}
@@ -124,6 +116,11 @@ async def retrieve_oauth_credentials(wallet_address: str, integration: str) -> d
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# =============================================================================
+# DEPRECATED: sync_job_worker - No longer used as of January 4, 2026
+# The /trigger endpoint now uses MCP pipeline directly (sync_integration_data).
+# Keeping for backwards compatibility but this function is no longer called.
+# =============================================================================
 async def sync_job_worker(
     job_id: str,
     integration: str,
@@ -132,7 +129,14 @@ async def sync_job_worker(
     data_types: Optional[List[str]] = None
 ):
     """
-    Background worker for syncing data from external integration
+    DEPRECATED: Background worker for syncing data from external integration.
+
+    NOTE: This function is NO LONGER CALLED. The /trigger endpoint now uses
+    the MCP pipeline via mcp_service.sync_integration_data() which handles:
+    - MCP server data fetching
+    - Encryption with wallet key
+    - Routing (RAG/Live/Hybrid)
+    - L3 batch commits
 
     Args:
         job_id: Unique job ID
@@ -145,12 +149,9 @@ async def sync_job_worker(
         # Update job status
         sync_jobs[job_id]["status"] = "running"
 
-        # Get sync adapter
-        if integration not in SYNC_ADAPTERS:
-            raise Exception(f"No sync adapter for {integration}")
-
-        adapter_class = SYNC_ADAPTERS[integration]
-        adapter = adapter_class(credentials)
+        # LEGACY CODE: Adapter classes deleted January 5, 2026
+        # This entire function is deprecated and never called
+        raise Exception(f"sync_job_worker is deprecated - use MCP pipeline via mcp_ingestion_service")
 
         # Sync data
         synced_data = {}
@@ -286,21 +287,28 @@ async def trigger_sync(
     background_tasks: BackgroundTasks
 ):
     """
-    Trigger data sync from an integration
+    Trigger data sync from an integration using MCP pipeline.
+
+    This endpoint now routes ALL syncs through the MCP pipeline which:
+    1. Fetches data via MCP servers (type-safe, automatic retries)
+    2. Encrypts ALL data with wallet-derived key
+    3. Routes to RAG (Pinata) or Live API based on DATA_ROUTING_RULES
+    4. Commits to Varity L3 for on-chain verification
 
     Args:
-        integration: Integration name (quickbooks, salesforce, shopify)
-        request: Sync trigger request
-        background_tasks: FastAPI background tasks
+        integration: Integration name (google, slack, quickbooks, microsoft, salesforce, hubspot)
+        request: Sync trigger request with wallet_address and optional data_types
 
     Returns:
-        Job ID for tracking sync status
+        Sync results with routing info and L3 commit status
     """
     try:
-        if integration not in SYNC_ADAPTERS:
+        # Check if integration is MCP-enabled
+        if integration not in MCP_INTEGRATIONS:
             raise HTTPException(
                 status_code=400,
-                detail=f"Unsupported integration: {integration}"
+                detail=f"Integration '{integration}' is not supported. "
+                       f"Supported: {', '.join(MCP_INTEGRATIONS)}"
             )
 
         # Retrieve OAuth credentials
@@ -309,47 +317,41 @@ async def trigger_sync(
             integration
         )
 
-        # Generate job ID
-        job_id = f"{integration}-{request.wallet_address[:8]}-{int(datetime.utcnow().timestamp())}"
+        oauth_token = credentials.get("access_token")
+        if not oauth_token:
+            raise HTTPException(
+                status_code=401,
+                detail=f"No valid OAuth token for {integration}. Please reconnect."
+            )
 
-        # Initialize job status
-        sync_jobs[job_id] = {
-            "job_id": job_id,
-            "integration": integration,
-            "wallet_address": request.wallet_address,
-            "status": "queued",
-            "progress": 0,
-            "total": 0,
-            "started_at": datetime.utcnow().isoformat()
-        }
+        # Get MCP ingestion service
+        mcp_service = get_mcp_ingestion_service()
 
-        # Start background sync
-        background_tasks.add_task(
-            sync_job_worker,
-            job_id,
-            integration,
-            request.wallet_address,
-            credentials,
-            request.data_types
+        # Perform sync via MCP pipeline
+        result = await mcp_service.sync_integration_data(
+            integration=integration,
+            wallet_address=request.wallet_address,
+            oauth_token=oauth_token,
+            data_types=request.data_types,
         )
 
         logger.info(
-            f"Started sync job {job_id} for {integration}, "
-            f"wallet: {request.wallet_address}"
+            f"MCP sync completed for {integration}, "
+            f"wallet: {request.wallet_address[:10]}..."
         )
 
         return {
             "success": True,
-            "job_id": job_id,
             "integration": integration,
             "wallet_address": request.wallet_address,
-            "message": "Sync job started in background"
+            "message": "Sync completed via MCP pipeline",
+            **result
         }
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to trigger sync: {e}")
+        logger.error(f"MCP sync failed for {integration}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 

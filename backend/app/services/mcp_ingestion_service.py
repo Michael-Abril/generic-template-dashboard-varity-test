@@ -17,9 +17,12 @@ import asyncio
 from datetime import datetime
 import logging
 
+import json
+
 from app.services.encryption_service import EncryptionService
 from app.services.filecoin_service import FilecoinService
 from app.services.rag_service import BusinessRAGService
+from app.core.database import get_redis
 
 logger = logging.getLogger(__name__)
 
@@ -274,29 +277,117 @@ class MCPIngestionService:
         wallet_address: str,
     ) -> Dict[str, Any]:
         """
-        Configure live API endpoint for real-time queries
+        Configure live API endpoint for real-time queries.
 
-        No data stored - just the query configuration
+        Stores configuration in Redis for fast lookup by the frontend
+        and /installed endpoint.
+
+        No data stored to RAG - just the query configuration.
         """
-        # Store configuration for live queries
+        # Build endpoint based on integration and data type
+        # Map data types to their actual API endpoints
+        endpoint_map = {
+            "google": {
+                "gmail": "/api/v1/integrations/google/emails",
+                "calendar": "/api/v1/integrations/google/events",
+            },
+            "microsoft": {
+                "mail": "/api/v1/integrations/microsoft/mail/messages",
+                "calendar": "/api/v1/integrations/microsoft/calendar/events",
+            },
+            "slack": {
+                "channels": "/api/v1/integrations/slack/channels",
+                "messages": "/api/v1/integrations/slack/messages",
+            },
+            "quickbooks": {
+                "payments": "/api/v1/quickbooks/payments/live",
+                "reports": "/api/v1/quickbooks/reports",
+            },
+            "salesforce": {
+                "opportunities": "/api/v1/salesforce/opportunities",
+            },
+            "hubspot": {
+                "emails": "/api/v1/hubspot/emails",
+            },
+        }
+
+        # Get the specific endpoint or build a generic one
+        integration_endpoints = endpoint_map.get(integration, {})
+        query_endpoint = integration_endpoints.get(
+            data_type,
+            f"/api/v1/integrations/{integration}/{data_type}"
+        )
+
         config = {
             "integration": integration,
             "data_type": data_type,
-            "query_endpoint": f"/api/v1/integrations/{integration}/{data_type}",
+            "query_endpoint": query_endpoint,
             "requires_live": True,
+            "configured_at": datetime.utcnow().isoformat(),
         }
 
-        # TODO: Store in Redis for fast lookup
-        # await self.redis.set(
-        #     f"live_config:{wallet_address}:{integration}:{data_type}",
-        #     config
-        # )
+        # Store in Redis for fast lookup
+        redis = await get_redis()
+        if redis:
+            redis_key = f"live_config:{wallet_address}:{integration}:{data_type}"
+            await redis.set(redis_key, json.dumps(config), ex=86400 * 30)  # 30 day TTL
+            logger.info(f"Stored live API config in Redis: {redis_key}")
+        else:
+            logger.warning("Redis not available - live API config not persisted")
 
         return {
             "status": "configured",
             "destination": "live_api",
-            "endpoint": config["query_endpoint"],
+            "endpoint": query_endpoint,
+            "redis_stored": redis is not None,
         }
+
+    @staticmethod
+    async def get_live_api_configs(
+        wallet_address: str,
+        integration: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Retrieve live API configurations from Redis.
+
+        Used by /installed endpoint to show available live data types.
+
+        Args:
+            wallet_address: User's wallet address
+            integration: Optional - filter to specific integration
+
+        Returns:
+            Dictionary of live API configurations by integration/data_type
+        """
+        redis = await get_redis()
+        if not redis:
+            return {"configs": {}, "redis_available": False}
+
+        try:
+            # Pattern match for this wallet's configs
+            if integration:
+                pattern = f"live_config:{wallet_address}:{integration}:*"
+            else:
+                pattern = f"live_config:{wallet_address}:*"
+
+            configs = {}
+            async for key in redis.scan_iter(pattern):
+                config_json = await redis.get(key)
+                if config_json:
+                    config = json.loads(config_json)
+                    int_name = config.get("integration")
+                    data_type = config.get("data_type")
+                    if int_name not in configs:
+                        configs[int_name] = {}
+                    configs[int_name][data_type] = {
+                        "endpoint": config.get("query_endpoint"),
+                        "configured_at": config.get("configured_at"),
+                    }
+
+            return {"configs": configs, "redis_available": True}
+        except Exception as e:
+            logger.error(f"Error retrieving live API configs from Redis: {e}")
+            return {"configs": {}, "redis_available": False, "error": str(e)}
 
     async def _handle_hybrid(
         self,

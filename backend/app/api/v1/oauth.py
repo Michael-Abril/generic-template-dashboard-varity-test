@@ -862,31 +862,27 @@ async def oauth_callback_post(request: Request, db: AsyncSession = Depends(get_d
             try:
                 logger.info(f"[BACKGROUND] Starting initial sync for {integration}...")
 
-                # Dynamic import based on integration - MVP integrations only
-                sync_adapters = {
-                    "quickbooks": ("app.adapters.quickbooks.sync", "QuickBooksSync"),
-                    "google": ("app.adapters.google.sync", "GoogleWorkspaceSync"),
-                    "google_workspace": ("app.adapters.google.sync", "GoogleWorkspaceSync"),
-                    "microsoft": ("app.adapters.microsoft.sync", "MicrosoftSync"),
-                    "slack": ("app.adapters.slack.sync", "SlackSync"),
-                    "hubspot": ("app.adapters.hubspot.sync", "HubSpotSync"),
-                    "salesforce": ("app.adapters.salesforce.sync", "SalesforceSync"),
-                }
+                # =================================================================
+                # MCP PIPELINE SYNC (January 5, 2026)
+                # Legacy adapters deleted - now using MCP ingestion service
+                # =================================================================
+                from app.services.mcp_ingestion_service import get_mcp_ingestion_service
 
-                if integration not in sync_adapters:
-                    logger.warning(f"[BACKGROUND] No sync adapter found for {integration}")
+                mcp_integrations = {"google", "google_workspace", "slack", "quickbooks", "microsoft", "salesforce", "hubspot"}
+
+                if integration not in mcp_integrations:
+                    logger.warning(f"[BACKGROUND] No MCP integration for {integration}")
                     return
 
-                import importlib
-                module_path, class_name = sync_adapters[integration]
-                module = importlib.import_module(module_path)
-                SyncClass = getattr(module, class_name)
+                mcp_service = get_mcp_ingestion_service()
 
-                # Initialize sync adapter with credentials dict
-                sync = SyncClass(credentials)
-
-                # Trigger sync (now with 4000 file limit for Drive to prevent OOM)
-                sync_result = await sync.sync_data(wallet_address)
+                # Sync via MCP pipeline (handles encryption, routing, L3 commits)
+                sync_result = await mcp_service.sync_integration_data(
+                    integration=integration.replace("_workspace", ""),  # Normalize google_workspace -> google
+                    wallet_address=wallet_address,
+                    oauth_token=access_token,
+                    data_types=None  # Sync all data types
+                )
                 logger.info(f"[BACKGROUND] Sync completed for {integration}: {sync_result.get('data', {}).keys() if sync_result else 'N/A'}")
 
                 # === CRITICAL: Index synced data in Qdrant for AI queries ===
@@ -1171,31 +1167,27 @@ async def oauth_callback(
         try:
             logger.info(f"Triggering initial sync for {integration}...")
 
-            # MVP sync adapters only
-            sync_adapters = {
-                "quickbooks": ("app.adapters.quickbooks.sync", "QuickBooksSync"),
-                "google": ("app.adapters.google.sync", "GoogleWorkspaceSync"),
-                "google_workspace": ("app.adapters.google.sync", "GoogleWorkspaceSync"),
-                "microsoft": ("app.adapters.microsoft.sync", "MicrosoftSync"),
-                "slack": ("app.adapters.slack.sync", "SlackSync"),
-                "hubspot": ("app.adapters.hubspot.sync", "HubSpotSync"),
-                "salesforce": ("app.adapters.salesforce.sync", "SalesforceSync"),
-            }
+            # =================================================================
+            # MCP PIPELINE SYNC (January 5, 2026)
+            # Legacy adapters deleted - now using MCP ingestion service
+            # =================================================================
+            from app.services.mcp_ingestion_service import get_mcp_ingestion_service
 
-            if integration in sync_adapters:
-                import importlib
-                module_path, class_name = sync_adapters[integration]
-                module = importlib.import_module(module_path)
-                SyncClass = getattr(module, class_name)
+            mcp_integrations = {"google", "google_workspace", "slack", "quickbooks", "microsoft", "salesforce", "hubspot"}
 
-                # Initialize sync adapter with credentials dict
-                sync = SyncClass(credentials)
+            if integration in mcp_integrations:
+                mcp_service = get_mcp_ingestion_service()
 
-                # Trigger sync (this will run in background)
-                result = await sync.sync_data(wallet_address)
+                # Sync via MCP pipeline (handles encryption, routing, L3 commits)
+                result = await mcp_service.sync_integration_data(
+                    integration=integration.replace("_workspace", ""),  # Normalize google_workspace -> google
+                    wallet_address=wallet_address,
+                    oauth_token=access_token,
+                    data_types=None  # Sync all data types
+                )
                 logger.info(f"Initial sync completed for {integration}: {result}")
             else:
-                logger.warning(f"No sync adapter found for {integration}")
+                logger.warning(f"No MCP integration found for {integration}")
 
         except Exception as e:
             logger.error(f"Sync trigger failed for {integration}: {e}", exc_info=True)

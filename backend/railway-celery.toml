@@ -1,7 +1,0 @@
-[build]
-builder = "nixpacks"
-
-[deploy]
-startCommand = "celery -A celery_worker worker --beat --loglevel=info"
-healthcheckPath = ""
-restartPolicyType = "ON_FAILURE"

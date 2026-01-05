@@ -20,7 +20,7 @@ from sqlalchemy import select, and_
 from app.core.database import get_db
 from app.models.purchase import OAuthToken
 from app.api.v1.integrations import refresh_oauth_token
-from app.adapters.hubspot.sync import HubSpotSync
+# Removed: from app.adapters.hubspot.sync import HubSpotSync (adapters deleted Jan 5, 2026)
 
 logger = logging.getLogger(__name__)
 
@@ -728,6 +728,84 @@ async def delete_ticket(
 # RAG stores emails, these endpoints provide real-time CRUD operations
 # HubSpot uses "engagements" API for emails
 # ============================================================================
+
+@router.get("/emails")
+async def list_emails(
+    wallet_address: str = Query(..., description="User's wallet address"),
+    limit: int = Query(100, ge=1, le=500, description="Max emails to return"),
+    contact_id: Optional[str] = Query(None, description="Filter by contact ID"),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    List email engagements from HubSpot (LIVE API endpoint).
+
+    This endpoint fetches email engagements directly from HubSpot API for real-time data.
+    Emails in HubSpot are stored as "engagements" of type EMAIL.
+
+    Returns emails with subject, from/to addresses, and timestamps.
+    """
+    try:
+        access_token = await get_hubspot_access_token(wallet_address, db)
+
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            # HubSpot engagements API for listing emails
+            # Use the v1 API which supports filtering by type
+            response = await client.get(
+                "https://api.hubapi.com/engagements/v1/engagements/paged",
+                params={
+                    "limit": limit
+                },
+                headers={"Authorization": f"Bearer {access_token}"}
+            )
+
+            if response.status_code != 200:
+                logger.error(f"HubSpot engagements query failed: {response.status_code}")
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail=f"HubSpot API error: {response.status_code}"
+                )
+
+            data = response.json()
+            engagements = data.get("results", [])
+
+            # Filter to only EMAIL type engagements
+            emails = [
+                {
+                    "id": eng.get("engagement", {}).get("id"),
+                    "subject": eng.get("metadata", {}).get("subject"),
+                    "from_email": eng.get("metadata", {}).get("from", {}).get("email") if isinstance(eng.get("metadata", {}).get("from"), dict) else eng.get("metadata", {}).get("from"),
+                    "to_emails": [t.get("email") if isinstance(t, dict) else t for t in eng.get("metadata", {}).get("to", [])],
+                    "body_preview": (eng.get("metadata", {}).get("text") or "")[:200],
+                    "has_html": bool(eng.get("metadata", {}).get("html")),
+                    "created_at": eng.get("engagement", {}).get("createdAt"),
+                    "timestamp": eng.get("engagement", {}).get("timestamp"),
+                    "associations": eng.get("associations", {})
+                }
+                for eng in engagements
+                if eng.get("engagement", {}).get("type") == "EMAIL"
+            ]
+
+            # If contact_id provided, filter by association
+            if contact_id:
+                emails = [
+                    e for e in emails
+                    if contact_id in str(e.get("associations", {}).get("contactIds", []))
+                ]
+
+            return {
+                "success": True,
+                "emails": emails,
+                "count": len(emails),
+                "is_live": True,
+                "fetched_at": datetime.now(timezone.utc).isoformat()
+            }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to list emails for {wallet_address[:10]}...: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @router.post("/emails")
 async def create_email(

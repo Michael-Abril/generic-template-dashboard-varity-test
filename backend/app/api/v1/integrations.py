@@ -20,6 +20,7 @@ import httpx
 from app.services.filecoin_service import FilecoinService
 from app.services.encryption_service import EncryptionService, normalize_wallet_address
 from app.services.rag_service import BusinessRAGService
+from app.services.mcp_ingestion_service import MCPIngestionService, DATA_ROUTING_RULES
 from app.core.database import get_db
 from app.core.config import settings
 from app.models.marketplace import Product
@@ -269,8 +270,13 @@ async def get_installed_integrations(
     """
     Get user's connected integrations based on OAuth tokens.
 
-    This endpoint checks the OAuthToken table for active OAuth connections,
-    which is where tokens are stored after successful OAuth flows.
+    This endpoint:
+    1. Checks the OAuthToken table for active OAuth connections
+    2. Queries Pinata for RAG data count per integration
+    3. Gets live API configurations from Redis
+    4. Returns comprehensive data_by_type showing RAG vs LIVE vs HYBRID
+
+    FIXED January 5, 2026: Replaced hardcoded data_count: 0 with actual data.
     """
     try:
         logger.info(f"Getting installed integrations for wallet {wallet_address}")
@@ -306,7 +312,15 @@ async def get_installed_integrations(
             "monday": "Monday.com",
         }
 
+        # Initialize services for data counting
+        filecoin_service = FilecoinService()
+
+        # Get live API configs from Redis (for all integrations)
+        live_configs = await MCPIngestionService.get_live_api_configs(user_address)
+
         for token in oauth_tokens:
+            provider = token.provider
+
             # Determine sync status
             sync_status = "connected"
             needs_reauth = False
@@ -322,16 +336,70 @@ async def get_installed_integrations(
                     sync_status = "expired"
                     needs_reauth = True
 
+            # Get RAG data count from Pinata (files stored in decentralized storage)
+            rag_data_count = 0
+            try:
+                files = await filecoin_service.list_customer_files(
+                    customer_wallet=user_address,
+                    integration=provider,
+                    limit=1000  # Get count of all files
+                )
+                # Filter out OAuth credentials
+                rag_data_count = len([
+                    f for f in files
+                    if f.get("metadata", {}).get("data_type") != "oauth-credentials"
+                ])
+            except Exception as e:
+                logger.warning(f"Could not count RAG files for {provider}: {e}")
+
+            # Build data_by_type based on routing rules
+            routing_rules = DATA_ROUTING_RULES.get(provider, {})
+            provider_live_configs = live_configs.get("configs", {}).get(provider, {})
+
+            data_by_type = {}
+            for data_type, destination in routing_rules.items():
+                if destination.value == "rag":
+                    data_by_type[data_type] = {
+                        "source": "rag",
+                        "available": rag_data_count > 0,
+                        "synced": rag_data_count > 0,
+                    }
+                elif destination.value == "live":
+                    live_config = provider_live_configs.get(data_type, {})
+                    data_by_type[data_type] = {
+                        "source": "live_api",
+                        "available": not needs_reauth,  # Live API only available if token valid
+                        "endpoint": live_config.get("endpoint", f"/api/v1/integrations/{provider}/{data_type}"),
+                    }
+                elif destination.value == "hybrid":
+                    live_config = provider_live_configs.get(data_type, {})
+                    data_by_type[data_type] = {
+                        "source": "hybrid",
+                        "rag_available": rag_data_count > 0,
+                        "live_available": not needs_reauth,
+                        "endpoint": live_config.get("endpoint"),
+                    }
+
+            # Total data count: RAG files + count live endpoints as "available"
+            live_endpoint_count = len([
+                dt for dt, dest in routing_rules.items()
+                if dest.value in ("live", "hybrid") and not needs_reauth
+            ])
+            total_data_count = rag_data_count + live_endpoint_count
+
             installed_tools.append(
                 {
                     "tool_id": token.id,
-                    "tool_name": provider_names.get(token.provider, token.provider.title()),
-                    "integration": token.provider,
+                    "tool_name": provider_names.get(provider, provider.title()),
+                    "integration": provider,
                     "installed_at": token.connected_at.isoformat() if token.connected_at else token.created_at.isoformat(),
                     "last_sync": token.last_sync_at.isoformat() if token.last_sync_at else None,
                     "sync_status": sync_status,
                     "needs_reauth": needs_reauth,
-                    "data_count": 0,  # Would need to query Filecoin for actual count
+                    "data_count": total_data_count,
+                    "rag_file_count": rag_data_count,
+                    "live_endpoint_count": live_endpoint_count,
+                    "data_by_type": data_by_type,
                 }
             )
 
@@ -345,6 +413,7 @@ async def get_installed_integrations(
                 "slug": tool["integration"],
                 "connected": True,  # If token exists and is_active, it's connected
                 "needs_reauth": tool["needs_reauth"],
+                "data_count": tool["data_count"],
             }
             for tool in installed_tools
         ]
@@ -355,6 +424,7 @@ async def get_installed_integrations(
             "integrations": integrations,
             "installed_tools": installed_tools,
             "count": len(installed_tools),
+            "redis_available": live_configs.get("redis_available", False),
         }
 
     except Exception as e:
@@ -468,46 +538,30 @@ async def sync_tool_data(
         if oauth_token.provider_data:
             credentials.update(oauth_token.provider_data)
 
-        # Import and call appropriate adapter
-        result = None
+        # =====================================================================
+        # MCP PIPELINE SYNC (January 5, 2026)
+        # Legacy adapters deleted - now using MCP ingestion service exclusively
+        # =====================================================================
+        from app.services.mcp_ingestion_service import get_mcp_ingestion_service
 
-        if provider == "quickbooks":
-            from app.adapters.quickbooks.sync import QuickBooksSync
-            adapter = QuickBooksSync(credentials)
-            result = await adapter.sync_data(normalized_wallet)
+        mcp_service = get_mcp_ingestion_service()
 
-        elif provider == "google" or provider == "google_workspace":
-            from app.adapters.google.sync import GoogleWorkspaceSync
-            adapter = GoogleWorkspaceSync(credentials)
-            result = await adapter.sync_data(normalized_wallet)
+        # Check if integration is MCP-enabled
+        mcp_integrations = {"google", "slack", "quickbooks", "microsoft", "salesforce", "hubspot"}
 
-        elif provider == "microsoft":
-            from app.adapters.microsoft.sync import MicrosoftSync
-            adapter = MicrosoftSync(credentials)
-            result = await adapter.sync_data(normalized_wallet)
-
-        elif provider == "slack":
-            from app.adapters.slack.sync import SlackSync
-            adapter = SlackSync(credentials)
-            result = await adapter.sync_data(normalized_wallet)
-
-        elif provider == "hubspot":
-            from app.adapters.hubspot.sync import HubSpotSync
-            adapter = HubSpotSync(credentials)
-            result = await adapter.sync_data(normalized_wallet)
-
-        elif provider == "salesforce":
-            from app.adapters.salesforce.sync import SalesforceSync
-            adapter = SalesforceSync(credentials)
-            result = await adapter.sync_data(normalized_wallet)
-
-        # Removed adapters: shopify, zendesk, stripe, monday (not in MVP)
-
-        else:
+        if provider not in mcp_integrations:
             raise HTTPException(
                 status_code=404,
                 detail=f"Integration '{tool}' not found or not yet supported"
             )
+
+        # Sync via MCP pipeline (handles encryption, routing, L3 commits)
+        result = await mcp_service.sync_integration_data(
+            integration=provider,
+            wallet_address=normalized_wallet,
+            oauth_token=access_token,
+            data_types=request.data_types if hasattr(request, 'data_types') else None
+        )
 
         # Update last_sync_at timestamp
         # Use timezone-naive datetime to match OAuthToken model's DateTime column
@@ -1432,6 +1486,63 @@ async def disconnect_integration(
 # SLACK-SPECIFIC ENDPOINTS
 # ============================================================================
 
+async def slack_api_call(
+    method: str,
+    endpoint: str,
+    access_token: str,
+    json_data: Optional[Dict[str, Any]] = None,
+    params: Optional[Dict[str, Any]] = None
+) -> Dict[str, Any]:
+    """
+    Direct Slack API call using httpx.
+
+    Args:
+        method: HTTP method (GET or POST)
+        endpoint: Slack API endpoint (e.g., "chat.postMessage")
+        access_token: OAuth access token
+        json_data: JSON body for POST requests
+        params: Query parameters for GET requests
+
+    Returns:
+        Slack API response as dict
+
+    Raises:
+        HTTPException: If Slack API returns an error
+    """
+    async with httpx.AsyncClient() as client:
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json"
+        }
+        url = f"https://slack.com/api/{endpoint}"
+
+        try:
+            if method == "GET":
+                response = await client.get(url, headers=headers, params=params)
+            else:
+                response = await client.post(url, headers=headers, json=json_data)
+
+            data = response.json()
+
+            # Slack API returns ok=false on errors
+            if not data.get("ok"):
+                error_msg = data.get("error", "Unknown Slack API error")
+                logger.error(f"Slack API error: {error_msg}")
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Slack API error: {error_msg}"
+                )
+
+            return data
+
+        except httpx.HTTPError as e:
+            logger.error(f"HTTP error calling Slack API: {e}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to call Slack API: {str(e)}"
+            )
+
+
 class SlackMessageRequest(BaseModel):
     """Slack message send request"""
     wallet_address: str
@@ -1455,11 +1566,9 @@ async def send_slack_message(
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Send a message to a Slack channel
+    Send a message to a Slack channel via direct Slack API
     """
     try:
-        from app.adapters.slack.sync import SlackSync
-
         # Get OAuth token for this user
         user_address = request.wallet_address.lower()
         token_result = await db.execute(
@@ -1484,22 +1593,28 @@ async def send_slack_message(
             if not access_token:
                 raise HTTPException(status_code=401, detail="Slack token expired or invalid")
 
-            # Initialize Slack adapter
-            credentials = {"access_token": access_token}
-        slack = SlackSync(credentials)
+            # Call Slack API directly
+            payload = {
+                "channel": request.channel,
+                "text": request.text
+            }
 
-        # Send message
-        result = await slack.send_message(
-            channel=request.channel,
-            text=request.text,
-            thread_ts=request.thread_ts,
-            reply_broadcast=request.reply_broadcast
-        )
+            if request.thread_ts:
+                payload["thread_ts"] = request.thread_ts
+                if request.reply_broadcast:
+                    payload["reply_broadcast"] = request.reply_broadcast
 
-        return {
-            "success": True,
-            "data": result
-        }
+            result = await slack_api_call(
+                method="POST",
+                endpoint="chat.postMessage",
+                access_token=access_token,
+                json_data=payload
+            )
+
+            return {
+                "success": True,
+                "data": result
+            }
 
     except HTTPException:
         raise
@@ -1514,11 +1629,9 @@ async def add_slack_reaction(
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Add a reaction to a Slack message
+    Add a reaction to a Slack message via direct Slack API
     """
     try:
-        from app.adapters.slack.sync import SlackSync
-
         # Get OAuth token for this user
         user_address = request.wallet_address.lower()
         token_result = await db.execute(
@@ -1543,21 +1656,24 @@ async def add_slack_reaction(
             if not access_token:
                 raise HTTPException(status_code=401, detail="Slack token expired or invalid")
 
-            # Initialize Slack adapter
-            credentials = {"access_token": access_token}
-        slack = SlackSync(credentials)
+            # Call Slack API directly
+            payload = {
+                "channel": request.channel,
+                "timestamp": request.timestamp,
+                "name": request.emoji.strip(':')  # Remove colons if present
+            }
 
-        # Add reaction
-        result = await slack.add_reaction(
-            channel=request.channel,
-            timestamp=request.timestamp,
-            emoji=request.emoji.strip(':')  # Remove colons if present
-        )
+            result = await slack_api_call(
+                method="POST",
+                endpoint="reactions.add",
+                access_token=access_token,
+                json_data=payload
+            )
 
-        return {
-            "success": True,
-            "data": result
-        }
+            return {
+                "success": True,
+                "data": result
+            }
 
     except HTTPException:
         raise
@@ -1574,11 +1690,9 @@ async def get_slack_thread(
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Get replies in a Slack thread
+    Get replies in a Slack thread via direct Slack API
     """
     try:
-        from app.adapters.slack.sync import SlackSync
-
         # Get OAuth token for this user
         user_address = wallet_address.lower()
         token_result = await db.execute(
@@ -1603,20 +1717,23 @@ async def get_slack_thread(
             if not access_token:
                 raise HTTPException(status_code=401, detail="Slack token expired or invalid")
 
-            # Initialize Slack adapter
-            credentials = {"access_token": access_token}
-        slack = SlackSync(credentials)
+            # Call Slack API directly
+            params = {
+                "channel": channel,
+                "ts": thread_ts
+            }
 
-        # Get thread replies
-        result = await slack.get_thread_replies(
-            channel=channel,
-            thread_ts=thread_ts
-        )
+            result = await slack_api_call(
+                method="GET",
+                endpoint="conversations.replies",
+                access_token=access_token,
+                params=params
+            )
 
-        return {
-            "success": True,
-            "data": result
-        }
+            return {
+                "success": True,
+                "data": result
+            }
 
     except HTTPException:
         raise
@@ -1636,8 +1753,6 @@ async def get_slack_channels(
     This is the recommended way to fetch channels for display.
     """
     try:
-        from app.adapters.slack.sync import SlackSync
-
         # Get OAuth token for this user
         user_address = wallet_address.lower()
         token_result = await db.execute(
@@ -1662,16 +1777,26 @@ async def get_slack_channels(
             if not access_token:
                 raise HTTPException(status_code=401, detail="Slack token expired or invalid")
 
-            # Initialize Slack adapter and get channels
-            credentials = {"access_token": access_token}
-        slack = SlackSync(credentials)
-        channels = await slack.get_channels(limit=limit)
+            # Call Slack API directly
+            params = {
+                "limit": limit,
+                "exclude_archived": True
+            }
 
-        return {
-            "success": True,
-            "channels": channels,
-            "count": len(channels)
-        }
+            result = await slack_api_call(
+                method="GET",
+                endpoint="conversations.list",
+                access_token=access_token,
+                params=params
+            )
+
+            channels = result.get("channels", [])
+
+            return {
+                "success": True,
+                "channels": channels,
+                "count": len(channels)
+            }
 
     except HTTPException:
         raise
@@ -1692,8 +1817,6 @@ async def get_slack_messages(
     This is the recommended way to fetch messages for display.
     """
     try:
-        from app.adapters.slack.sync import SlackSync
-
         # Get OAuth token for this user
         user_address = wallet_address.lower()
         token_result = await db.execute(
@@ -1718,17 +1841,27 @@ async def get_slack_messages(
             if not access_token:
                 raise HTTPException(status_code=401, detail="Slack token expired or invalid")
 
-            # Initialize Slack adapter and get messages
-            credentials = {"access_token": access_token}
-        slack = SlackSync(credentials)
-        messages = await slack.get_messages(channel=channel, limit=limit)
+            # Call Slack API directly
+            params = {
+                "channel": channel,
+                "limit": limit
+            }
 
-        return {
-            "success": True,
-            "messages": messages,
-            "count": len(messages),
-            "channel": channel
-        }
+            result = await slack_api_call(
+                method="GET",
+                endpoint="conversations.history",
+                access_token=access_token,
+                params=params
+            )
+
+            messages = result.get("messages", [])
+
+            return {
+                "success": True,
+                "messages": messages,
+                "count": len(messages),
+                "channel": channel
+            }
 
     except HTTPException:
         raise
@@ -1748,8 +1881,6 @@ async def get_slack_users(
     This is the recommended way to fetch users for display.
     """
     try:
-        from app.adapters.slack.sync import SlackSync
-
         # Get OAuth token for this user
         user_address = wallet_address.lower()
         token_result = await db.execute(
@@ -1774,16 +1905,25 @@ async def get_slack_users(
             if not access_token:
                 raise HTTPException(status_code=401, detail="Slack token expired or invalid")
 
-            # Initialize Slack adapter and get users
-            credentials = {"access_token": access_token}
-        slack = SlackSync(credentials)
-        users = await slack.get_users(limit=limit)
+            # Call Slack API directly
+            params = {
+                "limit": limit
+            }
 
-        return {
-            "success": True,
-            "users": users,
-            "count": len(users)
-        }
+            result = await slack_api_call(
+                method="GET",
+                endpoint="users.list",
+                access_token=access_token,
+                params=params
+            )
+
+            users = result.get("members", [])
+
+            return {
+                "success": True,
+                "users": users,
+                "count": len(users)
+            }
 
     except HTTPException:
         raise

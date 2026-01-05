@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any, Tuple
 import httpx
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 import json
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -26,7 +26,7 @@ from app.models.purchase import OAuthToken
 from app.api.v1.integrations import refresh_oauth_token
 from app.services.filecoin_service import FilecoinService
 from app.services.encryption_service import EncryptionService
-from app.adapters.quickbooks.sync import QuickBooksSync
+# Removed: from app.adapters.quickbooks.sync import QuickBooksSync (adapters deleted Jan 5, 2026)
 
 logger = logging.getLogger(__name__)
 
@@ -2184,4 +2184,145 @@ async def list_items(
         raise
     except Exception as e:
         logger.error(f"Failed to list items: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# =============================================================================
+# LIVE API Endpoints - Real-time data from QuickBooks (no storage)
+# Added January 5, 2026 for MCP data routing (LIVE data type)
+# =============================================================================
+
+@router.get("/reports/{report_type}")
+async def get_report(
+    report_type: str,
+    wallet_address: str = Query(..., description="User's wallet address"),
+    start_date: Optional[str] = Query(None, description="Start date (YYYY-MM-DD)"),
+    end_date: Optional[str] = Query(None, description="End date (YYYY-MM-DD)"),
+    summarize_by: Optional[str] = Query(None, description="Summarize by: Month, Week, Day, Total"),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Get financial reports from QuickBooks in real-time (LIVE API endpoint).
+
+    This endpoint fetches reports directly from QuickBooks API without storing
+    to RAG storage. Use for real-time financial insights.
+
+    Report Types:
+    - ProfitAndLoss: Income and expenses summary
+    - BalanceSheet: Assets, liabilities, and equity
+    - CashFlow: Cash flow statement
+    - AccountList: Chart of accounts
+    - CustomerSales: Sales by customer
+    - VendorExpenses: Expenses by vendor
+    - AgedReceivables: Outstanding customer invoices
+    - AgedPayables: Outstanding vendor bills
+    - TrialBalance: Account balances for reconciliation
+    """
+    valid_report_types = [
+        "ProfitAndLoss",
+        "BalanceSheet",
+        "CashFlow",
+        "AccountList",
+        "CustomerSales",
+        "VendorExpenses",
+        "AgedReceivables",
+        "AgedPayables",
+        "TrialBalance",
+        "GeneralLedger",
+        "TransactionList"
+    ]
+
+    if report_type not in valid_report_types:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid report type. Valid types: {', '.join(valid_report_types)}"
+        )
+
+    try:
+        access_token, realm_id = await get_quickbooks_access_token(wallet_address, db)
+
+        # Build report query parameters
+        params = {}
+        if start_date:
+            params["start_date"] = start_date
+        if end_date:
+            params["end_date"] = end_date
+        if summarize_by:
+            params["summarize_column_by"] = summarize_by
+
+        result = await make_qb_request(
+            access_token=access_token,
+            realm_id=realm_id,
+            method="GET",
+            endpoint=f"reports/{report_type}",
+            params=params,
+            operation=f"get {report_type} report"
+        )
+
+        return {
+            "success": True,
+            "report_type": report_type,
+            "report": result,
+            "is_live": True,
+            "fetched_at": datetime.now(timezone.utc).isoformat()
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get {report_type} report: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/payments/live")
+async def get_payments_live(
+    wallet_address: str = Query(..., description="User's wallet address"),
+    start_date: Optional[str] = Query(None, description="Filter from date (YYYY-MM-DD)"),
+    end_date: Optional[str] = Query(None, description="Filter to date (YYYY-MM-DD)"),
+    max_results: int = Query(100, ge=1, le=1000, description="Maximum results"),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Get payments from QuickBooks in real-time (LIVE API endpoint).
+
+    This endpoint fetches payments directly from QuickBooks API for real-time data.
+    Use /payments (without /live) for synced historical data from RAG storage.
+    """
+    try:
+        access_token, realm_id = await get_quickbooks_access_token(wallet_address, db)
+
+        # Build query with optional date filters
+        query = "SELECT * FROM Payment"
+        conditions = []
+        if start_date:
+            conditions.append(f"TxnDate >= '{start_date}'")
+        if end_date:
+            conditions.append(f"TxnDate <= '{end_date}'")
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
+        query += f" ORDERBY TxnDate DESC MAXRESULTS {max_results}"
+
+        result = await make_qb_request(
+            access_token=access_token,
+            realm_id=realm_id,
+            method="GET",
+            endpoint="query",
+            params={"query": query},
+            operation="list payments live"
+        )
+
+        payments = result.get("QueryResponse", {}).get("Payment", [])
+
+        return {
+            "success": True,
+            "payments": payments,
+            "count": len(payments),
+            "is_live": True,
+            "fetched_at": datetime.now(timezone.utc).isoformat()
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to list payments live: {e}")
         raise HTTPException(status_code=500, detail=str(e))
