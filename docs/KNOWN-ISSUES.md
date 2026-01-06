@@ -1,7 +1,23 @@
 # KNOWN ISSUES - Varity Dashboard
-**Last Updated:** December 30, 2025 (LIVE API AUDIT - Comprehensive Testing)
+**Last Updated:** January 5, 2026 (AI Assistant Data Pipeline Fix)
 
 > **VERIFIED:** This document reflects actual testing via direct API calls on December 30, 2025 with wallet `0x738C812FB221ba32E8726fe38961570a700e87b9`
+
+---
+
+## CRITICAL FIX - January 5, 2026: AI Assistant Data Pipeline
+
+**Fixed Issues:**
+1. **Integration Name Mismatch** - Pinata stored files with `google_workspace` but queries used `google` → Now handles name variants
+2. **RAG Indexing Error** - Legacy adapter reference causing potential crashes → Removed, now indexes all data types
+3. **Pinata Fallback Missing** - Context picker empty when Qdrant failed → Now always tries Pinata fallback
+
+**Files Changed:**
+- `/backend/app/services/filecoin_service.py` - Python-side integration name filtering with variants
+- `/backend/app/api/v1/integrations.py` - Removed legacy adapter reference
+- `/backend/app/api/v1/ai.py` - Enhanced Pinata fallback logic
+
+**Result:** AI Assistant Context Picker should now show connected integrations and their data.
 
 ---
 
@@ -63,7 +79,19 @@ const res = await fetch(`${apiBase}/api/v1/integrations/${integration}/data`);
 - Slack channels endpoint returns 3 channels: `GET /api/v1/integrations/slack/channels`
 - But frontend shows empty because it fetches from `/slack/data` (sync data only)
 
-**Status:** CRITICAL - Hybrid data model not implemented in frontend
+**Status:** PARTIAL FIX IN PROGRESS
+
+**FIXED (January 4, 2026):**
+- ✅ Microsoft OneDriveExplorer now calls live API (`/api/v1/integrations/microsoft/onedrive/files`)
+- ✅ Added loading states and error handling with props fallback
+- ✅ Follows same pattern as GmailInbox (fetch on mount, fallback to props on error)
+
+**Still Needs Fix:**
+- SlackPage components (channels, messages, users)
+- QuickBooks components (invoices, customers, etc.)
+- Other Microsoft components (Mail, Calendar, Tasks, Contacts)
+- Salesforce components
+- HubSpot components
 
 ### CRIT-003: Dashboard KPIs Show Wrong/Fake Data
 

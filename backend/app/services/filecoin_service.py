@@ -413,8 +413,11 @@ class FilecoinService:
             "customer_wallet": {"value": normalized_wallet, "op": "eq"}
         }
 
-        if integration:
-            keyvalues_query["integration"] = {"value": integration, "op": "eq"}
+        # CRITICAL FIX (Jan 5, 2026): Do NOT filter by integration in Pinata query
+        # Pinata stores files with OLD names like "google_workspace" but queries use NEW names like "google"
+        # Instead, fetch all files and filter in Python with name variants
+        # if integration:
+        #     keyvalues_query["integration"] = {"value": integration, "op": "eq"}
 
         if data_type:
             keyvalues_query["data_type"] = {"value": data_type, "op": "eq"}
@@ -451,6 +454,28 @@ class FilecoinService:
                     "metadata": pin["metadata"].get("keyvalues", {})
                 }
                 files.append(file_info)
+
+            # CRITICAL FIX (Jan 5, 2026): Filter by integration in Python with name variants
+            # Handle both OLD names (google_workspace) and NEW names (google)
+            if integration:
+                normalized_integration = integration.lower().replace('-', '_').replace(' ', '_')
+                integration_variants = {
+                    normalized_integration,
+                    f"{normalized_integration}_workspace",
+                    f"{normalized_integration}-workspace",
+                    normalized_integration.replace('_workspace', ''),
+                    normalized_integration.replace('-workspace', ''),
+                }
+
+                files = [
+                    f for f in files
+                    if f.get("metadata", {}).get("integration", "").lower().replace('-', '_') in
+                    [v.lower().replace('-', '_') for v in integration_variants]
+                ]
+
+                logger.info(
+                    f"Python filter: Reduced to {len(files)} files matching integration variants: {integration_variants}"
+                )
 
             logger.info(
                 f"Pinata returned {len(files)} files for wallet={normalized_wallet}, "

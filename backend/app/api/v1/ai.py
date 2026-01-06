@@ -1288,6 +1288,7 @@ async def get_context_items(
     integrations_found: set = set()
 
     # Get indexed items from Qdrant (primary source - has all indexed data)
+    qdrant_failed = False
     try:
         if rag_service:
             qdrant_items = await rag_service.get_context_items(
@@ -1319,13 +1320,16 @@ async def get_context_items(
 
             logger.info(f"Retrieved {len(items)} indexed items from Qdrant for {wallet_address[:10]}...")
         else:
-            logger.warning("RAG service not available, skipping Qdrant indexed items")
+            logger.warning("RAG service not available, will use Pinata fallback")
+            qdrant_failed = True
 
     except Exception as e:
-        logger.error(f"Failed to get indexed items from Qdrant: {e}")
+        logger.error(f"Failed to get indexed items from Qdrant: {e}, using Pinata fallback")
+        qdrant_failed = True
 
-    # Fallback: If no Qdrant items, try Pinata files (legacy support)
-    if not items:
+    # CRITICAL FIX (Jan 5, 2026): ALWAYS try Pinata fallback when Qdrant fails or returns empty
+    # This ensures context picker shows data even when Qdrant indexing is incomplete
+    if not items or qdrant_failed:
         try:
             files = await filecoin_service.list_customer_files(
                 customer_wallet=wallet_address,

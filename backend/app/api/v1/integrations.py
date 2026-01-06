@@ -648,10 +648,11 @@ async def sync_tool_data(
                     # New chunked format: dict of chunk_id: cid pairs
                     cids_to_index = list(data_info["chunks"].items())
 
-                # Check if adapter specifies RAG-enabled types
-                # If adapter has should_index_in_rag(), use it to filter data types
-                if hasattr(adapter, 'should_index_in_rag') and not adapter.should_index_in_rag(data_type):
-                    logger.info(f"Skipping RAG indexing for {data_type} (not in RAG_ENABLED_TYPES)")
+                # CRITICAL FIX (Jan 5, 2026): Legacy adapter check removed
+                # Now using MCP pipeline - all data types should be indexed unless explicitly excluded
+                # Skip OAuth credentials which should never be indexed
+                if data_type == "oauth-credentials":
+                    logger.info(f"Skipping RAG indexing for {data_type} (credentials should not be indexed)")
                     continue
 
                 for chunk_id, cid in cids_to_index:
