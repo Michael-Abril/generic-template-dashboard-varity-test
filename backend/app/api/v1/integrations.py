@@ -1747,12 +1747,15 @@ async def get_slack_thread(
 @router.get("/slack/channels")
 async def get_slack_channels(
     wallet_address: str = Query(...),
-    limit: int = Query(100),
+    limit: int = Query(200, description="Max channels per page (max 200)"),
+    cursor: Optional[str] = Query(None, description="Pagination cursor for next page"),
     db: AsyncSession = Depends(get_db)
 ):
     """
     Get channels via live Slack API (not from Pinata sync).
-    This is the recommended way to fetch channels for display.
+
+    PAGINATION SUPPORT (January 6, 2026): Returns next_cursor for fetching all channels.
+    Uses Slack's cursor-based pagination.
     """
     try:
         # Get OAuth token for this user
@@ -1779,11 +1782,14 @@ async def get_slack_channels(
             if not access_token:
                 raise HTTPException(status_code=401, detail="Slack token expired or invalid")
 
-            # Call Slack API directly
+            # Call Slack API directly with cursor-based pagination
             params = {
-                "limit": limit,
-                "exclude_archived": True
+                "limit": min(limit, 200),
+                "exclude_archived": True,
+                "types": "public_channel,private_channel"
             }
+            if cursor:
+                params["cursor"] = cursor
 
             result = await slack_api_call(
                 method="GET",
@@ -1793,11 +1799,14 @@ async def get_slack_channels(
             )
 
             channels = result.get("channels", [])
+            response_metadata = result.get("response_metadata", {})
+            next_cursor = response_metadata.get("next_cursor", "")
 
             return {
                 "success": True,
                 "channels": channels,
-                "count": len(channels)
+                "count": len(channels),
+                "next_cursor": next_cursor if next_cursor else None
             }
 
     except HTTPException:
@@ -1811,12 +1820,18 @@ async def get_slack_channels(
 async def get_slack_messages(
     wallet_address: str = Query(...),
     channel: str = Query(..., description="Channel ID to fetch messages from"),
-    limit: int = Query(100),
+    limit: int = Query(100, description="Max messages per page (max 200)"),
+    cursor: Optional[str] = Query(None, description="Pagination cursor for next page"),
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Get messages for a specific channel via live Slack API.
+    Get messages for a specific channel via live Slack API with cursor pagination.
     This is the recommended way to fetch messages for display.
+
+    Use cursor-based pagination to fetch all messages:
+    1. First call: omit cursor parameter
+    2. If response includes next_cursor, call again with that cursor
+    3. Repeat until next_cursor is empty
     """
     try:
         # Get OAuth token for this user
@@ -1843,11 +1858,13 @@ async def get_slack_messages(
             if not access_token:
                 raise HTTPException(status_code=401, detail="Slack token expired or invalid")
 
-            # Call Slack API directly
+            # Call Slack API directly with pagination
             params = {
                 "channel": channel,
-                "limit": limit
+                "limit": min(limit, 200)  # Slack max is 200 per request
             }
+            if cursor:
+                params["cursor"] = cursor
 
             result = await slack_api_call(
                 method="GET",
@@ -1857,12 +1874,17 @@ async def get_slack_messages(
             )
 
             messages = result.get("messages", [])
+            # Get next cursor for pagination
+            response_metadata = result.get("response_metadata", {})
+            next_cursor = response_metadata.get("next_cursor", "")
 
             return {
                 "success": True,
                 "messages": messages,
                 "count": len(messages),
-                "channel": channel
+                "channel": channel,
+                "next_cursor": next_cursor,
+                "has_more": bool(next_cursor)
             }
 
     except HTTPException:
@@ -1875,12 +1897,18 @@ async def get_slack_messages(
 @router.get("/slack/users")
 async def get_slack_users(
     wallet_address: str = Query(...),
-    limit: int = Query(200),
+    limit: int = Query(200, description="Max users per page (max 200)"),
+    cursor: Optional[str] = Query(None, description="Pagination cursor for next page"),
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Get workspace users via live Slack API.
+    Get workspace users via live Slack API with cursor pagination.
     This is the recommended way to fetch users for display.
+
+    Use cursor-based pagination to fetch all users:
+    1. First call: omit cursor parameter
+    2. If response includes next_cursor, call again with that cursor
+    3. Repeat until next_cursor is empty
     """
     try:
         # Get OAuth token for this user
@@ -1907,10 +1935,12 @@ async def get_slack_users(
             if not access_token:
                 raise HTTPException(status_code=401, detail="Slack token expired or invalid")
 
-            # Call Slack API directly
+            # Call Slack API directly with pagination
             params = {
-                "limit": limit
+                "limit": min(limit, 200)  # Slack max is 200 per request
             }
+            if cursor:
+                params["cursor"] = cursor
 
             result = await slack_api_call(
                 method="GET",
@@ -1920,11 +1950,16 @@ async def get_slack_users(
             )
 
             users = result.get("members", [])
+            # Get next cursor for pagination
+            response_metadata = result.get("response_metadata", {})
+            next_cursor = response_metadata.get("next_cursor", "")
 
             return {
                 "success": True,
                 "users": users,
-                "count": len(users)
+                "count": len(users),
+                "next_cursor": next_cursor,
+                "has_more": bool(next_cursor)
             }
 
     except HTTPException:

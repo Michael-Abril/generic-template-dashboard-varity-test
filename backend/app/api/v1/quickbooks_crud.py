@@ -372,8 +372,10 @@ async def get_quickbooks_access_token(
         )
 
     # Check if token needs refresh
-    # Use timezone-aware datetime for comparison
-    now = datetime.now(timezone.utc)
+    # Use timezone-naive datetime for comparison (OAuthToken.expires_at is timezone-naive)
+    # FIX: Changed from datetime.now(timezone.utc) to datetime.utcnow() to avoid
+    # "can't subtract offset-naive and offset-aware datetimes" error
+    now = datetime.utcnow()
     if token.expires_at and token.expires_at < now:
         logger.info(f"QuickBooks token expired for {wallet_address[:10]}..., attempting refresh")
         refresh_success = await refresh_oauth_token(token, "quickbooks", db)
@@ -499,158 +501,254 @@ async def make_qb_request(
 
 
 # =============================================================================
-# GET Endpoints for Synced Data from Filecoin Storage
+# GET Endpoints - LIVE API calls to QuickBooks (CONCERN #1 - Page Display)
+# Updated January 6, 2026: Changed from Filecoin storage to Live API
 # =============================================================================
 
 @router.get("/invoices")
 async def list_invoices(
     wallet_address: str = Query(..., description="User's wallet address"),
-    page: int = Query(1, ge=1, description="Page number"),
-    page_size: int = Query(100, ge=1, le=1000, description="Items per page"),
+    start_position: int = Query(1, ge=1, description="Start position for pagination"),
+    max_results: int = Query(100, ge=1, le=1000, description="Items per page (max 1000)"),
     db: AsyncSession = Depends(get_db)
-) -> PaginatedResponse:
+) -> Dict[str, Any]:
     """
-    List synced invoices from Filecoin storage.
+    List invoices from QuickBooks via LIVE API.
 
-    Returns invoices that have been synced from QuickBooks to decentralized storage.
-    Use the sync endpoint to refresh data from QuickBooks.
+    This endpoint calls the QuickBooks API directly for real-time data.
+    Use start_position and max_results for pagination.
     """
-    return await _get_synced_data(wallet_address, "invoices", page, page_size)
+    try:
+        access_token, realm_id = await get_quickbooks_access_token(wallet_address, db)
+
+        # Query QuickBooks API directly
+        query = f"SELECT * FROM Invoice ORDERBY MetaData.LastUpdatedTime DESC STARTPOSITION {start_position} MAXRESULTS {max_results}"
+
+        result = await make_qb_request(
+            access_token=access_token,
+            realm_id=realm_id,
+            method="GET",
+            endpoint="query",
+            params={"query": query},
+            operation="list invoices"
+        )
+
+        query_response = result.get("QueryResponse", {})
+        invoices = query_response.get("Invoice", [])
+        total_count = query_response.get("totalCount", len(invoices))
+
+        return {
+            "success": True,
+            "invoices": invoices,
+            "count": len(invoices),
+            "total_count": total_count,
+            "start_position": start_position,
+            "max_results": max_results,
+            "has_more": start_position + len(invoices) - 1 < total_count,
+            "is_live": True
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to list invoices: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/expenses")
 async def list_expenses(
     wallet_address: str = Query(..., description="User's wallet address"),
-    page: int = Query(1, ge=1, description="Page number"),
-    page_size: int = Query(100, ge=1, le=1000, description="Items per page"),
+    start_position: int = Query(1, ge=1, description="Start position for pagination"),
+    max_results: int = Query(100, ge=1, le=1000, description="Items per page (max 1000)"),
     db: AsyncSession = Depends(get_db)
-) -> PaginatedResponse:
+) -> Dict[str, Any]:
     """
-    List synced expenses from Filecoin storage.
+    List expenses (purchases) from QuickBooks via LIVE API.
+
+    This endpoint calls the QuickBooks API directly for real-time data.
     """
-    return await _get_synced_data(wallet_address, "expenses", page, page_size)
+    try:
+        access_token, realm_id = await get_quickbooks_access_token(wallet_address, db)
+
+        # Query QuickBooks API directly
+        query = f"SELECT * FROM Purchase ORDERBY MetaData.LastUpdatedTime DESC STARTPOSITION {start_position} MAXRESULTS {max_results}"
+
+        result = await make_qb_request(
+            access_token=access_token,
+            realm_id=realm_id,
+            method="GET",
+            endpoint="query",
+            params={"query": query},
+            operation="list expenses"
+        )
+
+        query_response = result.get("QueryResponse", {})
+        expenses = query_response.get("Purchase", [])
+        total_count = query_response.get("totalCount", len(expenses))
+
+        return {
+            "success": True,
+            "expenses": expenses,
+            "count": len(expenses),
+            "total_count": total_count,
+            "start_position": start_position,
+            "max_results": max_results,
+            "has_more": start_position + len(expenses) - 1 < total_count,
+            "is_live": True
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to list expenses: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/customers")
 async def list_customers(
     wallet_address: str = Query(..., description="User's wallet address"),
-    page: int = Query(1, ge=1, description="Page number"),
-    page_size: int = Query(100, ge=1, le=1000, description="Items per page"),
+    start_position: int = Query(1, ge=1, description="Start position for pagination"),
+    max_results: int = Query(100, ge=1, le=1000, description="Items per page (max 1000)"),
     db: AsyncSession = Depends(get_db)
-) -> PaginatedResponse:
+) -> Dict[str, Any]:
     """
-    List synced customers from Filecoin storage.
+    List customers from QuickBooks via LIVE API.
+
+    This endpoint calls the QuickBooks API directly for real-time data.
     """
-    return await _get_synced_data(wallet_address, "customers", page, page_size)
+    try:
+        access_token, realm_id = await get_quickbooks_access_token(wallet_address, db)
+
+        # Query QuickBooks API directly
+        query = f"SELECT * FROM Customer ORDERBY MetaData.LastUpdatedTime DESC STARTPOSITION {start_position} MAXRESULTS {max_results}"
+
+        result = await make_qb_request(
+            access_token=access_token,
+            realm_id=realm_id,
+            method="GET",
+            endpoint="query",
+            params={"query": query},
+            operation="list customers"
+        )
+
+        query_response = result.get("QueryResponse", {})
+        customers = query_response.get("Customer", [])
+        total_count = query_response.get("totalCount", len(customers))
+
+        return {
+            "success": True,
+            "customers": customers,
+            "count": len(customers),
+            "total_count": total_count,
+            "start_position": start_position,
+            "max_results": max_results,
+            "has_more": start_position + len(customers) - 1 < total_count,
+            "is_live": True
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to list customers: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/vendors")
 async def list_vendors(
     wallet_address: str = Query(..., description="User's wallet address"),
-    page: int = Query(1, ge=1, description="Page number"),
-    page_size: int = Query(100, ge=1, le=1000, description="Items per page"),
+    start_position: int = Query(1, ge=1, description="Start position for pagination"),
+    max_results: int = Query(100, ge=1, le=1000, description="Items per page (max 1000)"),
     db: AsyncSession = Depends(get_db)
-) -> PaginatedResponse:
+) -> Dict[str, Any]:
     """
-    List synced vendors from Filecoin storage.
+    List vendors from QuickBooks via LIVE API.
+
+    This endpoint calls the QuickBooks API directly for real-time data.
     """
-    return await _get_synced_data(wallet_address, "vendors", page, page_size)
+    try:
+        access_token, realm_id = await get_quickbooks_access_token(wallet_address, db)
+
+        # Query QuickBooks API directly
+        query = f"SELECT * FROM Vendor ORDERBY MetaData.LastUpdatedTime DESC STARTPOSITION {start_position} MAXRESULTS {max_results}"
+
+        result = await make_qb_request(
+            access_token=access_token,
+            realm_id=realm_id,
+            method="GET",
+            endpoint="query",
+            params={"query": query},
+            operation="list vendors"
+        )
+
+        query_response = result.get("QueryResponse", {})
+        vendors = query_response.get("Vendor", [])
+        total_count = query_response.get("totalCount", len(vendors))
+
+        return {
+            "success": True,
+            "vendors": vendors,
+            "count": len(vendors),
+            "total_count": total_count,
+            "start_position": start_position,
+            "max_results": max_results,
+            "has_more": start_position + len(vendors) - 1 < total_count,
+            "is_live": True
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to list vendors: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/payments")
 async def list_payments(
     wallet_address: str = Query(..., description="User's wallet address"),
-    page: int = Query(1, ge=1, description="Page number"),
-    page_size: int = Query(100, ge=1, le=1000, description="Items per page"),
+    start_position: int = Query(1, ge=1, description="Start position for pagination"),
+    max_results: int = Query(100, ge=1, le=1000, description="Items per page (max 1000)"),
     db: AsyncSession = Depends(get_db)
-) -> PaginatedResponse:
+) -> Dict[str, Any]:
     """
-    List synced payments from Filecoin storage.
-    """
-    return await _get_synced_data(wallet_address, "payments", page, page_size)
+    List payments from QuickBooks via LIVE API.
 
-
-async def _get_synced_data(
-    wallet_address: str,
-    data_type: str,
-    page: int,
-    page_size: int
-) -> PaginatedResponse:
-    """
-    Internal helper to retrieve synced data from Filecoin storage with pagination.
+    This endpoint calls the QuickBooks API directly for real-time data.
     """
     try:
-        # List files for this wallet and data type
-        files = await filecoin_service.list_customer_files(
-            customer_wallet=wallet_address,
-            integration="quickbooks",
-            data_type=data_type
+        access_token, realm_id = await get_quickbooks_access_token(wallet_address, db)
+
+        # Query QuickBooks API directly
+        query = f"SELECT * FROM Payment ORDERBY MetaData.LastUpdatedTime DESC STARTPOSITION {start_position} MAXRESULTS {max_results}"
+
+        result = await make_qb_request(
+            access_token=access_token,
+            realm_id=realm_id,
+            method="GET",
+            endpoint="query",
+            params={"query": query},
+            operation="list payments"
         )
 
-        if not files:
-            return PaginatedResponse(
-                success=True,
-                data=[],
-                pagination={
-                    "page": page,
-                    "page_size": page_size,
-                    "total_items": 0,
-                    "total_pages": 0,
-                    "has_next": False,
-                    "has_prev": False
-                }
-            )
+        query_response = result.get("QueryResponse", {})
+        payments = query_response.get("Payment", [])
+        total_count = query_response.get("totalCount", len(payments))
 
-        # Get the most recent file (sorted by timestamp)
-        latest_file = max(files, key=lambda x: x.get("timestamp", ""))
-        cid = latest_file.get("cid")
-
-        if not cid:
-            raise HTTPException(
-                status_code=500,
-                detail=f"No CID found for {data_type} data"
-            )
-
-        # Retrieve and decrypt the data
-        encrypted_data = await filecoin_service.retrieve_data(cid)
-        decrypted_data = await encryption_service.decrypt_file_with_wallet(
-            encrypted_file=encrypted_data,
-            customer_wallet=wallet_address
-        )
-
-        # Extract records
-        records = decrypted_data.get("records", [])
-        total_items = len(records)
-        total_pages = (total_items + page_size - 1) // page_size
-
-        # Apply pagination
-        start_idx = (page - 1) * page_size
-        end_idx = start_idx + page_size
-        paginated_records = records[start_idx:end_idx]
-
-        return PaginatedResponse(
-            success=True,
-            data=paginated_records,
-            pagination={
-                "page": page,
-                "page_size": page_size,
-                "total_items": total_items,
-                "total_pages": total_pages,
-                "has_next": page < total_pages,
-                "has_prev": page > 1,
-                "synced_at": decrypted_data.get("synced_at"),
-                "cid": cid
-            }
-        )
+        return {
+            "success": True,
+            "payments": payments,
+            "count": len(payments),
+            "total_count": total_count,
+            "start_position": start_position,
+            "max_results": max_results,
+            "has_more": start_position + len(payments) - 1 < total_count,
+            "is_live": True
+        }
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to retrieve {data_type} from Filecoin: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to retrieve {data_type}: {str(e)}"
-        )
+        logger.error(f"Failed to list payments: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/invoices/{invoice_id}")

@@ -1,23 +1,264 @@
 # Software Integration Pages - Comprehensive Guide
 
-**Last Updated:** December 26, 2025
-**Status:** MVP Launch - Priority Focus on Google, Microsoft, Slack
+**Last Updated:** January 6, 2026
+**Status:** MVP Launch - All 6 Integrations with Live API
 **Live Site:** https://app.varity.so
 
-This folder contains the frontend UI components for each software integration in the Generic Template Dashboard. Each integration page displays data synced from external software (QuickBooks, Salesforce, HubSpot, Google Workspace, Microsoft 365, Slack) in a clean, professional interface.
+This folder contains the frontend UI components for each software integration in the Generic Template Dashboard. Each integration page displays **live data** from external software (Google Workspace, Microsoft 365, Slack, QuickBooks, Salesforce, HubSpot) via direct API calls.
 
 ---
 
 ## Table of Contents
 
-1. [MVP Launch Philosophy](#mvp-launch-philosophy)
-2. [Architecture Overview](#architecture-overview)
-3. [Integration Status & Features](#integration-status--features)
-4. [Component Specifications](#component-specifications)
-5. [Data Flow & Backend Endpoints](#data-flow--backend-endpoints)
-6. [UI Design Patterns](#ui-design-patterns)
-7. [Development Roadmap](#development-roadmap)
-8. [File Structure](#file-structure)
+1. [🚀 Adding New Integrations (Quick Reference)](#-adding-new-integrations-quick-reference)
+2. [Architecture: CONCERN #1 vs CONCERN #2](#architecture-concern-1-vs-concern-2)
+3. [MVP Launch Philosophy](#mvp-launch-philosophy)
+4. [Architecture Overview](#architecture-overview)
+5. [Integration Status & Features](#integration-status--features)
+6. [Component Specifications](#component-specifications)
+7. [Data Flow & Backend Endpoints](#data-flow--backend-endpoints)
+8. [UI Design Patterns](#ui-design-patterns)
+9. [Development Roadmap](#development-roadmap)
+10. [File Structure](#file-structure)
+
+---
+
+## 🚀 Adding New Integrations (Quick Reference)
+
+**Use this 3-step pattern to rapidly add new software integration pages.**
+
+### Step 1: Backend - Create Live API Endpoints
+
+Create `backend/app/api/v1/{integration}_crud.py`:
+
+```python
+"""
+{Integration} Live API Endpoints
+Direct calls to {Integration} API for page display (CONCERN #1)
+"""
+from fastapi import APIRouter, HTTPException, Query, Depends
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, and_
+from datetime import datetime
+import httpx
+import logging
+
+from app.core.database import get_db
+from app.models.purchase import OAuthToken
+from app.api.v1.integrations import refresh_oauth_token
+
+router = APIRouter()
+logger = logging.getLogger(__name__)
+
+# =============================================================================
+# TOKEN HELPER - Reuse this pattern for all integrations
+# =============================================================================
+
+async def get_{integration}_access_token(wallet_address: str, db: AsyncSession):
+    """Get OAuth access token, refresh if expired."""
+    result = await db.execute(
+        select(OAuthToken).where(
+            and_(
+                OAuthToken.user_address == wallet_address.lower(),
+                OAuthToken.provider == "{integration}"
+            )
+        )
+    )
+    token = result.scalar_one_or_none()
+
+    if not token:
+        raise HTTPException(status_code=404, detail="{Integration} not connected")
+
+    # Check expiration (use timezone-naive datetime!)
+    now = datetime.utcnow()
+    if token.expires_at and token.expires_at < now:
+        refresh_success = await refresh_oauth_token(token, "{integration}", db)
+        if not refresh_success:
+            raise HTTPException(status_code=401, detail="Token expired, please reconnect")
+
+    with OAuthToken.auth_context(wallet_address.lower()):
+        return token.access_token
+
+# =============================================================================
+# LIVE API ENDPOINTS - Add one for each data type
+# =============================================================================
+
+@router.get("/data-type-1")
+async def list_data_type_1(
+    wallet_address: str = Query(..., description="User's wallet address"),
+    limit: int = Query(100, ge=1, le=500, description="Max records"),
+    db: AsyncSession = Depends(get_db)
+):
+    """List {data_type_1} from {Integration} via LIVE API."""
+    try:
+        access_token = await get_{integration}_access_token(wallet_address, db)
+
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.get(
+                "{PROVIDER_API_URL}/endpoint",
+                headers={"Authorization": f"Bearer {access_token}"},
+                params={"limit": limit}
+            )
+
+            if response.status_code != 200:
+                raise HTTPException(status_code=response.status_code, detail="API error")
+
+            data = response.json()
+            records = data.get("items", [])  # Adjust key based on provider
+
+            return {
+                "success": True,
+                "data_type_1": records,
+                "count": len(records),
+                "is_live": True
+            }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching data: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/data-type-2")
+async def list_data_type_2(
+    wallet_address: str = Query(...),
+    limit: int = Query(100, ge=1, le=500),
+    db: AsyncSession = Depends(get_db)
+):
+    """List {data_type_2} from {Integration} via LIVE API."""
+    # Same pattern as above...
+    pass
+```
+
+**Register the router** in `backend/app/api/v1/__init__.py`:
+
+```python
+from app.api.v1 import {integration}_crud
+router.include_router({integration}_crud.router, prefix="/{integration}", tags=["{Integration}"])
+```
+
+### Step 2: Frontend - Add Fetcher Function
+
+Add to `src/lib/live-api-fetcher.ts`:
+
+```typescript
+// ============================================================================
+// {INTEGRATION}
+// ============================================================================
+
+export async function fetch{Integration}LiveData(walletAddress: string): Promise<FetchResult> {
+  const results: LiveDataResult[] = [];
+
+  // Fetch all data types in parallel
+  const [dataType1Res, dataType2Res, dataType3Res] = await Promise.allSettled([
+    safeFetch(`${API_BASE}/api/v1/{integration}/data-type-1?wallet_address=${walletAddress}`),
+    safeFetch(`${API_BASE}/api/v1/{integration}/data-type-2?wallet_address=${walletAddress}`),
+    safeFetch(`${API_BASE}/api/v1/{integration}/data-type-3?wallet_address=${walletAddress}`),
+  ]);
+
+  // Process data-type-1
+  if (dataType1Res.status === 'fulfilled' && dataType1Res.value.success) {
+    const records = extractRecords(dataType1Res.value.data, ['data_type_1', 'items', 'records']);
+    results.push(transformToLiveDataResult('data_type_1', records));
+  }
+
+  // Process data-type-2
+  if (dataType2Res.status === 'fulfilled' && dataType2Res.value.success) {
+    const records = extractRecords(dataType2Res.value.data, ['data_type_2', 'items', 'records']);
+    results.push(transformToLiveDataResult('data_type_2', records));
+  }
+
+  // Process data-type-3
+  if (dataType3Res.status === 'fulfilled' && dataType3Res.value.success) {
+    const records = extractRecords(dataType3Res.value.data, ['data_type_3', 'items', 'records']);
+    results.push(transformToLiveDataResult('data_type_3', records));
+  }
+
+  return {
+    success: results.length > 0,
+    data: results,
+    lastSync: results.length > 0 ? new Date().toISOString() : null,
+  };
+}
+```
+
+### Step 3: Register in Unified Fetcher
+
+Add to the `fetchLiveIntegrationData` switch statement in `src/lib/live-api-fetcher.ts`:
+
+```typescript
+export async function fetchLiveIntegrationData(
+  integration: string,
+  walletAddress: string
+): Promise<FetchResult> {
+  switch (integration) {
+    // ... existing cases ...
+    case '{integration}':
+      return fetch{Integration}LiveData(walletAddress);
+    default:
+      return { success: false, data: [], lastSync: null, error: `Unknown integration: ${integration}` };
+  }
+}
+```
+
+### Current Integration Status
+
+| Integration | Backend Route | Frontend Fetcher | Data Types |
+|-------------|---------------|------------------|------------|
+| **Google** | `/api/v1/integrations/google/*` | `fetchGoogleLiveData` | emails, events, files, contacts |
+| **Microsoft** | `/api/v1/integrations/microsoft/*` | `fetchMicrosoftLiveData` | mail, calendar, onedrive, contacts |
+| **Slack** | `/api/v1/integrations/slack/*` | `fetchSlackLiveData` | channels, users |
+| **QuickBooks** | `/api/v1/quickbooks/*` | `fetchQuickBooksLiveData` | invoices, customers, expenses, vendors, payments, accounts |
+| **Salesforce** | `/api/v1/salesforce/*` | `fetchSalesforceLiveData` | contacts, leads, opportunities, accounts |
+| **HubSpot** | `/api/v1/hubspot/*` | `fetchHubSpotLiveData` | contacts, companies, deals |
+
+### Key Files for New Integrations
+
+| File | Purpose |
+|------|---------|
+| `backend/app/api/v1/{integration}_crud.py` | Backend live API endpoints |
+| `backend/app/api/v1/__init__.py` | Router registration |
+| `src/lib/live-api-fetcher.ts` | Frontend data fetching |
+| `src/components/integrations/{integration}/` | UI components |
+| `src/app/dashboard/tools/[integration]/page.tsx` | Dynamic page (auto-works) |
+
+---
+
+## Architecture: CONCERN #1 vs CONCERN #2
+
+**CRITICAL: These two concerns are completely separate and should NEVER be mixed.**
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│   CONCERN #1: SOFTWARE INTEGRATION PAGES (This README)                      │
+│                                                                              │
+│   Purpose: Display LIVE data on integration pages                           │
+│   Data Flow: Frontend → live-api-fetcher.ts → Backend → OAuth API → Display │
+│   Storage: NONE - Data is fetched fresh on each page load                   │
+│   File: src/lib/live-api-fetcher.ts                                         │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│   CONCERN #2: MCP DATA PIPELINE (For AI Assistant - Separate)               │
+│                                                                              │
+│   Purpose: Power the AI Assistant with RAG context                          │
+│   Data Flow: Sync → Encrypt → Pinata Storage → Qdrant Index → AI Query      │
+│   Storage: Pinata (Filecoin/IPFS) + Qdrant (Vector DB)                      │
+│   File: src/lib/mcp-data-fetcher.ts (DO NOT USE FOR PAGE DISPLAY)           │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Why This Separation Matters
+
+| Aspect | CONCERN #1 (Pages) | CONCERN #2 (AI) |
+|--------|-------------------|-----------------|
+| **Data Freshness** | Real-time live data | Synced periodically |
+| **Storage** | None (stateless) | Encrypted on Pinata |
+| **Use Case** | User views their emails/files | AI answers questions |
+| **Code Path** | `live-api-fetcher.ts` | `mcp-data-fetcher.ts` |
+
+---
 
 ---
 

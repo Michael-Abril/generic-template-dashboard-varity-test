@@ -43,8 +43,10 @@ async def get_access_token_from_db(wallet_address: str, db: AsyncSession) -> Opt
         return None
 
     # Check if token is expired and attempt refresh
-    # Use timezone-aware datetime for comparison
-    now = datetime.now(timezone.utc)
+    # Use timezone-naive datetime for comparison (OAuthToken.expires_at is timezone-naive)
+    # FIX: Changed from datetime.now(timezone.utc) to datetime.utcnow() to avoid
+    # "can't subtract offset-naive and offset-aware datetimes" error
+    now = datetime.utcnow()
     if token.expires_at and token.expires_at < now:
         logger.info(f"Microsoft token for {wallet_address[:10]}... is expired, attempting refresh...")
 

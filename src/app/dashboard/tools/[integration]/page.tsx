@@ -7,7 +7,7 @@ import { useWalletSync } from '@/app/providers';
 import { useToast } from '@/components/ui/Toast';
 import { Layout } from '@/components/Layout';
 import { logger } from '@/lib/logger';
-import { fetchIntegrationData, getDataDestination, getIntegrationDataTypes } from '@/lib/mcp-data-fetcher';
+import { fetchLiveIntegrationData } from '@/lib/live-api-fetcher';
 import Link from 'next/link';
 import { SalesforcePage } from '@/components/integrations/salesforce';
 import { SlackPage } from '@/components/integrations/slack';
@@ -2292,7 +2292,7 @@ const INTEGRATION_CONFIG: Record<string, {
     color: 'text-purple-600',
     bgColor: 'bg-purple-50',
     icon: '/logos/slack.svg',
-    // Match mcp-data-fetcher routing rules: channels=live, messages=hybrid, users=rag
+    // Live API data types
     dataTypes: ['channels', 'messages', 'users', 'files']
   },
   google: {
@@ -2300,7 +2300,7 @@ const INTEGRATION_CONFIG: Record<string, {
     color: 'text-red-600',
     bgColor: 'bg-red-50',
     icon: '/logos/google.svg',
-    // Match mcp-data-fetcher routing rules: gmail=live, calendar=live, drive_files=rag
+    // Live API data types
     dataTypes: ['gmail', 'calendar', 'drive_files', 'contacts']
   },
   microsoft: {
@@ -2308,7 +2308,7 @@ const INTEGRATION_CONFIG: Record<string, {
     color: 'text-blue-700',
     bgColor: 'bg-blue-50',
     icon: '/logos/microsoft.svg',
-    // Match mcp-data-fetcher routing rules: mail=live, calendar=live, onedrive=rag
+    // Live API data types
     dataTypes: ['mail', 'calendar', 'onedrive', 'contacts']
   }
 };
@@ -2399,8 +2399,8 @@ export default function IntegrationToolPage() {
     }
   }, [address, integration, getCacheKey]);
 
-  // Fetch data using MCP data fetcher with intelligent routing
-  // Routes to LIVE API for real-time data, RAG storage for historical data, or HYBRID for both
+  // Fetch data using live API - CONCERN #1 (page display)
+  // Direct calls to backend OAuth endpoints - NO data pipeline
   const fetchData = useCallback(async (forceRefresh = false) => {
     if (!address || !integration) return;
 
@@ -2419,111 +2419,26 @@ export default function IntegrationToolPage() {
     setError(null);
 
     try {
-      // Get data types for this integration from routing rules or config
-      const dataTypes = getIntegrationDataTypes(integration) || config.dataTypes;
+      logger.debug(`Fetching live data for ${integration}`);
 
-      if (!dataTypes || dataTypes.length === 0) {
-        logger.warn(`No data types defined for integration: ${integration}`);
-        setLoading(false);
-        return;
-      }
+      // Fetch live data directly from OAuth API endpoints
+      const result = await fetchLiveIntegrationData(integration, address);
 
-      // Fetch each data type using MCP data fetcher (respects LIVE/RAG/HYBRID routing)
-      const results = await Promise.allSettled(
-        dataTypes.map(async (dataType: string) => {
-          const destination = getDataDestination(integration, dataType);
-          logger.debug(`Fetching ${integration}/${dataType} via ${destination}`);
+      if (result.success && result.data.length > 0) {
+        // Data is already in IntegrationData format from live-api-fetcher
+        setData(result.data as IntegrationData[]);
+        setLastSync(result.lastSync);
 
-          const response = await fetchIntegrationData({
-            integration,
-            dataType,
-            walletAddress: address,
-            forceRefresh,
-          });
+        // Save to cache
+        saveToCache(result.data as IntegrationData[], result.lastSync);
 
-          return {
-            dataType,
-            destination,
-            response,
-          };
-        })
-      );
-
-      // Process results and transform to IntegrationData format
-      const combinedData: IntegrationData[] = [];
-      let latestSyncTime: string | null = null;
-
-      for (const result of results) {
-        if (result.status === 'fulfilled' && result.value.response.success) {
-          const { dataType, destination, response } = result.value;
-
-          // Transform to IntegrationData format expected by components
-          combinedData.push({
-            cid: `${destination}_${dataType}`, // Virtual CID for live/hybrid data
-            data_type: dataType,
-            data: {
-              records: response.data as unknown as Array<Record<string, unknown>>,
-              record_count: response.count,
-              synced_at: response.lastSync,
-              source: response.source, // 'live', 'rag', 'hybrid', or 'cache'
-            },
-            uploaded_at: response.lastSync || new Date().toISOString(),
-          });
-
-          // Track latest sync time
-          if (response.lastSync) {
-            if (!latestSyncTime || new Date(response.lastSync) > new Date(latestSyncTime)) {
-              latestSyncTime = response.lastSync;
-            }
-          }
-
-          logger.debug(
-            `${integration}/${dataType}: ${response.count} records via ${response.source}`
-          );
-        } else if (result.status === 'rejected') {
-          logger.error(`Failed to fetch ${integration} data type:`, result.reason);
-        } else if (result.status === 'fulfilled' && !result.value.response.success) {
-          logger.warn(
-            `${integration}/${result.value.dataType} fetch failed:`,
-            result.value.response.error
-          );
-        }
-      }
-
-      // If no data from any source, try auto-sync for RAG data types
-      if (combinedData.length === 0) {
-        logger.debug('No data found, triggering auto-sync for RAG data types');
-        setSyncing(true);
-        try {
-          const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-          const syncRes = await fetch(
-            `${apiBase}/api/v1/integrations/${integration}/sync`,
-            {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ wallet_address: address, force: false })
-            }
-          );
-
-          if (syncRes.ok) {
-            // Re-fetch after sync (recursive call with force refresh)
-            setSyncing(false);
-            await fetchData(true);
-            return;
-          }
-        } catch (syncErr) {
-          logger.error('Auto-sync failed', syncErr);
-        } finally {
-          setSyncing(false);
-        }
-      }
-
-      setData(combinedData);
-      setLastSync(latestSyncTime);
-
-      // Save to cache
-      if (combinedData.length > 0) {
-        saveToCache(combinedData, latestSyncTime);
+        logger.debug(`${integration}: Loaded ${result.data.length} data types via live API`);
+      } else if (result.error) {
+        logger.warn(`${integration} live API error: ${result.error}`);
+        setError(result.error);
+      } else {
+        logger.debug(`${integration}: No data returned from live API`);
+        setData([]);
       }
     } catch (err) {
       logger.error('Error fetching integration data', err);

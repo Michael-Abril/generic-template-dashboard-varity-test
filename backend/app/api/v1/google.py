@@ -820,16 +820,18 @@ async def create_contact(
 @router.get("/emails")
 async def list_emails(
     wallet_address: str,
-    max_results: int = Query(default=20, le=50, description="Max emails to return (capped at 50 for performance)"),
+    max_results: int = Query(default=50, le=100, description="Max emails per page (max 100)"),
+    page_token: Optional[str] = Query(None, description="Pagination token for next page"),
     db: AsyncSession = Depends(get_db)
 ):
     """
     List emails from Gmail with message metadata (not full content for performance).
 
-    OPTIMIZED (January 4, 2026): Reduced individual API calls to prevent OOM.
+    PAGINATION SUPPORT (January 6, 2026): Returns nextPageToken for fetching all emails.
     - Uses format=metadata to get headers without full body
-    - Limits to 20 emails by default (max 50)
-    - Fetches emails in parallel batches of 5
+    - Returns up to 100 emails per page (memory-efficient)
+    - Fetches emails in parallel batches of 10
+    - Returns nextPageToken if more emails available
 
     Handles rate limiting with automatic retry and proper error messages for:
     - 401: Token expired (prompts reconnection)
@@ -839,10 +841,15 @@ async def list_emails(
     try:
         access_token = await get_google_access_token(wallet_address, db)
 
-        # Cap max_results to prevent OOM (January 4, 2026 fix)
-        max_results = min(max_results, 50)
+        # Cap max_results for memory safety
+        max_results = min(max_results, 100)
 
         async with httpx.AsyncClient(timeout=30.0) as client:
+            # Build params with optional pagination token
+            params = {"maxResults": max_results}
+            if page_token:
+                params["pageToken"] = page_token
+
             # Get list of message IDs with error handling
             list_result = await google_api_request_with_retry(
                 client=client,
@@ -851,16 +858,18 @@ async def list_emails(
                 access_token=access_token,
                 wallet_address=wallet_address,
                 operation="list_emails",
-                params={"maxResults": max_results}
+                params=params
             )
 
             messages = list_result.get("messages", [])
+            next_page_token = list_result.get("nextPageToken")
+            result_size_estimate = list_result.get("resultSizeEstimate", 0)
 
             if not messages:
-                return {"success": True, "emails": []}
+                return {"success": True, "emails": [], "nextPageToken": None, "totalEstimate": result_size_estimate}
 
-            # OPTIMIZATION (Jan 4, 2026): Fetch emails in parallel batches to reduce memory and time
-            # Use format=metadata to get headers without full body (much smaller response)
+            # Fetch emails in parallel batches (memory-efficient)
+            # Use format=metadata to get headers without full body
             async def fetch_email_metadata(msg_id: str) -> Optional[Dict]:
                 try:
                     return await google_api_request_with_retry(
@@ -877,10 +886,10 @@ async def list_emails(
                     logger.warning(f"Failed to fetch message {msg_id}: {e}")
                     return None
 
-            # Fetch in batches of 5 to prevent overwhelming the API
+            # Fetch in batches of 10 (balanced for speed and memory)
             email_details = []
-            batch_size = 5
-            for i in range(0, len(messages[:max_results]), batch_size):
+            batch_size = 10
+            for i in range(0, len(messages), batch_size):
                 batch = messages[i:i + batch_size]
                 batch_results = await asyncio.gather(
                     *[fetch_email_metadata(msg["id"]) for msg in batch],
@@ -890,7 +899,13 @@ async def list_emails(
                     if result and not isinstance(result, Exception):
                         email_details.append(result)
 
-            return {"success": True, "emails": email_details}
+            return {
+                "success": True,
+                "emails": email_details,
+                "nextPageToken": next_page_token,  # Frontend can use this to fetch more
+                "totalEstimate": result_size_estimate,
+                "count": len(email_details)
+            }
 
     except HTTPException:
         raise
@@ -996,11 +1011,14 @@ async def update_email(
 @router.get("/events")
 async def list_events(
     wallet_address: str,
-    max_results: int = 50,
+    max_results: int = Query(default=100, le=250, description="Max events per page (max 250)"),
+    page_token: Optional[str] = Query(None, description="Pagination token for next page"),
     db: AsyncSession = Depends(get_db)
 ):
     """
     List calendar events starting from now.
+
+    PAGINATION SUPPORT (January 6, 2026): Returns nextPageToken for fetching all events.
 
     Handles rate limiting with automatic retry and proper error messages for:
     - 401: Token expired (prompts reconnection)
@@ -1012,8 +1030,16 @@ async def list_events(
 
         async with httpx.AsyncClient(timeout=30.0) as client:
             # FIX (Jan 4, 2026): Use proper RFC3339 format without double timezone
-            # datetime.utcnow() returns timezone-naive, so we can safely add "Z"
             time_min = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+
+            params = {
+                "maxResults": min(max_results, 250),
+                "singleEvents": True,
+                "orderBy": "startTime",
+                "timeMin": time_min
+            }
+            if page_token:
+                params["pageToken"] = page_token
 
             result = await google_api_request_with_retry(
                 client=client,
@@ -1022,15 +1048,16 @@ async def list_events(
                 access_token=access_token,
                 wallet_address=wallet_address,
                 operation="list_events",
-                params={
-                    "maxResults": max_results,
-                    "singleEvents": True,
-                    "orderBy": "startTime",
-                    "timeMin": time_min
-                }
+                params=params
             )
 
-            return {"success": True, "events": result.get("items", [])}
+            events = result.get("items", [])
+            return {
+                "success": True,
+                "events": events,
+                "nextPageToken": result.get("nextPageToken"),
+                "count": len(events)
+            }
 
     except HTTPException:
         raise
@@ -1150,21 +1177,30 @@ async def update_event(
 @router.get("/files")
 async def list_files(
     wallet_address: str,
-    max_results: int = 100,
+    page_size: int = Query(default=100, le=1000, description="Max files per page (max 1000)"),
+    page_token: Optional[str] = Query(None, description="Pagination token for next page"),
     db: AsyncSession = Depends(get_db)
 ):
-    """List files from Google Drive"""
+    """
+    List files from Google Drive.
+
+    PAGINATION SUPPORT (January 6, 2026): Returns nextPageToken for fetching all files.
+    """
     try:
         access_token = await get_google_access_token(wallet_address, db)
+
+        params = {
+            "pageSize": min(page_size, 1000),
+            "fields": "nextPageToken,files(id,name,mimeType,size,modifiedTime,owners,webViewLink,starred)"
+        }
+        if page_token:
+            params["pageToken"] = page_token
 
         async with httpx.AsyncClient() as client:
             response = await client.get(
                 "https://www.googleapis.com/drive/v3/files",
                 headers={"Authorization": f"Bearer {access_token}"},
-                params={
-                    "pageSize": max_results,
-                    "fields": "files(id,name,mimeType,size,modifiedTime,owners,webViewLink,starred)"
-                },
+                params=params,
                 timeout=30.0
             )
 
@@ -1175,7 +1211,13 @@ async def list_files(
                 )
 
             result = response.json()
-            return {"success": True, "files": result.get("files", [])}
+            files = result.get("files", [])
+            return {
+                "success": True,
+                "files": files,
+                "nextPageToken": result.get("nextPageToken"),
+                "count": len(files)
+            }
 
     except HTTPException:
         raise
@@ -1225,21 +1267,30 @@ async def delete_file(
 @router.get("/contacts")
 async def list_contacts(
     wallet_address: str,
-    max_results: int = 100,
+    page_size: int = Query(default=100, le=1000, description="Max contacts per page (max 1000)"),
+    page_token: Optional[str] = Query(None, description="Pagination token for next page"),
     db: AsyncSession = Depends(get_db)
 ):
-    """List contacts"""
+    """
+    List contacts from Google People API.
+
+    PAGINATION SUPPORT (January 6, 2026): Returns nextPageToken for fetching all contacts.
+    """
     try:
         access_token = await get_google_access_token(wallet_address, db)
+
+        params = {
+            "pageSize": min(page_size, 1000),
+            "personFields": "names,emailAddresses,phoneNumbers,organizations"
+        }
+        if page_token:
+            params["pageToken"] = page_token
 
         async with httpx.AsyncClient() as client:
             response = await client.get(
                 "https://people.googleapis.com/v1/people/me/connections",
                 headers={"Authorization": f"Bearer {access_token}"},
-                params={
-                    "pageSize": max_results,
-                    "personFields": "names,emailAddresses,phoneNumbers,organizations"
-                },
+                params=params,
                 timeout=30.0
             )
 
@@ -1250,7 +1301,14 @@ async def list_contacts(
                 )
 
             result = response.json()
-            return {"success": True, "contacts": result.get("connections", [])}
+            contacts = result.get("connections", [])
+            return {
+                "success": True,
+                "contacts": contacts,
+                "nextPageToken": result.get("nextPageToken"),
+                "totalPeople": result.get("totalPeople"),
+                "count": len(contacts)
+            }
 
     except HTTPException:
         raise
