@@ -404,14 +404,15 @@ async def get_installed_integrations(
             )
 
         # Convert to the simple integrations format expected by frontend
-        # NOTE: connected = True for any active token (is_active=True in database)
-        # Token expiry just means they need to re-authenticate, but it's still "connected"
+        # FIXED (Jan 5, 2026): connected should be False if token expired
+        # Google APIs work even with expired tokens because backend auto-refreshes
+        # But UI should show "not connected" to prompt user to reconnect if refresh fails
         integrations = [
             {
                 "id": tool["tool_id"],
                 "name": tool["tool_name"],
                 "slug": tool["integration"],
-                "connected": True,  # If token exists and is_active, it's connected
+                "connected": not tool["needs_reauth"],  # False if expired, True if valid
                 "needs_reauth": tool["needs_reauth"],
                 "data_count": tool["data_count"],
             }

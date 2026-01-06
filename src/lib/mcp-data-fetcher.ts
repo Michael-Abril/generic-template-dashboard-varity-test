@@ -58,6 +58,33 @@ const DATA_ROUTING_RULES: Record<string, Record<string, DataDestination>> = {
   },
 };
 
+/**
+ * Maps frontend data type names to backend endpoint names
+ * Frontend uses semantic names (gmail, calendar), backend uses resource names (emails, events)
+ */
+const ENDPOINT_NAME_MAP: Record<string, Record<string, string>> = {
+  google: {
+    gmail: 'emails',        // /gmail → /emails
+    calendar: 'events',     // /calendar → /events
+    drive_files: 'files',   // /drive_files → /files
+    // contacts stays as 'contacts'
+  },
+  microsoft: {
+    mail: 'mail/messages',           // /mail → /mail/messages
+    calendar: 'calendar/events',     // /calendar → /calendar/events
+    onedrive: 'onedrive/files',      // /onedrive → /onedrive/files
+    // contacts stays as 'contacts'
+  },
+  // slack, quickbooks, salesforce, hubspot - endpoint names match data types
+};
+
+/**
+ * Get the correct backend endpoint name for a data type
+ */
+function getEndpointName(integration: string, dataType: string): string {
+  return ENDPOINT_NAME_MAP[integration]?.[dataType] || dataType;
+}
+
 export interface FetchOptions {
   integration: string;
   dataType: string;
@@ -127,6 +154,21 @@ export async function fetchIntegrationData<T extends { id?: string | number } = 
 }
 
 /**
+ * Get the correct API endpoint path for an integration
+ * Some integrations use /api/v1/{integration} instead of /api/v1/integrations/{integration}
+ */
+function getAPIEndpointPrefix(integration: string): string {
+  // These integrations have their own top-level prefix
+  const customPrefixes: Record<string, string> = {
+    salesforce: '/api/v1/salesforce',
+    hubspot: '/api/v1/hubspot',
+    quickbooks: '/api/v1/quickbooks',
+  };
+
+  return customPrefixes[integration] || `/api/v1/integrations/${integration}`;
+}
+
+/**
  * Fetch from live API (real-time, no storage)
  */
 async function fetchLiveData<T extends { id?: string | number }>(options: {
@@ -136,9 +178,13 @@ async function fetchLiveData<T extends { id?: string | number }>(options: {
 }): Promise<DataResponse<T>> {
   const { integration, dataType, walletAddress } = options;
   const apiBase = process.env.NEXT_PUBLIC_API_URL;
+  const endpointPrefix = getAPIEndpointPrefix(integration);
+
+  // Map frontend data type to backend endpoint name
+  const endpointName = getEndpointName(integration, dataType);
 
   const response = await fetch(
-    `${apiBase}/api/v1/integrations/${integration}/${dataType}?wallet_address=${walletAddress}`
+    `${apiBase}${endpointPrefix}/${endpointName}?wallet_address=${walletAddress}`
   );
 
   if (!response.ok) {

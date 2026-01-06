@@ -1,40 +1,7 @@
 # KNOWN ISSUES - Varity Dashboard
-**Last Updated:** January 5, 2026 (Integration Validation - Live Testing)
+**Last Updated:** December 30, 2025 (LIVE API AUDIT - Comprehensive Testing)
 
-> **VERIFIED:** This document reflects actual testing via direct API calls on January 5, 2026 with wallet `0x738C812FB221ba32E8726fe38961570a700e87b9`
-
----
-
-## LATEST VALIDATION - January 5, 2026: Live Backend Testing
-
-**Test Results Summary:**
-- **Infrastructure:** ✅ All systems healthy (PostgreSQL, Redis, Pinata, RPC)
-- **Slack Integration:** ✅ 70% working (OAuth connected, channels endpoint working)
-- **Google Workspace:** ⚠️ 30% working (OAuth shows "not connected" but APIs return data)
-- **Microsoft 365:** ❌ 20% working (OAuth connected but all endpoints return 500 errors)
-- **QuickBooks:** ❌ 10% working (CRITICAL BUG: decrypt_file_with_wallet parameter mismatch)
-- **Frontend Testing:** ⏸️ Pending (Browser MCP not available)
-
-**New Critical Issues Discovered:**
-1. **CRIT-NEW-001:** QuickBooks decrypt_file_with_wallet() parameter mismatch - BLOCKING
-2. **CRIT-NEW-002:** Microsoft 365 all endpoints returning 500 Internal Server Error
-3. **CRIT-NEW-003:** Google OAuth status shows "not connected" despite APIs returning data
-
----
-
-## CRITICAL FIX - January 5, 2026: AI Assistant Data Pipeline
-
-**Fixed Issues:**
-1. **Integration Name Mismatch** - Pinata stored files with `google_workspace` but queries used `google` → Now handles name variants
-2. **RAG Indexing Error** - Legacy adapter reference causing potential crashes → Removed, now indexes all data types
-3. **Pinata Fallback Missing** - Context picker empty when Qdrant failed → Now always tries Pinata fallback
-
-**Files Changed:**
-- `/backend/app/services/filecoin_service.py` - Python-side integration name filtering with variants
-- `/backend/app/api/v1/integrations.py` - Removed legacy adapter reference
-- `/backend/app/api/v1/ai.py` - Enhanced Pinata fallback logic
-
-**Result:** AI Assistant Context Picker should now show connected integrations and their data.
+> **VERIFIED:** This document reflects actual testing via direct API calls on December 30, 2025 with wallet `0x738C812FB221ba32E8726fe38961570a700e87b9`
 
 ---
 
@@ -96,26 +63,7 @@ const res = await fetch(`${apiBase}/api/v1/integrations/${integration}/data`);
 - Slack channels endpoint returns 3 channels: `GET /api/v1/integrations/slack/channels`
 - But frontend shows empty because it fetches from `/slack/data` (sync data only)
 
-**Status:** PARTIAL FIX IN PROGRESS
-
-**FIXED (January 4, 2026):**
-- ✅ Microsoft OneDriveExplorer now calls live API (`/api/v1/integrations/microsoft/onedrive/files`)
-- ✅ Added loading states and error handling with props fallback
-- ✅ Follows same pattern as GmailInbox (fetch on mount, fallback to props on error)
-
-**FIXED (January 5, 2026) - Component Audit COMPLETED:**
-- ✅ Google DriveExplorer calls live API (`/api/v1/integrations/google/files`) - Lines 224-296
-- ✅ Google ContactsList calls live API (`/api/v1/integrations/google/contacts`) - Lines 93-149
-- ✅ QuickBooks InvoicesList calls live API (`/api/v1/quickbooks/invoices`) - Lines 68-99
-- ✅ QuickBooks CustomersList calls live API (`/api/v1/quickbooks/customers`) - Lines 67-98
-- ✅ QuickBooks ExpensesList calls live API (`/api/v1/quickbooks/expenses`) - Lines 53-84
-- ✅ QuickBooks VendorsList calls live API (`/api/v1/quickbooks/vendors`) - Lines 64-95
-
-**Still Needs Fix:**
-- SlackPage components (channels, messages, users)
-- Other Microsoft components (Mail, Calendar, Tasks, Contacts)
-- Salesforce components
-- HubSpot components
+**Status:** CRITICAL - Hybrid data model not implemented in frontend
 
 ### CRIT-003: Dashboard KPIs Show Wrong/Fake Data
 
@@ -152,105 +100,16 @@ const res = await fetch(`${apiBase}/api/v1/integrations/${integration}/data`);
 
 ---
 
-## NEW CRITICAL BUGS - January 5, 2026 Live Testing
+## INTEGRATION STATUS (Actual - December 30, 2025)
 
-### CRIT-NEW-001: QuickBooks decrypt_file_with_wallet() Parameter Mismatch 🔴
-
-**Severity:** CRITICAL - BLOCKING entire QuickBooks integration
-**Endpoint:** `/api/v1/quickbooks/invoices` (and likely all QuickBooks endpoints)
-
-**Error:**
-```json
-{"detail": "Failed to retrieve invoices: decrypt_file_with_wallet() got an unexpected keyword argument 'encrypted_data'"}
-```
-
-**Impact:** Complete QuickBooks integration failure - ALL data endpoints non-functional
-
-**Root Cause:** Function signature mismatch in encryption service. The function is being called with `encrypted_data=X` parameter but the function definition doesn't accept this parameter name.
-
-**Files to Fix:**
-1. `/backend/app/services/encryption_service.py` - Check function signature
-2. `/backend/app/api/v1/quickbooks.py` - Check all call sites
-3. Likely need to change parameter name from `encrypted_data` to `data` or add parameter to function
-
-**Fix Complexity:** LOW (simple parameter rename)
-**Priority:** IMMEDIATE - easiest fix with biggest impact
-
----
-
-### CRIT-NEW-002: Microsoft 365 All Endpoints Return 500 Errors 🔴
-
-**Severity:** HIGH - Entire Microsoft 365 integration non-functional
-**Endpoints Affected:**
-- `/api/v1/integrations/microsoft/mail/messages` → 500 error
-- `/api/v1/integrations/microsoft/calendar/events` → 500 error
-
-**OAuth Status:** ✅ Connected (Jan 3, 2026) with valid refresh token
-
-**Error Response:**
-```json
-{
-  "success": false,
-  "error": "Internal server error",
-  "message": "An unexpected error occurred. Please contact support if the issue persists.",
-  "support": "support@varity.xyz"
-}
-```
-
-**Possible Causes:**
-1. Timezone mismatch in token refresh (commit 32a4a70 should have fixed this - verify deployed)
-2. Microsoft API rate limiting or quota exceeded
-3. Missing OAuth scopes in token
-4. Unhandled Python exception in adapter code
-
-**Next Steps:**
-1. Check Railway logs for Python stack traces
-2. Verify commit 32a4a70 was deployed to production
-3. Test token refresh manually
-4. Add better error handling to return specific error messages
-
-**Fix Complexity:** MEDIUM (need to debug logs)
-**Priority:** HIGH
-
----
-
-### CRIT-NEW-003: Google OAuth Status Mismatch ⚠️
-
-**Severity:** MEDIUM - Confusing UX, frontend may not call endpoints
-
-**Issue:** OAuth status endpoint reports "No OAuth credentials found" but data endpoints successfully return real data.
-
-**Evidence:**
-- OAuth Status: `{"connected": false, "message": "No OAuth credentials found"}`
-- Emails Endpoint: ✅ Returns 20 recent emails with full metadata
-- Files Endpoint: ✅ Returns 50+ Drive files (3PL Comparison, Marketing Plan, etc.)
-- Events Endpoint: ✅ Returns empty array (no events scheduled)
-
-**Impact:**
-- Frontend may skip calling data endpoints thinking OAuth is disconnected
-- Users see confusing "reconnect" messages when data actually works
-- Context selector may show empty when data is available
-
-**Possible Causes:**
-1. OAuth status endpoint checks database instead of Pinata
-2. Token refresh updates Pinata but not database status
-3. Status endpoint doesn't recognize refreshed tokens as valid
-
-**Fix Complexity:** LOW (update status endpoint logic)
-**Priority:** MEDIUM
-
----
-
-## INTEGRATION STATUS (Updated - January 5, 2026)
-
-| Integration | OAuth Status | Live API Backend | Data Retrieved | Frontend | Overall |
-|-------------|:------------:|:----------------:|:--------------:|:--------:|:-------:|
-| **Slack** | ✅ Connected | ✅ Working | 2 channels | Unknown | **70%** |
-| **Google** | ⚠️ Shows "not connected" | ✅ Working | 20 emails, 50+ files | Unknown | **30%** |
-| **Microsoft** | ✅ Connected | ❌ 500 errors | None | Unknown | **20%** |
-| **QuickBooks** | ✅ Connected | ❌ decrypt bug | None | Unknown | **10%** |
-| **Salesforce** | Unknown | Unknown | Unknown | Unknown | **?** |
-| **HubSpot** | Unknown | Unknown | Unknown | Unknown | **?** |
+| Integration | OAuth Status | Data Synced | Live API Backend | Frontend Uses Live API | Overall |
+|-------------|:------------:|:-----------:|:----------------:|:----------------------:|:-------:|
+| **Google** | EXPIRED | 83 files (stale) | Untestable | NO | **20%** |
+| **Slack** | ACTIVE | 2 users only | YES (works) | NO | **50%** |
+| **Microsoft** | EXPIRED | 0 | Untestable | NO | **10%** |
+| **QuickBooks** | EXPIRED | 0 | Untestable | NO | **5%** |
+| **Salesforce** | UNKNOWN | Unknown | Unknown | NO | **?** |
+| **HubSpot** | UNKNOWN | Unknown | Unknown | NO | **?** |
 
 ### Per-Integration Details
 

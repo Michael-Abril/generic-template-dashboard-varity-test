@@ -4,7 +4,7 @@ Provides full CRUD operations for Outlook, Calendar, OneDrive, Contacts, and To 
 """
 from fastapi import APIRouter, HTTPException, Query, Body, Depends
 from typing import Optional, List, Dict, Any
-from datetime import datetime
+from datetime import datetime, timezone
 import logging
 import httpx
 import base64
