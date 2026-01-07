@@ -532,13 +532,13 @@ export default function AnalyticsContent() {
 
       case 'kpi':
       case 'metric': {
-        // Pass real metrics from analyticsData when available
+        // Use real metrics from analyticsData when available
         const realMetrics = analyticsData?.metrics as Record<string, number> | undefined;
         const kpiData = generateSampleKPIData(widget.subtype, realMetrics);
         return (
           <div className="relative h-full">
             {!kpiData.isRealData && (
-              <div className="absolute top-1 right-1 px-1.5 py-0.5 bg-amber-100 text-amber-700 text-[10px] font-medium rounded">
+              <div className="absolute top-1 right-1 px-1.5 py-0.5 bg-amber-100 text-amber-700 text-[10px] font-medium rounded z-10">
                 Demo Data
               </div>
             )}
@@ -797,9 +797,23 @@ export default function AnalyticsContent() {
                   <LayoutGrid className="w-10 h-10 text-blue-600" />
                 </div>
                 <h3 className="text-xl font-semibold text-gray-900 mb-2">Build Your Custom Dashboard</h3>
-                <p className="text-gray-500 text-center max-w-md mb-6">
+                <p className="text-gray-500 text-center max-w-md mb-2">
                   Add widgets from the library, use AI to generate charts, or start from a template.
                 </p>
+                {connectedIntegrations.length === 0 && (
+                  <p className="text-amber-600 text-center text-sm mb-6 max-w-md">
+                    Connect integrations in the{' '}
+                    <Link href="/marketplace" className="underline hover:text-amber-700">
+                      Marketplace
+                    </Link>
+                    {' '}to see real analytics data instead of demo data.
+                  </p>
+                )}
+                {connectedIntegrations.length > 0 && (
+                  <p className="text-gray-400 text-center text-sm mb-6 max-w-md">
+                    {connectedIntegrations.length} integration{connectedIntegrations.length !== 1 ? 's' : ''} connected
+                  </p>
+                )}
                 <div className="flex items-center gap-3">
                   <button
                     onClick={() => setTemplatesOpen(true)}

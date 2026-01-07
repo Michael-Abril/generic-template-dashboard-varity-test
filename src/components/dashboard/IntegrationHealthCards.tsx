@@ -67,53 +67,28 @@ export function IntegrationHealthCards({ walletAddress, className = '' }: Integr
     try {
       const apiBase = process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 
-      // Try the status endpoint first
-      let response = await fetch(`${apiBase}/api/v1/integrations/status?wallet_address=${walletAddress}`);
-      let data = response.ok ? await response.json() : null;
+      const response = await fetch(`${apiBase}/api/v1/integrations/installed?wallet_address=${walletAddress}`);
 
-      // If status endpoint returns empty or fails, try OAuth tokens endpoint as fallback
-      if (!data || !data.integrations || data.integrations.length === 0) {
-        const tokensResponse = await fetch(`${apiBase}/api/v1/oauth/tokens?wallet_address=${walletAddress}`);
-        if (tokensResponse.ok) {
-          const tokensData = await tokensResponse.json();
-          // Transform OAuth tokens to integration format
-          if (tokensData.tokens && Array.isArray(tokensData.tokens)) {
-            const transformedFromTokens: Integration[] = tokensData.tokens.map((token: {
-              provider: string;
-              created_at?: string;
-              updated_at?: string;
-              is_valid?: boolean;
-            }) => ({
-              id: token.provider,
-              name: INTEGRATION_NAMES[token.provider] || token.provider,
-              provider: token.provider,
-              status: token.is_valid !== false ? 'connected' : 'error',
-              lastSyncTime: token.updated_at || token.created_at,
-              icon: INTEGRATION_ICONS[token.provider] || '',
-            }));
-            setIntegrations(transformedFromTokens);
-            return;
-          }
-        }
+      if (!response.ok) {
+        throw new Error(`API responded with status ${response.status}`);
       }
 
-      // Transform backend response to frontend format from status endpoint
-      if (data && data.integrations) {
-        const transformedIntegrations: Integration[] = (data.integrations || []).map((int: {
-          provider: string;
-          status: string;
+      const data = await response.json();
+
+      if (data && data.integrations && Array.isArray(data.integrations)) {
+        const transformedIntegrations: Integration[] = data.integrations.map((int: {
+          name: string;
+          connected: boolean;
           last_sync?: string;
-          sync_status?: string;
           data_count?: number;
         }) => ({
-          id: int.provider,
-          name: INTEGRATION_NAMES[int.provider] || int.provider,
-          provider: int.provider,
-          status: mapStatus(int.status),
+          id: int.name,
+          name: INTEGRATION_NAMES[int.name] || int.name,
+          provider: int.name,
+          status: int.connected ? 'connected' : 'disconnected',
           lastSyncTime: int.last_sync,
-          lastSyncStatus: int.sync_status as 'success' | 'partial' | 'failed' | undefined,
           dataCount: int.data_count,
-          icon: INTEGRATION_ICONS[int.provider] || '',
+          icon: INTEGRATION_ICONS[int.name] || '',
         }));
 
         setIntegrations(transformedIntegrations);
@@ -123,24 +98,6 @@ export function IntegrationHealthCards({ walletAddress, className = '' }: Integr
       setError('Unable to load integration status');
     } finally {
       setIsLoading(false);
-    }
-  };
-
-  const mapStatus = (backendStatus: string): Integration['status'] => {
-    switch (backendStatus?.toLowerCase()) {
-      case 'connected':
-      case 'active':
-        return 'connected';
-      case 'syncing':
-        return 'syncing';
-      case 'stale':
-      case 'outdated':
-        return 'stale';
-      case 'error':
-      case 'failed':
-        return 'error';
-      default:
-        return 'disconnected';
     }
   };
 

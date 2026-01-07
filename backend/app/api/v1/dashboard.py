@@ -15,8 +15,9 @@ from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
 from datetime import datetime, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, and_
 import logging
-import json
+import asyncio
 
 import httpx
 import os
@@ -24,6 +25,7 @@ import os
 from app.core.database import get_db
 from app.services.filecoin_service import FilecoinService
 from app.services.encryption_service import EncryptionService, normalize_wallet_address
+from app.models.purchase import OAuthToken
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +37,59 @@ encryption_service = EncryptionService()
 
 # All 6 supported integrations
 SUPPORTED_INTEGRATIONS = ["quickbooks", "google", "microsoft", "slack", "salesforce", "hubspot"]
+
+# =====================================================================
+# TOKEN REFRESH HELPER
+# =====================================================================
+
+async def ensure_valid_token(wallet_address: str, provider: str, db: AsyncSession) -> Optional[str]:
+    """
+    Check token expiry and refresh if needed. Returns valid access_token or None.
+
+    Args:
+        wallet_address: User's wallet address (will be normalized)
+        provider: Integration provider name (google, microsoft, slack, etc.)
+        db: Database session
+
+    Returns:
+        Valid access token string, or None if token missing/refresh failed
+    """
+    normalized_wallet = normalize_wallet_address(wallet_address)
+
+    # Query for active OAuth token
+    result = await db.execute(
+        select(OAuthToken).where(
+            and_(
+                OAuthToken.user_address == normalized_wallet,
+                OAuthToken.provider == provider,
+                OAuthToken.is_active == True
+            )
+        )
+    )
+    oauth_token = result.scalar_one_or_none()
+
+    if not oauth_token:
+        logger.warning(f"No OAuth token found for {provider}, wallet={normalized_wallet[:15]}...")
+        return None
+
+    # Check if token is expired and needs refresh
+    if oauth_token.expires_at and oauth_token.expires_at < datetime.utcnow():
+        logger.info(f"Token expired for {provider}, attempting refresh...")
+        try:
+            from app.api.v1.integrations import refresh_oauth_token
+            success = await refresh_oauth_token(oauth_token, provider, db)
+            if not success:
+                logger.error(f"Token refresh failed for {provider}")
+                return None
+            # Re-fetch the token after refresh
+            await db.refresh(oauth_token)
+        except Exception as e:
+            logger.error(f"Token refresh exception for {provider}: {e}")
+            return None
+
+    # Return decrypted access token using auth context
+    with OAuthToken.auth_context(normalized_wallet):
+        return oauth_token.access_token
 
 # =====================================================================
 # DATA ROUTING RULES
@@ -328,30 +383,39 @@ def calculate_percentage_change(current: float, previous: float) -> float:
 async def fetch_live_data(
     wallet_address: str,
     integration: str,
-    data_type: str
-) -> List[Dict[str, Any]]:
+    data_type: str,
+    db: AsyncSession
+) -> Dict[str, Any]:
     """
-    Fetch data from live API endpoints for LIVE data types.
-
-    For gmail, calendar, slack channels etc - these should be fetched
-    in real-time from the integration APIs, not from synced storage.
+    Fetch data from live API endpoints with proper token refresh and error propagation.
 
     Args:
         wallet_address: User's wallet address
         integration: Integration name (google, slack, etc.)
         data_type: Type of data (gmail, calendar, channels, etc.)
+        db: Database session for token refresh
 
     Returns:
-        List of records from live API
+        Dict with 'error' (str or None) and 'data' (list) keys
     """
     endpoint_key = (integration, data_type)
     endpoint = LIVE_ENDPOINTS.get(endpoint_key)
 
     if not endpoint:
-        logger.warning(f"No live endpoint configured for {integration}/{data_type}")
-        return []
+        return {
+            "error": f"No live endpoint configured for {integration}/{data_type}",
+            "data": []
+        }
 
-    # Get the API base URL - use internal request for same-server endpoints
+    # Ensure valid OAuth token with auto-refresh
+    access_token = await ensure_valid_token(wallet_address, integration, db)
+    if not access_token:
+        return {
+            "error": f"{integration} token expired or missing - user must reconnect",
+            "data": []
+        }
+
+    # Get the API base URL
     api_base = os.getenv("API_BASE_URL", "http://localhost:8000")
 
     try:
@@ -361,42 +425,45 @@ async def fetch_live_data(
                 params={"wallet_address": wallet_address}
             )
 
-            if response.status_code == 200:
-                data = response.json()
+            if response.status_code != 200:
+                error_detail = f"HTTP {response.status_code}"
+                try:
+                    error_body = response.json()
+                    if "detail" in error_body:
+                        error_detail = f"{error_detail}: {error_body['detail']}"
+                except:
+                    pass
+                return {"error": error_detail, "data": []}
 
-                # Handle different response formats from live endpoints
-                if isinstance(data, list):
-                    return data
-                elif isinstance(data, dict):
-                    # Check for common response keys
-                    for key in ["emails", "events", "channels", "messages", "users", "data", "items"]:
-                        if key in data and isinstance(data[key], list):
-                            return data[key]
-                    # If it's a dict with success status, look for data
-                    if "data" in data:
-                        return data["data"] if isinstance(data["data"], list) else [data["data"]]
-                    return [data]  # Return as single-item list
-                return []
-            else:
-                logger.warning(
-                    f"Live API {endpoint} returned status {response.status_code} "
-                    f"for wallet {wallet_address[:15]}..."
-                )
-                return []
+            data = response.json()
+
+            # Handle different response formats from live endpoints
+            if isinstance(data, list):
+                return {"error": None, "data": data}
+            elif isinstance(data, dict):
+                # Check for common response keys
+                for key in ["emails", "events", "channels", "messages", "users", "data", "items"]:
+                    if key in data and isinstance(data[key], list):
+                        return {"error": None, "data": data[key]}
+                # If it's a dict with success status, look for data
+                if "data" in data:
+                    result = data["data"] if isinstance(data["data"], list) else [data["data"]]
+                    return {"error": None, "data": result}
+                return {"error": None, "data": [data]}
+            return {"error": None, "data": []}
 
     except httpx.TimeoutException:
-        logger.warning(f"Timeout fetching live data from {endpoint}")
-        return []
+        return {"error": f"Timeout fetching from {endpoint}", "data": []}
     except Exception as e:
-        logger.error(f"Error fetching live data from {endpoint}: {e}")
-        return []
+        return {"error": f"Exception: {str(e)}", "data": []}
 
 
 async def get_kpi_data(
     wallet_address: str,
     integration: str,
-    data_type: str
-) -> List[Dict[str, Any]]:
+    data_type: str,
+    db: AsyncSession
+) -> Dict[str, Any]:
     """
     Get KPI data respecting routing rules.
 
@@ -411,41 +478,287 @@ async def get_kpi_data(
         wallet_address: User's wallet address
         integration: Integration name
         data_type: Type of data
+        db: Database session for token refresh
 
     Returns:
-        List of data records
+        Dict with 'error' (str or None) and 'data' (list) keys
     """
     routing = DATA_ROUTING_RULES.get(integration, {}).get(data_type, RAG_STORAGE)
 
     if routing == LIVE_API:
         # Always use live API for real-time data types
-        live_data = await fetch_live_data(wallet_address, integration, data_type)
-        if live_data:
-            logger.info(f"KPI: Got {len(live_data)} records from live API for {integration}/{data_type}")
-            return live_data
+        result = await fetch_live_data(wallet_address, integration, data_type, db)
+        if result["data"]:
+            logger.info(f"KPI: Got {len(result['data'])} records from live API for {integration}/{data_type}")
+            return result
         # Fall back to synced data if live API fails
-        logger.info(f"KPI: Live API returned empty for {integration}/{data_type}, falling back to RAG")
-        return await get_integration_data(wallet_address, integration, data_type)
+        if result["error"]:
+            logger.warning(f"KPI: Live API error for {integration}/{data_type}: {result['error']}, falling back to RAG")
+        rag_data = await get_integration_data(wallet_address, integration, data_type)
+        return {"error": result["error"], "data": rag_data}
 
     elif routing == HYBRID:
         # Try live first for recent data, merge with synced data
-        live_data = await fetch_live_data(wallet_address, integration, data_type)
+        live_result = await fetch_live_data(wallet_address, integration, data_type, db)
         rag_data = await get_integration_data(wallet_address, integration, data_type)
 
-        if live_data and rag_data:
+        if live_result["data"] and rag_data:
             # Dedupe by id if possible, prefer live data
-            live_ids = {item.get("id") for item in live_data if item.get("id")}
-            merged = list(live_data)
+            live_ids = {item.get("id") for item in live_result["data"] if item.get("id")}
+            merged = list(live_result["data"])
             for item in rag_data:
                 if item.get("id") not in live_ids:
                     merged.append(item)
-            logger.info(f"KPI: Merged {len(live_data)} live + {len(rag_data)} RAG for {integration}/{data_type}")
-            return merged
-        return live_data or rag_data
+            logger.info(f"KPI: Merged {len(live_result['data'])} live + {len(rag_data)} RAG for {integration}/{data_type}")
+            return {"error": live_result["error"], "data": merged}
+        return {"error": live_result["error"], "data": live_result["data"] or rag_data}
 
     else:  # RAG_STORAGE
         # Use synced Filecoin storage
-        return await get_integration_data(wallet_address, integration, data_type)
+        rag_data = await get_integration_data(wallet_address, integration, data_type)
+        return {"error": None, "data": rag_data}
+
+
+# =====================================================================
+# INTEGRATION-SPECIFIC KPI FETCHERS (for parallel execution)
+# =====================================================================
+
+async def fetch_quickbooks_kpis(wallet_address: str, db: AsyncSession) -> Dict[str, Any]:
+    """Fetch QuickBooks KPIs (revenue, unpaid invoices)."""
+    kpis = []
+    error = None
+
+    try:
+        result = await get_kpi_data(wallet_address, "quickbooks", "invoices", db)
+        qb_invoices = result["data"]
+        error = result["error"]
+
+        if qb_invoices:
+            # Total Revenue
+            total_revenue = sum(
+                float(inv.get("total_amount", 0))
+                for inv in qb_invoices
+                if inv.get("status") == "paid"
+            )
+            kpis.append(DynamicKPI(
+                id="qb_revenue",
+                title="Total Revenue",
+                value=f"${total_revenue:,.2f}",
+                change_value=0.0,
+                change_period="vs last month",
+                icon="DollarSign",
+                source="QuickBooks",
+                trend="neutral",
+                color="green"
+            ))
+
+            # Unpaid Invoices
+            unpaid = sum(
+                float(inv.get("balance", 0))
+                for inv in qb_invoices
+                if inv.get("status") == "outstanding"
+            )
+            kpis.append(DynamicKPI(
+                id="qb_unpaid",
+                title="Unpaid Invoices",
+                value=f"${unpaid:,.2f}",
+                change_value=0.0,
+                change_period="vs last month",
+                icon="FileText",
+                source="QuickBooks",
+                trend="neutral",
+                color="orange"
+            ))
+
+            logger.info(f"QuickBooks: ${total_revenue} revenue, ${unpaid} unpaid")
+
+    except Exception as e:
+        error = str(e)
+        logger.warning(f"QuickBooks KPI fetch failed: {e}")
+
+    return {"kpis": kpis, "error": error}
+
+
+async def fetch_google_kpis(wallet_address: str, db: AsyncSession) -> Dict[str, Any]:
+    """Fetch Google Workspace KPIs (emails, calendar, drive, contacts)."""
+    kpis = []
+    errors = []
+
+    try:
+        # Gmail - LIVE API
+        gmail_result = await get_kpi_data(wallet_address, "google", "gmail", db)
+        if gmail_result["error"]:
+            errors.append(f"Gmail: {gmail_result['error']}")
+
+        if gmail_result["data"]:
+            messages = gmail_result["data"] if isinstance(gmail_result["data"], list) else gmail_result["data"].get("messages", [])
+            email_count = len(messages)
+            unread_count = len([m for m in messages if m.get("unread", False)])
+
+            kpis.append(DynamicKPI(
+                id="google_emails",
+                title="Total Emails",
+                value=str(email_count),
+                change_value=0.0,
+                change_period="synced",
+                icon="Mail",
+                source="Google",
+                trend="neutral",
+                color="blue"
+            ))
+
+            if unread_count > 0:
+                kpis.append(DynamicKPI(
+                    id="google_unread",
+                    title="Unread Emails",
+                    value=str(unread_count),
+                    change_value=0.0,
+                    change_period="need attention",
+                    icon="Inbox",
+                    source="Google",
+                    trend="up" if unread_count > 10 else "neutral",
+                    color="red" if unread_count > 10 else "blue"
+                ))
+
+        # Calendar - LIVE API
+        calendar_result = await get_kpi_data(wallet_address, "google", "calendar", db)
+        if calendar_result["error"]:
+            errors.append(f"Calendar: {calendar_result['error']}")
+
+        if calendar_result["data"]:
+            events = calendar_result["data"] if isinstance(calendar_result["data"], list) else calendar_result["data"].get("events", [])
+            kpis.append(DynamicKPI(
+                id="google_events",
+                title="Calendar Events",
+                value=str(len(events)),
+                change_value=0.0,
+                change_period="upcoming",
+                icon="Calendar",
+                source="Google",
+                trend="neutral",
+                color="purple"
+            ))
+
+        # Drive - RAG
+        drive_data = await get_integration_data(wallet_address, "google", "drive")
+        if drive_data:
+            files = drive_data if isinstance(drive_data, list) else drive_data.get("files", [])
+            kpis.append(DynamicKPI(
+                id="google_files",
+                title="Drive Files",
+                value=str(len(files)),
+                change_value=0.0,
+                change_period="synced",
+                icon="FolderOpen",
+                source="Google",
+                trend="neutral",
+                color="green"
+            ))
+
+    except Exception as e:
+        errors.append(str(e))
+        logger.warning(f"Google KPI fetch failed: {e}")
+
+    return {"kpis": kpis, "error": "; ".join(errors) if errors else None}
+
+
+async def fetch_slack_kpis(wallet_address: str, db: AsyncSession) -> Dict[str, Any]:
+    """Fetch Slack KPIs (channels, messages)."""
+    kpis = []
+    errors = []
+
+    try:
+        # Channels - LIVE API
+        channels_result = await get_kpi_data(wallet_address, "slack", "channels", db)
+        if channels_result["error"]:
+            errors.append(f"Channels: {channels_result['error']}")
+
+        if channels_result["data"]:
+            channels = channels_result["data"] if isinstance(channels_result["data"], list) else channels_result["data"].get("channels", [])
+            kpis.append(DynamicKPI(
+                id="slack_channels",
+                title="Slack Channels",
+                value=str(len(channels)),
+                change_value=0.0,
+                change_period="active",
+                icon="Hash",
+                source="Slack",
+                trend="neutral",
+                color="purple"
+            ))
+
+        # Messages - HYBRID
+        messages_result = await get_kpi_data(wallet_address, "slack", "messages", db)
+        if messages_result["error"]:
+            errors.append(f"Messages: {messages_result['error']}")
+
+        if messages_result["data"]:
+            messages = messages_result["data"] if isinstance(messages_result["data"], list) else messages_result["data"].get("messages", [])
+            kpis.append(DynamicKPI(
+                id="slack_messages",
+                title="Slack Messages",
+                value=str(len(messages)),
+                change_value=0.0,
+                change_period="synced",
+                icon="MessageSquare",
+                source="Slack",
+                trend="neutral",
+                color="purple"
+            ))
+
+    except Exception as e:
+        errors.append(str(e))
+        logger.warning(f"Slack KPI fetch failed: {e}")
+
+    return {"kpis": kpis, "error": "; ".join(errors) if errors else None}
+
+
+async def fetch_microsoft_kpis(wallet_address: str, db: AsyncSession) -> Dict[str, Any]:
+    """Fetch Microsoft 365 KPIs (outlook, onedrive)."""
+    kpis = []
+    errors = []
+
+    try:
+        # Outlook Mail - LIVE API
+        outlook_result = await get_kpi_data(wallet_address, "microsoft", "mail", db)
+        if outlook_result["error"]:
+            errors.append(f"Outlook: {outlook_result['error']}")
+
+        if outlook_result["data"]:
+            messages = outlook_result["data"] if isinstance(outlook_result["data"], list) else outlook_result["data"].get("messages", [])
+            kpis.append(DynamicKPI(
+                id="ms_emails",
+                title="Outlook Emails",
+                value=str(len(messages)),
+                change_value=0.0,
+                change_period="synced",
+                icon="Mail",
+                source="Microsoft",
+                trend="neutral",
+                color="blue"
+            ))
+
+        # OneDrive - RAG
+        onedrive_data = await get_integration_data(wallet_address, "microsoft", "files")
+        if onedrive_data:
+            files = onedrive_data if isinstance(onedrive_data, list) else onedrive_data.get("files", [])
+            kpis.append(DynamicKPI(
+                id="ms_files",
+                title="OneDrive Files",
+                value=str(len(files)),
+                change_value=0.0,
+                change_period="synced",
+                icon="FolderOpen",
+                source="Microsoft",
+                trend="neutral",
+                color="blue"
+            ))
+
+    except Exception as e:
+        errors.append(str(e))
+        logger.warning(f"Microsoft KPI fetch failed: {e}")
+
+    return {"kpis": kpis, "error": "; ".join(errors) if errors else None}
 
 
 # =====================================================================
@@ -458,7 +771,7 @@ async def get_dashboard_kpis(
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Get KPI metrics for the dashboard from ALL 6 integrations
+    Get KPI metrics for the dashboard from ALL 6 integrations (parallel execution).
 
     Aggregates data from whichever integrations the user has connected:
     - QuickBooks: Revenue, invoices
@@ -475,380 +788,39 @@ async def get_dashboard_kpis(
 
         kpis = []
         data_sources = []
+        errors = []
 
-        # ============================================
-        # QUICKBOOKS DATA - Financial KPIs
-        # ============================================
+        # Fetch from all integrations in parallel
+        results = await asyncio.gather(
+            fetch_quickbooks_kpis(wallet_address, db),
+            fetch_google_kpis(wallet_address, db),
+            fetch_slack_kpis(wallet_address, db),
+            fetch_microsoft_kpis(wallet_address, db),
+            return_exceptions=True
+        )
+
+        # Process results
+        for result in results:
+            if isinstance(result, Exception):
+                errors.append(str(result))
+                logger.error(f"KPI fetch exception: {result}")
+            elif isinstance(result, dict):
+                if result.get("kpis"):
+                    kpis.extend(result["kpis"])
+                    # Extract data source from first KPI
+                    if result["kpis"]:
+                        source = result["kpis"][0].source
+                        if source not in data_sources:
+                            data_sources.append(source)
+                if result.get("error"):
+                    errors.append(result["error"])
+
+        # Salesforce and HubSpot KPIs (keeping simple - they rarely have data)
         try:
-            # QuickBooks invoices - HYBRID (live + synced)
-            qb_invoices = await get_kpi_data(
-                wallet_address=wallet_address,
-                integration="quickbooks",
-                data_type="invoices"
-            )
-
-            if qb_invoices:
-                data_sources.append("QuickBooks")
-
-                # Total Revenue
-                total_revenue = sum(
-                    float(inv.get("total_amount", 0))
-                    for inv in qb_invoices
-                    if inv.get("status") == "paid"
-                )
-                kpis.append(DynamicKPI(
-                    id="qb_revenue",
-                    title="Total Revenue",
-                    value=f"${total_revenue:,.2f}",
-                    change_value=0.0,
-                    change_period="vs last month",
-                    icon="DollarSign",
-                    source="QuickBooks",
-                    trend="neutral",
-                    color="green"
-                ))
-
-                # Unpaid Invoices
-                unpaid = sum(
-                    float(inv.get("balance", 0))
-                    for inv in qb_invoices
-                    if inv.get("status") == "outstanding"
-                )
-                kpis.append(DynamicKPI(
-                    id="qb_unpaid",
-                    title="Unpaid Invoices",
-                    value=f"${unpaid:,.2f}",
-                    change_value=0.0,
-                    change_period="vs last month",
-                    icon="FileText",
-                    source="QuickBooks",
-                    trend="neutral",
-                    color="orange"
-                ))
-
-                logger.info(f"QuickBooks: ${total_revenue} revenue, ${unpaid} unpaid")
-
-        except Exception as e:
-            logger.warning(f"QuickBooks data unavailable: {e}")
-
-        # ============================================
-        # GOOGLE WORKSPACE DATA - Productivity KPIs
-        # ============================================
-        try:
-            # Gmail - LIVE API (real-time unread count)
-            gmail_data = await get_kpi_data(
-                wallet_address=wallet_address,
-                integration="google",
-                data_type="gmail"
-            )
-
-            if gmail_data:
-                data_sources.append("Google") if "Google" not in data_sources else None
-
-                # Handle both list of messages and dict with messages key
-                if isinstance(gmail_data, list):
-                    messages = gmail_data
-                elif isinstance(gmail_data, dict):
-                    messages = gmail_data.get("messages", [])
-                else:
-                    messages = []
-
-                email_count = len(messages)
-                unread_count = len([m for m in messages if m.get("unread", False)])
-
-                kpis.append(DynamicKPI(
-                    id="google_emails",
-                    title="Total Emails",
-                    value=str(email_count),
-                    change_value=0.0,
-                    change_period="synced",
-                    icon="Mail",
-                    source="Google",
-                    trend="neutral",
-                    color="blue"
-                ))
-
-                if unread_count > 0:
-                    kpis.append(DynamicKPI(
-                        id="google_unread",
-                        title="Unread Emails",
-                        value=str(unread_count),
-                        change_value=0.0,
-                        change_period="need attention",
-                        icon="Inbox",
-                        source="Google",
-                        trend="up" if unread_count > 10 else "neutral",
-                        color="red" if unread_count > 10 else "blue"
-                    ))
-
-                logger.info(f"Google Gmail: {email_count} emails, {unread_count} unread")
-
-            # Calendar - LIVE API (real-time event count)
-            calendar_data = await get_kpi_data(
-                wallet_address=wallet_address,
-                integration="google",
-                data_type="calendar"
-            )
-
-            if calendar_data:
-                data_sources.append("Google") if "Google" not in data_sources else None
-
-                # Handle both list and dict formats
-                if isinstance(calendar_data, list):
-                    events = calendar_data
-                elif isinstance(calendar_data, dict):
-                    events = calendar_data.get("events", [])
-                else:
-                    events = []
-
-                event_count = len(events)
-
-                kpis.append(DynamicKPI(
-                    id="google_events",
-                    title="Calendar Events",
-                    value=str(event_count),
-                    change_value=0.0,
-                    change_period="upcoming",
-                    icon="Calendar",
-                    source="Google",
-                    trend="neutral",
-                    color="purple"
-                ))
-
-                logger.info(f"Google Calendar: {event_count} events")
-
-            # Drive
-            drive_data = await get_integration_data(
-                wallet_address=wallet_address,
-                integration="google",
-                data_type="drive"
-            )
-
-            if drive_data:
-                data_sources.append("Google") if "Google" not in data_sources else None
-
-                # Handle both list and dict formats
-                if isinstance(drive_data, list):
-                    files = drive_data
-                elif isinstance(drive_data, dict):
-                    files = drive_data.get("files", [])
-                else:
-                    files = []
-
-                file_count = len(files)
-
-                kpis.append(DynamicKPI(
-                    id="google_files",
-                    title="Drive Files",
-                    value=str(file_count),
-                    change_value=0.0,
-                    change_period="synced",
-                    icon="FolderOpen",
-                    source="Google",
-                    trend="neutral",
-                    color="green"
-                ))
-
-                logger.info(f"Google Drive: {file_count} files")
-
-            # Contacts
-            contacts_data = await get_integration_data(
-                wallet_address=wallet_address,
-                integration="google",
-                data_type="contacts"
-            )
-
-            if contacts_data:
-                data_sources.append("Google") if "Google" not in data_sources else None
-
-                # Handle both list and dict formats
-                if isinstance(contacts_data, list):
-                    contacts = contacts_data
-                elif isinstance(contacts_data, dict):
-                    contacts = contacts_data.get("contacts", [])
-                else:
-                    contacts = []
-
-                contact_count = len(contacts)
-
-                kpis.append(DynamicKPI(
-                    id="google_contacts",
-                    title="Contacts",
-                    value=str(contact_count),
-                    change_value=0.0,
-                    change_period="synced",
-                    icon="Users",
-                    source="Google",
-                    trend="neutral",
-                    color="blue"
-                ))
-
-                logger.info(f"Google Contacts: {contact_count} contacts")
-
-        except Exception as e:
-            logger.warning(f"Google Workspace data unavailable: {e}")
-
-        # ============================================
-        # MICROSOFT 365 DATA - Productivity KPIs
-        # ============================================
-        try:
-            # Outlook Mail - LIVE API (real-time email count)
-            outlook_data = await get_kpi_data(
-                wallet_address=wallet_address,
-                integration="microsoft",
-                data_type="mail"
-            )
-
-            if outlook_data:
-                data_sources.append("Microsoft") if "Microsoft" not in data_sources else None
-
-                if isinstance(outlook_data, list):
-                    messages = outlook_data
-                elif isinstance(outlook_data, dict):
-                    messages = outlook_data.get("messages", [])
-                else:
-                    messages = []
-
-                email_count = len(messages)
-
-                kpis.append(DynamicKPI(
-                    id="ms_emails",
-                    title="Outlook Emails",
-                    value=str(email_count),
-                    change_value=0.0,
-                    change_period="synced",
-                    icon="Mail",
-                    source="Microsoft",
-                    trend="neutral",
-                    color="blue"
-                ))
-
-                logger.info(f"Microsoft Outlook: {email_count} emails")
-
-            # OneDrive
-            onedrive_data = await get_integration_data(
-                wallet_address=wallet_address,
-                integration="microsoft",
-                data_type="files"
-            )
-
-            if onedrive_data:
-                data_sources.append("Microsoft") if "Microsoft" not in data_sources else None
-
-                if isinstance(onedrive_data, list):
-                    files = onedrive_data
-                elif isinstance(onedrive_data, dict):
-                    files = onedrive_data.get("files", [])
-                else:
-                    files = []
-
-                file_count = len(files)
-
-                kpis.append(DynamicKPI(
-                    id="ms_files",
-                    title="OneDrive Files",
-                    value=str(file_count),
-                    change_value=0.0,
-                    change_period="synced",
-                    icon="FolderOpen",
-                    source="Microsoft",
-                    trend="neutral",
-                    color="blue"
-                ))
-
-                logger.info(f"Microsoft OneDrive: {file_count} files")
-
-        except Exception as e:
-            logger.warning(f"Microsoft 365 data unavailable: {e}")
-
-        # ============================================
-        # SLACK DATA - Communication KPIs
-        # ============================================
-        try:
-            # Slack messages - HYBRID (live + synced)
-            slack_messages = await get_kpi_data(
-                wallet_address=wallet_address,
-                integration="slack",
-                data_type="messages"
-            )
-
-            if slack_messages:
-                data_sources.append("Slack") if "Slack" not in data_sources else None
-
-                if isinstance(slack_messages, list):
-                    messages = slack_messages
-                elif isinstance(slack_messages, dict):
-                    messages = slack_messages.get("messages", [])
-                else:
-                    messages = []
-
-                msg_count = len(messages)
-
-                kpis.append(DynamicKPI(
-                    id="slack_messages",
-                    title="Slack Messages",
-                    value=str(msg_count),
-                    change_value=0.0,
-                    change_period="synced",
-                    icon="MessageSquare",
-                    source="Slack",
-                    trend="neutral",
-                    color="purple"
-                ))
-
-                logger.info(f"Slack: {msg_count} messages")
-
-            # Slack channels - LIVE API (real-time channel count)
-            slack_channels = await get_kpi_data(
-                wallet_address=wallet_address,
-                integration="slack",
-                data_type="channels"
-            )
-
-            if slack_channels:
-                data_sources.append("Slack") if "Slack" not in data_sources else None
-
-                if isinstance(slack_channels, list):
-                    channels = slack_channels
-                elif isinstance(slack_channels, dict):
-                    channels = slack_channels.get("channels", [])
-                else:
-                    channels = []
-
-                channel_count = len(channels)
-
-                kpis.append(DynamicKPI(
-                    id="slack_channels",
-                    title="Slack Channels",
-                    value=str(channel_count),
-                    change_value=0.0,
-                    change_period="active",
-                    icon="Hash",
-                    source="Slack",
-                    trend="neutral",
-                    color="purple"
-                ))
-
-                logger.info(f"Slack: {channel_count} channels")
-
-        except Exception as e:
-            logger.warning(f"Slack data unavailable: {e}")
-
-        # ============================================
-        # SALESFORCE DATA - CRM KPIs
-        # ============================================
-        try:
-            sf_accounts = await get_integration_data(
-                wallet_address=wallet_address,
-                integration="salesforce",
-                data_type="accounts"
-            )
-
+            sf_accounts = await get_integration_data(wallet_address, "salesforce", "accounts")
             if sf_accounts:
                 data_sources.append("Salesforce") if "Salesforce" not in data_sources else None
-
                 account_count = len(sf_accounts) if isinstance(sf_accounts, list) else 0
-
                 kpis.append(DynamicKPI(
                     id="sf_accounts",
                     title="Accounts",
@@ -860,83 +832,14 @@ async def get_dashboard_kpis(
                     trend="neutral",
                     color="blue"
                 ))
-
-                logger.info(f"Salesforce: {account_count} accounts")
-
-            # Salesforce opportunities - HYBRID (live + synced)
-            sf_opportunities = await get_kpi_data(
-                wallet_address=wallet_address,
-                integration="salesforce",
-                data_type="opportunities"
-            )
-
-            if sf_opportunities:
-                data_sources.append("Salesforce") if "Salesforce" not in data_sources else None
-
-                opp_count = len(sf_opportunities) if isinstance(sf_opportunities, list) else 0
-                opp_value = sum(
-                    float(opp.get("amount", 0))
-                    for opp in sf_opportunities
-                ) if isinstance(sf_opportunities, list) else 0
-
-                kpis.append(DynamicKPI(
-                    id="sf_opportunities",
-                    title="Opportunities",
-                    value=str(opp_count),
-                    change_value=0.0,
-                    change_period=f"${opp_value:,.0f} pipeline",
-                    icon="Target",
-                    source="Salesforce",
-                    trend="neutral",
-                    color="green"
-                ))
-
-                logger.info(f"Salesforce: {opp_count} opportunities, ${opp_value} pipeline")
-
-            # Salesforce leads - HYBRID (live + synced)
-            sf_leads = await get_kpi_data(
-                wallet_address=wallet_address,
-                integration="salesforce",
-                data_type="leads"
-            )
-
-            if sf_leads:
-                data_sources.append("Salesforce") if "Salesforce" not in data_sources else None
-
-                lead_count = len(sf_leads) if isinstance(sf_leads, list) else 0
-
-                kpis.append(DynamicKPI(
-                    id="sf_leads",
-                    title="Leads",
-                    value=str(lead_count),
-                    change_value=0.0,
-                    change_period="active",
-                    icon="UserPlus",
-                    source="Salesforce",
-                    trend="neutral",
-                    color="orange"
-                ))
-
-                logger.info(f"Salesforce: {lead_count} leads")
-
         except Exception as e:
-            logger.warning(f"Salesforce data unavailable: {e}")
+            errors.append(f"Salesforce: {e}")
 
-        # ============================================
-        # HUBSPOT DATA - Marketing/CRM KPIs
-        # ============================================
         try:
-            hs_contacts = await get_integration_data(
-                wallet_address=wallet_address,
-                integration="hubspot",
-                data_type="contacts"
-            )
-
+            hs_contacts = await get_integration_data(wallet_address, "hubspot", "contacts")
             if hs_contacts:
                 data_sources.append("HubSpot") if "HubSpot" not in data_sources else None
-
                 contact_count = len(hs_contacts) if isinstance(hs_contacts, list) else 0
-
                 kpis.append(DynamicKPI(
                     id="hs_contacts",
                     title="HubSpot Contacts",
@@ -948,71 +851,15 @@ async def get_dashboard_kpis(
                     trend="neutral",
                     color="orange"
                 ))
-
-                logger.info(f"HubSpot: {contact_count} contacts")
-
-            # HubSpot deals - HYBRID (live + synced)
-            hs_deals = await get_kpi_data(
-                wallet_address=wallet_address,
-                integration="hubspot",
-                data_type="deals"
-            )
-
-            if hs_deals:
-                data_sources.append("HubSpot") if "HubSpot" not in data_sources else None
-
-                deal_count = len(hs_deals) if isinstance(hs_deals, list) else 0
-                deal_value = sum(
-                    float(deal.get("amount", 0))
-                    for deal in hs_deals
-                ) if isinstance(hs_deals, list) else 0
-
-                kpis.append(DynamicKPI(
-                    id="hs_deals",
-                    title="Deals",
-                    value=str(deal_count),
-                    change_value=0.0,
-                    change_period=f"${deal_value:,.0f} pipeline",
-                    icon="Handshake",
-                    source="HubSpot",
-                    trend="neutral",
-                    color="green"
-                ))
-
-                logger.info(f"HubSpot: {deal_count} deals, ${deal_value} pipeline")
-
-            hs_companies = await get_integration_data(
-                wallet_address=wallet_address,
-                integration="hubspot",
-                data_type="companies"
-            )
-
-            if hs_companies:
-                data_sources.append("HubSpot") if "HubSpot" not in data_sources else None
-
-                company_count = len(hs_companies) if isinstance(hs_companies, list) else 0
-
-                kpis.append(DynamicKPI(
-                    id="hs_companies",
-                    title="Companies",
-                    value=str(company_count),
-                    change_value=0.0,
-                    change_period="total",
-                    icon="Building",
-                    source="HubSpot",
-                    trend="neutral",
-                    color="orange"
-                ))
-
-                logger.info(f"HubSpot: {company_count} companies")
-
         except Exception as e:
-            logger.warning(f"HubSpot data unavailable: {e}")
+            errors.append(f"HubSpot: {e}")
 
         # Determine if we have any data
         has_data = len(kpis) > 0
 
         logger.info(f"Dashboard KPIs: {len(kpis)} KPIs from {len(data_sources)} integrations")
+        if errors:
+            logger.warning(f"KPI errors: {'; '.join(errors)}")
 
         return KPIMetricsResponse(
             kpis=kpis,

@@ -1,5 +1,5 @@
 # KNOWN ISSUES - Varity Dashboard
-**Last Updated:** January 5, 2026 (Integration Validation - Live Testing)
+**Last Updated:** January 7, 2026 (Integration Validation - Live Testing)
 
 > **VERIFIED:** This document reflects actual testing via direct API calls on January 5, 2026 with wallet `0x738C812FB221ba32E8726fe38961570a700e87b9`
 
@@ -19,6 +19,24 @@
 1. **CRIT-NEW-001:** QuickBooks decrypt_file_with_wallet() parameter mismatch - BLOCKING
 2. **CRIT-NEW-002:** Microsoft 365 all endpoints returning 500 Internal Server Error
 3. **CRIT-NEW-003:** Google OAuth status shows "not connected" despite APIs returning data
+
+---
+
+## CRITICAL FIX - January 7, 2026: IntegrationHealthCards Endpoint Mismatch
+
+**Fixed Issue:**
+- **IntegrationHealthCards Component** - Called non-existent endpoints `/api/v1/integrations/status` and `/api/v1/oauth/tokens`
+
+**Change Made:**
+- Simplified to use existing `/api/v1/integrations/installed` endpoint
+- Removed fallback logic and complex transformation code
+- Removed unused `mapStatus` function
+- Now directly maps API response to component state
+
+**Files Changed:**
+- `/src/components/dashboard/IntegrationHealthCards.tsx` - Lines 63-145 simplified
+
+**Result:** Dashboard integration health cards now use correct endpoint and display accurate status.
 
 ---
 
@@ -136,19 +154,22 @@ const res = await fetch(`${apiBase}/api/v1/integrations/${integration}/data`);
 **Location:** `backend/app/api/v1/dashboard.py`
 **Status:** HIGH - Users see wrong numbers, trust destroyed
 
-### CRIT-004: Analytics Page 100% Mock Data
+### CRIT-004: Analytics Page 100% Mock Data ✅ FIXED (January 7, 2026)
 
 **Location:** `/analytics`
 **Impact:** Page displays charts with completely fake data
 
-**Fake Data Displayed:**
-- Customers: 1,234 - **FAKE**
-- Growth: 24.5% - **FAKE**
-- Net Profit: $45,000 - **FAKE**
-- Margin: 32.5% - **FAKE**
-- Avg LTV: $125,000 - **FAKE**
+**Fix Applied:**
+- Widget rendering now prioritizes real data from `analyticsData.metrics` when available
+- Demo data fallback now shows clear "Demo Data" badge in amber on all KPI/table/list widgets
+- Empty state shows helpful message linking to Marketplace when no integrations connected
+- Changed from using mock data by default to using real backend data first
 
-**Status:** HIGH - Must either remove page or add "DEMO DATA" banner
+**Files Changed:**
+- `/src/components/pages/AnalyticsContent.tsx` - Lines 525-617 (renderWidget function)
+- Lines 794-843 (empty state with integration count)
+
+**Result:** Users now see either real data (when integrations connected) or clearly labeled demo data with helpful guidance.
 
 ---
 
