@@ -101,7 +101,7 @@ function extractRecords(response: unknown, fallbackKeys: string[]): Array<Record
 // GOOGLE WORKSPACE
 // ============================================================================
 
-export async function fetchGoogleLiveData(walletAddress: string): Promise<FetchResult> {
+async function fetchGoogleLiveData(walletAddress: string): Promise<FetchResult> {
   const results: LiveDataResult[] = [];
   let hasError = false;
   let errorMessage = '';
@@ -153,7 +153,7 @@ export async function fetchGoogleLiveData(walletAddress: string): Promise<FetchR
 // MICROSOFT 365
 // ============================================================================
 
-export async function fetchMicrosoftLiveData(walletAddress: string): Promise<FetchResult> {
+async function fetchMicrosoftLiveData(walletAddress: string): Promise<FetchResult> {
   const results: LiveDataResult[] = [];
 
   // Fetch all Microsoft data types in parallel
@@ -199,7 +199,7 @@ export async function fetchMicrosoftLiveData(walletAddress: string): Promise<Fet
 // SLACK
 // ============================================================================
 
-export async function fetchSlackLiveData(walletAddress: string): Promise<FetchResult> {
+async function fetchSlackLiveData(walletAddress: string): Promise<FetchResult> {
   const results: LiveDataResult[] = [];
 
   // Fetch all Slack data types in parallel
@@ -231,7 +231,7 @@ export async function fetchSlackLiveData(walletAddress: string): Promise<FetchRe
 // QUICKBOOKS
 // ============================================================================
 
-export async function fetchQuickBooksLiveData(walletAddress: string): Promise<FetchResult> {
+async function fetchQuickBooksLiveData(walletAddress: string): Promise<FetchResult> {
   const results: LiveDataResult[] = [];
 
   // Fetch all QuickBooks data types in parallel
@@ -291,7 +291,7 @@ export async function fetchQuickBooksLiveData(walletAddress: string): Promise<Fe
 // SALESFORCE
 // ============================================================================
 
-export async function fetchSalesforceLiveData(walletAddress: string): Promise<FetchResult> {
+async function fetchSalesforceLiveData(walletAddress: string): Promise<FetchResult> {
   const results: LiveDataResult[] = [];
 
   // Fetch all Salesforce data types in parallel
@@ -337,7 +337,7 @@ export async function fetchSalesforceLiveData(walletAddress: string): Promise<Fe
 // HUBSPOT
 // ============================================================================
 
-export async function fetchHubSpotLiveData(walletAddress: string): Promise<FetchResult> {
+async function fetchHubSpotLiveData(walletAddress: string): Promise<FetchResult> {
   const results: LiveDataResult[] = [];
 
   // Fetch all HubSpot data types in parallel

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   Users,
   Search,
@@ -14,7 +14,9 @@ import {
   X,
   Save,
   Star,
-  MoreVertical
+  MoreVertical,
+  RefreshCw,
+  AlertCircle
 } from 'lucide-react';
 
 interface Contact {
@@ -32,6 +34,8 @@ interface ContactsListProps {
   onDataChange?: () => void;
 }
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://generic-template-dashboard-production.up.railway.app';
+
 export default function ContactsList({ walletAddress, contacts, onDataChange }: ContactsListProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
@@ -44,7 +48,73 @@ export default function ContactsList({ walletAddress, contacts, onDataChange }: 
     jobTitle: ''
   });
 
-  const filteredContacts = contacts.filter((contact) => {
+  // State for live API data
+  const [liveContacts, setLiveContacts] = useState<Contact[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [lastFetched, setLastFetched] = useState<Date | null>(null);
+
+  // Fetch contacts from live Microsoft Graph API
+  const fetchContactsFromAPI = useCallback(async () => {
+    if (!walletAddress) return;
+
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const response = await fetch(
+        `${API_URL}/api/v1/integrations/microsoft/contacts?wallet_address=${walletAddress}&top=100`
+      );
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          setError('Microsoft 365 connection expired. Please reconnect.');
+          return;
+        }
+        throw new Error(`Failed to fetch contacts: ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      if (data.success && data.contacts) {
+        // Transform Microsoft Graph contacts to our format
+        const transformedContacts: Contact[] = data.contacts.map((c: {
+          id: string;
+          displayName: string;
+          emailAddresses?: Array<{ address: string }>;
+          businessPhones?: string[];
+          mobilePhone?: string;
+          companyName?: string;
+          jobTitle?: string;
+        }) => ({
+          id: c.id,
+          name: c.displayName || 'Unknown',
+          emails: c.emailAddresses?.map((e: { address: string }) => e.address) || [],
+          phones: [...(c.businessPhones || []), c.mobilePhone].filter(Boolean) as string[],
+          company: c.companyName,
+          jobTitle: c.jobTitle
+        }));
+
+        setLiveContacts(transformedContacts);
+        setLastFetched(new Date());
+      }
+    } catch (err) {
+      console.error('Error fetching contacts:', err);
+      setError(err instanceof Error ? err.message : 'Failed to load contacts');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [walletAddress]);
+
+  // Fetch contacts on mount
+  useEffect(() => {
+    fetchContactsFromAPI();
+  }, [fetchContactsFromAPI]);
+
+  // Use live data if available, otherwise fall back to props
+  const effectiveContacts = liveContacts.length > 0 ? liveContacts : contacts;
+
+  const filteredContacts = effectiveContacts.filter((contact) => {
     if (!searchQuery) return true;
     const query = searchQuery.toLowerCase();
     return (
@@ -76,7 +146,8 @@ export default function ContactsList({ walletAddress, contacts, onDataChange }: 
         alert('Contact created successfully!');
         setShowContactForm(false);
         setFormData({ name: '', email: '', phone: '', company: '', jobTitle: '' });
-        // Refresh contacts list
+        // Refresh contacts list from live API
+        fetchContactsFromAPI();
         onDataChange?.();
       } else {
         const error = await response.json();
@@ -94,15 +165,42 @@ export default function ContactsList({ walletAddress, contacts, onDataChange }: 
       <div className="w-96 flex flex-col rounded-lg border border-gray-200 bg-white shadow-sm">
         <div className="border-b border-gray-200 p-4">
           <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-xl font-semibold text-gray-900">Contacts</h2>
-            <button
-              onClick={() => setShowContactForm(true)}
-              className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
-            >
-              <Plus className="h-4 w-4" />
-              New
-            </button>
+            <div className="flex items-center gap-2">
+              <h2 className="text-xl font-semibold text-gray-900">Contacts</h2>
+              {isLoading && (
+                <RefreshCw className="h-4 w-4 animate-spin text-blue-500" />
+              )}
+              {lastFetched && !isLoading && (
+                <span className="text-xs text-gray-400">
+                  Live
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={fetchContactsFromAPI}
+                disabled={isLoading}
+                className="flex items-center gap-1 rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                title="Refresh contacts"
+              >
+                <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+              </button>
+              <button
+                onClick={() => setShowContactForm(true)}
+                className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+              >
+                <Plus className="h-4 w-4" />
+                New
+              </button>
+            </div>
           </div>
+
+          {error && (
+            <div className="mb-3 flex items-center gap-2 rounded-lg bg-red-50 p-3 text-sm text-red-700">
+              <AlertCircle className="h-4 w-4 flex-shrink-0" />
+              <span>{error}</span>
+            </div>
+          )}
 
           <div className="relative">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
@@ -187,12 +285,14 @@ export default function ContactsList({ walletAddress, contacts, onDataChange }: 
                     if (!confirm(`Are you sure you want to delete ${selectedContact.name}?`)) return;
                     try {
                       const response = await fetch(
-                        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/integrations/microsoft/contacts/${selectedContact.id}?wallet_address=${walletAddress}`,
+                        `${API_URL}/api/v1/integrations/microsoft/contacts/${selectedContact.id}?wallet_address=${walletAddress}`,
                         { method: 'DELETE' }
                       );
                       if (response.ok) {
                         alert('Contact deleted successfully!');
                         setSelectedContact(null);
+                        // Refresh contacts list from live API
+                        fetchContactsFromAPI();
                         onDataChange?.();
                       } else {
                         const error = await response.json();
