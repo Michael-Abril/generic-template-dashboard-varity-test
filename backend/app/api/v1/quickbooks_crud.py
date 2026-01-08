@@ -348,7 +348,7 @@ async def get_quickbooks_access_token(
     """
     Get active QuickBooks OAuth access token and realm_id.
 
-    Uses Database OAuthToken model (same pattern as google.py, salesforce_crud.py).
+    Uses canonical token refresh logic from integrations.py.
     Automatically refreshes token if expired.
 
     Returns:
@@ -371,10 +371,7 @@ async def get_quickbooks_access_token(
             detail="QuickBooks not connected. Please connect via OAuth first."
         )
 
-    # Check if token needs refresh
-    # Use timezone-naive datetime for comparison (OAuthToken.expires_at is timezone-naive)
-    # FIX: Changed from datetime.now(timezone.utc) to datetime.utcnow() to avoid
-    # "can't subtract offset-naive and offset-aware datetimes" error
+    # Check if token needs refresh using canonical function from integrations.py
     now = datetime.utcnow()
     if token.expires_at and token.expires_at < now:
         logger.info(f"QuickBooks token expired for {wallet_address[:10]}..., attempting refresh")

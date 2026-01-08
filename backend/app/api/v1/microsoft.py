@@ -25,7 +25,7 @@ async def get_access_token_from_db(wallet_address: str, db: AsyncSession) -> Opt
     """
     Get OAuth access token for Microsoft 365.
 
-    Checks if the token is expired and attempts to refresh it if necessary.
+    Uses canonical token refresh logic from integrations.py.
     Returns the (possibly refreshed) access token, or None if not found.
     Raises HTTPException if token is expired and refresh fails.
     """
@@ -42,10 +42,7 @@ async def get_access_token_from_db(wallet_address: str, db: AsyncSession) -> Opt
     if not token:
         return None
 
-    # Check if token is expired and attempt refresh
-    # Use timezone-naive datetime for comparison (OAuthToken.expires_at is timezone-naive)
-    # FIX: Changed from datetime.now(timezone.utc) to datetime.utcnow() to avoid
-    # "can't subtract offset-naive and offset-aware datetimes" error
+    # Check if token is expired and attempt refresh using canonical function
     now = datetime.utcnow()
     if token.expires_at and token.expires_at < now:
         logger.info(f"Microsoft token for {wallet_address[:10]}... is expired, attempting refresh...")

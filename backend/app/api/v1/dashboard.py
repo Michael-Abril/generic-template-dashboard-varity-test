@@ -26,6 +26,7 @@ from app.core.database import get_db
 from app.services.filecoin_service import FilecoinService
 from app.services.encryption_service import EncryptionService, normalize_wallet_address
 from app.models.purchase import OAuthToken
+from app.api.v1.integrations import refresh_oauth_token
 
 logger = logging.getLogger(__name__)
 
@@ -73,10 +74,10 @@ async def ensure_valid_token(wallet_address: str, provider: str, db: AsyncSessio
         return None
 
     # Check if token is expired and needs refresh
+    # Use imported refresh_oauth_token from integrations.py (canonical implementation)
     if oauth_token.expires_at and oauth_token.expires_at < datetime.utcnow():
         logger.info(f"Token expired for {provider}, attempting refresh...")
         try:
-            from app.api.v1.integrations import refresh_oauth_token
             success = await refresh_oauth_token(oauth_token, provider, db)
             if not success:
                 logger.error(f"Token refresh failed for {provider}")
@@ -520,243 +521,291 @@ async def get_kpi_data(
 
 
 # =====================================================================
-# INTEGRATION-SPECIFIC KPI FETCHERS (for parallel execution)
+# KPI PROCESSOR FUNCTIONS (data transformation helpers)
 # =====================================================================
 
-async def fetch_quickbooks_kpis(wallet_address: str, db: AsyncSession) -> Dict[str, Any]:
-    """Fetch QuickBooks KPIs (revenue, unpaid invoices)."""
-    kpis = []
-    error = None
-
-    try:
-        result = await get_kpi_data(wallet_address, "quickbooks", "invoices", db)
-        qb_invoices = result["data"]
-        error = result["error"]
-
-        if qb_invoices:
-            # Total Revenue
-            total_revenue = sum(
-                float(inv.get("total_amount", 0))
-                for inv in qb_invoices
-                if inv.get("status") == "paid"
-            )
-            kpis.append(DynamicKPI(
-                id="qb_revenue",
-                title="Total Revenue",
-                value=f"${total_revenue:,.2f}",
-                change_value=0.0,
-                change_period="vs last month",
-                icon="DollarSign",
-                source="QuickBooks",
-                trend="neutral",
-                color="green"
-            ))
-
-            # Unpaid Invoices
-            unpaid = sum(
-                float(inv.get("balance", 0))
-                for inv in qb_invoices
-                if inv.get("status") == "outstanding"
-            )
-            kpis.append(DynamicKPI(
-                id="qb_unpaid",
-                title="Unpaid Invoices",
-                value=f"${unpaid:,.2f}",
-                change_value=0.0,
-                change_period="vs last month",
-                icon="FileText",
-                source="QuickBooks",
-                trend="neutral",
-                color="orange"
-            ))
-
-            logger.info(f"QuickBooks: ${total_revenue} revenue, ${unpaid} unpaid")
-
-    except Exception as e:
-        error = str(e)
-        logger.warning(f"QuickBooks KPI fetch failed: {e}")
-
-    return {"kpis": kpis, "error": error}
+def process_qb_revenue(invoices: List[Dict]) -> tuple[str, str]:
+    """Calculate total revenue from paid QuickBooks invoices."""
+    total = sum(float(inv.get("total_amount", 0)) for inv in invoices if inv.get("status") == "paid")
+    return f"${total:,.2f}", "neutral"
 
 
-async def fetch_google_kpis(wallet_address: str, db: AsyncSession) -> Dict[str, Any]:
-    """Fetch Google Workspace KPIs (emails, calendar, drive, contacts)."""
+def process_qb_unpaid(invoices: List[Dict]) -> tuple[str, str]:
+    """Calculate unpaid invoices from QuickBooks."""
+    unpaid = sum(float(inv.get("balance", 0)) for inv in invoices if inv.get("status") == "outstanding")
+    return f"${unpaid:,.2f}", "neutral"
+
+
+def process_email_count(messages: List[Dict]) -> tuple[str, str]:
+    """Count total emails."""
+    return str(len(messages)), "neutral"
+
+
+def process_unread_emails(messages: List[Dict]) -> tuple[str, str, str, bool]:
+    """Count unread emails with dynamic color."""
+    unread_count = len([m for m in messages if m.get("unread", False)])
+    trend = "up" if unread_count > 10 else "neutral"
+    color = "red" if unread_count > 10 else "blue"
+    skip = unread_count == 0
+    return str(unread_count), trend, color, skip
+
+
+def process_generic_count(data: List[Dict]) -> tuple[str, str]:
+    """Generic count processor."""
+    return str(len(data)), "neutral"
+
+
+# =====================================================================
+# KPI CONFIGURATION FOR ALL INTEGRATIONS
+# =====================================================================
+
+KPI_CONFIGS = {
+    "quickbooks": {
+        "source_name": "QuickBooks",
+        "data_sources": [
+            {
+                "data_type": "invoices",
+                "use_live_api": True,
+                "kpis": [
+                    {
+                        "id": "qb_revenue",
+                        "title": "Total Revenue",
+                        "icon": "DollarSign",
+                        "color": "green",
+                        "change_period": "vs last month",
+                        "processor": process_qb_revenue
+                    },
+                    {
+                        "id": "qb_unpaid",
+                        "title": "Unpaid Invoices",
+                        "icon": "FileText",
+                        "color": "orange",
+                        "change_period": "vs last month",
+                        "processor": process_qb_unpaid
+                    }
+                ]
+            }
+        ]
+    },
+    "google": {
+        "source_name": "Google",
+        "data_sources": [
+            {
+                "data_type": "gmail",
+                "use_live_api": True,
+                "kpis": [
+                    {
+                        "id": "google_emails",
+                        "title": "Total Emails",
+                        "icon": "Mail",
+                        "color": "blue",
+                        "change_period": "synced",
+                        "processor": process_email_count
+                    },
+                    {
+                        "id": "google_unread",
+                        "title": "Unread Emails",
+                        "icon": "Inbox",
+                        "color": "blue",
+                        "change_period": "need attention",
+                        "processor": process_unread_emails,
+                        "has_dynamic_color": True,
+                        "can_skip": True
+                    }
+                ]
+            },
+            {
+                "data_type": "calendar",
+                "use_live_api": True,
+                "kpis": [
+                    {
+                        "id": "google_events",
+                        "title": "Calendar Events",
+                        "icon": "Calendar",
+                        "color": "purple",
+                        "change_period": "upcoming",
+                        "processor": process_generic_count
+                    }
+                ]
+            },
+            {
+                "data_type": "drive",
+                "use_live_api": False,
+                "kpis": [
+                    {
+                        "id": "google_files",
+                        "title": "Drive Files",
+                        "icon": "FolderOpen",
+                        "color": "green",
+                        "change_period": "synced",
+                        "processor": process_generic_count
+                    }
+                ]
+            }
+        ]
+    },
+    "slack": {
+        "source_name": "Slack",
+        "data_sources": [
+            {
+                "data_type": "channels",
+                "use_live_api": True,
+                "kpis": [
+                    {
+                        "id": "slack_channels",
+                        "title": "Slack Channels",
+                        "icon": "Hash",
+                        "color": "purple",
+                        "change_period": "active",
+                        "processor": process_generic_count
+                    }
+                ]
+            },
+            {
+                "data_type": "messages",
+                "use_live_api": True,
+                "kpis": [
+                    {
+                        "id": "slack_messages",
+                        "title": "Slack Messages",
+                        "icon": "MessageSquare",
+                        "color": "purple",
+                        "change_period": "synced",
+                        "processor": process_generic_count
+                    }
+                ]
+            }
+        ]
+    },
+    "microsoft": {
+        "source_name": "Microsoft",
+        "data_sources": [
+            {
+                "data_type": "mail",
+                "use_live_api": True,
+                "kpis": [
+                    {
+                        "id": "ms_emails",
+                        "title": "Outlook Emails",
+                        "icon": "Mail",
+                        "color": "blue",
+                        "change_period": "synced",
+                        "processor": process_generic_count
+                    }
+                ]
+            },
+            {
+                "data_type": "files",
+                "use_live_api": False,
+                "kpis": [
+                    {
+                        "id": "ms_files",
+                        "title": "OneDrive Files",
+                        "icon": "FolderOpen",
+                        "color": "blue",
+                        "change_period": "synced",
+                        "processor": process_generic_count
+                    }
+                ]
+            }
+        ]
+    }
+}
+
+
+# =====================================================================
+# GENERIC KPI FETCHER (replaces 4 individual functions - 240 lines reduced to 80)
+# =====================================================================
+
+async def fetch_integration_kpis(
+    wallet_address: str,
+    integration: str,
+    db: AsyncSession
+) -> Dict[str, Any]:
+    """
+    Generic KPI fetcher for any integration.
+
+    Replaces:
+    - fetch_quickbooks_kpis()
+    - fetch_google_kpis()
+    - fetch_slack_kpis()
+    - fetch_microsoft_kpis()
+
+    Args:
+        wallet_address: User's wallet address
+        integration: Integration name (quickbooks, google, slack, microsoft)
+        db: Database session for token refresh
+
+    Returns:
+        Dict with 'kpis' list and 'error' string (or None)
+    """
+    config = KPI_CONFIGS.get(integration)
+    if not config:
+        return {"kpis": [], "error": f"No KPI config for {integration}"}
+
     kpis = []
     errors = []
 
     try:
-        # Gmail - LIVE API
-        gmail_result = await get_kpi_data(wallet_address, "google", "gmail", db)
-        if gmail_result["error"]:
-            errors.append(f"Gmail: {gmail_result['error']}")
+        for data_source in config["data_sources"]:
+            data_type = data_source["data_type"]
 
-        if gmail_result["data"]:
-            messages = gmail_result["data"] if isinstance(gmail_result["data"], list) else gmail_result["data"].get("messages", [])
-            email_count = len(messages)
-            unread_count = len([m for m in messages if m.get("unread", False)])
+            # Fetch data using appropriate method
+            if data_source["use_live_api"]:
+                result = await get_kpi_data(wallet_address, integration, data_type, db)
+                data = result["data"]
+                if result["error"]:
+                    errors.append(f"{data_type.capitalize()}: {result['error']}")
+            else:
+                # RAG storage
+                data = await get_integration_data(wallet_address, integration, data_type)
 
-            kpis.append(DynamicKPI(
-                id="google_emails",
-                title="Total Emails",
-                value=str(email_count),
-                change_value=0.0,
-                change_period="synced",
-                icon="Mail",
-                source="Google",
-                trend="neutral",
-                color="blue"
-            ))
+            # Normalize data format
+            if isinstance(data, dict):
+                for key in ["messages", "files", "events", "contacts", "channels", "users"]:
+                    if key in data and isinstance(data[key], list):
+                        data = data[key]
+                        break
+            if not isinstance(data, list):
+                data = []
 
-            if unread_count > 0:
-                kpis.append(DynamicKPI(
-                    id="google_unread",
-                    title="Unread Emails",
-                    value=str(unread_count),
-                    change_value=0.0,
-                    change_period="need attention",
-                    icon="Inbox",
-                    source="Google",
-                    trend="up" if unread_count > 10 else "neutral",
-                    color="red" if unread_count > 10 else "blue"
-                ))
+            # Process KPIs if we have data
+            if data:
+                for kpi_config in data_source["kpis"]:
+                    try:
+                        # Run processor
+                        processor_result = kpi_config["processor"](data)
 
-        # Calendar - LIVE API
-        calendar_result = await get_kpi_data(wallet_address, "google", "calendar", db)
-        if calendar_result["error"]:
-            errors.append(f"Calendar: {calendar_result['error']}")
+                        # Handle different processor return types
+                        if len(processor_result) == 4:  # Unread emails case
+                            value, trend, color, skip = processor_result
+                            if skip and kpi_config.get("can_skip"):
+                                continue
+                        elif len(processor_result) == 2:  # Standard case
+                            value, trend = processor_result
+                            color = kpi_config["color"]
+                        else:
+                            logger.warning(f"Unexpected processor result for {kpi_config['id']}")
+                            continue
 
-        if calendar_result["data"]:
-            events = calendar_result["data"] if isinstance(calendar_result["data"], list) else calendar_result["data"].get("events", [])
-            kpis.append(DynamicKPI(
-                id="google_events",
-                title="Calendar Events",
-                value=str(len(events)),
-                change_value=0.0,
-                change_period="upcoming",
-                icon="Calendar",
-                source="Google",
-                trend="neutral",
-                color="purple"
-            ))
-
-        # Drive - RAG
-        drive_data = await get_integration_data(wallet_address, "google", "drive")
-        if drive_data:
-            files = drive_data if isinstance(drive_data, list) else drive_data.get("files", [])
-            kpis.append(DynamicKPI(
-                id="google_files",
-                title="Drive Files",
-                value=str(len(files)),
-                change_value=0.0,
-                change_period="synced",
-                icon="FolderOpen",
-                source="Google",
-                trend="neutral",
-                color="green"
-            ))
+                        # Create KPI
+                        kpis.append(DynamicKPI(
+                            id=kpi_config["id"],
+                            title=kpi_config["title"],
+                            value=value,
+                            change_value=0.0,
+                            change_period=kpi_config["change_period"],
+                            icon=kpi_config["icon"],
+                            source=config["source_name"],
+                            trend=trend,
+                            color=color
+                        ))
+                    except Exception as e:
+                        logger.warning(f"{integration} KPI '{kpi_config['id']}' processing failed: {e}")
 
     except Exception as e:
         errors.append(str(e))
-        logger.warning(f"Google KPI fetch failed: {e}")
-
-    return {"kpis": kpis, "error": "; ".join(errors) if errors else None}
-
-
-async def fetch_slack_kpis(wallet_address: str, db: AsyncSession) -> Dict[str, Any]:
-    """Fetch Slack KPIs (channels, messages)."""
-    kpis = []
-    errors = []
-
-    try:
-        # Channels - LIVE API
-        channels_result = await get_kpi_data(wallet_address, "slack", "channels", db)
-        if channels_result["error"]:
-            errors.append(f"Channels: {channels_result['error']}")
-
-        if channels_result["data"]:
-            channels = channels_result["data"] if isinstance(channels_result["data"], list) else channels_result["data"].get("channels", [])
-            kpis.append(DynamicKPI(
-                id="slack_channels",
-                title="Slack Channels",
-                value=str(len(channels)),
-                change_value=0.0,
-                change_period="active",
-                icon="Hash",
-                source="Slack",
-                trend="neutral",
-                color="purple"
-            ))
-
-        # Messages - HYBRID
-        messages_result = await get_kpi_data(wallet_address, "slack", "messages", db)
-        if messages_result["error"]:
-            errors.append(f"Messages: {messages_result['error']}")
-
-        if messages_result["data"]:
-            messages = messages_result["data"] if isinstance(messages_result["data"], list) else messages_result["data"].get("messages", [])
-            kpis.append(DynamicKPI(
-                id="slack_messages",
-                title="Slack Messages",
-                value=str(len(messages)),
-                change_value=0.0,
-                change_period="synced",
-                icon="MessageSquare",
-                source="Slack",
-                trend="neutral",
-                color="purple"
-            ))
-
-    except Exception as e:
-        errors.append(str(e))
-        logger.warning(f"Slack KPI fetch failed: {e}")
-
-    return {"kpis": kpis, "error": "; ".join(errors) if errors else None}
-
-
-async def fetch_microsoft_kpis(wallet_address: str, db: AsyncSession) -> Dict[str, Any]:
-    """Fetch Microsoft 365 KPIs (outlook, onedrive)."""
-    kpis = []
-    errors = []
-
-    try:
-        # Outlook Mail - LIVE API
-        outlook_result = await get_kpi_data(wallet_address, "microsoft", "mail", db)
-        if outlook_result["error"]:
-            errors.append(f"Outlook: {outlook_result['error']}")
-
-        if outlook_result["data"]:
-            messages = outlook_result["data"] if isinstance(outlook_result["data"], list) else outlook_result["data"].get("messages", [])
-            kpis.append(DynamicKPI(
-                id="ms_emails",
-                title="Outlook Emails",
-                value=str(len(messages)),
-                change_value=0.0,
-                change_period="synced",
-                icon="Mail",
-                source="Microsoft",
-                trend="neutral",
-                color="blue"
-            ))
-
-        # OneDrive - RAG
-        onedrive_data = await get_integration_data(wallet_address, "microsoft", "files")
-        if onedrive_data:
-            files = onedrive_data if isinstance(onedrive_data, list) else onedrive_data.get("files", [])
-            kpis.append(DynamicKPI(
-                id="ms_files",
-                title="OneDrive Files",
-                value=str(len(files)),
-                change_value=0.0,
-                change_period="synced",
-                icon="FolderOpen",
-                source="Microsoft",
-                trend="neutral",
-                color="blue"
-            ))
-
-    except Exception as e:
-        errors.append(str(e))
-        logger.warning(f"Microsoft KPI fetch failed: {e}")
+        logger.warning(f"{integration} KPI fetch failed: {e}")
 
     return {"kpis": kpis, "error": "; ".join(errors) if errors else None}
 
@@ -790,12 +839,12 @@ async def get_dashboard_kpis(
         data_sources = []
         errors = []
 
-        # Fetch from all integrations in parallel
+        # Fetch from all integrations in parallel using generic fetcher
         results = await asyncio.gather(
-            fetch_quickbooks_kpis(wallet_address, db),
-            fetch_google_kpis(wallet_address, db),
-            fetch_slack_kpis(wallet_address, db),
-            fetch_microsoft_kpis(wallet_address, db),
+            fetch_integration_kpis(wallet_address, "quickbooks", db),
+            fetch_integration_kpis(wallet_address, "google", db),
+            fetch_integration_kpis(wallet_address, "slack", db),
+            fetch_integration_kpis(wallet_address, "microsoft", db),
             return_exceptions=True
         )
 
