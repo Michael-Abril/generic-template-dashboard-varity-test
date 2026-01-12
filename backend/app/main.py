@@ -314,6 +314,7 @@ async def health_check():
             "pinata": "connected" if service_status.get("pinata", False) else "not configured",
             "ollama": "connected" if service_status.get("ollama", False) else "not configured",
             "arbitrum_rpc": "connected" if service_status.get("arbitrum_rpc", False) else "not configured",
+            "oauth_scheduler": "running" if service_status.get("scheduler", False) else "not running",
             "version": BUILD_VERSION,
             "build_timestamp": BUILD_TIMESTAMP,
             "environment": os.getenv("ENVIRONMENT", "development")

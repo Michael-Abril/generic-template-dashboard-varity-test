@@ -8,10 +8,20 @@ users see when tokens expire.
 CRITICAL FIX (January 4, 2026):
 - Celery was causing Railway OOM crashes (512MB limit)
 - APScheduler runs in-process with ~5MB memory overhead
-- Tokens are refreshed 10 minutes BEFORE expiration
+
+ENHANCED (January 12, 2026):
+- Proactive refresh: Tokens expiring within 24 hours are refreshed
+- Recovery refresh: Tokens expired within last 24 hours are also attempted
+- Immediate startup refresh: Runs token check immediately on service startup
+- Goal: Keep tokens valid for 7+ days without user intervention
 
 Architecture:
-    APScheduler → Query expiring tokens → Call refresh endpoint → Update database
+    APScheduler → Query expiring/expired tokens → Call refresh endpoint → Update database
+
+Refresh Schedule:
+    - Every 5 minutes: Check and refresh tokens (24h proactive + 24h recovery window)
+    - Every 1 hour: Clean up tokens expired for >7 days
+    - On startup: Immediate refresh check to recover from any downtime
 """
 import logging
 from datetime import datetime, timedelta
@@ -25,29 +35,49 @@ _scheduler: Optional["AsyncIOScheduler"] = None
 
 async def refresh_expiring_tokens():
     """
-    Proactively refresh OAuth tokens that are expiring within the next 10 minutes.
+    Proactively refresh OAuth tokens that are expiring soon OR have recently expired.
 
     This runs every 5 minutes to ensure tokens are always fresh.
+
+    Refresh criteria:
+    - Tokens expiring within the next 24 hours (proactive refresh)
+    - Tokens that expired within the last 24 hours (recovery refresh)
+
+    Most OAuth providers allow refresh token usage even after access token
+    expiration, so we attempt to recover recently expired tokens too.
     """
-    from sqlalchemy import select, and_
+    from sqlalchemy import select, and_, or_
     from app.core.database import AsyncSessionLocal
     from app.models.purchase import OAuthToken
     from app.api.v1.integrations import refresh_oauth_token
 
-    logger.info("🔄 Scheduler: Checking for expiring OAuth tokens...")
+    logger.info("🔄 Scheduler: Checking for expiring/expired OAuth tokens...")
 
     try:
         async with AsyncSessionLocal() as db:
-            # Find tokens expiring in next 10 minutes
             now = datetime.utcnow()
-            expiry_threshold = now + timedelta(minutes=10)
+            # Proactive: Refresh tokens expiring in next 24 hours
+            expiry_threshold = now + timedelta(hours=24)
+            # Recovery: Also try tokens that expired within last 24 hours
+            recovery_threshold = now - timedelta(hours=24)
 
             query = select(OAuthToken).where(
                 and_(
                     OAuthToken.is_active == True,
                     OAuthToken.expires_at != None,
-                    OAuthToken.expires_at < expiry_threshold,
-                    OAuthToken.expires_at > now  # Not already expired
+                    # Either: expiring soon (within 24h) OR recently expired (within 24h)
+                    or_(
+                        # Proactive: expiring within 24 hours
+                        and_(
+                            OAuthToken.expires_at < expiry_threshold,
+                            OAuthToken.expires_at > now
+                        ),
+                        # Recovery: expired within last 24 hours (may still have valid refresh token)
+                        and_(
+                            OAuthToken.expires_at <= now,
+                            OAuthToken.expires_at > recovery_threshold
+                        )
+                    )
                 )
             )
 
@@ -55,16 +85,26 @@ async def refresh_expiring_tokens():
             expiring_tokens = result.scalars().all()
 
             if not expiring_tokens:
-                logger.info("✅ Scheduler: No tokens expiring soon")
+                logger.info("✅ Scheduler: No tokens need refresh")
                 return
 
-            logger.info(f"🔄 Scheduler: Found {len(expiring_tokens)} tokens expiring soon")
+            # Categorize tokens for logging
+            proactive_count = sum(1 for t in expiring_tokens if t.expires_at > now)
+            recovery_count = sum(1 for t in expiring_tokens if t.expires_at <= now)
+
+            logger.info(
+                f"🔄 Scheduler: Found {len(expiring_tokens)} tokens to refresh "
+                f"({proactive_count} proactive, {recovery_count} recovery)"
+            )
 
             # Refresh each token
             refreshed = 0
             failed = 0
 
             for token in expiring_tokens:
+                is_expired = token.expires_at <= now
+                refresh_type = "recovery" if is_expired else "proactive"
+
                 try:
                     # Set auth context for token access
                     OAuthToken.set_auth_context(token.user_address)
@@ -74,19 +114,20 @@ async def refresh_expiring_tokens():
                     if success:
                         refreshed += 1
                         logger.info(
-                            f"✅ Scheduler: Refreshed {token.provider} token for "
-                            f"{token.user_address[:10]}..."
+                            f"✅ Scheduler: [{refresh_type}] Refreshed {token.provider} "
+                            f"token for {token.user_address[:10]}..."
                         )
                     else:
                         failed += 1
                         logger.warning(
-                            f"⚠️ Scheduler: Failed to refresh {token.provider} token for "
-                            f"{token.user_address[:10]}..."
+                            f"⚠️ Scheduler: [{refresh_type}] Failed to refresh "
+                            f"{token.provider} token for {token.user_address[:10]}..."
                         )
                 except Exception as e:
                     failed += 1
                     logger.error(
-                        f"❌ Scheduler: Error refreshing {token.provider} token: {e}"
+                        f"❌ Scheduler: [{refresh_type}] Error refreshing "
+                        f"{token.provider} token: {e}"
                     )
                 finally:
                     OAuthToken.clear_auth_context()
@@ -190,8 +231,16 @@ async def start_scheduler():
         _scheduler.start()
 
         logger.info("✅ OAuth token auto-refresh scheduler started")
-        logger.info("   - Token refresh: every 5 minutes (10-min before expiry)")
+        logger.info("   - Token refresh: every 5 minutes (24h window)")
         logger.info("   - Token cleanup: every 1 hour (7-day old expired tokens)")
+
+        # Run an immediate refresh check on startup to recover any expired tokens
+        # This helps when the service restarts after being down
+        logger.info("🔄 Running immediate token refresh on startup...")
+        try:
+            await refresh_expiring_tokens()
+        except Exception as e:
+            logger.warning(f"⚠️ Startup token refresh had issues: {e}")
 
         return True
 

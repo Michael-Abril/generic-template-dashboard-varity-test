@@ -143,7 +143,7 @@ export function IntegrationHealthCards({ walletAddress, className = '' }: Integr
           color: 'text-amber-600',
           bgColor: 'bg-amber-50',
           borderColor: 'border-amber-200',
-          label: 'Stale',
+          label: 'Needs Update',
         };
       case 'error':
         return {

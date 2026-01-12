@@ -406,6 +406,7 @@ async def startup_sequence() -> Dict[str, Any]:
     logger.info(f"Pinata: {'✅' if services.get('pinata') else '⚠️  Not configured'}")
     logger.info(f"Ollama: {'✅' if services.get('ollama') else '⚠️  Not available'}")
     logger.info(f"Arbitrum RPC: {'✅' if services.get('arbitrum_rpc') else '⚠️  Not available'}")
+    logger.info(f"OAuth Scheduler: {'✅ Running (auto-refresh every 5m)' if services.get('scheduler') else '⚠️  Not running'}")
     logger.info("=" * 60)
 
     return services

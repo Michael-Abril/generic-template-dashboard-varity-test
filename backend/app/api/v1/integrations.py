@@ -45,6 +45,9 @@ TOKEN_REFRESH_CONFIGS = {
         "token_url": "https://login.microsoftonline.com/common/oauth2/v2.0/token",
         "client_id": getattr(settings, 'microsoft_client_id', ''),
         "client_secret": getattr(settings, 'microsoft_client_secret', ''),
+        # CRITICAL FIX (Jan 12, 2026): Microsoft requires scope in refresh requests
+        # offline_access is required to get a new refresh_token
+        "scope": "offline_access openid email profile User.Read Mail.Read Mail.Send Mail.ReadWrite Calendars.Read Calendars.ReadWrite Files.Read Files.ReadWrite Contacts.Read Contacts.ReadWrite Tasks.ReadWrite",
     },
     "hubspot": {
         "token_url": "https://api.hubapi.com/oauth/v1/token",
@@ -109,14 +112,23 @@ async def refresh_oauth_token(
 
         try:
             async with httpx.AsyncClient() as client:
+                # Build base request data
+                request_data = {
+                    "grant_type": "refresh_token",
+                    "refresh_token": oauth_token.refresh_token,
+                    "client_id": config["client_id"],
+                    "client_secret": config["client_secret"],
+                }
+
+                # CRITICAL FIX (Jan 12, 2026): Microsoft requires scope in refresh requests
+                # Add scope parameter if configured (required for Microsoft OAuth2)
+                if "scope" in config:
+                    request_data["scope"] = config["scope"]
+                    logger.debug(f"Including scope in refresh request for {provider}")
+
                 response = await client.post(
                     config["token_url"],
-                    data={
-                        "grant_type": "refresh_token",
-                        "refresh_token": oauth_token.refresh_token,
-                        "client_id": config["client_id"],
-                        "client_secret": config["client_secret"],
-                    },
+                    data=request_data,
                     headers={
                         "Content-Type": "application/x-www-form-urlencoded"
                     }
