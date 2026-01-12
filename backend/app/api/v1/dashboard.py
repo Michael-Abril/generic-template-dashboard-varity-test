@@ -259,7 +259,8 @@ class TopCustomersResponse(BaseModel):
 async def get_integration_data(
     wallet_address: str,
     integration: str,
-    data_type: Optional[str] = None
+    data_type: Optional[str] = None,
+    latest_only: bool = False
 ) -> List[Dict[str, Any]]:
     """
     Retrieve and decrypt integration data from Filecoin storage
@@ -268,6 +269,8 @@ async def get_integration_data(
         wallet_address: User's wallet address
         integration: Integration name (quickbooks, salesforce, shopify)
         data_type: Optional filter for specific data type
+        latest_only: If True, keep only most recent file per data_type (for speed)
+                     If False, retrieve ALL chunks (for accurate counts)
 
     Returns:
         List of decrypted data records
@@ -276,12 +279,13 @@ async def get_integration_data(
     normalized_wallet = normalize_wallet_address(wallet_address)
 
     try:
-        # List files for this integration - use latest_only for faster loading
+        # List files for this integration
+        limit = 100 if latest_only else 500  # More files when we need all chunks
         files = await filecoin_service.list_customer_files(
             customer_wallet=normalized_wallet,
             integration=integration,
             data_type=data_type,
-            limit=100  # Reduced from 1000 since we use latest_only pattern
+            limit=limit
         )
 
         if not files:
@@ -291,21 +295,24 @@ async def get_integration_data(
             )
             return []
 
-        # Filter to keep only the most recent file per data_type (latest_only pattern)
-        files_by_type: Dict[str, Any] = {}
-        for file in files:
-            file_data_type = file.get("metadata", {}).get("data_type", "unknown")
-            file_timestamp = file.get("timestamp", "")
+        # Optionally filter to keep only the most recent file per data_type
+        if latest_only:
+            files_by_type: Dict[str, Any] = {}
+            for file in files:
+                file_data_type = file.get("metadata", {}).get("data_type", "unknown")
+                file_timestamp = file.get("timestamp", "")
 
-            if file_data_type not in files_by_type:
-                files_by_type[file_data_type] = file
-            else:
-                existing_timestamp = files_by_type[file_data_type].get("timestamp", "")
-                if file_timestamp > existing_timestamp:
+                if file_data_type not in files_by_type:
                     files_by_type[file_data_type] = file
+                else:
+                    existing_timestamp = files_by_type[file_data_type].get("timestamp", "")
+                    if file_timestamp > existing_timestamp:
+                        files_by_type[file_data_type] = file
 
-        files = list(files_by_type.values())
-        logger.info(f"Using {len(files)} latest files for {integration}")
+            files = list(files_by_type.values())
+            logger.info(f"Using {len(files)} latest files for {integration}")
+        else:
+            logger.info(f"Using ALL {len(files)} files (chunks) for {integration}")
 
         # Retrieve and decrypt each file
         all_data = []
@@ -495,13 +502,13 @@ async def get_kpi_data(
         # Fall back to synced data if live API fails
         if result["error"]:
             logger.warning(f"KPI: Live API error for {integration}/{data_type}: {result['error']}, falling back to RAG")
-        rag_data = await get_integration_data(wallet_address, integration, data_type)
+        rag_data = await get_integration_data(wallet_address, integration, data_type, latest_only=False)
         return {"error": result["error"], "data": rag_data}
 
     elif routing == HYBRID:
         # Try live first for recent data, merge with synced data
         live_result = await fetch_live_data(wallet_address, integration, data_type, db)
-        rag_data = await get_integration_data(wallet_address, integration, data_type)
+        rag_data = await get_integration_data(wallet_address, integration, data_type, latest_only=False)
 
         if live_result["data"] and rag_data:
             # Dedupe by id if possible, prefer live data
@@ -515,8 +522,8 @@ async def get_kpi_data(
         return {"error": live_result["error"], "data": live_result["data"] or rag_data}
 
     else:  # RAG_STORAGE
-        # Use synced Filecoin storage
-        rag_data = await get_integration_data(wallet_address, integration, data_type)
+        # Use synced Filecoin storage - get ALL chunks for accurate count
+        rag_data = await get_integration_data(wallet_address, integration, data_type, latest_only=False)
         return {"error": None, "data": rag_data}
 
 
@@ -757,8 +764,8 @@ async def fetch_integration_kpis(
                 if result["error"]:
                     errors.append(f"{data_type.capitalize()}: {result['error']}")
             else:
-                # RAG storage
-                data = await get_integration_data(wallet_address, integration, data_type)
+                # RAG storage - get ALL chunks for accurate count
+                data = await get_integration_data(wallet_address, integration, data_type, latest_only=False)
 
             # Normalize data format
             if isinstance(data, dict):
@@ -866,7 +873,7 @@ async def get_dashboard_kpis(
 
         # Salesforce and HubSpot KPIs (keeping simple - they rarely have data)
         try:
-            sf_accounts = await get_integration_data(wallet_address, "salesforce", "accounts")
+            sf_accounts = await get_integration_data(wallet_address, "salesforce", "accounts", latest_only=False)
             if sf_accounts:
                 data_sources.append("Salesforce") if "Salesforce" not in data_sources else None
                 account_count = len(sf_accounts) if isinstance(sf_accounts, list) else 0
@@ -885,7 +892,7 @@ async def get_dashboard_kpis(
             errors.append(f"Salesforce: {e}")
 
         try:
-            hs_contacts = await get_integration_data(wallet_address, "hubspot", "contacts")
+            hs_contacts = await get_integration_data(wallet_address, "hubspot", "contacts", latest_only=False)
             if hs_contacts:
                 data_sources.append("HubSpot") if "HubSpot" not in data_sources else None
                 contact_count = len(hs_contacts) if isinstance(hs_contacts, list) else 0
@@ -1007,11 +1014,13 @@ async def get_recent_activity(
         # ============================================
         try:
             # QuickBooks invoices - HYBRID
-            qb_invoices = await get_kpi_data(
+            qb_result = await get_kpi_data(
                 wallet_address=wallet_address,
                 integration="quickbooks",
-                data_type="invoices"
+                data_type="invoices",
+                db=db
             )
+            qb_invoices = qb_result.get("data", [])
 
             for invoice in qb_invoices[:5]:
                 activities.append(ActivityItem(
@@ -1032,11 +1041,13 @@ async def get_recent_activity(
         # ============================================
         try:
             # Gmail - LIVE API (recent emails)
-            gmail_data = await get_kpi_data(
+            gmail_result = await get_kpi_data(
                 wallet_address=wallet_address,
                 integration="google",
-                data_type="gmail"
+                data_type="gmail",
+                db=db
             )
+            gmail_data = gmail_result.get("data", [])
 
             if gmail_data:
                 messages = gmail_data if isinstance(gmail_data, list) else gmail_data.get("messages", [])
@@ -1052,11 +1063,13 @@ async def get_recent_activity(
                     ))
 
             # Calendar - LIVE API (upcoming events)
-            calendar_data = await get_kpi_data(
+            calendar_result = await get_kpi_data(
                 wallet_address=wallet_address,
                 integration="google",
-                data_type="calendar"
+                data_type="calendar",
+                db=db
             )
+            calendar_data = calendar_result.get("data", [])
 
             if calendar_data:
                 events = calendar_data if isinstance(calendar_data, list) else calendar_data.get("events", [])
@@ -1079,11 +1092,13 @@ async def get_recent_activity(
         # ============================================
         try:
             # Outlook Mail - LIVE API
-            outlook_data = await get_kpi_data(
+            outlook_result = await get_kpi_data(
                 wallet_address=wallet_address,
                 integration="microsoft",
-                data_type="mail"
+                data_type="mail",
+                db=db
             )
+            outlook_data = outlook_result.get("data", [])
 
             if outlook_data:
                 messages = outlook_data if isinstance(outlook_data, list) else outlook_data.get("messages", [])
@@ -1106,11 +1121,13 @@ async def get_recent_activity(
         # ============================================
         try:
             # Slack messages - HYBRID
-            slack_messages = await get_kpi_data(
+            slack_result = await get_kpi_data(
                 wallet_address=wallet_address,
                 integration="slack",
-                data_type="messages"
+                data_type="messages",
+                db=db
             )
+            slack_messages = slack_result.get("data", [])
 
             if slack_messages:
                 messages = slack_messages if isinstance(slack_messages, list) else slack_messages.get("messages", [])
@@ -1133,11 +1150,13 @@ async def get_recent_activity(
         # ============================================
         try:
             # Salesforce opportunities - HYBRID
-            sf_opportunities = await get_kpi_data(
+            sf_result = await get_kpi_data(
                 wallet_address=wallet_address,
                 integration="salesforce",
-                data_type="opportunities"
+                data_type="opportunities",
+                db=db
             )
+            sf_opportunities = sf_result.get("data", [])
 
             for opp in sf_opportunities[:5]:
                 activities.append(ActivityItem(
@@ -1158,11 +1177,13 @@ async def get_recent_activity(
         # ============================================
         try:
             # HubSpot deals - HYBRID
-            hs_deals = await get_kpi_data(
+            hs_result = await get_kpi_data(
                 wallet_address=wallet_address,
                 integration="hubspot",
-                data_type="deals"
+                data_type="deals",
+                db=db
             )
+            hs_deals = hs_result.get("data", [])
 
             if hs_deals:
                 deals = hs_deals if isinstance(hs_deals, list) else []

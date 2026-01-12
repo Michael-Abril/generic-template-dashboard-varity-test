@@ -106,6 +106,14 @@ async function fetchGoogleLiveData(walletAddress: string): Promise<FetchResult> 
   let hasError = false;
   let errorMessage = '';
 
+  // Fetch integration status first to get real last_sync timestamp
+  const statusRes = await safeFetch(`${API_BASE}/api/v1/integrations/google/status?wallet_address=${walletAddress}`);
+  let lastSync: string | null = null;
+  if (statusRes.success && statusRes.data && typeof statusRes.data === 'object') {
+    const statusData = statusRes.data as { last_sync?: string | null };
+    lastSync = statusData.last_sync || null;
+  }
+
   // Fetch all Google data types in parallel
   const [emailsRes, eventsRes, filesRes, contactsRes] = await Promise.allSettled([
     safeFetch(`${API_BASE}/api/v1/integrations/google/emails?wallet_address=${walletAddress}&max_results=50`),
@@ -144,7 +152,7 @@ async function fetchGoogleLiveData(walletAddress: string): Promise<FetchResult> 
   return {
     success: results.length > 0,
     data: results,
-    lastSync: results.length > 0 ? new Date().toISOString() : null,
+    lastSync: lastSync, // Use real timestamp from backend status endpoint
     error: hasError ? errorMessage : undefined,
   };
 }
@@ -155,6 +163,14 @@ async function fetchGoogleLiveData(walletAddress: string): Promise<FetchResult> 
 
 async function fetchMicrosoftLiveData(walletAddress: string): Promise<FetchResult> {
   const results: LiveDataResult[] = [];
+
+  // Fetch integration status first to get real last_sync timestamp
+  const statusRes = await safeFetch(`${API_BASE}/api/v1/integrations/microsoft/status?wallet_address=${walletAddress}`);
+  let lastSync: string | null = null;
+  if (statusRes.success && statusRes.data && typeof statusRes.data === 'object') {
+    const statusData = statusRes.data as { last_sync?: string | null };
+    lastSync = statusData.last_sync || null;
+  }
 
   // Fetch all Microsoft data types in parallel
   const [mailRes, eventsRes, filesRes, contactsRes] = await Promise.allSettled([
@@ -191,7 +207,7 @@ async function fetchMicrosoftLiveData(walletAddress: string): Promise<FetchResul
   return {
     success: results.length > 0,
     data: results,
-    lastSync: results.length > 0 ? new Date().toISOString() : null,
+    lastSync: lastSync, // Use real timestamp from backend status endpoint
   };
 }
 
@@ -201,6 +217,14 @@ async function fetchMicrosoftLiveData(walletAddress: string): Promise<FetchResul
 
 async function fetchSlackLiveData(walletAddress: string): Promise<FetchResult> {
   const results: LiveDataResult[] = [];
+
+  // Fetch integration status first to get real last_sync timestamp
+  const statusRes = await safeFetch(`${API_BASE}/api/v1/integrations/slack/status?wallet_address=${walletAddress}`);
+  let lastSync: string | null = null;
+  if (statusRes.success && statusRes.data && typeof statusRes.data === 'object') {
+    const statusData = statusRes.data as { last_sync?: string | null };
+    lastSync = statusData.last_sync || null;
+  }
 
   // Fetch all Slack data types in parallel
   const [channelsRes, usersRes] = await Promise.allSettled([
@@ -223,7 +247,7 @@ async function fetchSlackLiveData(walletAddress: string): Promise<FetchResult> {
   return {
     success: results.length > 0,
     data: results,
-    lastSync: results.length > 0 ? new Date().toISOString() : null,
+    lastSync: lastSync, // Use real timestamp from backend status endpoint
   };
 }
 
@@ -233,6 +257,14 @@ async function fetchSlackLiveData(walletAddress: string): Promise<FetchResult> {
 
 async function fetchQuickBooksLiveData(walletAddress: string): Promise<FetchResult> {
   const results: LiveDataResult[] = [];
+
+  // Fetch integration status first to get real last_sync timestamp
+  const statusRes = await safeFetch(`${API_BASE}/api/v1/integrations/quickbooks/status?wallet_address=${walletAddress}`);
+  let lastSync: string | null = null;
+  if (statusRes.success && statusRes.data && typeof statusRes.data === 'object') {
+    const statusData = statusRes.data as { last_sync?: string | null };
+    lastSync = statusData.last_sync || null;
+  }
 
   // Fetch all QuickBooks data types in parallel
   const [invoicesRes, customersRes, expensesRes, vendorsRes, paymentsRes, accountsRes] = await Promise.allSettled([
@@ -283,7 +315,7 @@ async function fetchQuickBooksLiveData(walletAddress: string): Promise<FetchResu
   return {
     success: results.length > 0,
     data: results,
-    lastSync: results.length > 0 ? new Date().toISOString() : null,
+    lastSync: lastSync, // Use real timestamp from backend status endpoint
   };
 }
 
@@ -293,6 +325,14 @@ async function fetchQuickBooksLiveData(walletAddress: string): Promise<FetchResu
 
 async function fetchSalesforceLiveData(walletAddress: string): Promise<FetchResult> {
   const results: LiveDataResult[] = [];
+
+  // Fetch integration status first to get real last_sync timestamp
+  const statusRes = await safeFetch(`${API_BASE}/api/v1/integrations/salesforce/status?wallet_address=${walletAddress}`);
+  let lastSync: string | null = null;
+  if (statusRes.success && statusRes.data && typeof statusRes.data === 'object') {
+    const statusData = statusRes.data as { last_sync?: string | null };
+    lastSync = statusData.last_sync || null;
+  }
 
   // Fetch all Salesforce data types in parallel
   const [contactsRes, leadsRes, opportunitiesRes, accountsRes] = await Promise.allSettled([
@@ -329,7 +369,7 @@ async function fetchSalesforceLiveData(walletAddress: string): Promise<FetchResu
   return {
     success: results.length > 0,
     data: results,
-    lastSync: results.length > 0 ? new Date().toISOString() : null,
+    lastSync: lastSync, // Use real timestamp from backend status endpoint
   };
 }
 
@@ -339,6 +379,14 @@ async function fetchSalesforceLiveData(walletAddress: string): Promise<FetchResu
 
 async function fetchHubSpotLiveData(walletAddress: string): Promise<FetchResult> {
   const results: LiveDataResult[] = [];
+
+  // Fetch integration status first to get real last_sync timestamp
+  const statusRes = await safeFetch(`${API_BASE}/api/v1/integrations/hubspot/status?wallet_address=${walletAddress}`);
+  let lastSync: string | null = null;
+  if (statusRes.success && statusRes.data && typeof statusRes.data === 'object') {
+    const statusData = statusRes.data as { last_sync?: string | null };
+    lastSync = statusData.last_sync || null;
+  }
 
   // Fetch all HubSpot data types in parallel
   const [contactsRes, companiesRes, dealsRes] = await Promise.allSettled([
@@ -368,7 +416,7 @@ async function fetchHubSpotLiveData(walletAddress: string): Promise<FetchResult>
   return {
     success: results.length > 0,
     data: results,
-    lastSync: results.length > 0 ? new Date().toISOString() : null,
+    lastSync: lastSync, // Use real timestamp from backend status endpoint
   };
 }
 

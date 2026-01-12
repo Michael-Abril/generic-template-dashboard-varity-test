@@ -445,6 +445,83 @@ async def get_installed_integrations(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/{tool}/status")
+async def get_integration_status(
+    tool: str,
+    wallet_address: str = Query(..., description="User's wallet address"),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Get current integration status including last_sync timestamp.
+
+    This endpoint returns:
+    - connected: Whether OAuth token exists and is valid
+    - last_sync: ISO timestamp of last successful sync (from OAuthToken.last_sync_at)
+    - status: "connected", "expired", or "not_connected"
+    - needs_reauth: Whether user needs to reconnect
+
+    Used by frontend to display accurate "Last synced X minutes ago" text.
+    """
+    try:
+        # Normalize integration name and wallet address
+        normalized_tool = normalize_integration_name(tool)
+        normalized_wallet = normalize_wallet_address(wallet_address)
+        provider = normalized_tool
+
+        logger.info(f"Getting status for {tool} (normalized: {normalized_tool}), wallet={normalized_wallet}")
+
+        # Query OAuth token
+        result = await db.execute(
+            select(OAuthToken).where(
+                and_(
+                    OAuthToken.user_address == normalized_wallet,
+                    OAuthToken.provider == provider,
+                    OAuthToken.is_active == True  # noqa: E712
+                )
+            )
+        )
+        oauth_token = result.scalar_one_or_none()
+
+        if not oauth_token:
+            return {
+                "connected": False,
+                "last_sync": None,
+                "status": "not_connected",
+                "needs_reauth": False
+            }
+
+        # Check token validity
+        now = datetime.now(timezone.utc)
+        is_expired = False
+
+        if oauth_token.expires_at:
+            expires_at = oauth_token.expires_at
+            # Ensure timezone-aware comparison
+            if expires_at.tzinfo is None:
+                expires_at = expires_at.replace(tzinfo=timezone.utc)
+            is_expired = expires_at < now
+
+        # Format last_sync_at as ISO string
+        last_sync = None
+        if oauth_token.last_sync_at:
+            # Convert to timezone-aware if needed
+            sync_time = oauth_token.last_sync_at
+            if sync_time.tzinfo is None:
+                sync_time = sync_time.replace(tzinfo=timezone.utc)
+            last_sync = sync_time.isoformat()
+
+        return {
+            "connected": True,
+            "last_sync": last_sync,
+            "status": "expired" if is_expired else "connected",
+            "needs_reauth": is_expired
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to get integration status for {tool}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/{tool}/sync")
 async def sync_tool_data(
     tool: str,

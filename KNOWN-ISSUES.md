@@ -65,7 +65,7 @@ const res = await fetch(`${apiBase}/api/v1/integrations/${integration}/data`);
 
 **Status:** CRITICAL - Hybrid data model not implemented in frontend
 
-### CRIT-003: Dashboard KPIs Show Wrong/Fake Data
+### CRIT-003: Dashboard KPIs Show Wrong/Fake Data - ✅ FIXED (January 12, 2026)
 
 **Evidence from API:**
 ```json
@@ -81,8 +81,22 @@ const res = await fetch(`${apiBase}/api/v1/integrations/${integration}/data`);
 - QuickBooks: `data_count: 0` - no data synced, "$5.00" is fake or cached
 - Google Drive: 83 files synced - dashboard shows "1"
 
+**Root Cause Identified:**
+1. `get_integration_data()` was using "latest_only pattern" which kept only the most recent file per data_type
+2. When Google Drive data was stored in 17 chunks (all with `data_type="drive"`), only 1 chunk was retrieved
+3. `recent-activity` endpoint called `get_kpi_data()` but treated return value as list instead of Dict
+
+**Fixes Applied:**
+1. Added `latest_only` parameter to `get_integration_data()` - defaults to False for accurate counts
+2. Fixed `recent-activity` endpoint to extract data from Dict result: `result.get("data", [])`
+3. Fixed missing `db` parameter in all `get_kpi_data()` calls
+4. All KPI endpoints now use `latest_only=False` to retrieve ALL chunks
+
+**Files Modified:**
+- `backend/app/api/v1/dashboard.py` lines 259-527, 760-768, 874-895, 1008-1182
+
 **Location:** `backend/app/api/v1/dashboard.py`
-**Status:** HIGH - Users see wrong numbers, trust destroyed
+**Status:** ✅ RESOLVED - Dashboard will now show accurate file counts from all chunks
 
 ### CRIT-004: Analytics Page 100% Mock Data
 

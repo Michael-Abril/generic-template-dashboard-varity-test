@@ -254,7 +254,8 @@ async def ai_chat(request: ChatRequest, db: AsyncSession = Depends(get_db)):
         rag_context = await _build_rag_context(
             wallet_address=request.wallet_address,
             tools=installed_tools,
-            query=request.message
+            query=request.message,
+            db=db
         )
 
         # Step 3: Query AI with context
@@ -296,7 +297,7 @@ async def ai_chat(request: ChatRequest, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/query")
-async def ai_query(request: QueryRequest):
+async def ai_query(request: QueryRequest, db: AsyncSession = Depends(get_db)):
     """
     Advanced RAG query across multiple tools
 
@@ -320,7 +321,8 @@ async def ai_query(request: QueryRequest):
             wallet_address=request.wallet_address,
             tools=request.tools,
             query=request.query,
-            filters=request.filters
+            filters=request.filters,
+            db=db
         )
 
         # Query AI
@@ -2750,14 +2752,130 @@ async def get_ai_capabilities():
 
 # ==================== Helper Functions ====================
 
+async def _fetch_live_data_for_ai(
+    wallet_address: str,
+    integration: str,
+    data_type: str,
+    db: AsyncSession
+) -> Optional[Dict[str, Any]]:
+    """
+    Fetch live data from integration endpoints as AI context fallback.
+
+    Used when RAG is empty to provide AI with fresh business context.
+
+    Args:
+        wallet_address: User's wallet address
+        integration: Integration name (google, slack, quickbooks, microsoft)
+        data_type: Type of data to fetch (emails, channels, invoices, etc.)
+        db: Database session for OAuth token retrieval
+
+    Returns:
+        Dict with 'data' key containing list of items, or None if failed
+    """
+    try:
+        # Get OAuth token for integration
+        result = await db.execute(
+            select(OAuthToken).where(
+                and_(
+                    OAuthToken.user_address == wallet_address,
+                    OAuthToken.provider == integration
+                )
+            )
+        )
+        oauth_token = result.scalar_one_or_none()
+
+        if not oauth_token:
+            logger.warning(f"No OAuth token found for {integration}")
+            return None
+
+        # Map integration + data_type to API endpoint
+        endpoint_map = {
+            "google": {
+                "emails": f"/api/v1/integrations/google/emails?wallet_address={wallet_address}&max_results=10",
+                "calendar": f"/api/v1/integrations/google/events?wallet_address={wallet_address}&max_results=10",
+                "files": f"/api/v1/integrations/google/files?wallet_address={wallet_address}&page_size=10",
+                "contacts": f"/api/v1/integrations/google/contacts?wallet_address={wallet_address}&page_size=10",
+            },
+            "microsoft": {
+                "mail": f"/api/v1/integrations/microsoft/mail/messages?wallet_address={wallet_address}&top=10",
+                "calendar": f"/api/v1/integrations/microsoft/calendar/events?wallet_address={wallet_address}&top=10",
+                "files": f"/api/v1/integrations/microsoft/onedrive/files?wallet_address={wallet_address}",
+                "contacts": f"/api/v1/integrations/microsoft/contacts?wallet_address={wallet_address}&top=10",
+            },
+            "slack": {
+                "channels": f"/api/v1/integrations/slack/channels?wallet_address={wallet_address}",
+                "messages": f"/api/v1/integrations/slack/messages?wallet_address={wallet_address}&limit=10",
+            },
+            "quickbooks": {
+                "invoices": f"/api/v1/quickbooks/invoices?wallet_address={wallet_address}&maxresults=10",
+                "customers": f"/api/v1/quickbooks/customers?wallet_address={wallet_address}&maxresults=10",
+                "expenses": f"/api/v1/quickbooks/expenses?wallet_address={wallet_address}&maxresults=10",
+                "payments": f"/api/v1/quickbooks/payments?wallet_address={wallet_address}&maxresults=10",
+            },
+        }
+
+        if integration not in endpoint_map or data_type not in endpoint_map[integration]:
+            return None
+
+        endpoint = endpoint_map[integration][data_type]
+
+        # Make internal API call
+        base_url = os.getenv("BACKEND_URL", "http://localhost:8000")
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"{base_url}{endpoint}",
+                timeout=10.0
+            )
+
+            if response.status_code == 200:
+                data = response.json()
+
+                # Normalize response format across different integrations
+                if isinstance(data, dict):
+                    # Extract actual data array from response
+                    if "items" in data:
+                        items = data["items"]
+                    elif "data" in data:
+                        items = data["data"]
+                    elif "messages" in data:
+                        items = data["messages"]
+                    elif "channels" in data:
+                        items = data["channels"]
+                    elif "events" in data:
+                        items = data["events"]
+                    else:
+                        # Assume the whole dict is a single item
+                        items = [data]
+                else:
+                    items = data if isinstance(data, list) else []
+
+                return {
+                    "data": items[:10],  # Limit to 10 items max
+                    "count": len(items),
+                    "source": "live_api"
+                }
+            else:
+                logger.warning(f"Live API call failed: {response.status_code} - {response.text[:200]}")
+                return None
+
+    except Exception as e:
+        logger.warning(f"Failed to fetch live data for {integration}/{data_type}: {e}")
+        return None
+
+
 async def _build_rag_context(
     wallet_address: str,
     tools: List[str],
     query: str,
-    filters: Optional[Dict[str, Any]] = None
+    filters: Optional[Dict[str, Any]] = None,
+    db: Optional[AsyncSession] = None
 ) -> Dict[str, Any]:
     """
     Build RAG context from user's tool data using Qdrant vector search
+
+    UPDATED (Jan 12, 2026): Added Live API fallback when RAG is empty.
+    When Qdrant returns no results, fetches fresh data from live integration
+    endpoints to provide AI with business context even without RAG indexing.
 
     UPDATED (Dec 26, 2025): Now uses Qdrant for semantic search instead of
     fetching all files from Pinata. This is faster and more accurate.
@@ -2767,9 +2885,10 @@ async def _build_rag_context(
         tools: List of tools to query
         query: User's query
         filters: Optional filters for data (supports 'data_type')
+        db: Database session for Live API fallback (optional)
 
     Returns:
-        RAG context dictionary with relevant data
+        RAG context dictionary with relevant data from RAG or Live API
     """
     context = {
         "wallet_address": wallet_address,
@@ -2842,12 +2961,53 @@ async def _build_rag_context(
             logger.warning(f"Qdrant query failed for tool {tool}: {e}")
             continue
 
-    # Add helpful message if no data found
+    # LIVE API FALLBACK (Jan 12, 2026): If RAG is empty, try fetching live data
+    if not context["sources"] and db is not None:
+        logger.info("RAG empty, attempting Live API fallback for AI context")
+
+        # Define which data types should use Live API per integration
+        LIVE_DATA_TYPES = {
+            "google": ["emails", "calendar", "files", "contacts"],
+            "microsoft": ["mail", "calendar", "files", "contacts"],
+            "slack": ["channels", "messages"],
+            "quickbooks": ["invoices", "customers", "expenses", "payments"],
+        }
+
+        # Try fetching live data for each tool
+        for tool in tools:
+            if tool in LIVE_DATA_TYPES:
+                for data_type in LIVE_DATA_TYPES[tool]:
+                    try:
+                        # Call the live API endpoint
+                        result = await _fetch_live_data_for_ai(wallet_address, tool, data_type, db)
+
+                        if result and result.get("data"):
+                            # Add to context (limited to 10 items in helper function)
+                            context["data"][f"{tool}_{data_type}"] = result["data"]
+                            context["sources"].append({
+                                "tool": tool,
+                                "data_type": data_type,
+                                "source": "live_api",
+                                "record_count": result.get("count", len(result["data"]))
+                            })
+                            logger.info(
+                                f"Live API fallback: Got {result.get('count', 0)} records "
+                                f"for {tool}/{data_type}"
+                            )
+                    except Exception as e:
+                        logger.warning(f"Live API fallback failed for {tool}/{data_type}: {e}")
+                        continue
+
+    # Add helpful message if no data found (after Live API fallback)
     if not context["sources"]:
         context["summary"] = (
-            "No indexed business data found. If you've connected integrations, "
-            "try running a sync first. Your data will be indexed automatically."
+            "I don't have access to your business data yet. To help you better:\n\n"
+            "1. Connect your integrations in the Marketplace\n"
+            "2. Make sure your OAuth tokens are active (not expired)\n"
+            "3. Click 'Sync Data' on your integration pages\n\n"
+            "I can still help with general questions and web searches!"
         )
+        context["needs_sync"] = True
     else:
         # Build context summary for LLM
         context["summary"] = _summarize_context(context)
