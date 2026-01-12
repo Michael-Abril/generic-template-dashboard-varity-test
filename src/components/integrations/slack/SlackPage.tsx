@@ -78,7 +78,7 @@ export function SlackPage({ walletAddress }: SlackPageProps) {
         // Create DM list from users
         const dmsList: SlackChannel[] = (usersData.users || []).map((user: SlackUser) => ({
           id: user.id,
-          name: user.real_name || user.name,
+          name: user.real_name || user.name || 'Unknown User',
           type: 'dm' as const,
           unread: 0,
           online: true,

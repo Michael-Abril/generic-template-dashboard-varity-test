@@ -374,14 +374,25 @@ async def create_contact(
     try:
         access_token = await get_hubspot_access_token(wallet_address, db)
 
-        # Initialize HubSpot adapter with access token
-        adapter = HubSpotSync({"access_token": access_token})
-
         # Prepare contact data (remove None values)
         contact_data = {k: v for k, v in contact.dict().items() if v is not None}
 
-        # Create contact via adapter
-        result = await adapter.create_contact(contact_data)
+        # Create contact via HubSpot CRM v3 API (direct httpx - adapter deleted Jan 2026)
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(
+                "https://api.hubapi.com/crm/v3/objects/contacts",
+                json={"properties": contact_data},
+                headers={"Authorization": f"Bearer {access_token}"}
+            )
+
+            if response.status_code not in [200, 201]:
+                logger.error(f"HubSpot contact creation failed: {response.status_code}")
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail=f"HubSpot API error: {response.text[:200]}"
+                )
+
+            result = response.json()
 
         logger.info(f"Contact created for {wallet_address[:10]}...: id={result.get('id')}")
         return {
@@ -407,13 +418,24 @@ async def update_contact(
     """Update an existing contact in HubSpot"""
     try:
         access_token = await get_hubspot_access_token(wallet_address, db)
-        adapter = HubSpotSync({"access_token": access_token})
 
         # Prepare update data (remove None values)
         contact_data = {k: v for k, v in contact.dict().items() if v is not None}
 
-        # Update contact via adapter
-        result = await adapter.update_contact(contact_id, contact_data)
+        # Update contact via HubSpot CRM v3 API (direct httpx - adapter deleted Jan 2026)
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.patch(
+                f"https://api.hubapi.com/crm/v3/objects/contacts/{contact_id}",
+                json={"properties": contact_data},
+                headers={"Authorization": f"Bearer {access_token}"}
+            )
+
+            if response.status_code != 200:
+                logger.error(f"HubSpot contact update failed: {response.status_code}")
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail=f"HubSpot API error: {response.text[:200]}"
+                )
 
         logger.info(f"Contact updated for {wallet_address[:10]}...: id={contact_id}")
         return {
@@ -437,10 +459,20 @@ async def delete_contact(
     """Delete a contact from HubSpot"""
     try:
         access_token = await get_hubspot_access_token(wallet_address, db)
-        adapter = HubSpotSync({"access_token": access_token})
 
-        # Delete contact via adapter
-        await adapter.delete_contact(contact_id)
+        # Delete contact via HubSpot CRM v3 API (direct httpx - adapter deleted Jan 2026)
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.delete(
+                f"https://api.hubapi.com/crm/v3/objects/contacts/{contact_id}",
+                headers={"Authorization": f"Bearer {access_token}"}
+            )
+
+            if response.status_code != 204:
+                logger.error(f"HubSpot contact deletion failed: {response.status_code}")
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail=f"HubSpot API error: {response.text[:200]}"
+                )
 
         logger.info(f"Contact deleted for {wallet_address[:10]}...: id={contact_id}")
         return {
@@ -465,13 +497,26 @@ async def create_company(
     """Create a new company in HubSpot"""
     try:
         access_token = await get_hubspot_access_token(wallet_address, db)
-        adapter = HubSpotSync({"access_token": access_token})
 
         # Prepare company data (remove None values)
         company_data = {k: v for k, v in company.dict().items() if v is not None}
 
-        # Create company via adapter
-        result = await adapter.create_company(company_data)
+        # Create company via HubSpot CRM v3 API (direct httpx - adapter deleted Jan 2026)
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(
+                "https://api.hubapi.com/crm/v3/objects/companies",
+                json={"properties": company_data},
+                headers={"Authorization": f"Bearer {access_token}"}
+            )
+
+            if response.status_code not in [200, 201]:
+                logger.error(f"HubSpot company creation failed: {response.status_code}")
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail=f"HubSpot API error: {response.text[:200]}"
+                )
+
+            result = response.json()
 
         logger.info(f"Company created for {wallet_address[:10]}...: id={result.get('id')}")
         return {
@@ -497,13 +542,24 @@ async def update_company(
     """Update an existing company in HubSpot"""
     try:
         access_token = await get_hubspot_access_token(wallet_address, db)
-        adapter = HubSpotSync({"access_token": access_token})
 
         # Prepare update data (remove None values)
         company_data = {k: v for k, v in company.dict().items() if v is not None}
 
-        # Update company via adapter
-        result = await adapter.update_company(company_id, company_data)
+        # Update company via HubSpot CRM v3 API (direct httpx - adapter deleted Jan 2026)
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.patch(
+                f"https://api.hubapi.com/crm/v3/objects/companies/{company_id}",
+                json={"properties": company_data},
+                headers={"Authorization": f"Bearer {access_token}"}
+            )
+
+            if response.status_code != 200:
+                logger.error(f"HubSpot company update failed: {response.status_code}")
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail=f"HubSpot API error: {response.text[:200]}"
+                )
 
         logger.info(f"Company updated for {wallet_address[:10]}...: id={company_id}")
         return {
@@ -527,10 +583,20 @@ async def delete_company(
     """Delete a company from HubSpot"""
     try:
         access_token = await get_hubspot_access_token(wallet_address, db)
-        adapter = HubSpotSync({"access_token": access_token})
 
-        # Delete company via adapter
-        await adapter.delete_company(company_id)
+        # Delete company via HubSpot CRM v3 API (direct httpx - adapter deleted Jan 2026)
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.delete(
+                f"https://api.hubapi.com/crm/v3/objects/companies/{company_id}",
+                headers={"Authorization": f"Bearer {access_token}"}
+            )
+
+            if response.status_code != 204:
+                logger.error(f"HubSpot company deletion failed: {response.status_code}")
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail=f"HubSpot API error: {response.text[:200]}"
+                )
 
         logger.info(f"Company deleted for {wallet_address[:10]}...: id={company_id}")
         return {
@@ -555,13 +621,26 @@ async def create_deal(
     """Create a new deal in HubSpot"""
     try:
         access_token = await get_hubspot_access_token(wallet_address, db)
-        adapter = HubSpotSync({"access_token": access_token})
 
         # Prepare deal data (remove None values)
         deal_data = {k: v for k, v in deal.dict().items() if v is not None}
 
-        # Create deal via adapter
-        result = await adapter.create_deal(deal_data)
+        # Create deal via HubSpot CRM v3 API (direct httpx - adapter deleted Jan 2026)
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(
+                "https://api.hubapi.com/crm/v3/objects/deals",
+                json={"properties": deal_data},
+                headers={"Authorization": f"Bearer {access_token}"}
+            )
+
+            if response.status_code not in [200, 201]:
+                logger.error(f"HubSpot deal creation failed: {response.status_code}")
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail=f"HubSpot API error: {response.text[:200]}"
+                )
+
+            result = response.json()
 
         logger.info(f"Deal created for {wallet_address[:10]}...: id={result.get('id')}")
         return {
@@ -587,13 +666,24 @@ async def update_deal(
     """Update an existing deal in HubSpot"""
     try:
         access_token = await get_hubspot_access_token(wallet_address, db)
-        adapter = HubSpotSync({"access_token": access_token})
 
         # Prepare update data (remove None values)
         deal_data = {k: v for k, v in deal.dict().items() if v is not None}
 
-        # Update deal via adapter
-        result = await adapter.update_deal(deal_id, deal_data)
+        # Update deal via HubSpot CRM v3 API (direct httpx - adapter deleted Jan 2026)
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.patch(
+                f"https://api.hubapi.com/crm/v3/objects/deals/{deal_id}",
+                json={"properties": deal_data},
+                headers={"Authorization": f"Bearer {access_token}"}
+            )
+
+            if response.status_code != 200:
+                logger.error(f"HubSpot deal update failed: {response.status_code}")
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail=f"HubSpot API error: {response.text[:200]}"
+                )
 
         logger.info(f"Deal updated for {wallet_address[:10]}...: id={deal_id}")
         return {
@@ -617,10 +707,20 @@ async def delete_deal(
     """Delete a deal from HubSpot"""
     try:
         access_token = await get_hubspot_access_token(wallet_address, db)
-        adapter = HubSpotSync({"access_token": access_token})
 
-        # Delete deal via adapter
-        await adapter.delete_deal(deal_id)
+        # Delete deal via HubSpot CRM v3 API (direct httpx - adapter deleted Jan 2026)
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.delete(
+                f"https://api.hubapi.com/crm/v3/objects/deals/{deal_id}",
+                headers={"Authorization": f"Bearer {access_token}"}
+            )
+
+            if response.status_code != 204:
+                logger.error(f"HubSpot deal deletion failed: {response.status_code}")
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail=f"HubSpot API error: {response.text[:200]}"
+                )
 
         logger.info(f"Deal deleted for {wallet_address[:10]}...: id={deal_id}")
         return {
@@ -645,13 +745,26 @@ async def create_ticket(
     """Create a new ticket in HubSpot"""
     try:
         access_token = await get_hubspot_access_token(wallet_address, db)
-        adapter = HubSpotSync({"access_token": access_token})
 
         # Prepare ticket data (remove None values)
         ticket_data = {k: v for k, v in ticket.dict().items() if v is not None}
 
-        # Create ticket via adapter
-        result = await adapter.create_ticket(ticket_data)
+        # Create ticket via HubSpot CRM v3 API (direct httpx - adapter deleted Jan 2026)
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(
+                "https://api.hubapi.com/crm/v3/objects/tickets",
+                json={"properties": ticket_data},
+                headers={"Authorization": f"Bearer {access_token}"}
+            )
+
+            if response.status_code not in [200, 201]:
+                logger.error(f"HubSpot ticket creation failed: {response.status_code}")
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail=f"HubSpot API error: {response.text[:200]}"
+                )
+
+            result = response.json()
 
         logger.info(f"Ticket created for {wallet_address[:10]}...: id={result.get('id')}")
         return {
@@ -677,13 +790,24 @@ async def update_ticket(
     """Update an existing ticket in HubSpot"""
     try:
         access_token = await get_hubspot_access_token(wallet_address, db)
-        adapter = HubSpotSync({"access_token": access_token})
 
         # Prepare update data (remove None values)
         ticket_data = {k: v for k, v in ticket.dict().items() if v is not None}
 
-        # Update ticket via adapter
-        result = await adapter.update_ticket(ticket_id, ticket_data)
+        # Update ticket via HubSpot CRM v3 API (direct httpx - adapter deleted Jan 2026)
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.patch(
+                f"https://api.hubapi.com/crm/v3/objects/tickets/{ticket_id}",
+                json={"properties": ticket_data},
+                headers={"Authorization": f"Bearer {access_token}"}
+            )
+
+            if response.status_code != 200:
+                logger.error(f"HubSpot ticket update failed: {response.status_code}")
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail=f"HubSpot API error: {response.text[:200]}"
+                )
 
         logger.info(f"Ticket updated for {wallet_address[:10]}...: id={ticket_id}")
         return {
@@ -707,10 +831,20 @@ async def delete_ticket(
     """Delete a ticket from HubSpot"""
     try:
         access_token = await get_hubspot_access_token(wallet_address, db)
-        adapter = HubSpotSync({"access_token": access_token})
 
-        # Delete ticket via adapter
-        await adapter.delete_ticket(ticket_id)
+        # Delete ticket via HubSpot CRM v3 API (direct httpx - adapter deleted Jan 2026)
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.delete(
+                f"https://api.hubapi.com/crm/v3/objects/tickets/{ticket_id}",
+                headers={"Authorization": f"Bearer {access_token}"}
+            )
+
+            if response.status_code != 204:
+                logger.error(f"HubSpot ticket deletion failed: {response.status_code}")
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail=f"HubSpot API error: {response.text[:200]}"
+                )
 
         logger.info(f"Ticket deleted for {wallet_address[:10]}...: id={ticket_id}")
         return {

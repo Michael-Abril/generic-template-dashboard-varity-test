@@ -524,13 +524,22 @@ async def get_onedrive_files(
                     "$select": "id,name,size,createdDateTime,lastModifiedDateTime,webUrl,file,folder,createdBy"
                 }
             )
+
+            # Check for auth errors before raising for status
+            if response.status_code == 401:
+                raise HTTPException(status_code=401, detail="Microsoft token expired. Please reconnect from Marketplace.")
+            if response.status_code == 403:
+                raise HTTPException(status_code=403, detail="Microsoft access denied. Please reconnect with OneDrive permissions.")
+
             response.raise_for_status()
             data = response.json()
             return {"success": True, "files": data.get("value", [])}
 
+    except HTTPException:
+        raise  # Re-raise HTTPExceptions as-is
     except Exception as e:
         logger.error(f"Error fetching OneDrive files: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Failed to fetch OneDrive files. Please try again.")
 
 
 @router.post("/onedrive/upload")

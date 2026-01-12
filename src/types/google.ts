@@ -45,6 +45,7 @@ export interface GmailApiMessage {
   body?: string;
   bodyHtml?: string;
   date?: string;
+  internalDate?: string;  // Gmail API: milliseconds since epoch
   starred?: boolean;
   unread?: boolean;
   hasAttachment?: boolean;

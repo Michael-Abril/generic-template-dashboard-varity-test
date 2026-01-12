@@ -109,6 +109,44 @@ const decodeEmailBody = (payload: EmailPayload | EmailPart | undefined): { text:
   return { text, html };
 };
 
+// Helper to extract header value from Gmail API response
+const getHeader = (payload: EmailPayload | undefined, name: string): string => {
+  if (!payload?.headers) return '';
+  const header = payload.headers.find(h => h.name.toLowerCase() === name.toLowerCase());
+  return header?.value || '';
+};
+
+// Helper to parse Gmail API date (from Date header or internalDate)
+const parseEmailDate = (msg: GmailApiMessage): string => {
+  // Try to get date from Date header
+  const dateHeader = getHeader(msg.payload, 'Date');
+  if (dateHeader) {
+    try {
+      const parsed = new Date(dateHeader);
+      if (!isNaN(parsed.getTime())) {
+        return parsed.toLocaleString();
+      }
+    } catch (e) {
+      // Fall through to internalDate
+    }
+  }
+
+  // Try internalDate (milliseconds since epoch)
+  if (msg.internalDate) {
+    try {
+      const timestamp = parseInt(msg.internalDate, 10);
+      if (!isNaN(timestamp)) {
+        return new Date(timestamp).toLocaleString();
+      }
+    } catch (e) {
+      // Fall through
+    }
+  }
+
+  // Fallback to provided date or empty string (don't show "right now")
+  return msg.date || '';
+};
+
 const LABELS = [
   { id: 'INBOX', label: 'Inbox', icon: Inbox, color: 'text-gray-600' },
   { id: 'STARRED', label: 'Starred', icon: Star, color: 'text-yellow-500' },
@@ -334,10 +372,10 @@ export function GmailInbox({ walletAddress, data }: GmailInboxProps) {
     setApiError(null);
     setHasFetchedOnce(true);
     try {
-      // CRITICAL FIX (Jan 4, 2026): Reduced from 5000 to 20 to prevent Railway OOM crash
-      // Each email requires a separate API call, so 5000 was making 5001 requests
+      // Fetch emails from Gmail API - 100 matches what Home tab shows
+      // Note: Backend batches email fetches to prevent excessive API calls
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/integrations/google/emails?wallet_address=${walletAddress}&max_results=20`
+        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/integrations/google/emails?wallet_address=${walletAddress}&max_results=100`
       );
 
       if (!response.ok) {
@@ -364,16 +402,22 @@ export function GmailInbox({ walletAddress, data }: GmailInboxProps) {
         // Decode email body from payload if present
         const { text, html } = decodeEmailBody(msg.payload);
 
+        // Extract headers from Gmail API response (payload.headers array)
+        const fromHeader = getHeader(msg.payload, 'From') || msg.from || 'Unknown Sender';
+        const toHeader = getHeader(msg.payload, 'To') || msg.to || '';
+        const subjectHeader = getHeader(msg.payload, 'Subject') || msg.subject || '(No Subject)';
+        const emailDate = parseEmailDate(msg);
+
         return {
           id: msg.id || `email-${Math.random().toString(36).substr(2, 9)}`,
           threadId: msg.threadId || msg.id,
-          from: msg.from || 'Unknown Sender',
-          to: msg.to || '',
-          subject: msg.subject || '(No Subject)',
+          from: fromHeader,
+          to: toHeader,
+          subject: subjectHeader,
           snippet: msg.snippet || '',
           body: text || msg.body || msg.snippet || '',
           bodyHtml: html || msg.bodyHtml || '',
-          date: msg.date || new Date().toLocaleString(),
+          date: emailDate || 'No date',
           starred: msg.starred || false,
           unread: msg.unread !== false,  // Default to unread
           hasAttachment: msg.hasAttachment || false,
@@ -391,16 +435,21 @@ export function GmailInbox({ walletAddress, data }: GmailInboxProps) {
       if (data?.messages) {
         const parsedEmails: Email[] = data.messages.map((msg) => {
           const { text, html } = decodeEmailBody(msg.payload);
+          // Extract headers from Gmail API response
+          const fromHeader = getHeader(msg.payload, 'From') || msg.from || 'Unknown Sender';
+          const toHeader = getHeader(msg.payload, 'To') || msg.to || '';
+          const subjectHeader = getHeader(msg.payload, 'Subject') || msg.subject || '(No Subject)';
+          const emailDate = parseEmailDate(msg as GmailApiMessage);
           return {
             id: msg.id || `email-${Math.random().toString(36).substr(2, 9)}`,
             threadId: msg.threadId || msg.id,
-            from: msg.from || 'Unknown Sender',
-            to: msg.to || '',
-            subject: msg.subject || '(No Subject)',
+            from: fromHeader,
+            to: toHeader,
+            subject: subjectHeader,
             snippet: msg.snippet || '',
             body: text || msg.body || msg.snippet || '',
             bodyHtml: html || msg.bodyHtml || '',
-            date: msg.date || new Date().toLocaleString(),
+            date: emailDate || 'No date',
             starred: msg.starred || false,
             unread: msg.unread !== false,
             hasAttachment: msg.hasAttachment || false,

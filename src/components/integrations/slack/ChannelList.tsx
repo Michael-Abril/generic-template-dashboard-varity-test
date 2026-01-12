@@ -59,7 +59,7 @@ export function ChannelList({
                 ) : (
                   <Hash className="h-4 w-4 flex-shrink-0" />
                 )}
-                <span className="truncate">{channel.name}</span>
+                <span className="truncate">{channel.name || 'Unnamed Channel'}</span>
                 {channel.unread && channel.unread > 0 && (
                   <span className="ml-auto bg-white text-purple-900 text-xs rounded px-1.5 py-0.5 font-bold">
                     {channel.unread}
@@ -116,7 +116,7 @@ export function ChannelList({
               >
                 <div className="relative flex-shrink-0">
                   <div className="h-6 w-6 rounded bg-purple-600 flex items-center justify-center text-white text-xs font-bold">
-                    {dm.name[0].toUpperCase()}
+                    {(dm.name || 'U')[0].toUpperCase()}
                   </div>
                   {dm.online && (
                     <Circle
@@ -125,7 +125,7 @@ export function ChannelList({
                   )}
                 </div>
                 <div className="flex-1 truncate text-left">
-                  <div className="truncate">{dm.name}</div>
+                  <div className="truncate">{dm.name || 'Unknown User'}</div>
                   {dm.status_text && (
                     <div className="text-xs text-purple-300 truncate">
                       {dm.status_text}

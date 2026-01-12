@@ -646,7 +646,7 @@ export default function IntegrationToolPage() {
     // Transform data into format expected by SlackPage
     // MCP data fetcher returns data with routing: channels=live, messages=hybrid, users=rag
     // SlackWorkspaceData expects: { workspace?, channels?, users?, messages? }
-    const slackData = data.reduce((acc, item) => {
+    const slackData = (data || []).reduce((acc, item) => {
       // Extract records from the data structure
       const records = item.data?.records ?? item.data;
       acc[item.data_type] = {
