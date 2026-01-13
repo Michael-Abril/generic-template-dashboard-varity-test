@@ -20,8 +20,8 @@ export interface SlackChannel {
   type: 'channel' | 'dm';
   is_private?: boolean;
   is_member?: boolean;
-  topic?: string;
-  purpose?: string;
+  topic?: string | { value?: string; creator?: string; last_set?: number };
+  purpose?: string | { value?: string; creator?: string; last_set?: number };
   unread?: number;
   member_count?: number;
   created?: number;

@@ -314,7 +314,11 @@ export function SlackPage({ walletAddress }: SlackPageProps) {
                 <div>
                   <h2 className="font-bold text-lg">{selectedChannel.name}</h2>
                   {selectedChannel.topic && (
-                    <p className="text-xs text-gray-600">{selectedChannel.topic}</p>
+                    <p className="text-xs text-gray-600">
+                      {typeof selectedChannel.topic === 'string'
+                        ? selectedChannel.topic
+                        : selectedChannel.topic?.value || ''}
+                    </p>
                   )}
                 </div>
               </div>

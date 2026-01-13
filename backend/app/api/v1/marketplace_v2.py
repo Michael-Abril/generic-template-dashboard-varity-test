@@ -835,7 +835,7 @@ def _get_default_scopes(slug: str) -> List[str]:
         'quickbooks': ['com.intuit.quickbooks.accounting', 'com.intuit.quickbooks.payment'],
         'salesforce': ['api', 'refresh_token', 'offline_access'],
         'shopify': ['read_products', 'write_products', 'read_orders', 'write_orders'],
-        'slack': ['channels:read', 'chat:write', 'users:read'],
+        'slack': ['channels:read', 'channels:history', 'groups:read', 'groups:history', 'files:read', 'chat:write', 'users:read'],
         'monday': ['boards:read', 'boards:write', 'users:read'],
         'stripe': ['read_write'],
         'hubspot': ['crm.objects.contacts.read', 'crm.objects.contacts.write'],

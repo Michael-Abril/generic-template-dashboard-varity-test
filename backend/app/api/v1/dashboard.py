@@ -533,13 +533,15 @@ async def get_kpi_data(
 
 def process_qb_revenue(invoices: List[Dict]) -> tuple[str, str]:
     """Calculate total revenue from paid QuickBooks invoices."""
-    total = sum(float(inv.get("total_amount", 0)) for inv in invoices if inv.get("status") == "paid")
+    # QuickBooks uses TotalAmt (not total_amount) and Balance == 0 for paid invoices
+    total = sum(float(inv.get("TotalAmt", 0)) for inv in invoices if float(inv.get("Balance", 0)) == 0)
     return f"${total:,.2f}", "neutral"
 
 
 def process_qb_unpaid(invoices: List[Dict]) -> tuple[str, str]:
     """Calculate unpaid invoices from QuickBooks."""
-    unpaid = sum(float(inv.get("balance", 0)) for inv in invoices if inv.get("status") == "outstanding")
+    # QuickBooks uses Balance field directly (Balance > 0 means unpaid)
+    unpaid = sum(float(inv.get("Balance", 0)) for inv in invoices if float(inv.get("Balance", 0)) > 0)
     return f"${unpaid:,.2f}", "neutral"
 
 
@@ -558,7 +560,11 @@ def process_unread_emails(messages: List[Dict]) -> tuple[str, str, str, bool]:
 
 
 def process_generic_count(data: List[Dict]) -> tuple[str, str]:
-    """Generic count processor."""
+    """Generic count processor with deduplication by ID."""
+    if data and isinstance(data, list) and len(data) > 0 and isinstance(data[0], dict) and 'id' in data[0]:
+        # Deduplicate by ID to handle chunked data
+        unique_ids = {item.get('id') for item in data if item.get('id')}
+        return str(len(unique_ids)), "neutral"
     return str(len(data)), "neutral"
 
 
@@ -958,9 +964,10 @@ async def get_revenue_trend(
             # Group invoices by month
             monthly_revenue = {}
             for invoice in qb_invoices:
-                if invoice.get("status") == "paid" and invoice.get("txn_date"):
-                    month_key = invoice["txn_date"][:7]  # YYYY-MM
-                    monthly_revenue[month_key] = monthly_revenue.get(month_key, 0) + float(invoice.get("total_amount", 0))
+                # QuickBooks uses Balance == 0 for paid invoices, TxnDate for date, TotalAmt for amount
+                if float(invoice.get("Balance", 0)) == 0 and invoice.get("TxnDate"):
+                    month_key = invoice["TxnDate"][:7]  # YYYY-MM
+                    monthly_revenue[month_key] = monthly_revenue.get(month_key, 0) + float(invoice.get("TotalAmt", 0))
 
             # Generate last 6 months
             current_date = datetime.utcnow()
@@ -1023,13 +1030,17 @@ async def get_recent_activity(
             qb_invoices = qb_result.get("data", [])
 
             for invoice in qb_invoices[:5]:
+                # QuickBooks uses DocNumber, CustomerRef.name, TotalAmt, TxnDate
+                customer_ref = invoice.get("CustomerRef", {})
+                customer_name = customer_ref.get("name", "Unknown") if isinstance(customer_ref, dict) else invoice.get("customer_name", "Unknown")
+
                 activities.append(ActivityItem(
-                    id=f"qb-invoice-{invoice.get('id')}",
+                    id=f"qb-invoice-{invoice.get('Id', invoice.get('id'))}",
                     type="invoice",
-                    title=f"Invoice #{invoice.get('doc_number')}",
-                    description=f"New invoice for {invoice.get('customer_name')}",
-                    amount=float(invoice.get('total_amount', 0)),
-                    timestamp=invoice.get('txn_date', datetime.utcnow().isoformat()),
+                    title=f"Invoice #{invoice.get('DocNumber', invoice.get('doc_number', 'N/A'))}",
+                    description=f"New invoice for {customer_name}",
+                    amount=float(invoice.get('TotalAmt', 0)),
+                    timestamp=invoice.get('TxnDate', invoice.get('txn_date', datetime.utcnow().isoformat())),
                     source="QuickBooks"
                 ))
 
@@ -1252,11 +1263,13 @@ async def get_top_customers(
             if qb_invoices:
                 data_source = "QuickBooks"
 
-                # Aggregate revenue by customer
+                # Aggregate revenue by customer - QuickBooks uses Balance == 0 for paid, TotalAmt for amount
                 for invoice in qb_invoices:
-                    if invoice.get("status") == "paid":
-                        customer_name = invoice.get("customer_name", "Unknown")
-                        amount = float(invoice.get("total_amount", 0))
+                    if float(invoice.get("Balance", 0)) == 0:
+                        # QuickBooks uses CustomerRef.name for customer name
+                        customer_ref = invoice.get("CustomerRef", {})
+                        customer_name = customer_ref.get("name", "Unknown") if isinstance(customer_ref, dict) else invoice.get("customer_name", "Unknown")
+                        amount = float(invoice.get("TotalAmt", 0))
                         customer_revenue[customer_name] = customer_revenue.get(customer_name, 0) + amount
 
         except Exception as e:
@@ -1383,21 +1396,21 @@ async def get_dashboard_analytics(
 
             if qb_data:
                 analytics_data["data_sources"].append("QuickBooks")
-                # Calculate revenue metrics
+                # Calculate revenue metrics - QuickBooks uses TotalAmt and Balance == 0 for paid
                 period_revenue = sum(
-                    float(inv.get('total_amount', 0))
+                    float(inv.get('TotalAmt', 0))
                     for inv in qb_data
-                    if start <= datetime.fromisoformat(inv.get('txn_date', now.isoformat())) <= end
+                    if float(inv.get('Balance', 0)) == 0 and start <= datetime.fromisoformat(inv.get('TxnDate', now.isoformat())) <= end
                 )
                 analytics_data["metrics"]["revenue"] = period_revenue
 
                 # Calculate monthly breakdown for chart
                 monthly_revenue = {}
                 for inv in qb_data:
-                    inv_date = datetime.fromisoformat(inv.get('txn_date', now.isoformat()))
-                    if start <= inv_date <= end:
+                    inv_date = datetime.fromisoformat(inv.get('TxnDate', now.isoformat()))
+                    if float(inv.get('Balance', 0)) == 0 and start <= inv_date <= end:
                         month_key = inv_date.strftime("%Y-%m")
-                        monthly_revenue[month_key] = monthly_revenue.get(month_key, 0) + float(inv.get('total_amount', 0))
+                        monthly_revenue[month_key] = monthly_revenue.get(month_key, 0) + float(inv.get('TotalAmt', 0))
 
                 analytics_data["charts"]["revenue_trend"] = [
                     {"month": month, "value": value}

@@ -306,15 +306,16 @@ export function AIChat() {
   useEffect(() => {
     if (!address) return;
 
-    fetch(`${API_BASE_URL}/api/v1/marketplace/my-integrations?wallet_address=${address}`)
+    fetch(`${API_BASE_URL}/api/v1/integrations/installed?wallet_address=${address}`)
       .then(res => {
         if (!res.ok) throw new Error(`Failed to fetch integrations: ${res.status}`);
         return res.json();
       })
-      .then((data: Array<{ product_name: string; is_purchased: boolean }>) => {
-        const toolNames = data
-          .filter((integration) => integration.is_purchased)
-          .map((integration) => integration.product_name);
+      .then((data: { integrations: Array<{ name: string; connected: boolean; is_active?: boolean }> }) => {
+        // Filter for connected/active integrations
+        const toolNames = (data.integrations || [])
+          .filter((integration) => integration.connected || integration.is_active)
+          .map((integration) => integration.name);
         setInstalledTools(toolNames);
       })
       .catch(error => {

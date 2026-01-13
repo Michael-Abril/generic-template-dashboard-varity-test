@@ -94,7 +94,7 @@ class OAuthIntegrationService:
                 'client_secret': os.getenv('SLACK_CLIENT_SECRET', ''),
                 'authorize_url': 'https://slack.com/oauth/v2/authorize',
                 'token_url': 'https://slack.com/api/oauth.v2.access',
-                'scope': 'channels:read,chat:write,users:read',
+                'scope': 'channels:read,channels:history,groups:read,groups:history,files:read,chat:write,users:read',
                 'redirect_uri': os.getenv('OAUTH_REDIRECT_URI', 'http://localhost:3000/oauth/callback')
             },
             'zendesk': {

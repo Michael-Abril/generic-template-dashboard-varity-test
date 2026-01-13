@@ -259,7 +259,7 @@ export function IntegrationHealthCards({ walletAddress, className = '' }: Integr
           return (
             <Link
               key={integration.id}
-              href={`/dashboard/tools/${integration.provider}`}
+              href={`/dashboard/tools/${integration.provider.toLowerCase()}`}
               className={`flex items-center gap-3 p-3 -mx-1 rounded-lg border ${config.borderColor} ${config.bgColor} hover:shadow-sm transition-all`}
             >
               {/* Integration icon */}
