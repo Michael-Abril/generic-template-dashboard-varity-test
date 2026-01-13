@@ -17,6 +17,7 @@ export function Layout({ children }: LayoutProps) {
   const { authenticated } = usePrivy();
   const { address } = useWalletSync();
   const [installedTools, setInstalledTools] = useState<string[]>([]);
+  const [isLoadingTools, setIsLoadingTools] = useState(true);
 
   // Command palette state
   const commandPalette = useCommandPalette();
@@ -31,8 +32,10 @@ export function Layout({ children }: LayoutProps) {
   const loadInstalledTools = useCallback(async () => {
     if (!authenticated || !address) {
       setInstalledTools([]);
+      setIsLoadingTools(false);
       return;
     }
+    setIsLoadingTools(true);
     try {
       const apiBase = process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
       const res = await fetch(
@@ -40,16 +43,23 @@ export function Layout({ children }: LayoutProps) {
       );
       if (!res.ok) {
         setInstalledTools([]);
+        setIsLoadingTools(false);
         return;
       }
       const data = await res.json();
       // Extract tool names from connected OAuth integrations
+      // IMPORTANT: Filter by both connected=true AND needs_reauth=false
+      // Backend sets needs_reauth=true when token is expired (e.g., Microsoft invalid_grant)
       const tools = (data.integrations || [])
-        .filter((integration: { connected: boolean }) => integration.connected)
+        .filter((integration: { connected: boolean; needs_reauth?: boolean }) => {
+          return integration.connected && !integration.needs_reauth;
+        })
         .map((integration: { name: string }) => integration.name);
       setInstalledTools(tools);
     } catch {
       setInstalledTools([]);
+    } finally {
+      setIsLoadingTools(false);
     }
   }, [authenticated, address]);
 
@@ -107,7 +117,7 @@ export function Layout({ children }: LayoutProps) {
       </a>
 
       <div className="h-screen bg-gray-50 overflow-hidden flex flex-col">
-        <Sidebar installedTools={installedTools} />
+        <Sidebar installedTools={installedTools} isLoadingTools={isLoadingTools} />
 
         {/* Top Bar */}
         <header className="lg:ml-64 h-14 bg-white border-b border-gray-200 flex items-center justify-between px-4 lg:px-6 flex-shrink-0">

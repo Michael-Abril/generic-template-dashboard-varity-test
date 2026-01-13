@@ -208,7 +208,7 @@ export function TasksWidget({ walletAddress }: TasksWidgetProps) {
     setSelectedTask(null);
   };
 
-  // Filter tasks for display
+  // Filter tasks for display with deduplication by task ID
   const uncompletedTasks = tasks.filter((t) => !t.is_completed);
   const completedTasks = tasks.filter((t) => t.is_completed);
   const todayTasks = uncompletedTasks.filter(isTaskDueToday);
@@ -218,7 +218,13 @@ export function TasksWidget({ walletAddress }: TasksWidgetProps) {
   // Combine for display (max 4 items total: 3 uncompleted + 1 completed)
   const displayUncompletedTasks = [...overdueTasks, ...todayTasks, ...upcomingTasks].slice(0, 3);
   const displayCompletedTasks = completedTasks.slice(0, 1);
-  const displayTasks = [...displayUncompletedTasks, ...displayCompletedTasks];
+  // Deduplicate by task ID (in case same task appears in multiple categories)
+  const seenIds = new Set<number>();
+  const displayTasks = [...displayUncompletedTasks, ...displayCompletedTasks].filter(task => {
+    if (seenIds.has(task.id)) return false;
+    seenIds.add(task.id);
+    return true;
+  });
 
   const getPriorityDot = (priority: TaskPriority) => {
     const config = TASK_PRIORITIES[priority];

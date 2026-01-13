@@ -177,8 +177,12 @@ export default function MarketplaceContent() {
         }
         const data = await res.json();
         // Get the actual connected integrations for count
+        // IMPORTANT: Filter by both connected=true AND needs_reauth=false
+        // Backend sets needs_reauth=true when token is expired (e.g., Microsoft invalid_grant)
         const connectedIntegrations = (data.integrations || [])
-          .filter((integration: { connected: boolean }) => integration.connected);
+          .filter((integration: { connected: boolean; needs_reauth?: boolean }) => {
+            return integration.connected && !integration.needs_reauth;
+          });
 
         // Set the actual count (number of unique integrations)
         setConnectedIntegrationCount(connectedIntegrations.length);

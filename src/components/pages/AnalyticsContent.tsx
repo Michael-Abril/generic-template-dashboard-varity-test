@@ -525,19 +525,33 @@ export default function AnalyticsContent() {
   const renderWidget = useCallback((widget: Widget) => {
     switch (widget.type) {
       case 'chart':
-        if (widget.chart) {
+        if (widget.chart && widget.chart.data && widget.chart.data.length > 0) {
           return <DynamicChart chart={widget.chart} />;
         }
-        return <div className="flex items-center justify-center h-full text-gray-500">No chart data</div>;
+        // Show a meaningful empty state with suggestion
+        return (
+          <div className="flex flex-col items-center justify-center h-full text-gray-500 p-6">
+            <div className="text-center">
+              <p className="font-medium text-gray-700 mb-2">No data available</p>
+              <p className="text-sm text-gray-500">
+                {connectedIntegrations.length === 0
+                  ? "Connect integrations to see real-time data"
+                  : "This chart will populate when data is available"}
+              </p>
+            </div>
+          </div>
+        );
 
       case 'kpi':
       case 'metric': {
         // Use real metrics from analyticsData when available
         const realMetrics = analyticsData?.metrics as Record<string, number> | undefined;
         const kpiData = generateSampleKPIData(widget.subtype, realMetrics);
+        // Only show demo data badge if we have NO integrations connected
+        const showDemoDataBadge = !kpiData.isRealData && connectedIntegrations.length === 0;
         return (
           <div className="relative h-full">
-            {!kpiData.isRealData && (
+            {showDemoDataBadge && (
               <div className="absolute top-1 right-1 px-1.5 py-0.5 bg-amber-100 text-amber-700 text-[10px] font-medium rounded z-10">
                 Demo Data
               </div>
@@ -556,11 +570,15 @@ export default function AnalyticsContent() {
 
       case 'table': {
         const tableData = generateSampleTableData();
+        // Only show demo data badge if we have NO integrations connected
+        const showDemoDataBadge = connectedIntegrations.length === 0;
         return (
           <div className="relative h-full">
-            <div className="absolute top-1 right-1 px-1.5 py-0.5 bg-amber-100 text-amber-700 text-[10px] font-medium rounded z-10">
-              Demo Data
-            </div>
+            {showDemoDataBadge && (
+              <div className="absolute top-1 right-1 px-1.5 py-0.5 bg-amber-100 text-amber-700 text-[10px] font-medium rounded z-10">
+                Demo Data
+              </div>
+            )}
             <DataTableWidget
               title={widget.title}
               columns={tableData.columns}
@@ -573,11 +591,15 @@ export default function AnalyticsContent() {
 
       case 'list': {
         const listData = generateSampleListData(widget.subtype);
+        // Only show demo data badge if we have NO integrations connected
+        const showDemoDataBadge = connectedIntegrations.length === 0;
         return (
           <div className="relative h-full">
-            <div className="absolute top-1 right-1 px-1.5 py-0.5 bg-amber-100 text-amber-700 text-[10px] font-medium rounded z-10">
-              Demo Data
-            </div>
+            {showDemoDataBadge && (
+              <div className="absolute top-1 right-1 px-1.5 py-0.5 bg-amber-100 text-amber-700 text-[10px] font-medium rounded z-10">
+                Demo Data
+              </div>
+            )}
             <ListWidget
               title={widget.title}
               items={listData}
@@ -614,7 +636,7 @@ export default function AnalyticsContent() {
       default:
         return <div className="flex items-center justify-center h-full text-gray-500">Unknown widget type</div>;
     }
-  }, [activeTabId, analyticsData]);
+  }, [activeTabId, analyticsData, connectedIntegrations]);
 
   // Show loading while checking authentication
   if (!authenticated) {

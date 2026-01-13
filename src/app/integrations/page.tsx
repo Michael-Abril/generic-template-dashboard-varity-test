@@ -106,26 +106,33 @@ function IntegrationsContent() {
         const data = await response.json();
 
         // Transform backend response to our format
-        const connected: ConnectedIntegration[] = (data.integrations || data || []).map((item: any) => {
-          // Backend returns 'slug' as the provider key (e.g., 'slack', 'google')
-          const providerKey = item.slug?.toLowerCase() || item.provider?.toLowerCase() || item.name?.toLowerCase() || '';
-          const info = PROVIDER_INFO[providerKey] || {
-            name: item.name || item.provider || 'Unknown',
-            category: 'Other',
-            dataTypes: []
-          };
+        // IMPORTANT: Filter out integrations that need reauth (expired tokens)
+        const connected: ConnectedIntegration[] = (data.integrations || data || [])
+          .filter((item: any) => {
+            // Only show integrations that don't need reauth
+            // Backend sets needs_reauth=true when token is expired (invalid_grant)
+            return !item.needs_reauth && item.connected !== false;
+          })
+          .map((item: any) => {
+            // Backend returns 'slug' as the provider key (e.g., 'slack', 'google')
+            const providerKey = item.slug?.toLowerCase() || item.provider?.toLowerCase() || item.name?.toLowerCase() || '';
+            const info = PROVIDER_INFO[providerKey] || {
+              name: item.name || item.provider || 'Unknown',
+              category: 'Other',
+              dataTypes: []
+            };
 
-          return {
-            provider: providerKey,
-            name: info.name,
-            logo: providerKey,
-            category: info.category,
-            connected_at: item.connected_at || item.stored_at || new Date().toISOString(),
-            last_sync: item.last_sync || item.stored_at,
-            data_synced: item.data_synced || false,
-            credential_cid: item.credential_cid,
-          };
-        });
+            return {
+              provider: providerKey,
+              name: info.name,
+              logo: providerKey,
+              category: info.category,
+              connected_at: item.connected_at || item.stored_at || new Date().toISOString(),
+              last_sync: item.last_sync || item.stored_at,
+              data_synced: item.data_synced || false,
+              credential_cid: item.credential_cid,
+            };
+          });
 
         setIntegrations(connected);
       } catch (error) {

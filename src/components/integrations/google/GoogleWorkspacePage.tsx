@@ -273,24 +273,38 @@ export function GoogleWorkspacePage({
         </div>
         {data?.gmail?.messages && data.gmail.messages.length > 0 ? (
           <div className="divide-y divide-gray-100">
-            {data.gmail.messages.slice(0, 5).map((message, index: number) => (
-              <div
-                key={index}
-                className="p-4 hover:bg-blue-50 cursor-pointer transition-colors"
-                onClick={() => setActiveTab('gmail')}
-              >
-                <div className="flex items-start gap-3">
-                  <div className="p-2 bg-red-100 rounded-lg">
-                    <Mail className="h-4 w-4 text-red-600" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-gray-900 truncate">{message.subject || 'No Subject'}</p>
-                    <p className="text-sm text-gray-700 truncate">{message.from}</p>
-                    <p className="text-xs text-gray-500 mt-1 font-medium">{message.date}</p>
+            {data.gmail.messages.slice(0, 5).map((message, index: number) => {
+              // Extract subject from Gmail API payload.headers array
+              const getSubject = () => {
+                if (message.subject) return message.subject;
+                if (message.payload?.headers) {
+                  const subjectHeader = message.payload.headers.find(
+                    (h: { name: string; value: string }) => h.name.toLowerCase() === 'subject'
+                  );
+                  return subjectHeader?.value || 'No Subject';
+                }
+                return 'No Subject';
+              };
+
+              return (
+                <div
+                  key={index}
+                  className="p-4 hover:bg-blue-50 cursor-pointer transition-colors"
+                  onClick={() => setActiveTab('gmail')}
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="p-2 bg-red-100 rounded-lg">
+                      <Mail className="h-4 w-4 text-red-600" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-gray-900 truncate">{getSubject()}</p>
+                      <p className="text-sm text-gray-700 truncate">{message.from}</p>
+                      <p className="text-xs text-gray-500 mt-1 font-medium">{message.date}</p>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         ) : (
           <div className="p-8 text-center">

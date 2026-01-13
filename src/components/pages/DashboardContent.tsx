@@ -25,9 +25,10 @@ import { getIntegrationIcon } from '@/components/ui/IntegrationIcons';
 import { FeedbackNotification } from '@/components/feedback';
 import { TasksWidget } from '@/components/planning';
 import { AIInsightWidget, IntegrationHealthCards, EnhancedKPICard, DashboardQuickActions } from '@/components/dashboard';
+import { useDataFreshness } from '@/components/ui/DataFreshnessIndicator';
 
 // Default KPIs matching requirements: Revenue MTD, Cash Flow, Open Tasks, Unread Emails
-const getDefaultKPIs = () => [
+const getDefaultKPIs = (openTasksCount?: number) => [
   {
     id: 'revenue-mtd',
     title: 'Revenue MTD',
@@ -53,7 +54,7 @@ const getDefaultKPIs = () => [
   {
     id: 'open-tasks',
     title: 'Open Tasks',
-    value: '0',
+    value: openTasksCount !== undefined ? String(openTasksCount) : '0',
     change: { value: 0, period: '0 overdue' },
     icon: '✅',
     source: 'Varity Tasks',
@@ -80,9 +81,13 @@ export default function DashboardContent() {
   const address = walletSync?.address ?? null;
   const router = useRouter();
 
+  // Use global data freshness state to avoid sync status contradiction
+  const { updateLastSyncTime } = useDataFreshness(address);
+
   // State management for dashboard data
   const [kpisData, setKpisData] = useState<KPIResponse | null>(null);
   const [recentActivityData, setRecentActivityData] = useState<RecentActivityResponse | null>(null);
+  const [openTasksCount, setOpenTasksCount] = useState<number>(0);
 
   // User settings for feedback notifications
   const [userSettings, setUserSettings] = useState<{
@@ -124,6 +129,7 @@ export default function DashboardContent() {
     fetchKPIs();
     fetchRecentActivity();
     fetchUserSettings();
+    fetchTaskCount();
   };
 
   const fetchKPIs = async () => {
@@ -133,7 +139,10 @@ export default function DashboardContent() {
     try {
       const data = await getKPIs(address);
       setKpisData(data);
-      setLastUpdated(new Date());
+      const now = new Date();
+      setLastUpdated(now);
+      // Update global sync time to sync with header banner
+      updateLastSyncTime(now);
     } catch (error) {
       logger.error('Error fetching KPIs:', error);
       setKpisError('Unable to load KPIs. Please try again.');
@@ -168,6 +177,22 @@ export default function DashboardContent() {
       }
     } catch (error) {
       logger.error('Error fetching user settings:', error);
+    }
+  };
+
+  const fetchTaskCount = async () => {
+    if (!address) return;
+    try {
+      const apiBase = process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
+      const res = await fetch(`${apiBase}/api/v1/planning/tasks?wallet_address=${address}`);
+      if (res.ok) {
+        const data = await res.json();
+        // Calculate open (uncompleted) tasks count
+        const openCount = (data.total_count || 0) - (data.completed_count || 0);
+        setOpenTasksCount(openCount);
+      }
+    } catch (error) {
+      logger.error('Error fetching task count:', error);
     }
   };
 
@@ -367,7 +392,7 @@ export default function DashboardContent() {
                 </>
               ) : kpisData && kpisData.kpis && kpisData.kpis.length > 0 ? (
                 // Show exactly 4 KPIs - use first 4 from backend or pad with placeholders
-                [...kpisData.kpis.slice(0, 4), ...getDefaultKPIs()].slice(0, 4).map((kpi, index) => {
+                [...kpisData.kpis.slice(0, 4), ...getDefaultKPIs(openTasksCount)].slice(0, 4).map((kpi, index) => {
                   // Only show sparklines for Revenue MTD (index 0) and Cash Flow (index 1)
                   const shouldShowSparkline = kpi.id === 'revenue-mtd' || kpi.id === 'cash-flow' || index < 2;
                   return (
@@ -389,7 +414,7 @@ export default function DashboardContent() {
                 })
               ) : (
                 // Show default KPIs when no data
-                getDefaultKPIs().map((kpi, index) => {
+                getDefaultKPIs(openTasksCount).map((kpi, index) => {
                   // Only show sparklines for Revenue MTD (index 0) and Cash Flow (index 1)
                   const shouldShowSparkline = index < 2;
                   return (

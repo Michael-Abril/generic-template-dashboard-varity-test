@@ -25,6 +25,7 @@ import {
 
 interface SidebarProps {
   installedTools?: string[];
+  isLoadingTools?: boolean;
 }
 
 // Tool icons mapping using Lucide components
@@ -42,7 +43,7 @@ const toolIconComponents: Record<string, React.ComponentType<{ className?: strin
   'Google Workspace': Cloud,
 };
 
-export function Sidebar({ installedTools = [] }: SidebarProps) {
+export function Sidebar({ installedTools = [], isLoadingTools = false }: SidebarProps) {
   const pathname = usePathname();
   const { user, logout } = usePrivy();
   const [isMobileOpen, setIsMobileOpen] = useState(false);
@@ -193,7 +194,11 @@ export function Sidebar({ installedTools = [] }: SidebarProps) {
             </Link>
 
             {/* Connected Tools */}
-            {installedTools.length > 0 ? (
+            {isLoadingTools ? (
+              <div className="px-3 py-2 text-sm text-gray-400">
+                Loading integrations...
+              </div>
+            ) : installedTools.length > 0 ? (
               <>
                 {installedTools.map((tool) => {
                   const ToolIcon = toolIconComponents[tool] || Wrench;
