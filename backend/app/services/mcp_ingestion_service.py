@@ -37,7 +37,9 @@ class DataDestination(Enum):
 # Data routing rules per integration
 DATA_ROUTING_RULES: Dict[str, Dict[str, DataDestination]] = {
     "google": {
-        "drive_files": DataDestination.RAG_STORAGE,
+        # CRITICAL FIX (Jan 15, 2026): Use "drive" to match GoogleWorkspaceSync.fetch_data()
+        # "drive_files" was causing ValueError in adapter
+        "drive": DataDestination.RAG_STORAGE,
         "contacts": DataDestination.RAG_STORAGE,
         "gmail": DataDestination.LIVE_API,
         "calendar": DataDestination.LIVE_API,

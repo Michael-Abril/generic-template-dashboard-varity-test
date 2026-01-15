@@ -276,7 +276,9 @@ async def fetch_google_data(
             return {"error": "Failed to connect to Google MCP"}
 
         tool_map = {
-            "drive_files": ("google_drive_list_files", {}),
+            # Support both "drive" and "drive_files" for compatibility
+            "drive": ("google_drive_list_files", {}),
+            "drive_files": ("google_drive_list_files", {}),  # Legacy alias
             "contacts": ("google_contacts_list", {}),
             "gmail": ("google_gmail_list_messages", {"max_results": 50}),
             "calendar": ("google_calendar_list_events", {"max_results": 50}),
