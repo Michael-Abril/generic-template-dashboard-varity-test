@@ -116,122 +116,7 @@ async def retrieve_oauth_credentials(wallet_address: str, integration: str) -> d
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# =============================================================================
-# DEPRECATED: sync_job_worker - No longer used as of January 4, 2026
-# The /trigger endpoint now uses MCP pipeline directly (sync_integration_data).
-# Keeping for backwards compatibility but this function is no longer called.
-# =============================================================================
-async def sync_job_worker(
-    job_id: str,
-    integration: str,
-    wallet_address: str,
-    credentials: dict,
-    data_types: Optional[List[str]] = None
-):
-    """
-    DEPRECATED: Background worker for syncing data from external integration.
-
-    NOTE: This function is NO LONGER CALLED. The /trigger endpoint now uses
-    the MCP pipeline via mcp_service.sync_integration_data() which handles:
-    - MCP server data fetching
-    - Encryption with wallet key
-    - Routing (RAG/Live/Hybrid)
-    - L3 batch commits
-
-    Args:
-        job_id: Unique job ID
-        integration: Integration name
-        wallet_address: User's wallet address
-        credentials: OAuth credentials
-        data_types: Specific data types to sync
-    """
-    try:
-        # Update job status
-        sync_jobs[job_id]["status"] = "running"
-
-        # LEGACY CODE: Adapter classes deleted January 5, 2026
-        # This entire function is deprecated and never called
-        raise Exception(f"sync_job_worker is deprecated - use MCP pipeline via mcp_ingestion_service")
-
-        # Sync data
-        synced_data = {}
-
-        if not data_types:
-            # Sync all data types for this integration
-            data_types = adapter.get_data_types()
-
-        total_types = len(data_types)
-
-        for idx, data_type in enumerate(data_types):
-            try:
-                logger.info(f"Syncing {data_type} for {integration}")
-
-                # Fetch data from external API
-                data = await adapter.fetch_data(data_type)
-
-                # Transform to common schema
-                transformed_data = adapter.transform_data(data_type, data)
-
-                # Generate embeddings for RAG
-                embeddings = await adapter.generate_embeddings(transformed_data)
-
-                # Encrypt data
-                encrypted_data = await encryption_service.encrypt_for_customer(
-                    data={
-                        "data": transformed_data,
-                        "embeddings": embeddings,
-                        "synced_at": datetime.utcnow().isoformat()
-                    },
-                    customer_wallet=wallet_address,
-                    additional_metadata={
-                        "integration": integration,
-                        "data_type": data_type
-                    }
-                )
-
-                # Upload to Filecoin
-                cid = await filecoin_service.upload_encrypted_data(
-                    customer_wallet=wallet_address,
-                    integration=integration,
-                    data_type=data_type,
-                    encrypted_data=encrypted_data,
-                    metadata={
-                        "integration": integration,
-                        "data_type": data_type,
-                        "record_count": len(transformed_data) if isinstance(transformed_data, list) else 1
-                    }
-                )
-
-                synced_data[data_type] = {
-                    "cid": cid,
-                    "count": len(transformed_data) if isinstance(transformed_data, list) else 1
-                }
-
-                # Update progress
-                sync_jobs[job_id]["progress"] = idx + 1
-                sync_jobs[job_id]["total"] = total_types
-
-                logger.info(
-                    f"Synced {data_type} for {integration}, "
-                    f"CID: {cid}, count: {synced_data[data_type]['count']}"
-                )
-
-            except Exception as e:
-                logger.error(f"Failed to sync {data_type}: {e}")
-                synced_data[data_type] = {"error": str(e)}
-
-        # Update job as completed
-        sync_jobs[job_id]["status"] = "completed"
-        sync_jobs[job_id]["completed_at"] = datetime.utcnow().isoformat()
-        sync_jobs[job_id]["synced_data"] = synced_data
-
-        logger.info(f"Sync job {job_id} completed successfully")
-
-    except Exception as e:
-        logger.error(f"Sync job {job_id} failed: {e}")
-        sync_jobs[job_id]["status"] = "failed"
-        sync_jobs[job_id]["error"] = str(e)
-        sync_jobs[job_id]["completed_at"] = datetime.utcnow().isoformat()
+# sync_job_worker() was deleted January 12, 2026 - replaced by MCP pipeline
 
 
 # ============================================================================
@@ -535,7 +420,7 @@ async def sync_via_mcp(
         )
 
     try:
-        # Retrieve OAuth token
+        # Retrieve OAuth credentials (includes access_token, realm_id, instance_url, etc.)
         credentials = await retrieve_oauth_credentials(
             request.wallet_address,
             integration
@@ -548,6 +433,22 @@ async def sync_via_mcp(
                 detail=f"No valid OAuth token for {integration}. Please reconnect."
             )
 
+        # Extract integration-specific params from stored credentials
+        # These are needed for direct API fallback (when MCP packages don't exist)
+        extra_params = {}
+        if integration == "quickbooks":
+            realm_id = credentials.get("realm_id") or credentials.get("realmId")
+            if realm_id:
+                extra_params["realm_id"] = realm_id
+        elif integration == "salesforce":
+            instance_url = credentials.get("instance_url")
+            if instance_url:
+                extra_params["instance_url"] = instance_url
+
+        # Merge with request extra_params (request takes precedence)
+        if request.extra_params:
+            extra_params.update(request.extra_params)
+
         # Get MCP ingestion service
         mcp_service = get_mcp_ingestion_service()
 
@@ -557,6 +458,7 @@ async def sync_via_mcp(
             wallet_address=request.wallet_address,
             oauth_token=oauth_token,
             data_types=request.data_types,
+            extra_params=extra_params if extra_params else None,
         )
 
         logger.info(

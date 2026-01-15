@@ -107,6 +107,7 @@ class MCPIngestionService:
         wallet_address: str,
         oauth_token: str,
         data_types: Optional[List[str]] = None,
+        extra_params: Optional[Dict[str, str]] = None,
     ) -> Dict[str, Any]:
         """
         Full sync pipeline: MCP fetch -> Encrypt -> Route -> L3 commit
@@ -116,6 +117,7 @@ class MCPIngestionService:
             wallet_address: User's wallet address
             oauth_token: OAuth token for integration
             data_types: Optional list of specific data types to sync
+            extra_params: Integration-specific params (realm_id for QB, instance_url for SF)
 
         Returns:
             Sync results for each data type
@@ -123,6 +125,7 @@ class MCPIngestionService:
         results = {}
         routing_rules = DATA_ROUTING_RULES.get(integration, {})
         types_to_sync = data_types or list(routing_rules.keys())
+        self._extra_params = extra_params or {}  # Store for use in fetch methods
 
         logger.info(
             f"Starting MCP sync for {integration} "
@@ -133,13 +136,25 @@ class MCPIngestionService:
             destination = routing_rules.get(data_type, DataDestination.RAG_STORAGE)
 
             try:
-                # 1. Fetch via MCP
+                # 1. Fetch via MCP (or direct API fallback)
                 raw_data = await self._fetch_via_mcp(
-                    integration, data_type, oauth_token
+                    integration, data_type, oauth_token, self._extra_params
                 )
 
                 if not raw_data:
                     results[data_type] = {"status": "empty", "count": 0}
+                    continue
+
+                # Check if fetch returned an error (don't store error objects in RAG)
+                if isinstance(raw_data, dict) and "error" in raw_data:
+                    logger.warning(
+                        f"Fetch error for {integration}/{data_type}: {raw_data.get('error')}"
+                    )
+                    results[data_type] = {
+                        "status": "fetch_error",
+                        "error": raw_data.get("error"),
+                        "source": raw_data.get("source", "unknown"),
+                    }
                     continue
 
                 # 2. Encrypt ALL data
@@ -260,39 +275,50 @@ class MCPIngestionService:
 
         Used when MCP packages don't exist (QuickBooks, Salesforce)
         or when MCP fetch fails.
+
+        All adapters expect credentials: dict with at least 'access_token'
         """
         try:
+            # Build credentials dict - all adapters expect this format
+            credentials = {"access_token": oauth_token}
+            if extra_params:
+                credentials.update(extra_params)
+
             # Import integration-specific API clients
             if integration == "google":
                 from app.adapters.google.sync import GoogleWorkspaceSync
-                adapter = GoogleWorkspaceSync(access_token=oauth_token)
+                adapter = GoogleWorkspaceSync(credentials=credentials)
                 return await adapter.fetch_data(data_type)
 
             elif integration == "microsoft":
                 from app.adapters.microsoft.sync import MicrosoftSync
-                adapter = MicrosoftSync(access_token=oauth_token)
+                adapter = MicrosoftSync(credentials=credentials)
                 return await adapter.fetch_data(data_type)
 
             elif integration == "slack":
                 from app.adapters.slack.sync import SlackSync
-                adapter = SlackSync(access_token=oauth_token)
+                adapter = SlackSync(credentials=credentials)
                 return await adapter.fetch_data(data_type)
 
             elif integration == "quickbooks":
                 from app.adapters.quickbooks.sync import QuickBooksSync
-                realm_id = extra_params.get("realm_id") if extra_params else None
-                adapter = QuickBooksSync(access_token=oauth_token, realm_id=realm_id)
+                # QuickBooks requires realm_id in credentials
+                if extra_params and "realm_id" in extra_params:
+                    credentials["realm_id"] = extra_params["realm_id"]
+                adapter = QuickBooksSync(credentials=credentials)
                 return await adapter.fetch_data(data_type)
 
             elif integration == "salesforce":
                 from app.adapters.salesforce.sync import SalesforceSync
-                instance_url = extra_params.get("instance_url") if extra_params else None
-                adapter = SalesforceSync(access_token=oauth_token, instance_url=instance_url)
+                # Salesforce requires instance_url in credentials
+                if extra_params and "instance_url" in extra_params:
+                    credentials["instance_url"] = extra_params["instance_url"]
+                adapter = SalesforceSync(credentials=credentials)
                 return await adapter.fetch_data(data_type)
 
             elif integration == "hubspot":
                 from app.adapters.hubspot.sync import HubSpotSync
-                adapter = HubSpotSync(access_token=oauth_token)
+                adapter = HubSpotSync(credentials=credentials)
                 return await adapter.fetch_data(data_type)
 
             else:
