@@ -556,17 +556,66 @@ class BusinessRAGService:
         # Ensure collection exists
         await self.create_business_collection(business_wallet)
 
-        # Extract records from data
+        # Extract records from data with format detection
+        # FIX (Jan 15, 2026): Auto-detect known adapter data keys to enable per-record indexing
+        # Root cause: Adapters return {"files": [...]} but code expected {"records": [...]}
         if isinstance(data, dict):
+            # First try the standard "records" key
             records = data.get("records", [])
-            # If no 'records' key, treat the entire dict as a single record
+
             if not records:
-                records = [data]
+                # Try known adapter data keys (all 6 integrations)
+                known_data_keys = [
+                    "files",      # Google Drive, OneDrive, Slack files
+                    "messages",   # Gmail, Outlook, Slack messages
+                    "events",     # Google Calendar, Outlook Calendar
+                    "contacts",   # All integrations
+                    "users",      # Slack users
+                    "channels",   # Slack channels
+                    "invoices",   # QuickBooks invoices
+                    "customers",  # QuickBooks, Salesforce, HubSpot
+                    "payments",   # QuickBooks payments
+                    "deals",      # HubSpot, Salesforce
+                    "companies",  # HubSpot companies
+                    "leads",      # Salesforce leads
+                    "opportunities",  # Salesforce opportunities
+                    "accounts",   # Salesforce, QuickBooks accounts
+                    "activities", # Salesforce activities
+                ]
+
+                for key in known_data_keys:
+                    if key in data and isinstance(data[key], list):
+                        records = data[key]
+                        logger.info(
+                            f"Per-record indexing: Detected '{key}' key with {len(records)} records "
+                            f"for {integration}/{data_type}"
+                        )
+                        break
+
+                # If still no records found, check for any list-type values
+                if not records:
+                    list_keys = [k for k in data.keys() if isinstance(data.get(k), list) and data.get(k)]
+                    if list_keys:
+                        detected_key = list_keys[0]
+                        records = data[detected_key]
+                        logger.warning(
+                            f"Per-record indexing: Using unrecognized key '{detected_key}' with {len(records)} records. "
+                            f"Consider adding to known_data_keys or updating adapter to use 'records' key."
+                        )
+                    else:
+                        # Truly single record (dict with no list values)
+                        records = [data]
+                        logger.debug(
+                            f"Single-record indexing: No list data found in {integration}/{data_type}, "
+                            f"treating entire dict as one record. Keys: {list(data.keys())}"
+                        )
         elif isinstance(data, list):
             records = data
+            logger.info(f"Per-record indexing: Raw list with {len(records)} records for {integration}/{data_type}")
         else:
             # Single non-dict, non-list value
             records = [data]
+            logger.debug(f"Single-value indexing: Non-structured data for {integration}/{data_type}")
 
         # Track indexed point IDs
         indexed_point_ids = []
@@ -583,8 +632,11 @@ class BusinessRAGService:
             # Generate content hash for deduplication
             content_hash = hashlib.sha256(record_text.encode()).hexdigest()[:16]
 
-            # Extract record ID if available
-            record_id = record.get("id", str(i)) if isinstance(record, dict) else str(i)
+            # Extract record ID if available (case-insensitive for QuickBooks "Id" compatibility)
+            if isinstance(record, dict):
+                record_id = record.get("id") or record.get("Id") or record.get("ID") or str(i)
+            else:
+                record_id = str(i)
 
             # Create unique ID combining CID, data_type, record_id, and content hash
             unique_id = f"{integration}_{data_type}_{record_id}_{content_hash}"
