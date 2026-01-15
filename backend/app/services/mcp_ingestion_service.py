@@ -568,7 +568,7 @@ class MCPIngestionService:
                 result = await l3_service.commit_batch(
                     items=items,
                     integration=integration,
-                    wallet_address=wallet_address,
+                    business_wallet_address=wallet_address,
                 )
                 results[integration] = result
             except Exception as e:
