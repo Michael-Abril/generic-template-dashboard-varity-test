@@ -122,27 +122,29 @@ class BusinessRAGService:
         Raises:
             EmbeddingGenerationError: If both providers fail
         """
-        last_error = None
+        together_error = None
+        ollama_error = None
 
         # FIX: Re-check API key on each call to handle late env var loading
         # The singleton may be created before env vars are fully loaded
         together_api_key = os.getenv("TOGETHER_API_KEY", "") or self.together_api_key
         use_together = bool(together_api_key)
 
-        logger.debug(
+        logger.info(
             f"Embedding generation: use_together={use_together}, "
-            f"api_key_set={bool(together_api_key)}, "
-            f"model={self.together_embedding_model}"
+            f"api_key_len={len(together_api_key) if together_api_key else 0}, "
+            f"model={self.together_embedding_model}, "
+            f"text_len={len(text)}"
         )
 
         # Try Together.ai first if API key is available
         if use_together:
-            # Retry logic for transient network errors
+            # Retry logic for transient network errors and rate limits
             max_retries = 3
             for attempt in range(max_retries):
                 try:
                     # FIX: Create fresh HTTP client for each request to avoid async context issues
-                    async with httpx.AsyncClient(timeout=30.0) as client:
+                    async with httpx.AsyncClient(timeout=60.0) as client:  # Increased timeout
                         response = await client.post(
                             f"{self.together_api_url}/embeddings",
                             headers={
@@ -151,7 +153,7 @@ class BusinessRAGService:
                             },
                             json={
                                 "model": self.together_embedding_model,
-                                "input": text
+                                "input": text[:8000]  # Truncate to avoid token limits
                             }
                         )
                         response.raise_for_status()
@@ -163,53 +165,73 @@ class BusinessRAGService:
                             raise EmbeddingGenerationError(
                                 f"Invalid embedding dimension: {len(embedding)} != {self.embedding_dimension}"
                             )
+                        logger.info(f"Together.ai embedding generated successfully (attempt {attempt + 1})")
                         return embedding
                 except httpx.TimeoutException as e:
-                    last_error = e
+                    together_error = f"Timeout after 60s (attempt {attempt + 1}/{max_retries})"
                     if attempt < max_retries - 1:
                         logger.warning(f"Together.ai embedding timeout (attempt {attempt + 1}/{max_retries}), retrying...")
-                        await asyncio.sleep(1 * (attempt + 1))  # Exponential backoff
+                        await asyncio.sleep(2 * (attempt + 1))  # Exponential backoff
                     else:
                         logger.error(f"Together.ai embedding timeout after {max_retries} attempts")
                 except httpx.HTTPStatusError as e:
-                    last_error = e
+                    together_error = f"HTTP {e.response.status_code}: {e.response.text[:200]}"
                     # Log detailed error for debugging
                     logger.error(
                         f"Together.ai embedding HTTP error: status={e.response.status_code}, "
                         f"model={self.together_embedding_model}, body={e.response.text[:200]}"
                     )
-                    break  # Don't retry on HTTP errors (likely model not found or auth issue)
+                    # Handle rate limiting (429) with backoff
+                    if e.response.status_code == 429 and attempt < max_retries - 1:
+                        wait_time = 5 * (attempt + 1)
+                        logger.warning(f"Rate limited by Together.ai, waiting {wait_time}s before retry...")
+                        await asyncio.sleep(wait_time)
+                        continue
+                    break  # Don't retry on other HTTP errors (likely model not found or auth issue)
                 except Exception as e:
-                    last_error = e
-                    logger.warning(f"Together.ai embedding failed (attempt {attempt + 1}): {type(e).__name__}: {str(e)}")
+                    together_error = f"{type(e).__name__}: {str(e)}"
+                    logger.warning(f"Together.ai embedding failed (attempt {attempt + 1}): {together_error}")
+                    if attempt < max_retries - 1:
+                        await asyncio.sleep(1 * (attempt + 1))
+        else:
+            together_error = "No API key configured"
+            logger.warning("Together.ai embedding skipped: no API key")
 
-        # Fallback to Ollama for local development
-        try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.post(
-                    f"{self.ollama_url}/api/embeddings",
-                    json={
-                        "model": self.ollama_embedding_model,
-                        "prompt": text
-                    }
-                )
-                response.raise_for_status()
-                result = response.json()
-                embedding = result["embedding"]
-                # Validate embedding
-                if len(embedding) != self.embedding_dimension:
-                    raise EmbeddingGenerationError(
-                        f"Invalid embedding dimension: {len(embedding)} != {self.embedding_dimension}"
+        # Fallback to Ollama for local development (skip in production - no Ollama running)
+        if os.getenv("ENVIRONMENT", "development") == "production":
+            ollama_error = "Skipped in production (no Ollama available)"
+            logger.info("Ollama fallback skipped in production environment")
+        else:
+            try:
+                async with httpx.AsyncClient(timeout=30.0) as client:
+                    response = await client.post(
+                        f"{self.ollama_url}/api/embeddings",
+                        json={
+                            "model": self.ollama_embedding_model,
+                            "prompt": text
+                        }
                     )
-                return embedding
-        except Exception as e:
-            last_error = e
-            logger.error(f"Failed to generate embedding (both providers failed): {str(e)}")
-            # FIX 1.3: Raise exception instead of returning zero vector
-            # Zero vectors pollute the index with meaningless entries
-            raise EmbeddingGenerationError(
-                f"Embedding generation failed for both providers: {last_error}"
-            )
+                    response.raise_for_status()
+                    result = response.json()
+                    embedding = result["embedding"]
+                    # Validate embedding
+                    if len(embedding) != self.embedding_dimension:
+                        raise EmbeddingGenerationError(
+                            f"Invalid embedding dimension: {len(embedding)} != {self.embedding_dimension}"
+                        )
+                    logger.info("Ollama embedding generated successfully")
+                    return embedding
+            except Exception as e:
+                ollama_error = f"{type(e).__name__}: {str(e)}"
+                logger.warning(f"Ollama embedding failed: {ollama_error}")
+
+        # Both providers failed - provide detailed error message
+        error_details = f"Together.ai: {together_error or 'unknown'}"
+        if ollama_error:
+            error_details += f" | Ollama: {ollama_error}"
+
+        logger.error(f"Embedding generation failed: {error_details}")
+        raise EmbeddingGenerationError(f"Embedding generation failed - {error_details}")
 
     async def _generate_embedding_cached(self, text: str) -> List[float]:
         """
