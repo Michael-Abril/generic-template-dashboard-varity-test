@@ -44,7 +44,7 @@ DATA_ROUTING_RULES: Dict[str, Dict[str, DataDestination]] = {
         "tasks": DataDestination.HYBRID,
     },
     "slack": {
-        "channels": DataDestination.LIVE_API,
+        "channels": DataDestination.RAG_STORAGE,  # ✅ Store in RAG for AI queries
         "messages": DataDestination.HYBRID,
         "users": DataDestination.RAG_STORAGE,
         "files": DataDestination.RAG_STORAGE,
@@ -98,6 +98,94 @@ class MCPIngestionService:
         self.encryption = encryption_service or EncryptionService()
         self.filecoin = filecoin_service or FilecoinService()
         self.rag = rag_service or BusinessRAGService()
+
+    def _normalize_for_rag(self, raw_data: Any, data_type: str) -> dict:
+        """
+        Normalize data to {"records": [...]} format for per-record indexing.
+
+        This is the single source of truth for data normalization across the entire MCP pipeline.
+        When integration #7 is added, it will automatically work with this normalization.
+
+        Args:
+            raw_data: Data from adapter (can be dict with nested key, list, or single value)
+            data_type: Type of data (e.g., "drive_files", "channels", "invoices")
+
+        Returns:
+            Normalized dict with "records" key containing a list
+
+        Examples:
+            {"files": [...]} -> {"records": [...]}
+            {"channels": [...]} -> {"records": [...]}
+            [...] -> {"records": [...]}
+            {"records": [...]} -> {"records": [...]} (already normalized)
+        """
+        if raw_data is None:
+            return {"records": []}
+
+        records = []
+
+        # Map data_type to expected key in adapter response
+        # This makes adding new integrations predictable - just add to this map
+        key_map = {
+            # Google
+            "drive_files": "files", "drive": "files",
+            "gmail": "messages",
+            "calendar": "events",
+            "contacts": "contacts",
+            "tasks": "tasks",
+            # Slack
+            "channels": "channels",
+            "messages": "messages",
+            "users": "users",
+            "files": "files",
+            # QuickBooks
+            "invoices": "invoices",
+            "customers": "customers",
+            "payments": "payments",
+            "expenses": "expenses",
+            "accounts": "accounts",
+            # Microsoft
+            "onedrive": "files",
+            "mail": "messages",
+            "teams_messages": "messages",
+            # Salesforce
+            "leads": "leads",
+            "opportunities": "opportunities",
+            "accounts": "accounts",
+            "activities": "activities",
+            # HubSpot
+            "deals": "deals",
+            "companies": "companies",
+            "emails": "messages",
+        }
+
+        expected_key = key_map.get(data_type.lower())
+
+        if isinstance(raw_data, dict):
+            # Try expected key first (fastest path)
+            if expected_key and expected_key in raw_data:
+                records = raw_data[expected_key]
+            # Already normalized
+            elif "records" in raw_data:
+                records = raw_data["records"]
+            # Fallback: search for any known list key
+            else:
+                for key in ["files", "messages", "contacts", "channels", "users",
+                            "invoices", "customers", "events", "leads", "deals",
+                            "payments", "expenses", "accounts", "opportunities",
+                            "activities", "companies", "tasks"]:
+                    if key in raw_data and isinstance(raw_data.get(key), list):
+                        records = raw_data[key]
+                        break
+        elif isinstance(raw_data, list):
+            # Already a list - treat as records
+            records = raw_data
+
+        # If still no records found, treat entire input as a single record
+        if not records:
+            records = [raw_data] if raw_data else []
+
+        return {"records": records}
         self._mcp_clients: Dict[str, Any] = {}
         self._pending_commits: List[Dict] = []
 
@@ -362,13 +450,16 @@ class MCPIngestionService:
             encrypted_data=encrypted_data,
         )
 
-        # Index in Qdrant with the raw data for better embeddings
+        # Normalize data to {"records": [...]} format before passing to RAG
+        normalized_data = self._normalize_for_rag(raw_data, data_type)
+
+        # Index in Qdrant with normalized data for per-record embeddings
         await self.rag.index_document(
             cid=cid,
             integration=integration,
             data_type=data_type,
             wallet_address=wallet_address,
-            data=raw_data,  # Pass raw data so RAG can create better embeddings
+            data=normalized_data,  # Pass normalized data so RAG can index each record
         )
 
         # Add to batch for L3 commitment

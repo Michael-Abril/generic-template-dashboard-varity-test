@@ -440,6 +440,35 @@ class BusinessRAGService:
             logger.warning(f"CID lookup failed for {cid}: {e}")
             return None
 
+    async def _find_by_unique_id(self, collection_name: str, unique_id: str) -> Optional[str]:
+        """
+        Find a point by unique_id (for per-record deduplication)
+
+        Args:
+            collection_name: Qdrant collection name
+            unique_id: Unique record identifier (integration_datatype_recordid_hash)
+
+        Returns:
+            Point ID if found, None otherwise
+        """
+        try:
+            # Try to retrieve point directly by ID
+            # Qdrant allows string IDs, so we use unique_id as the point ID
+            point = self.qdrant.retrieve(
+                collection_name=collection_name,
+                ids=[unique_id],
+                with_payload=False,
+                with_vectors=False
+            )
+
+            if point:
+                return unique_id
+            return None
+        except Exception as e:
+            # Point doesn't exist or collection error
+            logger.debug(f"unique_id lookup failed for {unique_id[:30]}...: {e}")
+            return None
+
     async def _update_point_timestamp(self, collection_name: str, point_id: str) -> bool:
         """
         Update the indexed_at timestamp of an existing point
@@ -503,10 +532,14 @@ class BusinessRAGService:
         """
         Index business data in their isolated Qdrant collection
 
+        NEW (Jan 15, 2026): Per-record indexing - each record becomes a separate Qdrant point
+        This enables AI queries like "show me files in my Google Drive" to return individual files
+
         Optimizations:
         - FIX 2.1: Uses cached embeddings to reduce API calls
         - FIX 3.1: Checks for existing CID to prevent duplicates
         - FIX 3.2: Stores minimal payload (preview only, not full data)
+        - FIX 4.0: Per-record indexing with content hash deduplication
 
         Args:
             business_wallet: Business wallet address
@@ -516,66 +549,102 @@ class BusinessRAGService:
             data_type: Type of data
 
         Returns:
-            Point ID in Qdrant (existing or new)
+            Point ID in Qdrant (last indexed record's ID, or single point ID for non-list data)
         """
         collection_name = self._get_collection_name(business_wallet)
 
         # Ensure collection exists
         await self.create_business_collection(business_wallet)
 
-        # FIX 3.1: Check for existing CID (deduplication)
-        existing_id = await self._find_by_cid(collection_name, cid)
-        if existing_id:
-            # Update timestamp but don't re-index
-            await self._update_point_timestamp(collection_name, existing_id)
-            logger.info(
-                f"Dedup: CID {cid[:20]}... already indexed as {existing_id}, updated timestamp"
-            )
-            return existing_id
-
-        # Convert data to text for embedding
+        # Extract records from data
         if isinstance(data, dict):
-            text = json.dumps(data, indent=2)
+            records = data.get("records", [])
+            # If no 'records' key, treat the entire dict as a single record
+            if not records:
+                records = [data]
+        elif isinstance(data, list):
+            records = data
         else:
-            text = str(data)
+            # Single non-dict, non-list value
+            records = [data]
 
-        # FIX 2.1: Generate embedding using cached method
-        embedding = await self._generate_embedding_cached(text)
+        # Track indexed point IDs
+        indexed_point_ids = []
 
-        # Generate unique point ID
-        point_id = str(uuid.uuid4())
+        # Index each record separately
+        for i, record in enumerate(records):
+            # Convert record to text for embedding
+            record_text = json.dumps(record) if isinstance(record, dict) else str(record)
 
-        # FIX 3.2: Store minimal payload (preview only, not full data)
-        # Full data should be retrieved from Pinata when needed
-        # This reduces Qdrant memory usage and potential data exposure
-        payload = {
-            "cid": cid,
-            "preview": text[:500],  # Short preview for display
-            "integration": integration,
-            "data_type": data_type,
-            "business_wallet": business_wallet.lower(),
-            "indexed_at": time.time(),
-            "record_count": len(data.get("records", [])) if isinstance(data, dict) else 0
-        }
+            # Limit text to 1800 chars (safe for 512 token BGE model)
+            # JSON text is ~2.1 chars/token, so 1800 chars ≈ 857 tokens (safe margin for 512 limit)
+            truncated_text = record_text[:1800]
 
-        # Upsert into Qdrant
-        self.qdrant.upsert(
-            collection_name=collection_name,
-            points=[
-                PointStruct(
-                    id=point_id,
-                    vector=embedding,
-                    payload=payload
+            # Generate content hash for deduplication
+            content_hash = hashlib.sha256(record_text.encode()).hexdigest()[:16]
+
+            # Extract record ID if available
+            record_id = record.get("id", str(i)) if isinstance(record, dict) else str(i)
+
+            # Create unique ID combining CID, data_type, record_id, and content hash
+            unique_id = f"{integration}_{data_type}_{record_id}_{content_hash}"
+
+            # Check if this specific record already exists (by unique_id)
+            existing_id = await self._find_by_unique_id(collection_name, unique_id)
+            if existing_id:
+                # Update timestamp but don't re-index
+                await self._update_point_timestamp(collection_name, existing_id)
+                logger.debug(
+                    f"Dedup: Record {record_id} already indexed as {existing_id}, updated timestamp"
                 )
-            ]
-        )
+                indexed_point_ids.append(existing_id)
+                continue
+
+            # FIX 2.1: Generate embedding using cached method
+            embedding = await self._generate_embedding_cached(truncated_text)
+
+            # FIX 3.2: Store minimal payload (preview only, not full data)
+            payload = {
+                "cid": cid,
+                "unique_id": unique_id,
+                "record_index": i,
+                "content": record_text[:2000],  # Store first 2000 chars for context
+                "preview": truncated_text[:500],  # Short preview for display
+                "integration": integration,
+                "data_type": data_type,
+                "record_id": record_id,
+                "business_wallet": business_wallet.lower(),
+                "indexed_at": time.time(),
+                "content_hash": content_hash
+            }
+
+            # Upsert into Qdrant using unique_id as point ID
+            # This ensures automatic deduplication on re-sync
+            self.qdrant.upsert(
+                collection_name=collection_name,
+                points=[
+                    PointStruct(
+                        id=unique_id,
+                        vector=embedding,
+                        payload=payload
+                    )
+                ]
+            )
+
+            indexed_point_ids.append(unique_id)
+            logger.debug(
+                f"Indexed record {i+1}/{len(records)}: integration={integration}, "
+                f"data_type={data_type}, record_id={record_id}"
+            )
 
         logger.info(
             f"Indexed data: collection={collection_name}, "
-            f"CID={cid}, point_id={point_id}, records={payload['record_count']}"
+            f"CID={cid}, records_indexed={len(indexed_point_ids)}, "
+            f"integration={integration}, data_type={data_type}"
         )
 
-        return point_id
+        # Return the last indexed point ID (or first if available)
+        return indexed_point_ids[-1] if indexed_point_ids else str(uuid.uuid4())
 
     async def force_reindex_business_data(
         self,
@@ -912,6 +981,10 @@ class BusinessRAGService:
         This method exists for backwards compatibility with the MCP pipeline which calls
         index_document() instead of index_business_data().
 
+        Safety Net: If data is not already normalized, this method will normalize it before
+        passing to index_business_data(). This ensures that even if normalization is missed
+        in upstream code, RAG indexing will still work correctly.
+
         Args:
             cid: Filecoin CID of the data
             integration: Integration name
@@ -922,10 +995,35 @@ class BusinessRAGService:
         Returns:
             Point ID in Qdrant
         """
-        # If no data provided, we'll use an empty dict with a note
-        # The actual implementation will fetch the preview from the CID metadata
+        # If no data provided, use empty dict with note
         if data is None:
             data = {"note": f"Data indexed from CID: {cid}"}
+
+        # Safety net: Ensure data is normalized to {"records": [...]} format
+        # This catches cases where upstream normalization was missed
+        if isinstance(data, dict) and "records" not in data:
+            # Check if data has a known list key that should be normalized
+            needs_normalization = False
+            list_keys = ["files", "messages", "contacts", "channels", "users",
+                         "invoices", "customers", "events", "leads", "deals",
+                         "payments", "expenses", "accounts", "opportunities",
+                         "activities", "companies", "tasks"]
+
+            for key in list_keys:
+                if key in data and isinstance(data.get(key), list):
+                    needs_normalization = True
+                    break
+
+            if needs_normalization:
+                logger.warning(
+                    f"Data normalization missed upstream for {integration}/{data_type}. "
+                    f"Applying safety net normalization. CID: {cid}"
+                )
+                # Extract the list and wrap it
+                for key in list_keys:
+                    if key in data and isinstance(data.get(key), list):
+                        data = {"records": data[key]}
+                        break
 
         return await self.index_business_data(
             business_wallet=wallet_address,

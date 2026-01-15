@@ -67,6 +67,63 @@ TOKEN_REFRESH_CONFIGS = {
 }
 
 
+def _normalize_data_for_rag(raw_data: Any, data_type: str) -> dict:
+    """
+    Normalize data to {"records": [...]} format for RAG indexing.
+
+    This is a lightweight version of MCPIngestionService._normalize_for_rag
+    used by the sync endpoint to ensure consistent data format before RAG indexing.
+
+    Args:
+        raw_data: Data from adapter or decrypted storage
+        data_type: Type of data (e.g., "drive_files", "channels", "invoices")
+
+    Returns:
+        Normalized dict with "records" key containing a list
+    """
+    if raw_data is None:
+        return {"records": []}
+
+    records = []
+
+    # Map data_type to expected key
+    key_map = {
+        "drive_files": "files", "drive": "files",
+        "gmail": "messages", "mail": "messages",
+        "calendar": "events", "contacts": "contacts",
+        "channels": "channels", "messages": "messages",
+        "users": "users", "files": "files",
+        "invoices": "invoices", "customers": "customers",
+        "payments": "payments", "expenses": "expenses",
+        "leads": "leads", "deals": "deals",
+        "opportunities": "opportunities", "accounts": "accounts",
+        "activities": "activities", "companies": "companies",
+        "onedrive": "files", "tasks": "tasks",
+    }
+
+    expected_key = key_map.get(data_type.lower())
+
+    if isinstance(raw_data, dict):
+        if expected_key and expected_key in raw_data:
+            records = raw_data[expected_key]
+        elif "records" in raw_data:
+            records = raw_data["records"]
+        else:
+            # Fallback search
+            for key in ["files", "messages", "contacts", "channels", "users",
+                        "invoices", "customers", "events", "leads", "deals"]:
+                if key in raw_data and isinstance(raw_data.get(key), list):
+                    records = raw_data[key]
+                    break
+    elif isinstance(raw_data, list):
+        records = raw_data
+
+    if not records:
+        records = [raw_data] if raw_data else []
+
+    return {"records": records}
+
+
 async def refresh_oauth_token(
     oauth_token: OAuthToken,
     provider: str,
@@ -756,14 +813,15 @@ async def sync_tool_data(
                             customer_wallet=wallet_address
                         )
 
-                        # Get the records from the decrypted data
-                        records = decrypted.get("records", []) if isinstance(decrypted, dict) else []
+                        # Normalize data to {"records": [...]} format for consistent RAG indexing
+                        normalized_data = _normalize_data_for_rag(decrypted, data_type)
+                        records = normalized_data.get("records", [])
 
-                        # Index in Qdrant for RAG
+                        # Index in Qdrant for RAG with normalized data
                         await rag_service.index_business_data(
                             business_wallet=wallet_address,
                             cid=cid,
-                            data=decrypted,
+                            data=normalized_data,
                             integration=normalized_tool,
                             data_type=data_type
                         )
@@ -1201,6 +1259,20 @@ async def slack_api_call(
             # Slack API returns ok=false on errors
             if not data.get("ok"):
                 error_msg = data.get("error", "Unknown Slack API error")
+
+                # Gracefully handle "not_in_channel" error - this is expected when bot isn't in a channel
+                if error_msg == "not_in_channel":
+                    logger.info(f"Slack bot not in channel (expected behavior): {endpoint}")
+                    # Return successful response with empty data and helpful message
+                    return {
+                        "ok": True,
+                        "messages": [],
+                        "channels": [],
+                        "not_in_channel": True,
+                        "info": "Bot has not been added to this channel. To view messages, invite the bot to the channel."
+                    }
+
+                # For other errors, still raise exception
                 logger.error(f"Slack API error: {error_msg}")
                 raise HTTPException(
                     status_code=400,
@@ -1550,7 +1622,8 @@ async def get_slack_messages(
             response_metadata = result.get("response_metadata", {})
             next_cursor = response_metadata.get("next_cursor", "")
 
-            return {
+            # Build response
+            response = {
                 "success": True,
                 "messages": messages,
                 "count": len(messages),
@@ -1558,6 +1631,13 @@ async def get_slack_messages(
                 "next_cursor": next_cursor,
                 "has_more": bool(next_cursor)
             }
+
+            # Pass through not_in_channel info if present
+            if result.get("not_in_channel"):
+                response["not_in_channel"] = True
+                response["info"] = result.get("info", "")
+
+            return response
 
     except HTTPException:
         raise

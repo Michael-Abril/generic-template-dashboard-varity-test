@@ -391,31 +391,174 @@ async def delete_account(
         )
 
 
+async def _get_qdrant_stats(wallet_address: str) -> dict:
+    """
+    Get actual indexed record counts from Qdrant.
+
+    This returns the number of individually queryable records (e.g., 93 Files)
+    rather than the number of Pinata files (which could be 1 file containing 93 records).
+
+    Args:
+        wallet_address: User's wallet address
+
+    Returns:
+        Dict with structure:
+        {
+            "google": {
+                "total": 93,
+                "data_types": {
+                    "drive": {"count": 93, "display_name": "Files"},
+                    "contacts": {"count": 15, "display_name": "Contacts"}
+                }
+            }
+        }
+    """
+    try:
+        # Get collection name for this wallet
+        collection_name = rag_service._get_collection_name(wallet_address)
+
+        # Check if collection exists
+        collections = rag_service.qdrant.get_collections().collections
+        collection_names = [c.name for c in collections]
+
+        if collection_name not in collection_names:
+            logger.info(f"No Qdrant collection for wallet {wallet_address[:10]}...")
+            return {}
+
+        # Data type display names mapping
+        data_type_display_names = {
+            # Google Workspace
+            "gmail": "Emails",
+            "calendar": "Events",
+            "drive": "Files",
+            "drive_files": "Files",
+            "contacts": "Contacts",
+            # Microsoft 365
+            "mail": "Emails",
+            "onedrive": "Files",
+            # Slack
+            "channels": "Channels",
+            "messages": "Messages",
+            "users": "Users",
+            "files": "Files",
+            # QuickBooks
+            "invoices": "Invoices",
+            "expenses": "Expenses",
+            "customers": "Customers",
+            "vendors": "Vendors",
+            "payments": "Payments",
+            # Salesforce
+            "opportunities": "Opportunities",
+            "accounts": "Accounts",
+            "leads": "Leads",
+            "tasks": "Tasks",
+            # HubSpot
+            "deals": "Deals",
+            "companies": "Companies",
+            "tickets": "Tickets",
+            "emails": "Emails",
+        }
+
+        # Scroll through all points to count by integration and data_type
+        integration_stats = {}
+        offset = None
+
+        while True:
+            # Scroll through collection
+            results = rag_service.qdrant.scroll(
+                collection_name=collection_name,
+                limit=100,
+                offset=offset,
+                with_payload=True,
+                with_vectors=False
+            )
+
+            points, next_offset = results
+
+            if not points:
+                break
+
+            # Count points by integration and data_type
+            for point in points:
+                payload = point.payload
+                integration = payload.get("integration", "unknown")
+                data_type = payload.get("data_type", "unknown")
+
+                # Skip unknown integrations
+                if integration == "unknown":
+                    continue
+
+                # Initialize integration if not exists
+                if integration not in integration_stats:
+                    integration_stats[integration] = {
+                        "total": 0,
+                        "data_types": {}
+                    }
+
+                # Initialize data_type if not exists
+                if data_type not in integration_stats[integration]["data_types"]:
+                    integration_stats[integration]["data_types"][data_type] = {
+                        "count": 0,
+                        "display_name": data_type_display_names.get(
+                            data_type.lower(),
+                            data_type.title()
+                        )
+                    }
+
+                # Increment counts
+                integration_stats[integration]["total"] += 1
+                integration_stats[integration]["data_types"][data_type]["count"] += 1
+
+            # Check if we have more pages
+            if next_offset is None:
+                break
+
+            offset = next_offset
+
+        logger.info(
+            f"Qdrant stats for {wallet_address[:10]}...: "
+            f"{sum(stats['total'] for stats in integration_stats.values())} total records "
+            f"across {len(integration_stats)} integrations"
+        )
+
+        return integration_stats
+
+    except Exception as e:
+        logger.error(f"Error getting Qdrant stats: {str(e)}")
+        return {}
+
+
 @router.get("/storage-usage")
 async def get_storage_usage(
     wallet_address: str = Query(..., description="User's wallet address")
 ):
     """
-    Get Pinata storage usage for this wallet.
+    Get storage usage for this wallet.
 
-    Returns the actual files stored in Pinata grouped by integration,
-    showing file counts and data types for each connected service.
-    Includes per-data-type counts for professional display.
+    Returns Qdrant record counts (actual number of individually queryable records)
+    grouped by integration and data type. This shows users the real number of
+    items they have (e.g., "93 Files" instead of "1 file").
+
+    Also includes Pinata file metadata for size and sync information.
     """
     try:
         logger.info(f"Getting storage usage for wallet {wallet_address}")
 
-        # List all files for this wallet from Pinata
+        # Get Qdrant record counts (the SOURCE OF TRUTH for user-facing counts)
+        qdrant_stats = await _get_qdrant_stats(wallet_address)
+
+        # List all files for this wallet from Pinata (for size/sync metadata)
         files = await filecoin_service.list_customer_files(
             customer_wallet=wallet_address,
             limit=1000
         )
 
-        if not files:
+        if not files and not qdrant_stats:
             return {
                 "success": True,
                 "wallet_address": wallet_address,
                 "total_files": 0,
+                "total_records": 0,
                 "integrations": {},
                 "uploaded_content": {"total_files": 0, "files": []},
                 "message": "No data stored yet. Connect an integration and sync data."
@@ -430,36 +573,62 @@ async def get_storage_usage(
         excluded_data_types = {"oauth-credentials", "oauth_credentials"}
 
         # Friendly display names for data types
+        # Based on actual data_type values used in adapters:
+        # - Google: gmail, calendar, drive, contacts
+        # - Microsoft: mail, calendar, onedrive, contacts
+        # - Slack: channels, messages, users, files
+        # - QuickBooks: invoices, expenses, customers, vendors, payments
+        # - Salesforce: contacts, opportunities, accounts, leads, tasks
+        # - HubSpot: contacts, deals, companies, emails, tickets
         data_type_display_names = {
+            # Google Workspace
             "gmail": "Emails",
             "calendar": "Events",
             "drive": "Files",
             "contacts": "Contacts",
-            "tasks": "Tasks",
+            # Microsoft 365
+            "mail": "Emails",
+            "onedrive": "Files",
+            # Slack
+            "channels": "Channels",
+            "messages": "Messages",
+            "users": "Users",
+            "files": "Files",
+            # QuickBooks
             "invoices": "Invoices",
             "expenses": "Expenses",
             "customers": "Customers",
             "vendors": "Vendors",
             "payments": "Payments",
-            "users": "Users",
-            "channels": "Channels",
-            "messages": "Messages",
-            "files": "Files",
-            "deals": "Deals",
-            "companies": "Companies",
-            "tickets": "Tickets",
+            # Salesforce
             "opportunities": "Opportunities",
             "accounts": "Accounts",
             "leads": "Leads",
-            "mail": "Emails",
-            "onedrive": "Files",
+            "tasks": "Tasks",
+            # HubSpot
+            "deals": "Deals",
+            "companies": "Companies",
+            "tickets": "Tickets",
+            "emails": "Emails",
         }
 
-        # Group files by integration with per-data-type counts
+        # Build integrations dict using Qdrant counts (PRIMARY) + Pinata metadata (SECONDARY)
         by_integration: Dict[str, Dict[str, Any]] = {}
         uploaded_content = {"total_files": 0, "total_bytes": 0, "files": []}
         total_size = 0
 
+        # First, populate from Qdrant stats (SOURCE OF TRUTH for record counts)
+        for integration, stats in qdrant_stats.items():
+            by_integration[integration] = {
+                "file_count": 0,  # Pinata file count (will be filled below)
+                "record_count": stats["total"],  # QDRANT RECORD COUNT (user-facing)
+                "data_types": stats["data_types"],  # From Qdrant
+                "total_bytes": 0,  # Will be filled from Pinata
+                "latest_sync": None,  # Will be filled from Pinata
+                "sync_status": "success"
+            }
+
+        # Then, add Pinata metadata (file sizes, timestamps)
         for f in files:
             metadata = f.get("metadata", {})
             raw_integration = metadata.get("integration", "unknown")
@@ -489,27 +658,21 @@ async def get_storage_usage(
             # Normalize integration name
             integration = integration_aliases.get(raw_integration, raw_integration)
 
+            # Initialize if not in Qdrant stats (this means data in Pinata but not indexed yet)
             if integration not in by_integration:
                 by_integration[integration] = {
                     "file_count": 0,
-                    "data_types": {},  # Changed from list to dict for counts
+                    "record_count": 0,  # No Qdrant records yet
+                    "data_types": {},
                     "total_bytes": 0,
                     "latest_sync": None,
-                    "sync_status": "success"  # Will be determined later
+                    "sync_status": "indexing"  # Still being indexed
                 }
 
+            # Update Pinata metadata
             by_integration[integration]["file_count"] += 1
             by_integration[integration]["total_bytes"] += file_size
             total_size += file_size
-
-            # Track counts per data type
-            data_type_key = data_type.lower()
-            if data_type_key not in by_integration[integration]["data_types"]:
-                by_integration[integration]["data_types"][data_type_key] = {
-                    "count": 0,
-                    "display_name": data_type_display_names.get(data_type_key, data_type.title())
-                }
-            by_integration[integration]["data_types"][data_type_key]["count"] += 1
 
             # Track latest sync timestamp
             if timestamp:
@@ -537,15 +700,19 @@ async def get_storage_usage(
         # Format uploaded content size
         uploaded_content["total_size_formatted"] = format_size(uploaded_content["total_bytes"])
 
-        # Calculate integration-only file count (excludes orphaned uploads)
+        # Calculate totals
         integration_file_count = sum(
             data["file_count"] for data in by_integration.values()
+        )
+        total_records = sum(
+            data["record_count"] for data in by_integration.values()
         )
 
         return {
             "success": True,
             "wallet_address": wallet_address,
-            "total_files": integration_file_count,
+            "total_files": integration_file_count,  # Pinata file count (for internal use)
+            "total_records": total_records,  # Qdrant record count (USER-FACING)
             "total_bytes": total_size,
             "total_size_formatted": format_size(total_size),
             "integrations": by_integration,
