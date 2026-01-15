@@ -88,12 +88,12 @@ async def retrieve_oauth_credentials(wallet_address: str, integration: str) -> d
         HTTPException if credentials not found or refresh fails
     """
     from sqlalchemy import select, and_
-    from app.core.database import get_async_session
+    from app.core.database import AsyncSessionLocal
     from app.models.purchase import OAuthToken
     from app.api.v1.integrations import refresh_oauth_token
 
     try:
-        async for db in get_async_session():
+        async with AsyncSessionLocal() as db:
             # Query token from PostgreSQL
             result = await db.execute(
                 select(OAuthToken).where(
