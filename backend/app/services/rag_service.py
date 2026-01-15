@@ -56,6 +56,8 @@ class BusinessRAGService:
     - Local embedding generation (no external APIs)
     - Automatic collection creation
     - Business-scoped queries only
+
+    Version: 2.0.0 (Jan 15, 2026 - Token limit fix: 1800 chars for 512 token BGE model)
     """
 
     def __init__(self):
@@ -153,9 +155,9 @@ class BusinessRAGService:
                             },
                             json={
                                 "model": self.together_embedding_model,
-                                # BAAI/bge-base-en-v1.5 has 512 token limit (~1800 chars)
-                                # Truncate to stay under limit
-                                "input": text[:1800]
+                                # BAAI/bge-base-en-v1.5 has 512 token limit
+                                # Empirical ratio: ~2.7 chars/token, so 1200 chars ≈ 450 tokens (safe margin)
+                                "input": text[:1200]
                             }
                         )
                         response.raise_for_status()
