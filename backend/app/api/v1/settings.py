@@ -459,6 +459,21 @@ async def _get_qdrant_stats(wallet_address: str) -> dict:
             "emails": "Emails",
         }
 
+        # Integration name normalization (align with Pinata aliasing)
+        integration_aliases = {
+            "google_workspace": "google",
+            "microsoft_365": "microsoft",
+            "ms365": "microsoft",
+        }
+
+        # Data type normalization (unify different naming conventions)
+        data_type_aliases = {
+            "drive_files": "drive",
+            "onedrive_files": "onedrive",
+            "mail_messages": "mail",
+            "calendar_events": "calendar",
+        }
+
         # Scroll through all points to count by integration and data_type
         integration_stats = {}
         offset = None
@@ -481,8 +496,13 @@ async def _get_qdrant_stats(wallet_address: str) -> dict:
             # Count points by integration and data_type
             for point in points:
                 payload = point.payload
-                integration = payload.get("integration", "unknown")
-                data_type = payload.get("data_type", "unknown")
+                raw_integration = payload.get("integration", "unknown")
+                raw_data_type = payload.get("data_type", "unknown")
+
+                # Normalize integration name (e.g., google_workspace -> google)
+                integration = integration_aliases.get(raw_integration, raw_integration)
+                # Normalize data_type (e.g., drive_files -> drive)
+                data_type = data_type_aliases.get(raw_data_type, raw_data_type)
 
                 # Skip unknown integrations
                 if integration == "unknown":
