@@ -243,11 +243,18 @@ class MCPIngestionService:
                     f"MCP fetch error for {integration}/{data_type}: {result['error']}, "
                     f"falling back to direct API"
                 )
-                # Return error dict for visibility, not None
+                # Actually fall back to direct API
+                fallback_result = await self._fetch_via_direct_api(
+                    integration, data_type, oauth_token, extra_params
+                )
+                if fallback_result and "error" not in fallback_result:
+                    logger.info(f"Direct API fallback succeeded for {integration}/{data_type}")
+                    return fallback_result
+                # If fallback also failed, return combined error info
                 return {
                     "error": result['error'],
-                    "fallback": True,
-                    "source": "mcp_error"
+                    "fallback_error": fallback_result.get("error") if fallback_result else "No fallback result",
+                    "source": "mcp_and_fallback_error"
                 }
 
             logger.info(f"MCP fetched {integration}/{data_type} successfully")
