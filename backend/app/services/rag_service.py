@@ -156,8 +156,8 @@ class BusinessRAGService:
                             json={
                                 "model": self.together_embedding_model,
                                 # BAAI/bge-base-en-v1.5 has 512 token limit
-                                # Empirical ratio: ~2.7 chars/token, so 1200 chars ≈ 450 tokens (safe margin)
-                                "input": text[:1200]
+                                # JSON text is ~2.1 chars/token, so 900 chars ≈ 430 tokens (safe margin)
+                                "input": text[:900]
                             }
                         )
                         response.raise_for_status()
