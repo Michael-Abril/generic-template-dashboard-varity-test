@@ -38,6 +38,7 @@ from app.services.together_service import TogetherBusinessService, TogetherServi
 from app.services.rag_service import BusinessRAGService
 from app.services.web_search_service import web_search_service
 from app.services.settings_service import SettingsService
+from app.services.live_content_service import LiveContentService
 
 # Initialize settings service for fetching industry context
 settings_service = SettingsService()
@@ -2448,6 +2449,170 @@ async def web_search_query(request: WebSearchRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# ============================================================================
+# Live Content Reading (MVP - January 15, 2026)
+# ============================================================================
+
+def is_content_query(query: str) -> bool:
+    """
+    Detect if user is asking about file CONTENT (not just metadata).
+
+    Content queries want to read what's INSIDE a file:
+    - "What does my Q3 report say about revenue?"
+    - "Summarize the meeting notes"
+    - "What's in my budget spreadsheet?"
+
+    Non-content queries just want metadata:
+    - "How many files do I have?"
+    - "When was this file modified?"
+    - "List my Google Drive files"
+    """
+    query_lower = query.lower()
+
+    # Content keywords - user wants to READ file content
+    content_keywords = [
+        "what does", "what do", "say about", "says about",
+        "content of", "contents of", "inside", "in the",
+        "summarize", "summary of", "analyze", "analysis of",
+        "read", "extract", "tell me about the content",
+        "what's in", "what is in", "details of", "information in",
+        "according to", "based on", "from the file",
+        "key points", "main points", "highlights",
+    ]
+
+    # Check for content keywords
+    for keyword in content_keywords:
+        if keyword in query_lower:
+            return True
+
+    return False
+
+
+def extract_file_info_from_rag(rag_results: list, data_type_filter: str = None) -> list:
+    """
+    Extract file IDs and metadata from RAG results.
+
+    Returns list of files that can be fetched for content reading.
+    """
+    files = []
+
+    file_data_types = ["drive", "drive_files", "files", "onedrive"]
+
+    for result in rag_results:
+        data_type = result.get("data_type", "")
+        integration = result.get("integration", "")
+        data = result.get("data")
+
+        # Skip if not a file-related data type
+        if data_type_filter and data_type != data_type_filter:
+            continue
+
+        if not any(ft in data_type.lower() for ft in file_data_types):
+            continue
+
+        # Extract file info from data
+        if data and isinstance(data, dict):
+            file_id = data.get("id") or data.get("Id") or data.get("file_id")
+            file_name = data.get("name") or data.get("Name") or data.get("title")
+            mime_type = data.get("mimeType") or data.get("mime_type") or data.get("contentType")
+
+            if file_id:
+                files.append({
+                    "integration": integration,
+                    "file_id": file_id,
+                    "file_name": file_name,
+                    "mime_type": mime_type,
+                    "score": result.get("score", 0)
+                })
+
+        # Handle list of files in data
+        elif data and isinstance(data, list):
+            for item in data[:5]:  # Limit to top 5 files per result
+                if isinstance(item, dict):
+                    file_id = item.get("id") or item.get("Id") or item.get("file_id")
+                    file_name = item.get("name") or item.get("Name") or item.get("title")
+                    mime_type = item.get("mimeType") or item.get("mime_type")
+
+                    if file_id:
+                        files.append({
+                            "integration": integration,
+                            "file_id": file_id,
+                            "file_name": file_name,
+                            "mime_type": mime_type,
+                            "score": result.get("score", 0)
+                        })
+
+    # Sort by relevance score and deduplicate
+    seen_ids = set()
+    unique_files = []
+    for f in sorted(files, key=lambda x: x.get("score", 0), reverse=True):
+        if f["file_id"] not in seen_ids:
+            seen_ids.add(f["file_id"])
+            unique_files.append(f)
+
+    return unique_files[:5]  # Return top 5 most relevant files
+
+
+async def fetch_file_contents(
+    db: AsyncSession,
+    files: list,
+    wallet_address: str,
+    max_files: int = 3
+) -> list:
+    """
+    Fetch actual file contents using LiveContentService.
+
+    Args:
+        db: Database session
+        files: List of file info dicts from extract_file_info_from_rag
+        wallet_address: User's wallet address for OAuth
+        max_files: Maximum number of files to read (default 3 for token limits)
+
+    Returns:
+        List of {file_name, content, success, error}
+    """
+    content_service = LiveContentService(db)
+    results = []
+
+    for file_info in files[:max_files]:
+        try:
+            content_result = await content_service.read_file_content(
+                integration=file_info.get("integration", "google"),
+                file_id=file_info["file_id"],
+                wallet_address=wallet_address,
+                file_name=file_info.get("file_name"),
+                mime_type=file_info.get("mime_type")
+            )
+
+            results.append({
+                "file_name": file_info.get("file_name", "Unknown"),
+                "file_id": file_info["file_id"],
+                "content": content_result.get("content", ""),
+                "success": content_result.get("success", False),
+                "error": content_result.get("error"),
+                "char_count": content_result.get("char_count", 0),
+                "extraction_method": content_result.get("extraction_method", "unknown")
+            })
+
+            if content_result.get("success"):
+                logger.info(
+                    f"File content fetched: {file_info.get('file_name')} "
+                    f"({content_result.get('char_count', 0)} chars)"
+                )
+
+        except Exception as e:
+            logger.error(f"Failed to fetch file content for {file_info.get('file_id')}: {e}")
+            results.append({
+                "file_name": file_info.get("file_name", "Unknown"),
+                "file_id": file_info["file_id"],
+                "content": "",
+                "success": False,
+                "error": str(e)
+            })
+
+    return results
+
+
 @router.post("/query/combined", response_model=CombinedQueryResponse)
 async def combined_query(request: CombinedQueryRequest, db: AsyncSession = Depends(get_db)):
     """
@@ -2457,12 +2622,13 @@ async def combined_query(request: CombinedQueryRequest, db: AsyncSession = Depen
     1. Business-specific RAG data (from connected integrations)
     2. Real-time web search results (for external information)
     3. Industry-specific expertise based on user's business profile
+    4. Live file content reading (MVP - Jan 15, 2026)
 
     Use this for questions that need both your business data AND
     external context, like:
     - "How do my sales compare to industry benchmarks?"
     - "What regulations affect my overdue invoices?"
-    - "How are my competitors pricing similar products?"
+    - "What does my Q3 report say about revenue?" (NEW - reads actual file content)
 
     Args:
         request: Combined query request
@@ -2484,11 +2650,80 @@ async def combined_query(request: CombinedQueryRequest, db: AsyncSession = Depen
 
         provider = get_llm_provider()
 
+        # ====================================================================
+        # MVP FILE CONTENT READING (January 15, 2026)
+        # If user is asking about file CONTENT, fetch actual file content
+        # ====================================================================
+        file_content_context = ""
+        files_read = []
+
+        if is_content_query(request.query):
+            logger.info(f"Content query detected, attempting to fetch file content...")
+
+            # First, query RAG to find relevant files
+            try:
+                if rag_service:
+                    rag_results = await rag_service.query_business_rag(
+                        business_wallet=request.wallet_address,
+                        query=request.query,
+                        limit=10,
+                        integration=request.integration,
+                        data_type=request.data_type
+                    )
+
+                    # Extract file info from RAG results
+                    files_to_read = extract_file_info_from_rag(rag_results)
+
+                    if files_to_read:
+                        logger.info(f"Found {len(files_to_read)} files to read: {[f.get('file_name') for f in files_to_read]}")
+
+                        # Fetch actual file contents
+                        file_contents = await fetch_file_contents(
+                            db=db,
+                            files=files_to_read,
+                            wallet_address=request.wallet_address,
+                            max_files=3  # Limit for token management
+                        )
+
+                        # Build context from file contents
+                        content_parts = []
+                        for fc in file_contents:
+                            if fc.get("success") and fc.get("content"):
+                                files_read.append(fc.get("file_name"))
+                                # Limit each file to 15000 chars (~4000 tokens)
+                                content = fc["content"][:15000]
+                                content_parts.append(
+                                    f"\n=== FILE: {fc.get('file_name')} ===\n{content}\n"
+                                )
+
+                        if content_parts:
+                            file_content_context = (
+                                "\n\n--- ACTUAL FILE CONTENTS (Read from your files) ---\n"
+                                + "\n".join(content_parts)
+                                + "\n--- END OF FILE CONTENTS ---\n\n"
+                            )
+                            logger.info(
+                                f"File content fetched: {len(files_read)} files, "
+                                f"{len(file_content_context)} chars total"
+                            )
+
+            except Exception as e:
+                logger.warning(f"File content fetch failed (continuing without): {e}")
+
+        # Build enhanced query with file content if available
+        enhanced_query = request.query
+        if file_content_context:
+            enhanced_query = (
+                f"Based on the following file contents from my business documents:\n"
+                f"{file_content_context}\n"
+                f"User question: {request.query}"
+            )
+
         if provider == "together" and os.getenv("TOGETHER_API_KEY"):
             # Use Together.ai combined query with industry context
             result = await together_business_service.query_with_web_search(
                 business_wallet=request.wallet_address,
-                user_query=request.query,
+                user_query=enhanced_query,
                 integration=request.integration,
                 data_type=request.data_type,
                 enable_web_search=request.enable_web_search,
@@ -2501,7 +2736,7 @@ async def combined_query(request: CombinedQueryRequest, db: AsyncSession = Depen
             # Fallback: Use Ollama for RAG only (no web search in fallback)
             result = await ollama_business_service.query_business_ai(
                 business_wallet=request.wallet_address,
-                user_query=request.query,
+                user_query=enhanced_query,
                 integration=request.integration,
                 data_type=request.data_type,
                 max_context_items=request.max_rag_results
@@ -2510,12 +2745,17 @@ async def combined_query(request: CombinedQueryRequest, db: AsyncSession = Depen
             result["web_search_used"] = False
             result["rag_sources"] = result.get("sources", [])
 
+        # Update mode if file content was used
+        mode = result.get("mode", "general")
+        if files_read:
+            mode = "content_read"  # New mode indicating file content was read
+
         return CombinedQueryResponse(
             answer=result["answer"],
-            mode=result.get("mode", "general"),
+            mode=mode,
             rag_sources=result.get("rag_sources", result.get("sources", [])),
             web_sources=result.get("web_sources", []),
-            context_used=result.get("context_used", False),
+            context_used=result.get("context_used", False) or bool(files_read),
             web_search_used=result.get("web_search_used", False),
             metadata={
                 "wallet_address": request.wallet_address,
@@ -2523,6 +2763,8 @@ async def combined_query(request: CombinedQueryRequest, db: AsyncSession = Depen
                 "data_type": request.data_type,
                 "llm_provider": provider,
                 "web_search_enabled": request.enable_web_search,
+                "files_read": files_read,
+                "file_content_chars": len(file_content_context),
                 "timestamp": datetime.now().isoformat()
             }
         )
