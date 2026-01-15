@@ -72,42 +72,78 @@ class SyncStatusResponse(BaseModel):
 
 async def retrieve_oauth_credentials(wallet_address: str, integration: str) -> dict:
     """
-    Retrieve and decrypt OAuth credentials from Filecoin
+    Retrieve OAuth credentials from PostgreSQL database.
+
+    Uses the same pattern as live API endpoints - queries OAuthToken table,
+    handles token refresh, and returns credentials dict.
 
     Args:
         wallet_address: User's wallet address
-        integration: Integration name
+        integration: Integration name (provider in OAuthToken)
 
     Returns:
-        Decrypted OAuth credentials
+        Credentials dict with access_token, realm_id (for QB), instance_url (for SF)
 
     Raises:
-        HTTPException if credentials not found
+        HTTPException if credentials not found or refresh fails
     """
+    from sqlalchemy import select, and_
+    from app.core.database import get_async_session
+    from app.models.purchase import OAuthToken
+    from app.api.v1.integrations import refresh_oauth_token
+
     try:
-        # List OAuth credentials
-        files = await filecoin_service.list_customer_files(
-            customer_wallet=wallet_address,
-            integration=integration,
-            data_type="oauth-credentials",
-            limit=1
-        )
-
-        if not files:
-            raise HTTPException(
-                status_code=404,
-                detail=f"No OAuth credentials found for {integration}. Please connect first."
+        async for db in get_async_session():
+            # Query token from PostgreSQL
+            result = await db.execute(
+                select(OAuthToken).where(
+                    and_(
+                        OAuthToken.user_address == wallet_address.lower(),
+                        OAuthToken.provider == integration
+                    )
+                )
             )
+            token = result.scalar_one_or_none()
 
-        # Retrieve and decrypt
-        encrypted_data = await filecoin_service.retrieve_data(files[0]["cid"])
+            if not token:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"No OAuth credentials found for {integration}. Please connect first."
+                )
 
-        decrypted_credentials = await encryption_service.decrypt_with_wallet(
-            encrypted_data=encrypted_data,
-            customer_wallet=wallet_address
-        )
+            # Check if token is expired and attempt refresh
+            now = datetime.utcnow()
+            if token.expires_at and token.expires_at < now:
+                logger.info(f"{integration} token for {wallet_address[:10]}... is expired, attempting refresh...")
 
-        return decrypted_credentials
+                refresh_success = await refresh_oauth_token(token, integration, db)
+
+                if not refresh_success:
+                    logger.warning(f"{integration} token refresh failed for {wallet_address[:10]}...")
+                    raise HTTPException(
+                        status_code=401,
+                        detail=f"{integration} token has expired and refresh failed. Please reconnect."
+                    )
+
+                logger.info(f"{integration} token refreshed successfully for {wallet_address[:10]}...")
+
+            # Build credentials dict with access_token and integration-specific params
+            with OAuthToken.auth_context(wallet_address.lower()):
+                credentials = {
+                    "access_token": token.access_token,
+                }
+                # Add QuickBooks realm_id if available (stored in provider_data JSON)
+                if integration == "quickbooks" and token.provider_data:
+                    realm_id = token.provider_data.get("realm_id") or token.provider_data.get("realmId")
+                    if realm_id:
+                        credentials["realm_id"] = realm_id
+                # Add Salesforce instance_url if available
+                if integration == "salesforce" and token.provider_data:
+                    instance_url = token.provider_data.get("instance_url")
+                    if instance_url:
+                        credentials["instance_url"] = instance_url
+
+            return credentials
 
     except HTTPException:
         raise
