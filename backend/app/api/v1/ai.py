@@ -1927,15 +1927,23 @@ Date: {email_content.get('date', '')}
                             logger.info(f"RAG context limit reached at {total_chars} chars")
                             break
 
-                        data = result.get("data", {})
+                        data = result.get("data")
+                        preview = result.get("preview", "")
                         cid = result.get("cid", "")
                         integration = result.get("integration", "unknown")
                         data_type = result.get("data_type", "unknown")
 
-                        # Truncate data if too large
-                        data_str = json.dumps(data, indent=2, default=str)
-                        if len(data_str) > MAX_CHARS_PER_ENTRY:
-                            data_str = data_str[:MAX_CHARS_PER_ENTRY] + "\n... [truncated]"
+                        # Use data if available, otherwise fall back to preview
+                        # (Qdrant stores minimal payload with preview only for efficiency)
+                        if data:
+                            data_str = json.dumps(data, indent=2, default=str)
+                            if len(data_str) > MAX_CHARS_PER_ENTRY:
+                                data_str = data_str[:MAX_CHARS_PER_ENTRY] + "\n... [truncated]"
+                        elif preview:
+                            # Preview contains first 500 chars of the indexed data
+                            data_str = preview
+                        else:
+                            data_str = f"[Data available via CID: {cid}]"
 
                         context_entry = f"""
 --- Business Data Source {idx} (from {integration} - {data_type}) ---
@@ -3015,26 +3023,7 @@ async def _build_rag_context(
     return context
 
 
-def _is_relevant_to_query(file: Dict, query: str) -> bool:
-    """
-    DEPRECATED (Dec 26, 2025): This function is no longer used.
-
-    The _build_rag_context() function now uses Qdrant vector search
-    for semantic relevance scoring instead of this keyword matching approach.
-
-    This function is kept for backward compatibility but always returns True.
-    It will be removed in a future version.
-
-    Args:
-        file: File metadata
-        query: User's query
-
-    Returns:
-        True always (deprecated behavior)
-    """
-    # Log deprecation warning (throttled to avoid spam)
-    logger.debug("_is_relevant_to_query is deprecated - using Qdrant for relevance")
-    return True  # Always return True since Qdrant handles relevance now
+# _is_relevant_to_query() was deleted January 12, 2026 - replaced by Qdrant vector search
 
 
 def _summarize_context(context: Dict) -> str:
