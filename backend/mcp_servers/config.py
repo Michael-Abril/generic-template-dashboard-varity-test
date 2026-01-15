@@ -5,30 +5,30 @@ Based on mcp-servers-research.md findings (December 31, 2025).
 Each server is vetted for production use.
 
 Servers used:
-- Google: Taylor Wilsdon (@anthropic/google-workspace-mcp)
+- Google: PegasusHeavy (@pegasusheavy/google-mcp) - VERIFIED ON NPM
 - Slack: Korotovsky (slack-mcp-server)
-- QuickBooks: Intuit Official (@anthropic/quickbooks-online-mcp-server)
-- Microsoft: Softeria (ms-365-mcp-server)
-- Salesforce: Community (mcp-salesforce)
+- QuickBooks: DIRECT API FALLBACK (MCP package not found)
+- Microsoft: Softeria (@softeria/ms-365-mcp-server) - VERIFIED ON NPM
+- Salesforce: DIRECT API FALLBACK (MCP package unpublished)
 - HubSpot: Official Beta (@hubspot/mcp-server)
 """
 
 MCP_SERVER_REGISTRY = {
     "google": {
-        "name": "Taylor Wilsdon Google Workspace MCP",
-        "package": "@anthropic/google-workspace-mcp",
+        "name": "PegasusHeavy Google MCP",
+        "package": "@pegasusheavy/google-mcp",
         "command": "npx",
-        "args": ["-y", "@anthropic/google-workspace-mcp"],
+        "args": ["-y", "@pegasusheavy/google-mcp"],
         "transport": "stdio",
-        "github": "github.com/taylorwilsdon/google_workspace_mcp",
+        "github": "github.com/PegasusHeavy/google-mcp",
         "tools": [
-            "google_drive_list_files",
-            "google_drive_read_file",
-            "google_contacts_list",
-            "google_gmail_list_messages",
-            "google_gmail_send",
-            "google_calendar_list_events",
-            "google_calendar_create_event",
+            "gmail_list",
+            "gmail_read",
+            "gmail_send",
+            "drive_list",
+            "drive_read",
+            "calendar_list",
+            "contacts_list",
         ],
         "scopes": [
             "https://www.googleapis.com/auth/drive.readonly",
@@ -59,12 +59,12 @@ MCP_SERVER_REGISTRY = {
         ],
     },
     "quickbooks": {
-        "name": "Intuit Official QuickBooks MCP",
-        "package": "@anthropic/quickbooks-online-mcp-server",
-        "command": "npx",
-        "args": ["-y", "@anthropic/quickbooks-online-mcp-server"],
-        "transport": "stdio",
-        "github": "github.com/intuit/quickbooks-online-mcp-server",
+        "name": "QuickBooks DIRECT API",
+        "package": None,  # No working MCP package - use direct API
+        "command": None,
+        "args": None,
+        "transport": "direct_api",
+        "github": None,
         "tools": [
             "quickbooks_list_invoices",
             "quickbooks_create_invoice",
@@ -76,18 +76,18 @@ MCP_SERVER_REGISTRY = {
     },
     "microsoft": {
         "name": "Softeria Microsoft 365 MCP",
-        "package": "ms-365-mcp-server",
+        "package": "@softeria/ms-365-mcp-server",
         "command": "npx",
-        "args": ["-y", "ms-365-mcp-server"],
+        "args": ["-y", "@softeria/ms-365-mcp-server"],
         "transport": "stdio",
         "github": "github.com/Softeria/ms-365-mcp-server",
         "tools": [
-            "onedrive_list_files",
-            "onedrive_read_file",
-            "outlook_list_messages",
-            "outlook_send_email",
-            "calendar_list_events",
-            "calendar_create_event",
+            "list_onedrive_files",
+            "read_onedrive_file",
+            "list_outlook_emails",
+            "send_outlook_email",
+            "list_calendar_events",
+            "create_calendar_event",
         ],
         "scopes": [
             "https://graph.microsoft.com/Files.Read",
@@ -96,12 +96,12 @@ MCP_SERVER_REGISTRY = {
         ],
     },
     "salesforce": {
-        "name": "Community Salesforce MCP",
-        "package": "mcp-salesforce",
-        "command": "npx",
-        "args": ["-y", "mcp-salesforce"],
-        "transport": "stdio",
-        "github": "github.com/smn2gnt/MCP-Salesforce",
+        "name": "Salesforce DIRECT API",
+        "package": None,  # MCP package unpublished - use direct API
+        "command": None,
+        "args": None,
+        "transport": "direct_api",
+        "github": None,
         "tools": [
             "salesforce_query",
             "salesforce_create_record",

@@ -151,7 +151,7 @@ class MCPIngestionService:
                 # 3. Route based on destination
                 if destination == DataDestination.RAG_STORAGE:
                     result = await self._store_to_rag(
-                        encrypted_data, integration, data_type, wallet_address
+                        encrypted_data, integration, data_type, wallet_address, raw_data
                     )
                 elif destination == DataDestination.LIVE_API:
                     result = await self._configure_live_api(
@@ -159,7 +159,7 @@ class MCPIngestionService:
                     )
                 else:  # HYBRID
                     result = await self._handle_hybrid(
-                        encrypted_data, integration, data_type, wallet_address
+                        encrypted_data, integration, data_type, wallet_address, raw_data
                     )
 
                 results[data_type] = result
@@ -190,14 +190,28 @@ class MCPIngestionService:
         extra_params: Optional[Dict[str, str]] = None,
     ) -> Any:
         """
-        Fetch data using MCP protocol
+        Fetch data using MCP protocol with direct API fallback
 
         MCP handles:
         - OAuth token refresh
         - API pagination
         - Rate limiting
         - Error recovery
+
+        Fallback to direct API if MCP package doesn't exist (QuickBooks, Salesforce)
         """
+        # Check if this integration uses direct API instead of MCP
+        from mcp_servers.config import MCP_SERVER_REGISTRY
+
+        server_config = MCP_SERVER_REGISTRY.get(integration, {})
+        transport = server_config.get("transport")
+
+        # If configured for direct API, use fallback immediately
+        if transport == "direct_api":
+            logger.info(f"Using direct API for {integration}/{data_type} (MCP not available)")
+            return await self._fetch_via_direct_api(integration, data_type, oauth_token, extra_params)
+
+        # Try MCP first
         try:
             # Import MCP client here to avoid circular imports
             from mcp_servers import fetch_integration_data
@@ -210,18 +224,92 @@ class MCPIngestionService:
             )
 
             if "error" in result:
-                logger.error(f"MCP fetch error for {integration}/{data_type}: {result['error']}")
-                return None
+                logger.warning(
+                    f"MCP fetch error for {integration}/{data_type}: {result['error']}, "
+                    f"falling back to direct API"
+                )
+                # Return error dict for visibility, not None
+                return {
+                    "error": result['error'],
+                    "fallback": True,
+                    "source": "mcp_error"
+                }
 
             logger.info(f"MCP fetched {integration}/{data_type} successfully")
             return result
 
         except ImportError as e:
-            logger.error(f"MCP client not available: {e}")
-            return None
+            logger.warning(f"MCP client not available for {integration}: {e}, using direct API")
+            return await self._fetch_via_direct_api(integration, data_type, oauth_token, extra_params)
         except Exception as e:
-            logger.error(f"MCP fetch failed for {integration}/{data_type}: {e}")
-            return None
+            logger.warning(
+                f"MCP fetch failed for {integration}/{data_type}: {e}, "
+                f"falling back to direct API"
+            )
+            return await self._fetch_via_direct_api(integration, data_type, oauth_token, extra_params)
+
+    async def _fetch_via_direct_api(
+        self,
+        integration: str,
+        data_type: str,
+        oauth_token: str,
+        extra_params: Optional[Dict[str, str]] = None,
+    ) -> Any:
+        """
+        Fallback: Fetch data directly from integration APIs
+
+        Used when MCP packages don't exist (QuickBooks, Salesforce)
+        or when MCP fetch fails.
+        """
+        try:
+            # Import integration-specific API clients
+            if integration == "google":
+                from app.adapters.google.sync import GoogleWorkspaceSync
+                adapter = GoogleWorkspaceSync(access_token=oauth_token)
+                return await adapter.fetch_data(data_type)
+
+            elif integration == "microsoft":
+                from app.adapters.microsoft.sync import MicrosoftSync
+                adapter = MicrosoftSync(access_token=oauth_token)
+                return await adapter.fetch_data(data_type)
+
+            elif integration == "slack":
+                from app.adapters.slack.sync import SlackSync
+                adapter = SlackSync(access_token=oauth_token)
+                return await adapter.fetch_data(data_type)
+
+            elif integration == "quickbooks":
+                from app.adapters.quickbooks.sync import QuickBooksSync
+                realm_id = extra_params.get("realm_id") if extra_params else None
+                adapter = QuickBooksSync(access_token=oauth_token, realm_id=realm_id)
+                return await adapter.fetch_data(data_type)
+
+            elif integration == "salesforce":
+                from app.adapters.salesforce.sync import SalesforceSync
+                instance_url = extra_params.get("instance_url") if extra_params else None
+                adapter = SalesforceSync(access_token=oauth_token, instance_url=instance_url)
+                return await adapter.fetch_data(data_type)
+
+            elif integration == "hubspot":
+                from app.adapters.hubspot.sync import HubSpotSync
+                adapter = HubSpotSync(access_token=oauth_token)
+                return await adapter.fetch_data(data_type)
+
+            else:
+                logger.error(f"No direct API adapter available for {integration}")
+                return {
+                    "error": f"No adapter for {integration}",
+                    "fallback": False,
+                    "source": "no_adapter"
+                }
+
+        except Exception as e:
+            logger.error(f"Direct API fetch failed for {integration}/{data_type}: {e}")
+            return {
+                "error": str(e),
+                "fallback": False,
+                "source": "direct_api_error"
+            }
 
     async def _store_to_rag(
         self,
@@ -229,6 +317,7 @@ class MCPIngestionService:
         integration: str,
         data_type: str,
         wallet_address: str,
+        raw_data: Optional[dict] = None,
     ) -> Dict[str, Any]:
         """Store encrypted data to Pinata, index in Qdrant, batch for L3"""
 
@@ -240,12 +329,13 @@ class MCPIngestionService:
             encrypted_data=encrypted_data,
         )
 
-        # Index in Qdrant
+        # Index in Qdrant with the raw data for better embeddings
         await self.rag.index_document(
             cid=cid,
             integration=integration,
             data_type=data_type,
             wallet_address=wallet_address,
+            data=raw_data,  # Pass raw data so RAG can create better embeddings
         )
 
         # Add to batch for L3 commitment
@@ -395,13 +485,14 @@ class MCPIngestionService:
         integration: str,
         data_type: str,
         wallet_address: str,
+        raw_data: Optional[dict] = None,
     ) -> Dict[str, Any]:
         """
         Hybrid: Store historical in RAG + configure live for updates
         """
         # Store historical data
         rag_result = await self._store_to_rag(
-            encrypted_data, integration, data_type, wallet_address
+            encrypted_data, integration, data_type, wallet_address, raw_data
         )
 
         # Also configure live endpoint for fresh data

@@ -127,6 +127,7 @@ DATA_ROUTING_RULES = {
     "quickbooks": {
         "invoices": HYBRID,       # Recent live, history synced
         "payments": LIVE_API,
+        "expenses": HYBRID,       # Recent live, history synced
         "customers": RAG_STORAGE,
         "vendors": RAG_STORAGE,
     },
@@ -154,6 +155,9 @@ LIVE_ENDPOINTS = {
     ("slack", "users"): "/api/v1/integrations/slack/users",
     ("microsoft", "mail"): "/api/v1/integrations/microsoft/mail/messages",
     ("microsoft", "calendar"): "/api/v1/integrations/microsoft/calendar/events",
+    ("quickbooks", "invoices"): "/api/v1/quickbooks/invoices",
+    ("quickbooks", "payments"): "/api/v1/quickbooks/payments",
+    ("quickbooks", "expenses"): "/api/v1/quickbooks/expenses",
 }
 
 
@@ -449,8 +453,8 @@ async def fetch_live_data(
             if isinstance(data, list):
                 return {"error": None, "data": data}
             elif isinstance(data, dict):
-                # Check for common response keys
-                for key in ["emails", "events", "channels", "messages", "users", "data", "items"]:
+                # Check for common response keys (including QuickBooks-specific keys)
+                for key in ["emails", "events", "channels", "messages", "users", "data", "items", "invoices", "payments", "customers", "vendors"]:
                     if key in data and isinstance(data[key], list):
                         return {"error": None, "data": data[key]}
                 # If it's a dict with success status, look for data
@@ -545,6 +549,13 @@ def process_qb_unpaid(invoices: List[Dict]) -> tuple[str, str]:
     return f"${unpaid:,.2f}", "neutral"
 
 
+def process_qb_expenses(expenses: List[Dict]) -> tuple[str, str]:
+    """Calculate total expenses from QuickBooks."""
+    # QuickBooks uses TotalAmt for expense amounts
+    total = sum(float(exp.get("TotalAmt", 0)) for exp in expenses)
+    return f"${total:,.2f}", "neutral"
+
+
 def process_email_count(messages: List[Dict]) -> tuple[str, str]:
     """Count total emails."""
     return str(len(messages)), "neutral"
@@ -595,6 +606,20 @@ KPI_CONFIGS = {
                         "color": "orange",
                         "change_period": "vs last month",
                         "processor": process_qb_unpaid
+                    }
+                ]
+            },
+            {
+                "data_type": "expenses",
+                "use_live_api": True,
+                "kpis": [
+                    {
+                        "id": "qb_expenses",
+                        "title": "Total Expenses",
+                        "icon": "Receipt",
+                        "color": "red",
+                        "change_period": "vs last month",
+                        "processor": process_qb_expenses
                     }
                 ]
             }
