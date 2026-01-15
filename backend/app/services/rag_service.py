@@ -153,7 +153,9 @@ class BusinessRAGService:
                             },
                             json={
                                 "model": self.together_embedding_model,
-                                "input": text[:8000]  # Truncate to avoid token limits
+                                # BAAI/bge-base-en-v1.5 has 512 token limit (~1800 chars)
+                                # Truncate to stay under limit
+                                "input": text[:1800]
                             }
                         )
                         response.raise_for_status()
